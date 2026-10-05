@@ -1030,6 +1030,30 @@ service cloud.firestore {
       match /impressions/{uid} { allow read: if self(uid); allow write: if false; }
     }
 
+    // §15 viewer mute list. The viewer's own rows only; the server writes the
+    // authoritative feed filter, so clients cannot mute on someone else's behalf
+    // nor read who else muted whom.
+    match /reelMutes/{uid} {
+      allow read: if self(uid);
+      allow write: if false;
+      match /creators/{creatorId} {
+        allow read: if self(uid);
+        allow write: if false;
+      }
+    }
+
+    // §15 saved Reels. Server-written from the save signal so the list cannot be
+    // forged; a viewer may read only their own, and nobody else's saves are
+    // visible even to signed-in users.
+    match /savedReels/{uid} {
+      allow read: if self(uid);
+      allow write: if false;
+      match /items/{editId} {
+        allow read: if self(uid);
+        allow write: if false;
+      }
+    }
+
     match /editUploadKeys/{keyId} {
       allow read: if signedIn() && resource.data.creatorId == request.auth.uid;
       allow create, update, delete: if false;

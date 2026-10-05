@@ -570,3 +570,105 @@ sessions and silently dropped the emulator back to the system JDK 17.
 Next: open PR `15-kirari-viewer-interactions`. The 9 skipped storage-rules
 assertions stay reported as unverified until they run on a runtime with working
 cross-service evaluation.*
+
+---
+
+## 10. `15-kirari-viewer-interactions` — record
+
+Stacked on `15-kirari-upload-pipeline` (`d225caa`). Opens after #133 merges.
+
+### Defects found and fixed in this slice
+
+Each of these was reproduced by a test first. The mutation check is recorded
+because "the test passes" is not evidence on its own — every test below was
+verified to fail when its fix was reverted.
+
+**V1 — `listSavedReels` replayed the first page forever.**
+The cursor was applied *after* the page was fetched (`docs.findIndex` +
+`slice`), so it only worked while the cursor happened to sit inside the page it
+had just read. Requesting page two with the last id of page one returned page
+one again. Now the cursor is resolved to a document snapshot and passed to
+`startAfter`, matching the existing `animeListsDomain` convention.
+*Mutation:* restoring the post-filter makes the 3-page regression test fail.
+
+**V2 — a failed block/mute read failed OPEN.**
+`loadHiddenCreatorIds` caught read errors and continued with an empty hidden
+set. Blocks and mutes are the privacy boundary: the failure mode republished
+exactly the creators the viewer had asked not to see. The `.catch()` is now
+deliberately absent, and an unavailable boundary read surfaces as an error.
+*Mutation:* restoring the swallow makes the fail-closed tests fail.
+
+**V3 — a like rebuilt every visible Reel.**
+`_EditFeedPageState.build` used `context.watch<EditsProvider>()`, which marked
+the whole `PageView` dirty on every like/save/skip. The per-cell
+`context.select` scoping that already existed could not help, because the parent
+had already invalidated the subtree. The root now selects only the four
+page-level values it actually uses.
+
+This only works because `items` returns a *stable identity* while interaction
+state changes — it previously allocated a fresh `List.unmodifiable` per read, so
+a `select` would have seen a new instance on every notification and rebuilt
+anyway. The snapshot is cached and invalidated at each mutation site.
+*Mutation:* removing the cache fails 2 tests.
+
+**V4 — comment paging cursors dropped tied rows.**
+`startAfter([likesCount])` and `startAfter([createdAt])` omitted the `__name__`
+tiebreaker that Firestore appends to every `orderBy`. The cursor therefore meant
+"resume after *every* comment that ties with this one", so comments with an
+equal score — or written in the same millisecond — silently disappeared, and
+paging skipped rows. `editCommentCursor` now emits `[sortKey, id]` and returns
+`null` when the comment cannot anchor a cursor at all.
+*Mutation:* dropping the id fails 5 tests.
+
+**V5 — the comment heart was a dead control.**
+It always rendered the outline icon, could only ever send `like` (never
+`unlike`), and never moved the count: tapping it looked broken. It now toggles
+optimistically, moves the count, and rolls both back on a rejected write.
+*Mutation:* forcing the action back to `like` fails the toggle test.
+
+**V6 — `/reels*` was reachable while signed out.**
+`AuthRouteGuard` protected `/edits` but not the five routes that render
+`ReelsFeedPage`. A signed-out visitor landed on a page that can only fail on
+Firestore/Storage permissions instead of being redirected.
+*Mutation:* removing one route fails 2 tests.
+
+### Also in this slice
+
+- `muteReelCreator` and `listSavedReels` are wired end to end: repository
+  interface, Firebase implementation, unavailable implementation, test fake,
+  `EditsProvider.muteCreator`, and a Mute entry in the rail's more sheet. These
+  callables previously had no client caller at all.
+- Muting removes the creator's loaded Reels immediately instead of leaving them
+  on screen until the next page fetch, and a rejected write re-reads the feed
+  rather than keeping a lie visible.
+
+### Verification snapshot (this revision)
+
+- Functions: `486/486`; `npm run check` clean.
+- Flutter: `842/842`; `dart analyze lib test` clean.
+- Rules: unchanged from the upload slice (see section 9).
+- Debug APK: rebuilt in this revision.
+
+### Still BLOCKED / unmet (not a code defect)
+
+- **Guest-read policy is undecided.** This slice does not change it: the rules
+  still require auth for Edits media, and the guard now sends signed-out
+  visitors to login. Enabling guest reads is an owner decision, not a default.
+- **No new player-pool dependency was added.** Rebuild scoping was fixed
+  without one. An active-window/player pool using a new package still needs
+  explicit owner approval.
+- **The 9 cross-service Storage rules assertions remain unverified locally**;
+  one capability test also skips. Unchanged, still reported as unverified.
+- Comment listing is still a direct client Firestore query rather than a server
+  callable. The cursor bug is fixed, but moving reads behind a callable is a
+  separate change.
+- `extractReelAudio` still has no exported callable or UI caller; legacy
+  `reelsDomain`/`reelsConfig` wiring, offline Following/Trending fallback,
+  compound scope indexes and region consolidation remain open from Foundation.
+
+---
+
+*Viewer-interactions fixes V1–V6 are recorded above. Next: open PR
+`15-kirari-viewer-interactions`, then `15-kirari-feeds-reco`. The 9 skipped
+storage-rules assertions stay reported as unverified until they run on a runtime
+with working cross-service evaluation.*

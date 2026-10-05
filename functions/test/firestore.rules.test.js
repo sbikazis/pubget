@@ -1591,3 +1591,34 @@ test("a creator cannot promote their own audio by writing the status", async () 
     db("alice").doc("reelAudios/processing1").update({ status: "ready", usageCount: 500 }),
   );
 });
+
+// §15 saved Reels. The server writes these from the save signal, so a client
+// must not be able to forge a save list or read someone else's.
+test("saved Reels are readable only by their owner and never client-writable", async () => {
+  const alice = db("alice");
+  const bob = db("bob");
+
+  // Nobody may write their own save rows — the signal is the only entry point.
+  await assertFails(alice.doc("savedReels/alice/items/e1").set({ editId: "e1" }));
+  await assertFails(alice.doc("savedReels/alice/items/e1").update({ editId: "e2" }));
+  await assertFails(alice.doc("savedReels/alice/items/e1").delete());
+
+  // A client cannot write into someone else's save list either.
+  await assertFails(bob.doc("savedReels/alice/items/e1").set({ editId: "e1" }));
+  await assertFails(alice.doc("savedReels/alice").set({ uid: "alice" }));
+
+  // Another signed-in user must not be able to list the owner's saves.
+  await assertFails(bob.collection("savedReels/alice/items").get());
+});
+
+test("the mute list is self-scoped and server-owned", async () => {
+  const alice = db("alice");
+  const bob = db("bob");
+
+  await assertFails(alice.doc("reelMutes/alice/creators/bob").set({ creatorId: "bob" }));
+  await assertFails(alice.doc("reelMutes/alice/creators/bob").delete());
+  await assertFails(alice.doc("reelMutes/bob/creators/carol").set({ creatorId: "carol" }));
+  await assertFails(alice.doc("reelMutes/alice").set({ uid: "alice" }));
+
+  await assertFails(bob.collection("reelMutes/alice/creators").get());
+});
