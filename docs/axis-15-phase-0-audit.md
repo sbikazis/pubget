@@ -668,7 +668,80 @@ Firestore/Storage permissions instead of being redirected.
 
 ---
 
-*Viewer-interactions fixes V1–V6 are recorded above. Next: open PR
-`15-kirari-viewer-interactions`, then `15-kirari-feeds-reco`. The 9 skipped
-storage-rules assertions stay reported as unverified until they run on a runtime
-with working cross-service evaluation.*
+## 11. `15-kirari-feeds-reco` — record
+
+Stacked on `15-kirari-viewer-interactions` (`436d98b`). PR #133 and #131 are
+merged, so #136 is no longer stacked and this branch bases on it.
+
+### Defects found and fixed in this slice
+
+**R1 — the feed never applied diversity, so one creator could own the page.**
+The ranked order went straight out. `applyFeedDiversity` now caps
+`maxPerCreator: 2`, `maxAnime: 3` and `maxConsecutiveAnime: 2`. Deferred rows
+are appended, never dropped: a short page reads to the viewer as an empty feed.
+*Mutation:* removing the call fails the diversity test.
+
+The cap is asserted on **consecutive runs, not totals**. A total cap would
+forbid exploration entirely, which contradicts R2 — an earlier draft of this
+test failed for exactly that reason and was corrected.
+
+**R2 — no exploration: every slot went to the top-ranked Reel.**
+`mixExploration` is now applied at `config.explorationShare` (0.2, inside the
+§15.9 10–30% band) after diversity. Without it the tail of the ranking was
+unreachable no matter how the caps were tuned.
+*Mutation:* removing the call fails `For You reserves some slots for exploration`.
+
+**R3 — `seenIds` was always empty, so the repetition penalty was dead code.**
+`scoreEdit` has always penalised an already-watched Reel, and `getEditFeed`
+handed it `new Set()`. The penalty could never fire and the viewer was re-served
+the Reels they had just watched. `loadSeenEditIds` now reads the server-owned
+`edits/{id}/viewers/{viewerId}` records that `recordView` already writes.
+`recordView` now also persists `viewerId` on the viewer document, which is what
+makes the group query possible.
+
+The read is deliberately server-owned and bounded (`seenHistoryLimit: 300`): a
+client-supplied history would let a viewer farm repeats by clearing it, or
+suppress content by inventing it.
+*Mutation:* reverting to `new Set()` fails the repeat-view test.
+
+**R4 — Trending ignored §15.10's "تنوع الصنّاع" (creator diversity).**
+The previous draft of this slice deliberately exempted Trending, reasoning that
+a shared "now" page must not depend on the viewer. The spec lists creator
+diversity as part of the Trending signal, so the caps are applied there too.
+
+**Viewer-independence is preserved**, and is now pinned by a test: the caps read
+only the ranked order, never viewer state, so Alice and Bob see the same Trending
+page. This is the point of R4 — the earlier exemption was an over-reading of
+"shared page", not a reason to skip diversity.
+
+### Verification snapshot (this revision)
+
+- Functions: `493/493`; `npm run check` clean.
+- No new Firestore index. `collectionGroup("viewers").where("viewerId","==")`
+  is a single-field collection-group query, matching the existing
+  `recommendationEngine` `members` pattern; Firestore serves it from the
+  automatic single-field index.
+- Rules, Flutter and APK: unchanged from section 10, no client or rules files in
+  this slice.
+
+### Still BLOCKED / unmet (not a code defect)
+
+- **Recommendation-profile reset is still missing.** §15.9 asks for a reset in
+  settings. `loadSeenEditIds` now gives the profile something real to reset, but
+  no reset callable or UI exists yet.
+- **Character / audio / topic diversity caps are not implemented.** R1 covers
+  creator and anime, the two the existing ranked rows expose. Audio and hashtag
+  caps need the audio-hashtags slice to have signal to cap on.
+- The ranked-array `afterId` pagination over mutable scores is still unaudited
+  for skips and duplicates.
+- `hiddenIdChunks` is still unwired; hidden creators are filtered after the
+  top-200 query and can underfill a page.
+- Saved Reels has no user-facing screen, and comment reactions still do not
+  reload the viewer's own reaction, both carried from section 10.
+- The 9 cross-service Storage rules assertions remain unverified locally.
+
+---
+
+*Feed/reco fixes R1–R4 are recorded above. Next: `15-kirari-audio-hashtags`.
+The 9 skipped storage-rules assertions stay reported as unverified until they run
+on a runtime with working cross-service evaluation.*
