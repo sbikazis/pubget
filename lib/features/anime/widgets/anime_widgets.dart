@@ -250,11 +250,15 @@ class AnimeResultTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (grid) {
+      final social = maybeAnimeHubSocial(context);
+      final stats = social?.statsFor(anime.id);
+      final copy = AnimeCopy.of(context);
       return AnimeHubPosterCard(
         title: anime.title,
         imageUrl: anime.images.thumbnailUrl ?? anime.images.largeUrl ?? '',
         year: anime.year,
-        subtitle: anime.score?.toStringAsFixed(1),
+        subtitle: copy.meta(anime),
+        rating: stats != null && stats.averageScore > 0 ? (stats.averageScore * 10).round() : null,
         heroTag: animePosterHeroTag(anime.id),
         onTap: () => AnimeLinks.openDetails(context, anime.id),
       );
