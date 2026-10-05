@@ -885,6 +885,7 @@ final class AppTranslationMapping {
 
   String get malRankingTitle =>
       pick('Global MAL ranking', 'التقييم العالمي حسب MAL');
+  String get communityRatingTitle => pick("Community rating", "تقييم المجتمع");
   String get communityRankingTitle =>
       pick('Pubget community ranking', 'تقييم المجتمع حسب Pubget');
   String get myAnimeTitle => pick('My Anime', 'أنميّاتي');
