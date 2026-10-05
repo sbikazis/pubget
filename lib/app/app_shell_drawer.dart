@@ -69,7 +69,7 @@ abstract final class AppShellDrawerDestinations {
       id: 'anime',
       label: 'Anime List',
       icon: Icons.auto_awesome_mosaic_outlined,
-      path: '/anime',
+      path: '/anime/updated',
     ),
     (
       id: 'store',

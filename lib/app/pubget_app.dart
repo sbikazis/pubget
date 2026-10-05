@@ -996,7 +996,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/groups': const AppShell(),
         '/joined': const AppShell(),
         '/private': const AppShell(),
-        '/anime': const AnimeHubPage(),
+        '/anime': const AnimeBrowsePage(latest: true),
         '/anime/search': const AnimeSearchPage(),
         '/anime/updated': const AnimeBrowsePage(latest: true),
         '/anime/library': const AnimeLibraryPage(),
