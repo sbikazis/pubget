@@ -743,6 +743,26 @@ final class FanWorkEditorProvider extends ChangeNotifier {
 
   String get _localKey => _draft.workId ?? 'new';
 
+  void reset({FanWorkType? initialType}) {
+    _step = FanWorkEditorStep.type;
+    _draft = FanWorkDraft(type: initialType ?? FanWorkType.drawing);
+    _loaded = null;
+    _state = LoadingState.initial;
+    _failure = null;
+    _fieldError = null;
+    _saving = false;
+    _publishing = false;
+    _uploading = false;
+    _uploadCancellable = false;
+    _uploadProgress = 0;
+    _uploadFailure = null;
+    _pendingUpload = null;
+    _draftSavedLocally = false;
+    unawaited(_draftStore.delete(_localKey));
+    unawaited(_draftStore.delete('new'));
+    _safeNotify();
+  }
+
   Future<void> start({String? workId, FanWorkType? type}) async {
     _state = LoadingState.loading;
     _failure = null;

@@ -814,37 +814,14 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     // The provider is resolved synchronously so the microtask below never has
     // to reach for a [BuildContext] after an await.
     final editor = context.read<FanWorkEditorProvider>();
-    Future<void>.microtask(() => editor.start(workId: widget.workId));
-  }
-
-  /// Opens the PDF picker and hands the bytes to the provider.
-  ///
-  /// `pageCount` is deliberately left null here: the server derives it when the
-  /// upload is confirmed, and a client-supplied count would be an unverified
-  /// claim about the file's contents.
-  Future<void> _pickDocument() async {
-    XFile? file;
-    try {
-      file = await openFile(
-        acceptedTypeGroups: <XTypeGroup>[
-          XTypeGroup(
-            label: 'PDF',
-            extensions: <String>['pdf'],
-            mimeTypes: <String>['application/pdf'],
-          ),
-        ],
-      );
-    } on Exception {
-      if (!mounted) return;
-      _report();
-      return;
-    }
-    if (file == null || !mounted) return;
-    await _upload(
-      read: file.readAsBytes,
-      contentType: 'application/pdf',
-      role: FanWorkMediaRole.document,
-    );
+    Future<void>.microtask(() async {
+      if (widget.workId == null || widget.workId!.isEmpty) {
+        editor.reset();
+        await editor.start(workId: widget.workId);
+      } else {
+        await editor.start(workId: widget.workId);
+      }
+    });
   }
 
   /// Opens the gallery for the single artwork of a drawing, or for a
@@ -901,6 +878,31 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
 
   /// Surfaces a picker-level failure (no file chooser available, permission
   /// denied) using the same wording as an upload failure.
+
+  Future<void> _pickDocument() async {
+    XFile? file;
+    try {
+      file = await openFile(
+        acceptedTypeGroups: <XTypeGroup>[
+          XTypeGroup(
+            label: 'PDF',
+            extensions: <String>['pdf'],
+            mimeTypes: <String>['application/pdf'],
+          ),
+        ],
+      );
+    } on Exception {
+      if (!mounted) return;
+      _report();
+      return;
+    }
+    if (file == null || !mounted) return;
+    await _upload(
+      read: file.readAsBytes,
+      contentType: 'application/pdf',
+      role: FanWorkMediaRole.document,
+    );
+  }
   void _report() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(FanWorkCopy.of(context).uploadFailed)),
