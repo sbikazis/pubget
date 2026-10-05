@@ -83,7 +83,6 @@ import '../features/anime/screens/anime_browse_page.dart';
 import '../features/anime/screens/anime_character_page.dart';
 import '../features/anime/screens/anime_details_page.dart';
 import '../features/anime/screens/anime_favorite_characters_page.dart';
-import '../features/anime/screens/anime_hub_page.dart';
 import '../features/anime/screens/anime_library_page.dart';
 import '../features/anime/screens/anime_my_page.dart';
 import '../features/anime/screens/anime_popular_characters_page.dart';
