@@ -149,18 +149,8 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage>
         title: _MarqueeTitle(text: anime?.title ?? copy.hubTitle),
         actions: <Widget>[
           if (anime != null) ...<Widget>[
-            PubgetIconButton(
-              icon: Icons.share_outlined,
-              tooltip: copy.share,
-              onPressed: () =>
-                  AnimeLinks.share(context, widget.animeId, title: anime.title),
-            ),
-            PubgetIconButton(
-              icon: Icons.link_outlined,
-              tooltip: copy.copied,
-              onPressed: () =>
-                  AnimeLinks.copyCanonical(context, widget.animeId),
-            ),
+            _FavoriteHeart(anime: anime),
+            _MoreMenu(anime: anime),
           ],
         ],
         bottom: anime != null
@@ -2270,5 +2260,71 @@ AnimeEditsRepository? _animeEditsRepository(BuildContext context) {
     return Provider.of<AnimeEditsRepository>(context, listen: false);
   } on ProviderNotFoundException {
     return null;
+  }
+}
+
+class _FavoriteHeart extends StatelessWidget {
+  const _FavoriteHeart({required this.anime});
+
+  final Anime anime;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = context.watch<AnimeDetailsProvider>();
+    final copy = AnimeCopy.of(context);
+    final favorite = details.isFavorite;
+    return IconButton(
+      key: const Key('anime-favorite-heart'),
+      tooltip: favorite ? copy.favorited : copy.favorite,
+      icon: Icon(
+        favorite ? Icons.favorite : Icons.favorite_border,
+        color: favorite ? AppColors.gold : null,
+      ),
+      onPressed: () => details.toggleFavorite(),
+    );
+  }
+}
+
+class _MoreMenu extends StatelessWidget {
+  const _MoreMenu({required this.anime});
+
+  final Anime anime;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert),
+      onSelected: (value) async {
+        switch (value) {
+          case 'share':
+            await AnimeLinks.share(context, anime.id, title: anime.title);
+            break;
+          case 'copy':
+            await AnimeLinks.copyCanonical(context, anime.id);
+            break;
+          case 'report':
+            // simple report action
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(copy.reportTitle)),
+            );
+            break;
+        }
+      },
+      itemBuilder: (context) => <PopupMenuEntry<String>>[
+        PopupMenuItem<String>(
+          value: 'share',
+          child: Text(copy.share),
+        ),
+        PopupMenuItem<String>(
+          value: 'copy',
+          child: Text(copy.copied),
+        ),
+        PopupMenuItem<String>(
+          value: 'report',
+          child: Text(copy.reportLabel),
+        ),
+      ],
+    );
   }
 }
