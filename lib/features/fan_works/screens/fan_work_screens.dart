@@ -878,6 +878,31 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
 
   /// Surfaces a picker-level failure (no file chooser available, permission
   /// denied) using the same wording as an upload failure.
+
+  Future<void> _pickDocument() async {
+    XFile? file;
+    try {
+      file = await openFile(
+        acceptedTypeGroups: <XTypeGroup>[
+          XTypeGroup(
+            label: 'PDF',
+            extensions: <String>['pdf'],
+            mimeTypes: <String>['application/pdf'],
+          ),
+        ],
+      );
+    } on Exception {
+      if (!mounted) return;
+      _report();
+      return;
+    }
+    if (file == null || !mounted) return;
+    await _upload(
+      read: file.readAsBytes,
+      contentType: 'application/pdf',
+      role: FanWorkMediaRole.document,
+    );
+  }
   void _report() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(FanWorkCopy.of(context).uploadFailed)),
