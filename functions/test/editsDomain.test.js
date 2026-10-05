@@ -27,6 +27,12 @@ function withTransactions(db) {
         const current = options.merge ? (db.store.get(ref.path) || {}) : {};
         db.store.set(ref.path, { ...current, ...data });
       },
+      create(ref, data) {
+        db.store.set(ref.path, { ...data });
+      },
+      delete(ref) {
+        db.store.delete(ref.path);
+      },
       update(ref, data) {
         db.store.set(ref.path, { ...(db.store.get(ref.path) || {}), ...data });
       },
@@ -159,9 +165,116 @@ function createMutableDb(seed = {}) {
             async create(data) {
               store.set(path, { ...data });
             },
+            async set(data) {
+              store.set(path, { ...data });
+            },
+            async delete() {
+              store.delete(path);
+            },
             async update(data) {
               const current = store.get(path) || {};
               store.set(path, { ...current, ...data });
+            },
+            collection(sub) {
+              const prefix = `${name}/${id}/${sub}/`;
+              return {
+                doc(childId) {
+                  const childPath = `${prefix}${childId}`;
+                  return {
+                    id: childId,
+                    path: childPath,
+                    async get() {
+                      const data = store.get(childPath);
+                      return {
+                        id: childId,
+                        exists: data !== undefined,
+                        data: () => data,
+                      };
+                    },
+                    async set(data) {
+                      store.set(childPath, { ...data });
+                    },
+                    async create(data) {
+                      store.set(childPath, { ...data });
+                    },
+                    async delete() {
+                      store.delete(childPath);
+                    },
+                  };
+                },
+                async get() {
+                  const rows = [...store.entries()]
+                    .filter(([p]) => p.startsWith(prefix))
+                    .map(([p, data]) => ({ id: p.slice(prefix.length), data }));
+                  return { docs: rows.map((r) => ({ id: r.id, data: () => r.data })) };
+                },
+                orderBy(field, direction = "asc") {
+                  const readRows = () =>
+                    [...store.entries()]
+                      .filter(([p]) => p.startsWith(prefix))
+                      .map(([p, data]) => ({
+                        id: p.slice(prefix.length),
+                        path: p,
+                        data,
+                      }));
+                  const state = { field, direction, limit: null, cursorId: null };
+                  const api = {
+                    orderBy(nextField, nextDirection = "asc") {
+                      state.field = nextField;
+                      state.direction = nextDirection;
+                      return api;
+                    },
+                    // Mirrors the production paging pattern: the cursor is a
+                    // document snapshot, and the query resumes strictly after
+                    // it. Without this the fake silently replayed page one.
+                    startAfter(cursorSnap) {
+                      const raw = cursorSnap && (cursorSnap.id || cursorSnap.path);
+                      if (typeof raw !== "string") {
+                        state.cursorId = null;
+                      } else if (raw.startsWith(prefix)) {
+                        state.cursorId = raw.slice(prefix.length);
+                      } else {
+                        state.cursorId = raw;
+                      }
+                      return api;
+                    },
+                    limit(value) {
+                      state.limit = value;
+                      return api;
+                    },
+                    async get() {
+                      let list = readRows();
+                      if (state.field) {
+                        const sign = state.direction === "desc" ? -1 : 1;
+                        list = list.slice().sort((a, b) => {
+                          const left = a.data[state.field];
+                          const right = b.data[state.field];
+                          if (left === right) {
+                            if (a.id === b.id) return 0;
+                            return a.id < b.id ? -sign : sign;
+                          }
+                          if (left === undefined || left === null) return 1;
+                          if (right === undefined || right === null) return -1;
+                          return left < right ? -sign : sign;
+                        });
+                      }
+                      if (state.cursorId) {
+                        const index = list.findIndex((row) => row.id === state.cursorId);
+                        list = index >= 0 ? list.slice(index + 1) : [];
+                      }
+                      if (state.limit != null) list = list.slice(0, state.limit);
+                      return {
+                        docs: list.map((r) => ({
+                          id: r.id,
+                          path: r.path,
+                          data: () => r.data,
+                        })),
+                      };
+                    },
+                  };
+                  return api;
+                },
+              };
             },
           };
         },
@@ -320,6 +433,18 @@ function createFeedDb(reels, extra = {}) {
               const data = store.get(path);
               return { id, exists: store.has(path), data: () => data };
             },
+            async create(data) {
+              store.set(path, { ...data });
+            },
+            async set(data) {
+              store.set(path, { ...data });
+            },
+            async delete() {
+              store.delete(path);
+            },
+            async update(data) {
+              store.set(path, { ...(store.get(path) || {}), ...data });
+            },
             collection(sub) {
               const subCollection = db.collection(`${name}/${id}/${sub}`);
               return {
@@ -329,6 +454,15 @@ function createFeedDb(reels, extra = {}) {
                     .filter(([p]) => p.startsWith(`${name}/${id}/${sub}/`))
                     .map(([p, data]) => ({ id: p.slice(`${name}/${id}/${sub}/`.length), data }));
                   return { docs: rows.map((r) => ({ id: r.id, data: () => r.data })) };
+                },
+                async create(data) {
+                  store.set(`${name}/${id}/${sub}/${data.id || 'auto'}`, { ...data });
+                },
+                async set(data) {
+                  store.set(path, { ...data });
+                },
+                async delete() {
+                  store.delete(path);
                 },
                 where(field, op, value) {
                   return q({ filters: [{ field, op, value }], orders: [], limit: null }, name);
@@ -360,7 +494,13 @@ function reel(id, extra = {}) {
 function feedDomain(db) {
   return createEditsDomain({
     db,
-    FieldValue: { serverTimestamp: () => "now" },
+    // `increment` is recorded as an opaque marker: the fake store cannot apply
+    // deltas, and these tests assert on saved-list shape, not on counters.
+    FieldValue: {
+      serverTimestamp: () => "now",
+      increment: (amount) => ({ __increment: amount }),
+      arrayUnion: (...values) => ({ __arrayUnion: values }),
+    },
     HttpsError: TestHttpsError,
   });
 }
@@ -683,3 +823,347 @@ function createAudioAwareDb({ audios = {} } = {}) {
     },
   });
 }
+
+// §15 viewer visibility at the domain level.
+//
+// `blockUser` wrote `friendships.status == "blocked"` but `getEditFeed` never
+// read it, so blocking someone did nothing in the Reels feed — the control only
+// existed on the profile page.
+test("getEditFeed removes a blocked creator from every scope", async () => {
+  const db = createFeedDb([
+    reel("mine", { creatorId: "alice" }),
+    reel("blocked", { creatorId: "bob" }),
+    reel("other", { creatorId: "carol" }),
+  ], {
+    "friendships/f1": {
+      userIds: ["alice", "bob"],
+      status: "blocked",
+      blockedBy: "alice",
+    },
+  });
+
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending" },
+  });
+
+  const ids = page.items.map((item) => item.id);
+  assert.equal(ids.includes("blocked"), false, "blocked creator must not appear");
+  assert.deepEqual(ids.sort(), ["mine", "other"]);
+});
+
+test("getEditFeed removes a muted creator", async () => {
+  const db = createFeedDb([
+    reel("mine", { creatorId: "alice" }),
+    reel("muted", { creatorId: "bob" }),
+  ], {
+    "reelMutes/alice/creators/bob": { creatorId: "bob", viewerId: "alice" },
+  });
+
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending" },
+  });
+  assert.deepEqual(page.items.map((item) => item.id), ["mine"]);
+});
+
+test("a creator who blocked the viewer is also hidden", async () => {
+  const db = createFeedDb([reel("theirs", { creatorId: "bob" })], {
+    "friendships/f1": {
+      userIds: ["alice", "bob"],
+      status: "blocked",
+      blockedBy: "bob",
+    },
+  });
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending" },
+  });
+  assert.equal(page.items.length, 0);
+});
+
+test("a pending friend request does not hide anyone from the feed", async () => {
+  const db = createFeedDb([reel("theirs", { creatorId: "bob" })], {
+    "friendships/f1": { userIds: ["alice", "bob"], status: "pending" },
+  });
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending" },
+  });
+  assert.equal(page.items.length, 1);
+});
+
+test("block beats the following scope instead of leaking through it", async () => {
+  // The `following` branch re-filters by creatorIds; a blocked creator must not
+  // survive that second pass.
+  const db = createFeedDb([
+    reel("blocked", { creatorId: "bob" }),
+    reel("kept", { creatorId: "carol" }),
+  ], {
+    "friendships/f1": {
+      userIds: ["alice", "bob"],
+      status: "blocked",
+      blockedBy: "alice",
+    },
+    "respects/r1": { fromUserId: "alice", toUserId: "bob", value: 10 },
+    "respects/r2": { fromUserId: "alice", toUserId: "carol", value: 10 },
+  });
+
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "following" },
+  });
+  assert.deepEqual(page.items.map((item) => item.id), ["kept"]);
+});
+
+test("muteReelCreator writes then removes the viewer's own mute row", async () => {
+  const db = createFeedDb([], { "users/bob": { uid: "bob" } });
+  const domain = feedDomain(db);
+
+  const muted = await domain.muteReelCreator({
+    auth: { uid: "alice" },
+    data: { creatorId: "bob" },
+  });
+  assert.equal(muted.muted, true);
+  assert.equal(db.store.get("reelMutes/alice/creators/bob").creatorId, "bob");
+
+  const unmuted = await domain.muteReelCreator({
+    auth: { uid: "alice" },
+    data: { creatorId: "bob", muted: false },
+  });
+  assert.equal(unmuted.muted, false);
+  assert.equal(db.store.get("reelMutes/alice/creators/bob"), undefined);
+});
+
+test("muteReelCreator rejects self-mute and unknown creators", async () => {
+  const db = createFeedDb([], { "users/bob": { uid: "bob" } });
+  const domain = feedDomain(db);
+
+  await assert.rejects(
+    domain.muteReelCreator({ auth: { uid: "alice" }, data: { creatorId: "alice" } }),
+    (error) => error.code === "failed-precondition",
+  );
+  await assert.rejects(
+    domain.muteReelCreator({ auth: { uid: "alice" }, data: { creatorId: "ghost" } }),
+    (error) => error.code === "not-found",
+  );
+  await assert.rejects(
+    domain.muteReelCreator({ auth: { uid: "alice" }, data: {} }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    domain.muteReelCreator({ data: { creatorId: "bob" } }),
+    (error) => error.code === "unauthenticated",
+  );
+});
+
+// §15 saved Reels.
+//
+// `save` was a per-edit signal row that `unsave` DELETED, so there was no way
+// to recover a user's saves: no collection, no callable, no rule, no screen.
+test("save writes a retrievable saved-Reels item, unsave removes it", async () => {
+  const db = createMutableDb({
+    "edits/e1": {
+      creatorId: "bob",
+      status: "published",
+      caption: "Luffy gear 5",
+      videoUrl: "edits-processed/bob/e1.mp4",
+      thumbnailUrl: "edits/bob/t_e1.jpg",
+      durationSeconds: 12,
+      likesCount: 40,
+    },
+  });
+  const domain = feedDomain(db);
+
+  await domain.signal({ auth: { uid: "alice" }, data: { editId: "e1", type: "save" } });
+  const saved = db.store.get("savedReels/alice/items/e1");
+  assert.ok(saved, "save must write a retrievable item");
+  assert.equal(saved.editId, "e1");
+  assert.equal(saved.creatorId, "bob");
+  assert.equal(saved.caption, "Luffy gear 5");
+  assert.equal(saved.videoUrl, "edits-processed/bob/e1.mp4");
+  assert.equal(saved.durationSeconds, 12);
+
+  await domain.signal({ auth: { uid: "alice" }, data: { editId: "e1", type: "unsave" } });
+  assert.equal(db.store.get("savedReels/alice/items/e1"), undefined);
+});
+
+test("saved Reels are listable and scoped to the requesting viewer", async () => {
+  const db = createMutableDb({
+    "savedReels/alice/items/e1": { editId: "e1", creatorId: "bob", caption: "one" },
+    "savedReels/alice/items/e2": { editId: "e2", creatorId: "carol", caption: "two" },
+    "savedReels/bob/items/e3": { editId: "e3", creatorId: "carol", caption: "secret" },
+  });
+  const domain = feedDomain(db);
+
+  const alice = await domain.listSavedReels({ auth: { uid: "alice" }, data: {} });
+  assert.deepEqual(alice.items.map((i) => i.id).sort(), ["e1", "e2"]);
+
+  const bob = await domain.listSavedReels({ auth: { uid: "bob" }, data: {} });
+  assert.deepEqual(bob.items.map((i) => i.id), ["e3"]);
+
+  await assert.rejects(
+    domain.listSavedReels({ data: {} }),
+    (error) => error.code === "unauthenticated",
+  );
+});
+
+test("saving twice is idempotent and does not double-count", async () => {
+  const db = createMutableDb({
+    "edits/e1": { creatorId: "bob", status: "published" },
+  });
+  const domain = feedDomain(db);
+  const signal = { auth: { uid: "alice" }, data: { editId: "e1", type: "save" } };
+  await domain.signal(signal);
+  await domain.signal(signal);
+  const list = await domain.listSavedReels({ auth: { uid: "alice" }, data: {} });
+  assert.equal(list.items.length, 1);
+});
+
+test("unsave without a prior save is a no-op, not a negative counter", async () => {
+  const db = createMutableDb({ "edits/e1": { creatorId: "bob", status: "published" } });
+  const domain = feedDomain(db);
+  await domain.signal({ auth: { uid: "alice" }, data: { editId: "e1", type: "unsave" } });
+  assert.equal(db.store.get("savedReels/alice/items/e1"), undefined);
+});
+
+test("non-save signals do not create saved-Reels items", async () => {
+  const db = createMutableDb({ "edits/e1": { creatorId: "bob", status: "published" } });
+  const domain = feedDomain(db);
+  for (const type of ["share", "negative"]) {
+    await domain.signal({ auth: { uid: "alice" }, data: { editId: "e1", type } });
+  }
+  const list = await domain.listSavedReels({ auth: { uid: "alice" }, data: {} });
+  assert.equal(list.items.length, 0);
+});
+
+test("listSavedReels pages forward instead of replaying the first page", async () => {
+  // Regression: the cursor was applied *after* the page was fetched, so it only
+  // worked while the cursor happened to sit inside that page. Requesting page two
+  // with the last id of page one returned page one again, forever.
+  const saved = {};
+  for (let i = 1; i <= 5; i += 1) {
+    saved[`savedReels/alice/items/e${i}`] = {
+      editId: `e${i}`,
+      creatorId: "bob",
+      savedAt: i,
+    };
+  }
+  const domain = feedDomain(createMutableDb(saved));
+
+  const first = await domain.listSavedReels({
+    auth: { uid: "alice" },
+    data: { limit: 2 },
+  });
+  assert.deepEqual(first.items.map((i) => i.id), ["e5", "e4"]);
+  assert.equal(first.hasMore, true);
+
+  const second = await domain.listSavedReels({
+    auth: { uid: "alice" },
+    data: { limit: 2, afterId: first.items[first.items.length - 1].id },
+  });
+  assert.deepEqual(second.items.map((i) => i.id), ["e3", "e2"]);
+  assert.equal(second.hasMore, true);
+
+  const third = await domain.listSavedReels({
+    auth: { uid: "alice" },
+    data: { limit: 2, afterId: second.items[second.items.length - 1].id },
+  });
+  assert.deepEqual(third.items.map((i) => i.id), ["e1"]);
+  assert.equal(third.hasMore, false);
+
+  // No id may ever repeat across pages.
+  const seen = [
+    ...first.items,
+    ...second.items,
+    ...third.items,
+  ].map((i) => i.id);
+  assert.equal(new Set(seen).size, seen.length);
+});
+
+test("listSavedReels with an unknown cursor returns the first page, not an empty one", async () => {
+  const db = createMutableDb({
+    "savedReels/alice/items/e1": { editId: "e1", creatorId: "bob", savedAt: 2 },
+    "savedReels/alice/items/e2": { editId: "e2", creatorId: "bob", savedAt: 1 },
+  });
+  const domain = feedDomain(db);
+  const list = await domain.listSavedReels({
+    auth: { uid: "alice" },
+    data: { afterId: "does-not-exist" },
+  });
+  assert.deepEqual(list.items.map((i) => i.id), ["e1", "e2"]);
+});
+
+test("a failed block read fails the feed closed instead of unblocking", async () => {
+  // Regression: `loadHiddenCreatorIds` swallowed read errors and carried on with
+  // an empty hidden set, which republished the very creators the viewer blocked.
+  // An unavailable boundary read must surface as an error, not as "no blocks".
+  const db = createFeedDb([reel("e1", { creatorId: "bob", publishedAt: 5 })], {
+    "friendships/f1": { userIds: ["alice", "bob"], status: "blocked", blockedBy: "alice" },
+  });
+  const original = db.collection.bind(db);
+  db.collection = (name) => {
+    if (name === "friendships") {
+      return {
+        where() {
+          return {
+            async get() {
+              throw new Error("firestore unavailable");
+            },
+          };
+        },
+      };
+    }
+    return original(name);
+  };
+
+  await assert.rejects(
+    feedDomain(db).getEditFeed({ auth: { uid: "alice" }, data: {} }),
+    (error) => /firestore unavailable/.test(String(error && error.message)),
+    "a broken block read must reject rather than return unblocked content",
+  );
+});
+
+test("a failed mute read fails the feed closed too", async () => {
+  const db = createFeedDb([reel("e1", { creatorId: "bob", publishedAt: 5 })], {
+    "reelMutes/alice/creators/bob": {},
+  });
+  const original = db.collection.bind(db);
+  db.collection = (name) => {
+    if (name === "reelMutes") {
+      return {
+        doc() {
+          return {
+            collection() {
+              return {
+                async get() {
+                  throw new Error("mute read unavailable");
+                },
+              };
+            },
+          };
+        },
+      };
+    }
+    return original(name);
+  };
+
+  await assert.rejects(
+    feedDomain(db).getEditFeed({ auth: { uid: "alice" }, data: {} }),
+    (error) => /mute read unavailable/.test(String(error && error.message)),
+  );
+});
+
+test("a healthy feed still works when both boundary reads succeed", async () => {
+  // The counterpart to the two tests above: fail-closed must not turn a normal
+  // read into a rejection.
+  const db = createFeedDb(
+    [reel("mine", { creatorId: "alice" }), reel("other", { creatorId: "carol" })],
+    { "friendships/f1": { userIds: ["alice", "bob"], status: "blocked", blockedBy: "alice" } },
+  );
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending" },
+  });
+  assert.deepEqual(page.items.map((i) => i.id).sort(), ["mine", "other"]);
+});

@@ -120,4 +120,16 @@ final class UnavailableEditsRepository implements EditsRepository {
     required String editId,
     required String type,
   }) async => _failure();
+
+  @override
+  Future<Result<void>> muteReelCreator({
+    required String creatorId,
+    required bool mute,
+  }) async => _failure();
+
+  @override
+  Future<Result<SavedReelsPage>> listSavedReels({
+    String? afterId,
+    int limit = 30,
+  }) async => _failure();
 }

@@ -84,6 +84,33 @@ abstract interface class EditsRepository {
     required String editId,
     required String type,
   });
+
+  /// Hide or unhide every Reel by [creatorId] from the viewer's feed.
+  ///
+  /// Server-side truth: the mute row lives in `reelMutes/{viewerId}/creators`
+  /// and the feed filters on it. A local-only flag would look applied and then
+  /// vanish on the next load.
+  Future<Result<void>> muteReelCreator({
+    required String creatorId,
+    required bool mute,
+  });
+
+  /// One page of the viewer's saved Reels, newest first.
+  ///
+  /// [afterId] is the id of the last item already shown; pass `null` for the
+  /// first page.
+  Future<Result<SavedReelsPage>> listSavedReels({
+    String? afterId,
+    int limit = 30,
+  });
+}
+
+/// One page of saved Reels, mirroring the server page shape.
+final class SavedReelsPage {
+  const SavedReelsPage(this.items, {required this.hasMore});
+
+  final List<Edit> items;
+  final bool hasMore;
 }
 
 /// Optional capability for repositories that can surface published Edits

@@ -9,6 +9,10 @@ const {
   quotaVerdict,
   quotaExceededMessage,
 } = require("./editUploadQuota");
+const {
+  buildHiddenCreatorSet,
+  applyVisibility,
+} = require("./reelVisibility");
 
 function string(value, max) {
   return typeof value === "string" && value.trim().length <= max
@@ -161,6 +165,8 @@ function createEditsDomain({
   collectionName = "edits",
   uploadKeyCollection = "editUploadKeys",
   quotaCollectionName = "editUploadQuota",
+  muteCollectionName = "reelMutes",
+  savedCollectionName = "savedReels",
   audioCollectionName = "reelAudios",
   storagePrefix = "edits",
   config = EDITS_CONFIG,
@@ -687,6 +693,63 @@ function createEditsDomain({
     return { sessionId: session.id };
   }
 
+  /**
+   * §15 saved Reels.
+   *
+   * `save` used to be only a per-edit signal row that `unsave` DELETED, so the
+   * save state was unrecoverable by design: there was no list, no callable, no
+   * rule, no index, and no screen. A user's saved Reels evaporated on restart.
+   * The signal row still drives ranking; this is the retrievable record.
+   */
+  function savedItemRef(viewerId, editId) {
+    return db
+      .collection(savedCollectionName)
+      .doc(viewerId)
+      .collection("items")
+      .doc(editId);
+  }
+
+  /** Only what the saved list needs to render a row without a second fetch. */
+  function savedItemSnapshot(editData) {
+    return {
+      editId: editData.editId || "",
+      creatorId: editData.creatorId || "",
+      videoUrl: editData.videoUrl || "",
+      thumbnailUrl: editData.thumbnailUrl || "",
+      caption: editData.caption || "",
+      durationSeconds: Number(editData.durationSeconds) || 0,
+      likesCount: Number(editData.likesCount) || 0,
+    };
+  }
+
+  async function listSavedReels(request) {
+    const viewerId = uid(request);
+    const limit = Math.max(1, Math.min(50, Number(request.data?.limit) || 30));
+    const afterId = string(request.data?.afterId || "", 128);
+    const savedItems = db
+      .collection(savedCollectionName)
+      .doc(viewerId)
+      .collection("items");
+
+    // Paging happens in the query, not after it. Filtering the fetched page for
+    // the cursor only works while the cursor happens to be inside that page, so
+    // the second page request replayed the first page forever.
+    let query = savedItems.orderBy("savedAt", "desc").limit(limit + 1);
+    if (afterId) {
+      const cursorSnap = await savedItems.doc(afterId).get();
+      if (cursorSnap.exists) query = query.startAfter(cursorSnap);
+    }
+    const snapshot = await query.get();
+
+    let docs = snapshot.docs || [];
+    const hasMore = docs.length > limit;
+    if (hasMore) docs = docs.slice(0, limit);
+    return {
+      items: docs.map((doc) => ({ id: doc.id, ...(doc.data() || {}) })),
+      hasMore,
+    };
+  }
+
   async function signal(request) {
     const actor = uid(request);
     const editId = string(request.data?.editId, 128);
@@ -697,12 +760,16 @@ function createEditsDomain({
     }
     const ref = editRef(editId);
     const signalRef = ref.collection("signals").doc(`${actor}_${type === "unsave" ? "save" : type}`);
+    const savedRef = type === "save" || type === "unsave"
+      ? savedItemRef(actor, editId)
+      : null;
     await db.runTransaction(async (tx) => {
       const [edit, existing] = await Promise.all([tx.get(ref), tx.get(signalRef)]);
       if (!edit.exists) return;
       if (type === "unsave") {
         if (!existing.exists) return;
         tx.delete(signalRef);
+        if (savedRef) tx.delete(savedRef);
         const changes = { score: FieldValue.increment(-5) };
         bump(changes, "savesCount", "saves", -1);
         tx.update(ref, changes);
@@ -710,6 +777,14 @@ function createEditsDomain({
       }
       if (existing.exists) return;
       tx.create(signalRef, { actor, type, createdAt: FieldValue.serverTimestamp() });
+      if (type === "save" && savedRef) {
+        // The retrievable save record. Kept in the same transaction as the
+        // signal so a save can never be half-applied.
+        tx.set(savedRef, {
+          ...savedItemSnapshot({ ...(edit.data() || {}), editId }),
+          savedAt: FieldValue.serverTimestamp(),
+        });
+      }
       const changes = { score: FieldValue.increment(weights[type]) };
       if (type === "share") bump(changes, "sharesCount", "shares", 1);
       if (type === "save") bump(changes, "savesCount", "saves", 1);
@@ -771,16 +846,80 @@ function createEditsDomain({
    * candidate set; `feedType` picks the ranking strategy. Both are decided
    * here, never on the client.
    */
+  /**
+   * §15 mute a Reels creator.
+   *
+   * Mute is one-directional and consequence-free: it hides their content from
+   * this viewer's feed and nothing else. Block (see socialGraph) is the
+   * two-sided action.
+   */
+  async function muteReelCreator(request) {
+    const viewerId = uid(request);
+    const creatorId = string(request.data?.creatorId || "", 128);
+    const muted = request.data?.muted !== false;
+    if (!creatorId) {
+      throw new HttpsError("invalid-argument", "creatorId is required.");
+    }
+    if (creatorId === viewerId) {
+      throw new HttpsError("failed-precondition", "You cannot mute yourself.");
+    }
+    const creator = await db.collection("users").doc(creatorId).get();
+    if (!creator.exists) {
+      throw new HttpsError("not-found", "That creator no longer exists.");
+    }
+    const ref = db
+      .collection(muteCollectionName)
+      .doc(viewerId)
+      .collection("creators")
+      .doc(creatorId);
+    if (muted) {
+      await ref.set({
+        creatorId,
+        viewerId,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      return { muted: true, creatorId };
+    }
+    await ref.delete().catch(() => {});
+    return { muted: false, creatorId };
+  }
+
+  /** Creators whose Reels this viewer must not see: blocked (both ways) + muted. */
+  async function loadHiddenCreatorIds(viewerId) {
+    // Deliberately no `.catch()` on these two reads.
+    //
+    // They are the privacy boundary: a block is the one signal a user has to
+    // stop seeing someone, and a mute is an explicit request to hide them.
+    // Reading them as "no blocks, no mutes" when the read fails fails open, and
+    // would republish exactly the content the viewer asked not to see. An
+    // unavailable feed is the correct outcome instead.
+    const [blockSnap, muteSnap] = await Promise.all([
+      db.collection("friendships")
+        .where("userIds", "array-contains", viewerId)
+        .get(),
+      db.collection(muteCollectionName)
+        .doc(viewerId)
+        .collection("creators")
+        .get(),
+    ]);
+    return buildHiddenCreatorSet({
+      blockDocs: blockSnap.docs || [],
+      muteDocs: (muteSnap.docs || []).map((doc) => doc.id),
+      viewerId,
+    });
+  }
+
   async function getEditFeed(request) {
     const viewerId = uid(request);
     const limit = Math.max(1, Math.min(12, Number(request.data?.limit) || config.feedPageSize));
     const afterId = string(request.data?.afterId || "", 128);
     const feedType = normalizeFeedType(request.data?.feedType);
     const scope = normalizeFeedScope(request.data);
-    const [userSnap, respectsSnap, listsSnap] = await Promise.all([
+    const [userSnap, respectsSnap, listsSnap, hiddenCreatorIds] = await Promise.all([
       db.collection("users").doc(viewerId).get(),
       db.collection("respects").where("fromUserId", "==", viewerId).get().catch(() => ({ docs: [] })),
       db.collection("users").doc(viewerId).collection("animeList").get().catch(() => ({ docs: [] })),
+      loadHiddenCreatorIds(viewerId),
     ]);
     const user = userSnap.data() || {};
     const creatorIds = new Set();
@@ -789,6 +928,9 @@ function createEditsDomain({
       const toUserId = doc.data()?.toUserId;
       if (toUserId && value >= config.fanThreshold) creatorIds.add(toUserId);
     });
+    // A blocked/muted creator must not stay in the Following set either, or the
+    // `following` branch below would re-admit what the visibility filter removed.
+    hiddenCreatorIds.forEach((hiddenId) => creatorIds.delete(hiddenId));
     const animeIds = [
       ...((user.favoriteAnimeIds || []).filter(Boolean)),
       ...((listsSnap.docs || []).map((doc) => doc.id)),
@@ -814,12 +956,15 @@ function createEditsDomain({
     const candidates = (published.docs || [])
       .map((doc) => ({ id: doc.id, data: doc.data() || {} }))
       .filter((item) => matchesScope(item.data, scope));
+    // A creator you blocked or muted must not appear in any feed scope. This is
+    // applied after ranking scope so it cannot be bypassed by choosing a scope.
+    const visible = applyVisibility(candidates, hiddenCreatorIds, viewerId);
     let ranked;
     if (feedType === "following") {
       // §15.16 — Following is creators the viewer actually follows. When the
       // viewer follows nobody the honest answer is an empty feed, not a
       // silent fallback to For You.
-      ranked = candidates
+      ranked = visible
         .filter((item) => creatorIds.has(item.data.creatorId))
         .map((item) => ({
           id: item.id,
@@ -829,7 +974,7 @@ function createEditsDomain({
         .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
     } else if (feedType === "trending") {
       // §15.16 — Trending is engagement velocity, independent of the viewer.
-      ranked = candidates
+      ranked = visible
         .map((item) => ({
           id: item.id,
           data: item.data,
@@ -837,7 +982,7 @@ function createEditsDomain({
         }))
         .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
     } else {
-      ranked = candidates
+      ranked = visible
         .map((item) => ({
           id: item.id,
           data: item.data,
@@ -982,7 +1127,8 @@ function createEditsDomain({
 
   return {
     startUpload, repost, deleteEdit, like, comment, startPlayback, recordView, signal,
-    commentAction, getEditFeed, retryProcessing, finalizeUpload,
+    commentAction, getEditFeed, retryProcessing, finalizeUpload, muteReelCreator,
+    listSavedReels,
   };
 }
 

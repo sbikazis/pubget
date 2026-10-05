@@ -366,6 +366,14 @@ exports.editCommentAction = onCall(
   { region: "us-central1" },
   editsDomain.commentAction,
 );
+exports.muteReelCreator = onCall(
+  { region: "us-central1" },
+  editsDomain.muteReelCreator,
+);
+exports.listSavedReels = onCall(
+  { region: "us-central1" },
+  editsDomain.listSavedReels,
+);
 exports.getEditFeed = onCall(
   { region: "us-central1" },
   editsDomain.getEditFeed,

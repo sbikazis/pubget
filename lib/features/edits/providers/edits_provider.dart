@@ -43,9 +43,23 @@ final class EditsProvider extends ChangeNotifier {
   int _activeIndex = 0;
   bool _disposed = false;
 
-  List<Edit> get items => List.unmodifiable(
+  /// Cached immutable view of the visible feed.
+  ///
+  /// The cache is what makes per-item rebuild scoping possible: a fresh
+  /// `List.unmodifiable` on every read would give `context.select` a new
+  /// identity each notification, so liking one Reel would rebuild the whole
+  /// feed. Identity changes only when the underlying rows actually change, so
+  /// `select` can tell "the feed changed" from "this Reel's like state changed".
+  List<Edit>? _itemsCache;
+
+  List<Edit> get items => _itemsCache ??= List<Edit>.unmodifiable(
     _items.where((edit) => !_skippedIds.contains(edit.id)),
   );
+
+  /// Call after any mutation of `_items` or `_skippedIds`.
+  void _touchItems() {
+    _itemsCache = null;
+  }
   LoadingState get state => _state;
   Failure? get failure => _failure;
   Failure? get lastActionFailure => _lastActionFailure;
@@ -60,6 +74,7 @@ final class EditsProvider extends ChangeNotifier {
     _feedType = type;
     _items.clear();
     _skippedIds.clear();
+    _touchItems();
     _hasMore = true;
     _activeIndex = 0;
     _state = LoadingState.initial;
@@ -95,6 +110,7 @@ final class EditsProvider extends ChangeNotifier {
   /// Mark a broken/unplayable clip so the feed can advance past it.
   void skipBroken(String editId) {
     if (!_skippedIds.add(editId)) return;
+    _touchItems();
     notifyListeners();
   }
 
@@ -120,6 +136,7 @@ final class EditsProvider extends ChangeNotifier {
         _items
           ..clear()
           ..addAll(page.items);
+        _touchItems();
         _hasMore = page.hasMore;
         _state = _items.isEmpty ? LoadingState.empty : LoadingState.loaded;
       },
@@ -150,6 +167,7 @@ final class EditsProvider extends ChangeNotifier {
       onSuccess: (page) {
         final seen = _items.map((edit) => edit.id).toSet();
         _items.addAll(page.items.where((edit) => seen.add(edit.id)));
+        _touchItems();
         _hasMore = page.hasMore;
         _state = LoadingState.loaded;
       },
@@ -176,6 +194,7 @@ final class EditsProvider extends ChangeNotifier {
     }
     _items.insert(0, edit);
     _skippedIds.remove(edit.id);
+    _touchItems();
     _state = LoadingState.loaded;
     _activeIndex = 0;
     notifyListeners();
@@ -248,6 +267,57 @@ final class EditsProvider extends ChangeNotifier {
       }
       _lastActionFailure = result.failureOrNull;
       notifyListeners();
+    }
+    return result;
+  }
+
+  /// Creator ids the viewer has muted, for immediate UI feedback.
+  final Set<String> _mutedCreators = <String>{};
+
+  bool isMuted(String creatorId) => _mutedCreators.contains(creatorId);
+
+  /// Mute or unmute a Reels creator.
+  ///
+  /// The server owns the durable mute row; this only makes the change visible
+  /// immediately. On mute the creator's loaded Reels leave the feed right away
+  /// rather than lingering until the next page fetch, and a failed write
+  /// re-reads the feed so the screen never keeps a lie on it.
+  Future<Result<void>> muteCreator(
+    String creatorId, {
+    required bool mute,
+  }) async {
+    if (creatorId.isEmpty) {
+      return const Success<void>(null);
+    }
+    final wasMuted = _mutedCreators.contains(creatorId);
+    if (mute == wasMuted) return const Success<void>(null);
+
+    if (mute) {
+      _mutedCreators.add(creatorId);
+      _items.removeWhere((edit) => edit.creatorId == creatorId);
+      _touchItems();
+    } else {
+      _mutedCreators.remove(creatorId);
+    }
+    notifyListeners();
+
+    final result = await _repository.muteReelCreator(
+      creatorId: creatorId,
+      mute: mute,
+    );
+    if (_disposed) return result;
+
+    if (!result.isSuccess) {
+      if (wasMuted) {
+        _mutedCreators.add(creatorId);
+      } else {
+        _mutedCreators.remove(creatorId);
+      }
+      _lastActionFailure = result.failureOrNull;
+      notifyListeners();
+      // The removed rows cannot be restored faithfully from local state alone,
+      // so re-read instead of guessing.
+      await load(refresh: true);
     }
     return result;
   }
