@@ -103,6 +103,23 @@ service firebase.storage {
       return resource.metadata.uploadedBy == request.auth.uid;
     }
 
+    function editUploadCeiling() {
+      return 100 * 1024 * 1024;
+    }
+
+    // §15.18 — a takedown must revoke the media, not just the document. The
+    // Storage path is `edits/{creatorId}/{fileName}` and
+    // `edits-processed/{creatorId}/{fileName}`, so the Reel id cannot be
+    // recovered from the filename with the string operations rules expose.
+    // The server therefore maintains one receipt document per stored object at
+    // `edits/{creatorId}/media/{fileName}`, and publication flips it on while a
+    // takedown flips it off. The receipt is server-written and client-denied,
+    // so it cannot be forged from the app.
+    function editMediaVisible(userId, fileName) {
+      return firestore.exists(/databases/(default)/documents/edits/$(userId)/media/$(fileName)) &&
+        firestore.get(/databases/(default)/documents/edits/$(userId)/media/$(fileName)).data.visible == true;
+    }
+
     function isEditVideoName(fileName) {
       return fileName.matches('(v|[a-zA-Z0-9_-]+)\\.mp4');
     }
@@ -111,12 +128,9 @@ service firebase.storage {
       return fileName.matches('t_[a-zA-Z0-9_-]+\\.jpg');
     }
 
-    function isReelVideoName(fileName) {
-      return fileName.matches('(v|[a-zA-Z0-9_-]+)\\.mp4');
-    }
-
-    function isReelThumbnailName(fileName) {
-      return fileName.matches('t_[a-zA-Z0-9_-]+\\.jpg');
+    function isEditProcessedName(fileName) {
+      return fileName.matches('([a-zA-Z0-9_-]+)(_[a-zA-Z0-9]+)?\\.mp4') ||
+        fileName.matches('t_[a-zA-Z0-9_-]+\\.jpg');
     }
 
     // Legacy profile path used by StorageService.
@@ -301,8 +315,11 @@ service firebase.storage {
     }
 
     match /edits/{userId}/{fileName} {
+      // The creator reads their own source (retry, re-upload, draft recovery);
+      // everyone else only sees objects the server has published.
       allow read: if signedIn() &&
-          (isEditVideoName(fileName) || isEditThumbnailName(fileName));
+          (isEditVideoName(fileName) || isEditThumbnailName(fileName)) &&
+          (request.auth.uid == userId || editMediaVisible(userId, fileName));
       // putData/putFile uses a resumable protocol that requires UPDATE
       // after CREATE. Denying update produced "User is not authorized
       // to perform the desired action" on every real video upload.
@@ -313,39 +330,27 @@ service firebase.storage {
       allow create: if signedIn() && request.auth.uid == userId &&
           isEditVideoName(fileName) &&
           request.resource.contentType.matches('video/mp4.*') &&
-          request.resource.size <= 100 * 1024 * 1024;
+          request.resource.size <= editUploadCeiling();
+      // The ceiling has to be enforced on UPDATE as well: the resumable
+      // protocol is create-then-update, so a create-only check lets a client
+      // start a small object and then grow it past the ceiling. The pipeline
+      // downloads the whole source into a 1 GiB function, so an unbounded
+      // object is a memory-exhaustion vector, not just a quota one.
       allow update: if signedIn() && request.auth.uid == userId &&
           isEditVideoName(fileName) &&
           (request.resource.contentType.matches('video/mp4.*') ||
-              resource.contentType.matches('video/mp4.*'));
+              resource.contentType.matches('video/mp4.*')) &&
+          request.resource.size <= editUploadCeiling();
       allow delete: if signedIn() && request.auth.uid == userId &&
           isEditVideoName(fileName);
     }
 
     match /edits-processed/{userId}/{fileName} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-
-    // Reels use a separate namespace so migration cannot expose or overwrite
-    // legacy Edits media.
-    match /reels/{userId}/{fileName} {
-      allow read: if signedIn() &&
-          (isReelVideoName(fileName) || isReelThumbnailName(fileName));
-      allow create: if signedIn() && request.auth.uid == userId &&
-          isReelVideoName(fileName) &&
-          request.resource.contentType.matches('video/mp4.*') &&
-          request.resource.size <= 100 * 1024 * 1024;
-      allow update: if signedIn() && request.auth.uid == userId &&
-          isReelVideoName(fileName) &&
-          (request.resource.contentType.matches('video/mp4.*') ||
-              resource.contentType.matches('video/mp4.*'));
-      allow delete: if signedIn() && request.auth.uid == userId &&
-          isReelVideoName(fileName);
-    }
-
-    match /reels-processed/{userId}/{fileName} {
-      allow read: if signedIn();
+      // Transcoded renditions and the generated cover. Only objects the server
+      // has published are readable; the fan_works rule below already gates on
+      // status, and this closes the same hole for video.
+      allow read: if signedIn() && isEditProcessedName(fileName) &&
+          editMediaVisible(userId, fileName);
       allow write: if false;
     }
 
