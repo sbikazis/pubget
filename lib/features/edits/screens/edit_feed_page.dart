@@ -10,6 +10,7 @@ import '../../../app/app_route.dart';
 import '../../../app/app_router.dart';
 import '../../../app/app_shell_scope.dart';
 import '../../../core/constants/limits.dart';
+import '../../../core/errors/failure.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
@@ -182,13 +183,28 @@ class _EditFeedPageState extends State<EditFeedPage>
   @override
   Widget build(BuildContext context) {
     final copy = EditCopy.of(context);
-    final provider = context.watch<EditsProvider>();
+    // Axis 15 §15 per-item rebuild scoping.
+    //
+    // This used to be `context.watch<EditsProvider>()`, which rebuilt the whole
+    // PageView — and therefore every mounted cell — on every like, save, skip or
+    // load. The per-cell `context.select` scoping below could not help, because
+    // the parent had already marked the subtree dirty.
+    //
+    // Selecting only the page-level values means a like on Reel 3 rebuilds Reel
+    // 3's action rail and nothing else. `items` has a cached identity in the
+    // provider, so this select genuinely reports "the feed changed" vs "an
+    // interaction changed".
+    final feedItems = context.select<EditsProvider, List<Edit>>((p) => p.items);
+    final feedState = context.select<EditsProvider, LoadingState>((p) => p.state);
+    final feedType = context.select<EditsProvider, FeedType>((p) => p.feedType);
+    final actionFailure =
+        context.select<EditsProvider, Failure?>((p) => p.lastActionFailure);
+    final provider = context.read<EditsProvider>();
     final offline = context.watch<NetworkService>().isOffline;
     final shell = AppShellScope.maybeOf(context);
     final feedVisible = (shell?.isEditsVisible ?? true) && _appResumed;
 
     // Soft error toast for optimistic rollback (like/save).
-    final actionFailure = provider.lastActionFailure;
     if (actionFailure != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -203,7 +219,7 @@ class _EditFeedPageState extends State<EditFeedPage>
       });
     }
 
-    final body = _body(copy, provider, offline, feedVisible);
+    final body = _body(copy, provider, offline, feedVisible, feedItems, feedState);
 
     // The host owns the chrome, so hand back the bare playback body.
     if (widget.embedded) return body;
@@ -243,7 +259,7 @@ class _EditFeedPageState extends State<EditFeedPage>
                   icon: const Icon(PhosphorIconsRegular.flame, size: 18),
                 ),
               ],
-              selected: {provider.feedType},
+              selected: {feedType},
               onSelectionChanged: (Set<FeedType> selection) {
                 if (selection.isEmpty) return;
                 _activeIndex = 0;
@@ -279,7 +295,7 @@ class _EditFeedPageState extends State<EditFeedPage>
           ),
         ),
       ),
-      body: _body(copy, provider, offline, feedVisible),
+      body: _body(copy, provider, offline, feedVisible, feedItems, feedState),
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.royalPurple,
         foregroundColor: Colors.white,
@@ -294,12 +310,14 @@ class _EditFeedPageState extends State<EditFeedPage>
     EditsProvider provider,
     bool offline,
     bool feedVisible,
+    List<Edit> feedItems,
+    LoadingState feedState,
   ) {
-    if (provider.state == LoadingState.loading ||
-        provider.state == LoadingState.initial) {
+    if (feedState == LoadingState.loading ||
+        feedState == LoadingState.initial) {
       return const Center(child: PubgetSkeleton.card(width: 240, height: 320));
     }
-    if (provider.state == LoadingState.empty) {
+    if (feedState == LoadingState.empty) {
       return PubgetEmptyState(
         title: copy.noEdits,
         message: copy.noEditsMessage,
@@ -311,13 +329,13 @@ class _EditFeedPageState extends State<EditFeedPage>
         ),
       );
     }
-    if (provider.state == LoadingState.error && provider.items.isEmpty) {
+    if (feedState == LoadingState.error && feedItems.isEmpty) {
       return PubgetErrorState(
         message: provider.failure?.message ?? copy.failedLoad,
         onRetry: provider.load,
       );
     }
-    if (offline && provider.items.isEmpty) {
+    if (offline && feedItems.isEmpty) {
       return PubgetOfflineState(onRetry: () => provider.load(refresh: true));
     }
     return RefreshIndicator(
@@ -326,14 +344,14 @@ class _EditFeedPageState extends State<EditFeedPage>
       child: PageView.builder(
         controller: _page,
         scrollDirection: Axis.vertical,
-        itemCount: provider.items.length,
+        itemCount: feedItems.length,
         onPageChanged: (index) {
           setState(() => _activeIndex = index);
           provider.setActiveIndex(index);
-          if (index >= provider.items.length - 2) provider.loadMore();
+          if (index >= feedItems.length - 2) provider.loadMore();
         },
         itemBuilder: (context, index) {
-          final edit = provider.items[index];
+          final edit = feedItems[index];
           final prefetch = index == _activeIndex + Limits.editPrefetchCount;
           final active = feedVisible && index == _activeIndex;
           return EditFeedVideoItem(
@@ -452,11 +470,22 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
       final controller = await createStorageVideoController(
         widget.edit.videoUrl,
       );
+      // A mid-initialize swipe can dispose this cell before initialization
+      // completes. The guard must run *after* each await.
+      if (!mounted || !widget.active && !widget.prefetch) {
+        await controller.dispose();
+        return;
+      }
       await controller.initialize();
+      if (!mounted || !widget.active && !widget.prefetch) {
+        await controller.dispose();
+        return;
+      }
       // TikTok / IG Reels style seamless loop while visible.
       await controller.setLooping(true);
       controller.addListener(_trackProgress);
-      if (!mounted) {
+      if (!mounted || !widget.active && !widget.prefetch) {
+        controller.removeListener(_trackProgress);
         await controller.dispose();
         return;
       }
@@ -526,7 +555,9 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
       _lastReportedSecond = second;
       _sendView();
     }
-    if (mounted) setState(() {});
+    // Do NOT rebuild the entire cell per frame. The scrubber reads the
+    // controller directly; rebuilding 7 animated buttons at video framerate was
+    // a self-inflicted performance bug.
   }
 
   void _sendView({bool force = false}) {
@@ -1063,6 +1094,18 @@ class _EditActionRail extends StatelessWidget {
                 provider.report(edit.id);
               },
             ),
+            if (viewerId != null && viewerId != edit.creatorId)
+              ListTile(
+                leading: const PhosphorIcon(
+                  PhosphorIconsRegular.eyeSlash,
+                  color: Colors.white70,
+                ),
+                title: Text(copy.mute, style: const TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  provider.muteCreator(edit.creatorId, mute: true);
+                },
+              ),
             if (viewerId != null && viewerId == edit.creatorId)
               ListTile(
                 leading: const PhosphorIcon(

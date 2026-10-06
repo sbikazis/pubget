@@ -7,6 +7,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { moderateEditCopy } = require("./contentFilter");
 const { EDITS_CONFIG, EDIT_RENDITIONS } = require("./editsConfig");
+const { setMediaVisible } = require("./reelMediaAccess");
 
 /** Target vertical canvas — same as TikTok / IG Reels / YouTube Shorts. */
 const TARGET_W = 1080;
@@ -351,6 +352,7 @@ function createEditPipeline({
   economy,
   achievements,
   notifications,
+  FieldValue,
   collectionName = "edits",
   storagePrefix = "edits",
   processedPrefix = "edits-processed",
@@ -584,6 +586,29 @@ function createEditPipeline({
         decision.update.publishedAt = new Date();
       }
       await ref.update(decision.update);
+      // §15.18 — publish the bytes. Until this receipt exists the Storage
+      // rules refuse to serve the transcoded renditions, because nothing has
+      // authorised them. Without it a correctly published Reel would render a
+      // black frame, so the flip has to happen exactly here and not earlier.
+      if (decision.publish) {
+        await setMediaVisible({
+          db,
+          bucket,
+          creatorId,
+          editId,
+          visible: true,
+          storagePrefix,
+          processedPrefix,
+          collectionName,
+          FieldValue,
+        }).catch((error) => {
+          console.error("Edit media publication failed", {
+            editId,
+            error: error.message,
+          });
+          throw error;
+        });
+      }
       if (!decision.publish) {
         const status = decision.update.status;
         if (status === "needs_review") {

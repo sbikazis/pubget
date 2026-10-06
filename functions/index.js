@@ -241,6 +241,7 @@ const processEditVideo = createEditPipeline({
   economy: economyDomain,
   achievements: achievementsDomain,
   notifications: notificationBuilder,
+  FieldValue,
 });
 const editsDomain = createEditsDomain({
   db: getFirestore(),
@@ -379,12 +380,30 @@ exports.editCommentAction = onCall(
   { region: "us-central1" },
   editsDomain.commentAction,
 );
+exports.reportEdit = onCall(
+  { region: "us-central1" },
+  editsDomain.reportEdit,
+);
+exports.muteReelCreator = onCall(
+  { region: "us-central1" },
+  editsDomain.muteReelCreator,
+);
+exports.listSavedReels = onCall(
+  { region: "us-central1" },
+  editsDomain.listSavedReels,
+);
 exports.getEditFeed = onCall(
   { region: "us-central1" },
   editsDomain.getEditFeed,
 );
+// The retry path runs the *same* ffmpeg work as the finalize trigger: it
+// downloads the full source and walks the rendition ladder. It therefore needs
+// the trigger's budget. It used to run on the v2 defaults (256 MiB / 60 s),
+// so retrying a large Reel — precisely the case a retry exists for — OOM'd or
+// timed out on 1/4 the memory and 1/5 the timeout. The region stays
+// us-central1 because the client invokes this callable without an override.
 exports.retryEditProcessing = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
   editsDomain.retryProcessing,
 );
 exports.finalizeEditUpload = onCall(

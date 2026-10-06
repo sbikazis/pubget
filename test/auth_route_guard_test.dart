@@ -177,4 +177,64 @@ void main() {
       '/login',
     );
   });
+
+  test('every ReelsFeedPage route is protected', () {
+    // Each of these renders `ReelsFeedPage`, which loads the signed-in Edit
+    // feed. If one is missing from `protectedPaths`, a signed-out visitor lands
+    // on a page that can only fail on Firestore/Storage permissions.
+    const reelsRoutes = <String>[
+      '/reel',
+      '/hashtag',
+      '/reels/anime',
+      '/reels/character',
+      '/reels/creator',
+    ];
+
+    for (final path in reelsRoutes) {
+      expect(
+        AuthRouteGuard.resolve(
+          path: path,
+          isInitialized: true,
+          authState: LoadingState.loaded,
+          isAuthenticated: false,
+          onboardingState: LoadingState.loaded,
+          canEnterHome: true,
+        ),
+        '/login',
+        reason: '$path must redirect a signed-out visitor to login',
+      );
+
+      // And an authenticated, onboarded user must still get through.
+      expect(
+        AuthRouteGuard.resolve(
+          path: path,
+          isInitialized: true,
+          authState: LoadingState.loaded,
+          isAuthenticated: true,
+          onboardingState: LoadingState.loaded,
+          canEnterHome: true,
+        ),
+        isNull,
+        reason: '$path must stay reachable when signed in',
+      );
+    }
+  });
+
+  test('a ReelsFeedPage route waits for auth instead of bouncing to login', () {
+    // While auth is still resolving the guard must send the user to splash, not
+    // to login -- otherwise a cold start on a shared /reel link logs them out.
+    for (final path in <String>['/reel', '/reels/creator']) {
+      expect(
+        AuthRouteGuard.resolve(
+          path: path,
+          isInitialized: true,
+          authState: LoadingState.loading,
+          isAuthenticated: false,
+          onboardingState: LoadingState.loaded,
+          canEnterHome: true,
+        ),
+        '/splash',
+      );
+    }
+  });
 }

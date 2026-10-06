@@ -597,13 +597,10 @@ class FirebaseEditsRepository
         .limit(limit.clamp(1, 50));
     final cursor = after;
     if (cursor != null) {
-      if (sort == EditCommentSort.top) {
-        query = query.startAfter(<Object>[cursor.likesCount]);
-      } else if (cursor.createdAt != null) {
-        query = query.startAfter(<Object>[
-          Timestamp.fromDate(cursor.createdAt!),
-        ]);
-      }
+      // Both sort keys need the document id as the trailing tiebreaker --
+      // see `editCommentCursor`.
+      final values = editCommentCursor(cursor, sort);
+      if (values != null) query = query.startAfter(values);
     }
     final snapshot = await query.get();
     return snapshot.docs
@@ -627,4 +624,38 @@ class FirebaseEditsRepository
     required String editId,
     required String type,
   }) => _call(_callable('recordEditSignal'), {'editId': editId, 'type': type});
+
+  @override
+  Future<Result<void>> muteReelCreator({
+    required String creatorId,
+    required bool mute,
+  }) => _call(_callable('muteReelCreator'), {
+    'creatorId': creatorId,
+    'mute': mute,
+  });
+
+  @override
+  Future<Result<SavedReelsPage>> listSavedReels({
+    String? afterId,
+    int limit = 30,
+  }) => _guard(() async {
+    final payload = <String, dynamic>{'limit': limit};
+    if (afterId != null && afterId.isNotEmpty) payload['afterId'] = afterId;
+    final result = await _functions
+        .httpsCallable(_callable('listSavedReels'))
+        .call(payload);
+    final data = result.data;
+    final raw = (data['items'] as List<dynamic>? ?? const <dynamic>[]);
+    final items = raw
+        .whereType<Map<dynamic, dynamic>>()
+        // The saved record is a snapshot taken at save time, so `editId` -- not
+        // the subcollection doc id -- identifies the Reel.
+        .map((entry) => Edit.fromMap(
+              <String, dynamic>{...entry, 'id': entry['editId']},
+              id: '${entry['editId']}',
+            ))
+        .where((edit) => edit.id.isNotEmpty)
+        .toList(growable: false);
+    return SavedReelsPage(items, hasMore: data['hasMore'] == true);
+  });
 }

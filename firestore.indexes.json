@@ -794,72 +794,6 @@
       ]
     },
     {
-      "collectionGroup": "reels",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "score",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "reels",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "creatorId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "reels",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "moderationStatus",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "reelAudios",
       "queryScope": "COLLECTION",
       "fields": [
@@ -1182,6 +1116,150 @@
         {
           "fieldPath": "__name__",
           "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "hashtags",
+          "order": "ASCENDING",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "characterIds",
+          "order": "ASCENDING",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "animeId",
+          "order": "ASCENDING",
+          "arrayConfig": "EQUAL"
+        },
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "audioId",
+          "order": "ASCENDING",
+          "arrayConfig": "EQUAL"
+        },
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
         }
       ]
     }

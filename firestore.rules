@@ -1010,14 +1010,56 @@ service cloud.firestore {
     }
 
     match /edits/{editId} {
-      allow read: if signedIn();
+      // §15.18 — a takedown must actually revoke access. `allow read: if
+      // signedIn()` let any account keep reading an unpublished, flagged, or
+      // deleted Reel document (and its comments/likes) forever, because the
+      // server only ever flips `status`; nothing was ever removed.
+      // The creator still reads their own row so the upload manager can show a
+      // real failure/review reason, and staff keeps its moderation surface.
+      function editReadable(uid) {
+        return signedIn() && (
+          isAdmin() ||
+          resource.data.creatorId == uid ||
+          (resource.data.status == 'published' &&
+            resource.data.moderationStatus == 'approved')
+        );
+      }
+      allow get: if editReadable(request.auth.uid);
+      // A collection query must carry `where status == 'published'` for this to
+      // succeed; Firestore rejects queries that could return anything else.
+      allow list: if signedIn() && resource.data.status == 'published';
       // Edit documents and all aggregate counters are server-authoritative.
       allow create, update, delete: if false;
+      // §15.18 audit trail — written only by the server takedown path.
+      match /audit/{entryId} {
+        allow read: if signedIn() && (isAdmin() || resource.data.actorId == request.auth.uid);
+        allow write: if false;
+      }
+      // §15.18 §15.3 — real moderation reports, one document per reporter.
+      match /reports/{uid} {
+        allow read: if isAdmin() || self(uid);
+        allow create: if signedIn() && uid == request.auth.uid;
+        allow update, delete: if false;
+      }
       match /comments/{commentId} {
-        allow read: if signedIn();
+        // Subcollection reads are not implicitly covered by the parent rule, so
+        // a takedown would otherwise still expose the whole thread to anyone
+        // who kept the old document id.
+        function parentReadable() {
+          return firestore.exists(/databases/(default)/documents/edits/$(editId)) &&
+            (isAdmin() ||
+              get(/databases/(default)/documents/edits/$(editId)).data.creatorId == request.auth.uid ||
+              (get(/databases/(default)/documents/edits/$(editId)).data.status == 'published' &&
+               get(/databases/(default)/documents/edits/$(editId)).data.moderationStatus == 'approved'));
+        }
+        allow read: if parentReadable();
         allow create, update, delete: if false;
         match /likes/{uid} { allow read: if self(uid); allow write: if false; }
-        match /reports/{uid} { allow read: if self(uid); allow write: if false; }
+        match /reports/{uid} {
+          allow read: if isAdmin() || self(uid);
+          allow create: if signedIn() && uid == request.auth.uid;
+          allow update, delete: if false;
+        }
       }
       match /likes/{uid} { allow read: if self(uid); allow write: if false; }
       // Aggregate viewers/watch data is server-owned; clients must not inflate it.
@@ -1028,6 +1070,30 @@ service cloud.firestore {
       }
       match /signals/{signalId} { allow read: if signedIn(); allow write: if false; }
       match /impressions/{uid} { allow read: if self(uid); allow write: if false; }
+    }
+
+    // §15 viewer mute list. The viewer's own rows only; the server writes the
+    // authoritative feed filter, so clients cannot mute on someone else's behalf
+    // nor read who else muted whom.
+    match /reelMutes/{uid} {
+      allow read: if self(uid);
+      allow write: if false;
+      match /creators/{creatorId} {
+        allow read: if self(uid);
+        allow write: if false;
+      }
+    }
+
+    // §15 saved Reels. Server-written from the save signal so the list cannot be
+    // forged; a viewer may read only their own, and nobody else's saves are
+    // visible even to signed-in users.
+    match /savedReels/{uid} {
+      allow read: if self(uid);
+      allow write: if false;
+      match /items/{editId} {
+        allow read: if self(uid);
+        allow write: if false;
+      }
     }
 
     match /editUploadKeys/{keyId} {

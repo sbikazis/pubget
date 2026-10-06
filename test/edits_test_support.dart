@@ -55,6 +55,14 @@ final class FakeEditsRepository implements EditsRepository {
   Failure? uploadFailure;
   Failure? likeFailure;
   Failure? signalFailure;
+  Failure? commentActionFailure;
+  Failure? muteFailure;
+  Failure? savedReelsFailure;
+  List<Edit> savedReels = <Edit>[];
+  bool savedReelsHasMore = false;
+  final List<Map<String, dynamic>> muteCalls = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> savedPagesCalls = <Map<String, dynamic>>[];
+  final List<Map<String, String>> commentActionCalls = <Map<String, String>>[];
   Future<Result<void>> Function(bool like)? likeHandler;
   var likeCalls = 0;
   var commentCalls = 0;
@@ -192,11 +200,39 @@ final class FakeEditsRepository implements EditsRepository {
   }) async => Success(comments);
 
   @override
+  @override
+  Future<Result<void>> muteReelCreator({
+    required String creatorId,
+    required bool mute,
+  }) async {
+    muteCalls.add(<String, dynamic>{'creatorId': creatorId, 'mute': mute});
+    if (muteFailure != null) return FailureResult(muteFailure!);
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<SavedReelsPage>> listSavedReels({
+    String? afterId,
+    int limit = 30,
+  }) async {
+    savedPagesCalls.add(<String, dynamic>{
+      'afterId': afterId,
+      'limit': limit,
+    });
+    if (savedReelsFailure != null) return FailureResult(savedReelsFailure!);
+    return Success(SavedReelsPage(savedReels, hasMore: savedReelsHasMore));
+  }
+
+  @override
   Future<Result<void>> commentAction({
     required String editId,
     required String commentId,
     required String action,
-  }) async => const Success<void>(null);
+  }) async {
+    commentActionCalls.add(<String, String>{'commentId': commentId, 'action': action});
+    if (commentActionFailure != null) return FailureResult(commentActionFailure!);
+    return const Success<void>(null);
+  }
 
   @override
   Future<Result<void>> recordSignal({

@@ -103,6 +103,7 @@ final class EditCopy {
   );
   String get fan => _s.pick('Fan', 'مشجع');
   String get like => _s.pick('Like', 'إعجاب');
+  String get unlike => _s.pick('Remove like', 'إلغاء الإعجاب');
   String get comment => _s.pick('Comment', 'تعليق');
   String get share => _s.pick('Share', 'مشاركة');
   String get save => _s.pick('Save', 'حفظ');

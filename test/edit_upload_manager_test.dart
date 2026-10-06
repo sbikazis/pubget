@@ -130,6 +130,18 @@ void main() {
 }
 
 final class _SlowUploadRepository implements EditsRepository {
+  @override
+  Future<Result<void>> muteReelCreator({
+    required String creatorId,
+    required bool mute,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<SavedReelsPage>> listSavedReels({
+    String? afterId,
+    int limit = 30,
+  }) async => const Success(SavedReelsPage(<Edit>[], hasMore: false));
+
   void Function() onStart = () {};
   String? seenAudioId;
   Completer<Result<Edit>>? _gate;

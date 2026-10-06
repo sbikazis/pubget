@@ -68,6 +68,13 @@ const DIVERSITY = Object.freeze({
   minTypesPerPage: 3,
 });
 
+// §15.9 — Reels-feed diversity caps. Tunable, not hard text.
+const FEED_DIVERSITY = Object.freeze({
+  maxPerCreator: 2,
+  maxPerAnime: 3,
+  maxConsecutiveAnime: 2,
+});
+
 function clamp(value, min = 0, max = 100) {
   const n = Number(value);
   if (!Number.isFinite(n)) return min;
@@ -155,8 +162,16 @@ function editEngagement(edit) {
  * and left the ordering to an arbitrary tie-break.
  */
 function scoreReelTrending(edit, now) {
-  const ageMs = Math.max(60 * 1000, now - toDate(edit.createdAt).getTime());
+  const createdAt = toDate(edit.createdAt).getTime();
+  const ageMs = Math.max(60 * 1000, now - createdAt);
+  // §15.10 — velocity must be computed over a moving time window. Using
+  // lifetime age with a 60s floor punished older Reels with solid engagement
+  // while elevating brand-new ones with a single like. The window keeps the
+  // algorithm honest: "what's happening now", not "what was forever".
+  const windowMs = 6 * 60 * 60 * 1000; // 6 hours
+  const windowHours = windowMs / (60 * 60 * 1000);
   const ageHours = ageMs / (60 * 60 * 1000);
+  const denominatorHours = Math.min(ageHours, windowHours);
   const qualified = Number(edit.qualifiedViewsCount) || 0;
   const likes = Number(edit.likesCount) || 0;
   const comments = Number(edit.commentsCount) || 0;
@@ -171,13 +186,13 @@ function scoreReelTrending(edit, now) {
     shares * 3;
 
   // No engagement evidence at all cannot be trending, whatever the metadata.
-  if (qualified <= 0 && weighted <= 0) return 0;
+  if (qualified < 2 && weighted < 2) return 0;
+  if (denominatorHours <= 0) return 0;
 
-  // Divide by age *before* compressing. log1p(weighted)/ageHours inverts real
-  // velocity: log1p flattens large counts while the small divisor inflates
-  // them, so a 1-like Reel an hour old outranked a 500-like Reel 12h old.
-  const engagementVelocity = Math.log1p(weighted / ageHours);
-  const viewVelocity = Math.log1p(qualified / ageHours);
+  // Divide by the windowed denominator so velocity decays past the window
+  // rather than decreasing with absolute age forever.
+  const engagementVelocity = Math.log1p(weighted / denominatorHours);
+  const viewVelocity = Math.log1p(qualified / denominatorHours);
   // Log-compressed rather than capped, so 5k qualified views still outrank
   // 500 instead of both saturating on the same evidence bonus.
   const evidence = Math.log1p(qualified / 10);
@@ -389,6 +404,69 @@ function applyDiversity(ranked, options = {}) {
   return accepted.concat(overflow);
 }
 
+/**
+ * §15.9 controlled diversity for the Reels feed.
+ *
+ * `applyDiversity` caps creators and groups for the home/discovery surfaces, but
+ * the Reels feed has two extra constraints the spec calls out explicitly:
+ * capping per anime, and stopping a *run* of the same anime. A per-anime total
+ * cap alone still lets three of the same anime land back to back, which is the
+ * exact "20 Reels of the same anime in a row" case the spec forbids.
+ *
+ * Deferred rows are appended rather than dropped. Dropping them would make the
+ * page look short, and a short page reads to the viewer as an empty feed.
+ *
+ * Deliberately not applied to Trending: that surface ranks velocity over what
+ * is happening right now, and viewer-aware reshuffling would make a shared
+ * "now" page depend on who is asking.
+ */
+function applyFeedDiversity(ranked, options = {}) {
+  const maxPerCreator = options.maxPerCreator || FEED_DIVERSITY.maxPerCreator;
+  const maxPerAnime = options.maxPerAnime || FEED_DIVERSITY.maxPerAnime;
+  const maxRun = options.maxConsecutiveAnime || FEED_DIVERSITY.maxConsecutiveAnime;
+
+  const animeOf = (item) => item.animeId ||
+    (item.data && (item.data.animeId || item.data.animeTag)) || null;
+  const creatorOf = (item) => item.creatorId ||
+    (item.data && item.data.creatorId) || null;
+
+  const creatorTotals = new Map();
+  const animeTotals = new Map();
+  const accepted = [];
+  const deferred = [];
+
+  for (const item of ranked) {
+    const creator = creatorOf(item);
+    const anime = animeOf(item);
+    const creatorTotal = creator ? (creatorTotals.get(creator) || 0) : 0;
+    const animeTotal = anime ? (animeTotals.get(anime) || 0) : 0;
+
+    let run = 0;
+    if (anime && accepted.length) {
+      const start = Math.max(0, accepted.length - maxRun);
+      for (let i = accepted.length - 1; i >= start; i -= 1) {
+        if (animeOf(accepted[i]) === anime) run += 1;
+        else break;
+      }
+    }
+
+    const violates =
+      (creator && creatorTotal >= maxPerCreator) ||
+      (anime && animeTotal >= maxPerAnime) ||
+      run >= maxRun;
+
+    if (violates) {
+      deferred.push(item);
+      continue;
+    }
+    accepted.push(item);
+    if (creator) creatorTotals.set(creator, creatorTotal + 1);
+    if (anime) animeTotals.set(anime, animeTotal + 1);
+  }
+
+  return accepted.concat(deferred);
+}
+
 function isColdStart(profile) {
   const anime = (profile.animeIds || []).length;
   const groups = profile.memberGroupIds ? profile.memberGroupIds.size : 0;
@@ -415,6 +493,7 @@ function mixExploration(ranked, exploreShare = 0.2) {
 module.exports = {
   WEIGHTS,
   DIVERSITY,
+  FEED_DIVERSITY,
   clamp,
   freshnessScore,
   overlapScore,
@@ -428,6 +507,7 @@ module.exports = {
   editEngagement,
   calculateRisingScore,
   applyDiversity,
+  applyFeedDiversity,
   isColdStart,
   mixExploration,
 };

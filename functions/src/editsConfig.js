@@ -24,11 +24,32 @@ const EDITS_CONFIG = Object.freeze({
   minDurationSeconds: 3,
   maxDurationSeconds: 60,
   maxBytes: 100 * 1024 * 1024,
-  qualifiedViewPercent: 10,
-  completionPercent: 90,
+  /**
+   * §15.12 — the four view definitions, kept distinct on purpose.
+   *
+   * These used to be percentages of the Reel duration, which is wrong at both
+   * ends: 10% of a 60s Reel is 6s (far stricter than the spec) while 10% of a 3s
+   * Reel is 0.3s (ten times weaker), so the cheapest way to farm qualified
+   * views was to upload the shortest Reel the validator allows.
+   *
+   *   impression  — the Reel entered the viewport at all
+   *   view        — at least `viewSeconds` of verified watch
+   *   qualified   — at least `qualifiedViewSeconds` of verified watch (§15.12 = 3s)
+   *   completion  — at least `completionPercent` of the Reel (§15.12 = 95%)
+   *   replay      — reached `replayPercent` and then started again
+   */
+  viewSeconds: 1,
+  qualifiedViewSeconds: 3,
+  qualifiedViewPercent: 3,
+  completionPercent: 95,
+  replayPercent: 95,
   viewabilityMs: 250,
   visibleFraction: 0.5,
   feedPageSize: 5,
+  // §15.9 exploration share of the Reels feed. Tunable, not hard text.
+  explorationShare: 0.2,
+  // Cap on how many watched Reels feed the repetition penalty.
+  seenHistoryLimit: 300,
   prefetchAhead: 1,
   captionMax: 1000,
   commentMax: 500,
@@ -63,10 +84,16 @@ const EDIT_RENDITIONS = Object.freeze([
 
 /** §15.2 upload quota — server is truth, so the cap lives here only. */
 const EDIT_UPLOAD_QUOTA = Object.freeze({
-  /** Successful `startUpload` reservations per creator per UTC day. */
-  dailyUploads: 20,
+  /** Successful `startUpload` reservations per creator per UTC day. §15.13 = 10. */
+  dailyUploads: 10,
   /** Reserved quota rows retained for forensics (reservations that became posts). */
   retentionDays: 14,
+  /**
+   * §15.13 — a repost is a publication too, so it draws on the same daily
+   * budget. Without this, repost bypassed the cap entirely and the "10 Reels a
+   * day" rule was advisory.
+   */
+  repostDrawsQuota: true,
 });
 
 /** §15.7 tag limits — validated server-side; the client only pre-cleans text. */

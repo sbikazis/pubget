@@ -45,6 +45,55 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
   String? _error;
   EditComment? _replyTo;
 
+  /// Comment ids the viewer has reacted to, plus the optimistic likesCount
+  /// override while the write is in flight.
+  ///
+  /// The list query returns comments but not the viewer's own reactions, so
+  /// without this the heart was a dead control: it always rendered unliked, it
+  /// could only ever send `like`, and neither the icon nor the count moved.
+  final Set<String> _liked = <String>{};
+  final Map<String, int> _likesDelta = <String, int>{};
+
+  bool _isLiked(String commentId) => _liked.contains(commentId);
+
+  int _likesOf(EditComment comment) {
+    return comment.likesCount + (_likesDelta[comment.id] ?? 0);
+  }
+
+  /// Optimistic like/unlike with rollback, matching the Edit-level pattern.
+  Future<void> _toggleCommentLike(EditComment comment) async {
+    final wasLiked = _liked.contains(comment.id);
+    final previousDelta = _likesDelta[comment.id] ?? 0;
+    setState(() {
+      if (wasLiked) {
+        _liked.remove(comment.id);
+      } else {
+        _liked.add(comment.id);
+      }
+      _likesDelta[comment.id] = previousDelta + (wasLiked ? -1 : 1);
+    });
+
+    final result = await context.read<EditsRepository>().commentAction(
+      editId: widget.edit.id,
+      commentId: comment.id,
+      action: wasLiked ? 'unlike' : 'like',
+    );
+    if (!mounted) return;
+    if (!result.isSuccess) {
+      // Assigning `_error` outside `setState` would leave the sheet showing the
+      // rolled-back state with no explanation.
+      setState(() {
+        if (wasLiked) {
+          _liked.add(comment.id);
+        } else {
+          _liked.remove(comment.id);
+        }
+        _likesDelta[comment.id] = previousDelta;
+        _error = result.failureOrNull?.message;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -244,7 +293,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
               if (comment.replyToCommentId != null) 'Reply',
               if (comment.mentions.isNotEmpty)
                 comment.mentions.map((item) => '@$item').join(' '),
-              '${comment.likesCount} likes',
+              '${_likesOf(comment)} likes',
             ].join(' · '),
           ),
           trailing: Row(
@@ -256,13 +305,11 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
                 icon: const Icon(Icons.reply),
               ),
               IconButton(
-                tooltip: copy.like,
+                tooltip: _isLiked(comment.id) ? copy.unlike : copy.like,
+                isSelected: _isLiked(comment.id),
                 icon: const Icon(Icons.favorite_border),
-                onPressed: () => context.read<EditsRepository>().commentAction(
-                  editId: widget.edit.id,
-                  commentId: comment.id,
-                  action: 'like',
-                ),
+                selectedIcon: const Icon(Icons.favorite),
+                onPressed: () => _toggleCommentLike(comment),
               ),
               if (viewerId != null && viewerId == comment.authorId)
                 IconButton(

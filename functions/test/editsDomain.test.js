@@ -27,6 +27,12 @@ function withTransactions(db) {
         const current = options.merge ? (db.store.get(ref.path) || {}) : {};
         db.store.set(ref.path, { ...current, ...data });
       },
+      create(ref, data) {
+        db.store.set(ref.path, { ...data });
+      },
+      delete(ref) {
+        db.store.delete(ref.path);
+      },
       update(ref, data) {
         db.store.set(ref.path, { ...(db.store.get(ref.path) || {}), ...data });
       },
@@ -159,9 +165,116 @@ function createMutableDb(seed = {}) {
             async create(data) {
               store.set(path, { ...data });
             },
+            async set(data) {
+              store.set(path, { ...data });
+            },
+            async delete() {
+              store.delete(path);
+            },
             async update(data) {
               const current = store.get(path) || {};
               store.set(path, { ...current, ...data });
+            },
+            collection(sub) {
+              const prefix = `${name}/${id}/${sub}/`;
+              return {
+                doc(childId) {
+                  const childPath = `${prefix}${childId}`;
+                  return {
+                    id: childId,
+                    path: childPath,
+                    async get() {
+                      const data = store.get(childPath);
+                      return {
+                        id: childId,
+                        exists: data !== undefined,
+                        data: () => data,
+                      };
+                    },
+                    async set(data) {
+                      store.set(childPath, { ...data });
+                    },
+                    async create(data) {
+                      store.set(childPath, { ...data });
+                    },
+                    async delete() {
+                      store.delete(childPath);
+                    },
+                  };
+                },
+                async get() {
+                  const rows = [...store.entries()]
+                    .filter(([p]) => p.startsWith(prefix))
+                    .map(([p, data]) => ({ id: p.slice(prefix.length), data }));
+                  return { docs: rows.map((r) => ({ id: r.id, data: () => r.data })) };
+                },
+                orderBy(field, direction = "asc") {
+                  const readRows = () =>
+                    [...store.entries()]
+                      .filter(([p]) => p.startsWith(prefix))
+                      .map(([p, data]) => ({
+                        id: p.slice(prefix.length),
+                        path: p,
+                        data,
+                      }));
+                  const state = { field, direction, limit: null, cursorId: null };
+                  const api = {
+                    orderBy(nextField, nextDirection = "asc") {
+                      state.field = nextField;
+                      state.direction = nextDirection;
+                      return api;
+                    },
+                    // Mirrors the production paging pattern: the cursor is a
+                    // document snapshot, and the query resumes strictly after
+                    // it. Without this the fake silently replayed page one.
+                    startAfter(cursorSnap) {
+                      const raw = cursorSnap && (cursorSnap.id || cursorSnap.path);
+                      if (typeof raw !== "string") {
+                        state.cursorId = null;
+                      } else if (raw.startsWith(prefix)) {
+                        state.cursorId = raw.slice(prefix.length);
+                      } else {
+                        state.cursorId = raw;
+                      }
+                      return api;
+                    },
+                    limit(value) {
+                      state.limit = value;
+                      return api;
+                    },
+                    async get() {
+                      let list = readRows();
+                      if (state.field) {
+                        const sign = state.direction === "desc" ? -1 : 1;
+                        list = list.slice().sort((a, b) => {
+                          const left = a.data[state.field];
+                          const right = b.data[state.field];
+                          if (left === right) {
+                            if (a.id === b.id) return 0;
+                            return a.id < b.id ? -sign : sign;
+                          }
+                          if (left === undefined || left === null) return 1;
+                          if (right === undefined || right === null) return -1;
+                          return left < right ? -sign : sign;
+                        });
+                      }
+                      if (state.cursorId) {
+                        const index = list.findIndex((row) => row.id === state.cursorId);
+                        list = index >= 0 ? list.slice(index + 1) : [];
+                      }
+                      if (state.limit != null) list = list.slice(0, state.limit);
+                      return {
+                        docs: list.map((r) => ({
+                          id: r.id,
+                          path: r.path,
+                          data: () => r.data,
+                        })),
+                      };
+                    },
+                  };
+                  return api;
+                },
+              };
             },
           };
         },
@@ -309,6 +422,97 @@ function createFeedDb(reels, extra = {}) {
   const db = {
     store,
     queries,
+    collectionGroup(name) {
+      // Real Firestore walks *every* collection with this name regardless of
+      // depth, and each doc carries a real `ref`. The feed needs both: it reads
+      // `edits/{id}/viewers/{uid}` through the group and recovers the Reel id
+      // from `ref.parent.parent.id`.
+      const build = (state) => {
+        const readRows = () =>
+          [...store.entries()]
+            // The name must be the *parent* collection segment: `edits/{id}/viewers/{uid}`
+          // is in group `viewers`, while `edits/{id}/viewers/{uid}/likes/{actor}`
+          // is not.
+          .filter(([path]) => {
+            const segments = path.split("/");
+            return segments[segments.length - 2] === name;
+          })
+            .map(([path, data]) => {
+              const parts = path.split("/");
+              const id = parts[parts.length - 1];
+              // Firestore's doc ref chain for `edits/{id}/viewers/{uid}`:
+              //   doc -> parent (`viewers` collection) -> parent (the Reel doc)
+              // The feed recovers the watched Reel from `ref.parent.parent.id`,
+              // so the fake has to model the collection hop, not skip it.
+              const collectionParts = parts.slice(0, -1);
+              const ref = {
+                id,
+                path,
+                parent: collectionParts.length
+                  ? {
+                      id: collectionParts[collectionParts.length - 1],
+                      path: collectionParts.join("/"),
+                      parent: collectionParts.length > 1
+                        ? {
+                            id: collectionParts[collectionParts.length - 2],
+                            path: collectionParts.slice(0, -1).join("/"),
+                          }
+                        : null,
+                    }
+                  : null,
+              };
+              return { id, path, data, ref };
+              return { id, path, data, ref: docRef };
+            });
+        const api = {
+          where(field, op, value) {
+            state.filters.push({ field, op, value });
+            return api;
+          },
+          orderBy(field, direction) {
+            state.orders.push({ field, direction });
+            return api;
+          },
+          limit(value) {
+            state.limit = value;
+            return api;
+          },
+          async get() {
+            let list = readRows();
+            for (const f of state.filters) {
+              list = list.filter((row) => {
+                const value = row.data[f.field];
+                if (f.op === "==") return value === f.value;
+                if (f.op === "array-contains") {
+                  return Array.isArray(value) && value.includes(f.value);
+                }
+                return false;
+              });
+            }
+            for (const o of state.orders) {
+              const sign = o.direction === "desc" ? -1 : 1;
+              const compare = (a, b) => {
+                const left = a.data[o.field];
+                const right = b.data[o.field];
+                return left < right ? -sign : left > right ? sign : 0;
+              };
+              list = [...list].sort((a, b) => sign * compare(a, b));
+            }
+            if (state.limit != null) list = list.slice(0, state.limit);
+            return {
+              docs: list.map((row) => ({
+                id: row.id,
+                path: row.path,
+                ref: row.ref,
+                data: () => row.data,
+              })),
+            };
+          },
+        };
+        return api;
+      };
+      return build({ filters: [], orders: [], limit: null });
+    },
     collection(name) {
       return {
         doc(id) {
@@ -320,6 +524,18 @@ function createFeedDb(reels, extra = {}) {
               const data = store.get(path);
               return { id, exists: store.has(path), data: () => data };
             },
+            async create(data) {
+              store.set(path, { ...data });
+            },
+            async set(data) {
+              store.set(path, { ...data });
+            },
+            async delete() {
+              store.delete(path);
+            },
+            async update(data) {
+              store.set(path, { ...(store.get(path) || {}), ...data });
+            },
             collection(sub) {
               const subCollection = db.collection(`${name}/${id}/${sub}`);
               return {
@@ -329,6 +545,15 @@ function createFeedDb(reels, extra = {}) {
                     .filter(([p]) => p.startsWith(`${name}/${id}/${sub}/`))
                     .map(([p, data]) => ({ id: p.slice(`${name}/${id}/${sub}/`.length), data }));
                   return { docs: rows.map((r) => ({ id: r.id, data: () => r.data })) };
+                },
+                async create(data) {
+                  store.set(`${name}/${id}/${sub}/${data.id || 'auto'}`, { ...data });
+                },
+                async set(data) {
+                  store.set(path, { ...data });
+                },
+                async delete() {
+                  store.delete(path);
                 },
                 where(field, op, value) {
                   return q({ filters: [{ field, op, value }], orders: [], limit: null }, name);
@@ -360,7 +585,13 @@ function reel(id, extra = {}) {
 function feedDomain(db) {
   return createEditsDomain({
     db,
-    FieldValue: { serverTimestamp: () => "now" },
+    // `increment` is recorded as an opaque marker: the fake store cannot apply
+    // deltas, and these tests assert on saved-list shape, not on counters.
+    FieldValue: {
+      serverTimestamp: () => "now",
+      increment: (amount) => ({ __increment: amount }),
+      arrayUnion: (...values) => ({ __arrayUnion: values }),
+    },
     HttpsError: TestHttpsError,
   });
 }
@@ -683,3 +914,551 @@ function createAudioAwareDb({ audios = {} } = {}) {
     },
   });
 }
+
+// §15 viewer visibility at the domain level.
+//
+// `blockUser` wrote `friendships.status == "blocked"` but `getEditFeed` never
+// read it, so blocking someone did nothing in the Reels feed — the control only
+// existed on the profile page.
+test("getEditFeed removes a blocked creator from every scope", async () => {
+  const db = createFeedDb([
+    reel("mine", { creatorId: "alice" }),
+    reel("blocked", { creatorId: "bob" }),
+    reel("other", { creatorId: "carol" }),
+  ], {
+    "friendships/f1": {
+      userIds: ["alice", "bob"],
+      status: "blocked",
+      blockedBy: "alice",
+    },
+  });
+
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending" },
+  });
+
+  const ids = page.items.map((item) => item.id);
+  assert.equal(ids.includes("blocked"), false, "blocked creator must not appear");
+  assert.deepEqual(ids.sort(), ["mine", "other"]);
+});
+
+test("getEditFeed removes a muted creator", async () => {
+  const db = createFeedDb([
+    reel("mine", { creatorId: "alice" }),
+    reel("muted", { creatorId: "bob" }),
+  ], {
+    "reelMutes/alice/creators/bob": { creatorId: "bob", viewerId: "alice" },
+  });
+
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending" },
+  });
+  assert.deepEqual(page.items.map((item) => item.id), ["mine"]);
+});
+
+test("a creator who blocked the viewer is also hidden", async () => {
+  const db = createFeedDb([reel("theirs", { creatorId: "bob" })], {
+    "friendships/f1": {
+      userIds: ["alice", "bob"],
+      status: "blocked",
+      blockedBy: "bob",
+    },
+  });
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending" },
+  });
+  assert.equal(page.items.length, 0);
+});
+
+test("a pending friend request does not hide anyone from the feed", async () => {
+  const db = createFeedDb([reel("theirs", { creatorId: "bob" })], {
+    "friendships/f1": { userIds: ["alice", "bob"], status: "pending" },
+  });
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending" },
+  });
+  assert.equal(page.items.length, 1);
+});
+
+test("block beats the following scope instead of leaking through it", async () => {
+  // The `following` branch re-filters by creatorIds; a blocked creator must not
+  // survive that second pass.
+  const db = createFeedDb([
+    reel("blocked", { creatorId: "bob" }),
+    reel("kept", { creatorId: "carol" }),
+  ], {
+    "friendships/f1": {
+      userIds: ["alice", "bob"],
+      status: "blocked",
+      blockedBy: "alice",
+    },
+    "respects/r1": { fromUserId: "alice", toUserId: "bob", value: 10 },
+    "respects/r2": { fromUserId: "alice", toUserId: "carol", value: 10 },
+  });
+
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "following" },
+  });
+  assert.deepEqual(page.items.map((item) => item.id), ["kept"]);
+});
+
+test("muteReelCreator writes then removes the viewer's own mute row", async () => {
+  const db = createFeedDb([], { "users/bob": { uid: "bob" } });
+  const domain = feedDomain(db);
+
+  const muted = await domain.muteReelCreator({
+    auth: { uid: "alice" },
+    data: { creatorId: "bob" },
+  });
+  assert.equal(muted.muted, true);
+  assert.equal(db.store.get("reelMutes/alice/creators/bob").creatorId, "bob");
+
+  const unmuted = await domain.muteReelCreator({
+    auth: { uid: "alice" },
+    data: { creatorId: "bob", muted: false },
+  });
+  assert.equal(unmuted.muted, false);
+  assert.equal(db.store.get("reelMutes/alice/creators/bob"), undefined);
+});
+
+test("muteReelCreator rejects self-mute and unknown creators", async () => {
+  const db = createFeedDb([], { "users/bob": { uid: "bob" } });
+  const domain = feedDomain(db);
+
+  await assert.rejects(
+    domain.muteReelCreator({ auth: { uid: "alice" }, data: { creatorId: "alice" } }),
+    (error) => error.code === "failed-precondition",
+  );
+  await assert.rejects(
+    domain.muteReelCreator({ auth: { uid: "alice" }, data: { creatorId: "ghost" } }),
+    (error) => error.code === "not-found",
+  );
+  await assert.rejects(
+    domain.muteReelCreator({ auth: { uid: "alice" }, data: {} }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    domain.muteReelCreator({ data: { creatorId: "bob" } }),
+    (error) => error.code === "unauthenticated",
+  );
+});
+
+// §15 saved Reels.
+//
+// `save` was a per-edit signal row that `unsave` DELETED, so there was no way
+// to recover a user's saves: no collection, no callable, no rule, no screen.
+test("save writes a retrievable saved-Reels item, unsave removes it", async () => {
+  const db = createMutableDb({
+    "edits/e1": {
+      creatorId: "bob",
+      status: "published",
+      caption: "Luffy gear 5",
+      videoUrl: "edits-processed/bob/e1.mp4",
+      thumbnailUrl: "edits/bob/t_e1.jpg",
+      durationSeconds: 12,
+      likesCount: 40,
+    },
+  });
+  const domain = feedDomain(db);
+
+  await domain.signal({ auth: { uid: "alice" }, data: { editId: "e1", type: "save" } });
+  const saved = db.store.get("savedReels/alice/items/e1");
+  assert.ok(saved, "save must write a retrievable item");
+  assert.equal(saved.editId, "e1");
+  assert.equal(saved.creatorId, "bob");
+  assert.equal(saved.caption, "Luffy gear 5");
+  assert.equal(saved.videoUrl, "edits-processed/bob/e1.mp4");
+  assert.equal(saved.durationSeconds, 12);
+
+  await domain.signal({ auth: { uid: "alice" }, data: { editId: "e1", type: "unsave" } });
+  assert.equal(db.store.get("savedReels/alice/items/e1"), undefined);
+});
+
+test("saved Reels are listable and scoped to the requesting viewer", async () => {
+  const db = createMutableDb({
+    "savedReels/alice/items/e1": { editId: "e1", creatorId: "bob", caption: "one" },
+    "savedReels/alice/items/e2": { editId: "e2", creatorId: "carol", caption: "two" },
+    "savedReels/bob/items/e3": { editId: "e3", creatorId: "carol", caption: "secret" },
+  });
+  const domain = feedDomain(db);
+
+  const alice = await domain.listSavedReels({ auth: { uid: "alice" }, data: {} });
+  assert.deepEqual(alice.items.map((i) => i.id).sort(), ["e1", "e2"]);
+
+  const bob = await domain.listSavedReels({ auth: { uid: "bob" }, data: {} });
+  assert.deepEqual(bob.items.map((i) => i.id), ["e3"]);
+
+  await assert.rejects(
+    domain.listSavedReels({ data: {} }),
+    (error) => error.code === "unauthenticated",
+  );
+});
+
+test("saving twice is idempotent and does not double-count", async () => {
+  const db = createMutableDb({
+    "edits/e1": { creatorId: "bob", status: "published" },
+  });
+  const domain = feedDomain(db);
+  const signal = { auth: { uid: "alice" }, data: { editId: "e1", type: "save" } };
+  await domain.signal(signal);
+  await domain.signal(signal);
+  const list = await domain.listSavedReels({ auth: { uid: "alice" }, data: {} });
+  assert.equal(list.items.length, 1);
+});
+
+test("unsave without a prior save is a no-op, not a negative counter", async () => {
+  const db = createMutableDb({ "edits/e1": { creatorId: "bob", status: "published" } });
+  const domain = feedDomain(db);
+  await domain.signal({ auth: { uid: "alice" }, data: { editId: "e1", type: "unsave" } });
+  assert.equal(db.store.get("savedReels/alice/items/e1"), undefined);
+});
+
+test("non-save signals do not create saved-Reels items", async () => {
+  const db = createMutableDb({ "edits/e1": { creatorId: "bob", status: "published" } });
+  const domain = feedDomain(db);
+  for (const type of ["share", "negative"]) {
+    await domain.signal({ auth: { uid: "alice" }, data: { editId: "e1", type } });
+  }
+  const list = await domain.listSavedReels({ auth: { uid: "alice" }, data: {} });
+  assert.equal(list.items.length, 0);
+});
+
+test("listSavedReels pages forward instead of replaying the first page", async () => {
+  // Regression: the cursor was applied *after* the page was fetched, so it only
+  // worked while the cursor happened to sit inside that page. Requesting page two
+  // with the last id of page one returned page one again, forever.
+  const saved = {};
+  for (let i = 1; i <= 5; i += 1) {
+    saved[`savedReels/alice/items/e${i}`] = {
+      editId: `e${i}`,
+      creatorId: "bob",
+      savedAt: i,
+    };
+  }
+  const domain = feedDomain(createMutableDb(saved));
+
+  const first = await domain.listSavedReels({
+    auth: { uid: "alice" },
+    data: { limit: 2 },
+  });
+  assert.deepEqual(first.items.map((i) => i.id), ["e5", "e4"]);
+  assert.equal(first.hasMore, true);
+
+  const second = await domain.listSavedReels({
+    auth: { uid: "alice" },
+    data: { limit: 2, afterId: first.items[first.items.length - 1].id },
+  });
+  assert.deepEqual(second.items.map((i) => i.id), ["e3", "e2"]);
+  assert.equal(second.hasMore, true);
+
+  const third = await domain.listSavedReels({
+    auth: { uid: "alice" },
+    data: { limit: 2, afterId: second.items[second.items.length - 1].id },
+  });
+  assert.deepEqual(third.items.map((i) => i.id), ["e1"]);
+  assert.equal(third.hasMore, false);
+
+  // No id may ever repeat across pages.
+  const seen = [
+    ...first.items,
+    ...second.items,
+    ...third.items,
+  ].map((i) => i.id);
+  assert.equal(new Set(seen).size, seen.length);
+});
+
+test("listSavedReels with an unknown cursor returns the first page, not an empty one", async () => {
+  const db = createMutableDb({
+    "savedReels/alice/items/e1": { editId: "e1", creatorId: "bob", savedAt: 2 },
+    "savedReels/alice/items/e2": { editId: "e2", creatorId: "bob", savedAt: 1 },
+  });
+  const domain = feedDomain(db);
+  const list = await domain.listSavedReels({
+    auth: { uid: "alice" },
+    data: { afterId: "does-not-exist" },
+  });
+  assert.deepEqual(list.items.map((i) => i.id), ["e1", "e2"]);
+});
+
+test("a failed block read fails the feed closed instead of unblocking", async () => {
+  // Regression: `loadHiddenCreatorIds` swallowed read errors and carried on with
+  // an empty hidden set, which republished the very creators the viewer blocked.
+  // An unavailable boundary read must surface as an error, not as "no blocks".
+  const db = createFeedDb([reel("e1", { creatorId: "bob", publishedAt: 5 })], {
+    "friendships/f1": { userIds: ["alice", "bob"], status: "blocked", blockedBy: "alice" },
+  });
+  const original = db.collection.bind(db);
+  db.collection = (name) => {
+    if (name === "friendships") {
+      return {
+        where() {
+          return {
+            async get() {
+              throw new Error("firestore unavailable");
+            },
+          };
+        },
+      };
+    }
+    return original(name);
+  };
+
+  await assert.rejects(
+    feedDomain(db).getEditFeed({ auth: { uid: "alice" }, data: {} }),
+    (error) => /firestore unavailable/.test(String(error && error.message)),
+    "a broken block read must reject rather than return unblocked content",
+  );
+});
+
+test("a failed mute read fails the feed closed too", async () => {
+  const db = createFeedDb([reel("e1", { creatorId: "bob", publishedAt: 5 })], {
+    "reelMutes/alice/creators/bob": {},
+  });
+  const original = db.collection.bind(db);
+  db.collection = (name) => {
+    if (name === "reelMutes") {
+      return {
+        doc() {
+          return {
+            collection() {
+              return {
+                async get() {
+                  throw new Error("mute read unavailable");
+                },
+              };
+            },
+          };
+        },
+      };
+    }
+    return original(name);
+  };
+
+  await assert.rejects(
+    feedDomain(db).getEditFeed({ auth: { uid: "alice" }, data: {} }),
+    (error) => /mute read unavailable/.test(String(error && error.message)),
+  );
+});
+
+test("a healthy feed still works when both boundary reads succeed", async () => {
+  // The counterpart to the two tests above: fail-closed must not turn a normal
+  // read into a rejection.
+  const db = createFeedDb(
+    [reel("mine", { creatorId: "alice" }), reel("other", { creatorId: "carol" })],
+    { "friendships/f1": { userIds: ["alice", "bob"], status: "blocked", blockedBy: "alice" } },
+  );
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending" },
+  });
+  assert.deepEqual(page.items.map((i) => i.id).sort(), ["mine", "other"]);
+});
+
+test("For You does not serve the same creator or anime over and over", async () => {
+  // §15.9 "تنوع مضبوط: منع 20 ريلزا من نفس الأنمي متتالية". Diversity caps were
+  // implemented in ranking.js but the Reels feed never called them, so the ranked
+  // order went straight out and a single hot creator could own the whole page.
+  const reels = [];
+  for (let i = 0; i < 12; i += 1) {
+    reels.push(reel(`hot${i}`, {
+      creatorId: "hot",
+      animeId: "one_piece",
+      score: 100 - i,
+    }));
+  }
+  for (let i = 0; i < 8; i += 1) {
+    reels.push(reel(`cool${i}`, {
+      creatorId: `cool${i}`,
+      animeId: `anime${i}`,
+      score: 50 - i,
+    }));
+  }
+  const db = createFeedDb(reels, { "users/alice": {} });
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "forYou", limit: 10 },
+  });
+
+  const items = page.items;
+  const ids = items.map((item) => item.id);
+
+  // Assert on consecutive runs, not totals: §15.9 forbids "20 Reels of the same
+  // anime in a row", and the exploration mix deliberately re-injects tail rows
+  // that diversity deferred. A total cap would forbid exploration entirely.
+  let longestCreatorRun = 1;
+  let currentCreatorRun = 1;
+  for (let i = 1; i < items.length; i += 1) {
+    currentCreatorRun = items[i].creatorId === items[i - 1].creatorId
+      ? currentCreatorRun + 1
+      : 1;
+    longestCreatorRun = Math.max(longestCreatorRun, currentCreatorRun);
+  }
+  assert.ok(
+    longestCreatorRun <= 2,
+    `creator run of ${longestCreatorRun} is too long in ${JSON.stringify(ids)}`,
+  );
+
+  let longestAnimeRun = 1;
+  let current = 1;
+  for (let i = 1; i < ids.length; i += 1) {
+    const previous = page.items[i - 1].animeId;
+    const currentAnime = page.items[i].animeId;
+    current = previous === currentAnime ? current + 1 : 1;
+    longestAnimeRun = Math.max(longestAnimeRun, current);
+  }
+  assert.ok(
+    longestAnimeRun <= 3,
+    `same-anime run of ${longestAnimeRun} is too long in ${JSON.stringify(ids)}`,
+  );
+});
+
+test("For You still returns a full page when diversity defers rows", async () => {
+  // Deferred rows must come back at the end of the page rather than being
+  // dropped: a short page looks like an empty feed to the viewer.
+  const reels = [];
+  for (let i = 0; i < 6; i += 1) {
+    reels.push(reel(`hot${i}`, { creatorId: "hot", score: 100 - i }));
+  }
+  for (let i = 0; i < 6; i += 1) {
+    reels.push(reel(`cool${i}`, { creatorId: `cool${i}`, score: 40 - i }));
+  }
+  const db = createFeedDb(reels, { "users/alice": {} });
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "forYou", limit: 10 },
+  });
+  assert.equal(page.items.length, 10, "diversity must defer, never truncate");
+});
+
+test("Trending also caps one creator, because §15.10 lists creator diversity", async () => {
+  // The cap is `maxPerCreator: 2`, so three hot Reels are needed to show it.
+  const reels = [
+    reel("a", { creatorId: "hot", publishedAt: 5, qualifiedViewsCount: 40 }),
+    reel("b", { creatorId: "hot", publishedAt: 4, qualifiedViewsCount: 35 }),
+    reel("c", { creatorId: "hot", publishedAt: 3, qualifiedViewsCount: 30 }),
+    reel("d", { creatorId: "cold", publishedAt: 2, qualifiedViewsCount: 20 }),
+  ];
+  const db = createFeedDb(reels, { "users/alice": {} });
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending", limit: 4 },
+  });
+  const ids = page.items.map((item) => item.id);
+  assert.deepEqual(
+    ids,
+    ["a", "b", "d", "c"],
+    "the third Reel from one creator defers behind another creator",
+  );
+  assert.equal(page.items.length, 4, "deferred rows ship later, never dropped");
+});
+
+test("Trending is identical for different viewers", async () => {
+  // The caps must depend on the ranked order only. If Trending were reshaped by
+  // viewer state, the shared "now" page would disagree between users.
+  const reels = [
+    reel("a", { creatorId: "hot", publishedAt: 5, qualifiedViewsCount: 40 }),
+    reel("b", { creatorId: "hot", publishedAt: 4, qualifiedViewsCount: 30 }),
+    reel("c", { creatorId: "cold", publishedAt: 3, qualifiedViewsCount: 20 }),
+  ];
+  const db = createFeedDb(reels, {
+    "users/alice": {},
+    "users/bob": { favoriteAnimeIds: ["naruto"] },
+  });
+  const domain = feedDomain(db);
+  const alice = await domain.getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "trending", limit: 3 },
+  });
+  const bob = await domain.getEditFeed({
+    auth: { uid: "bob" },
+    data: { feedType: "trending", limit: 3 },
+  });
+  assert.deepEqual(
+    alice.items.map((item) => item.id),
+    bob.items.map((item) => item.id),
+  );
+});
+
+test("For You reserves some slots for exploration", async () => {
+  // §15.9 "استغلال 70–90% + استكشاف 10–30%". `mixExploration` existed and was
+  // used by the discovery surface, but the Reels feed shipped pure exploitation:
+  // every slot went to the top-ranked Reel, so nothing new could ever surface.
+  const reels = [];
+  for (let i = 0; i < 10; i += 1) {
+    reels.push(reel(`top${i}`, {
+      creatorId: `top${i}`,
+      animeId: `a${i}`,
+      score: 1000 - i,
+    }));
+  }
+  for (let i = 0; i < 10; i += 1) {
+    reels.push(reel(`tail${i}`, {
+      creatorId: `tail${i}`,
+      animeId: `b${i}`,
+      score: 5 - i,
+    }));
+  }
+  const db = createFeedDb(reels, { "users/alice": {} });
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "forYou", limit: 10 },
+  });
+  const ids = page.items.map((item) => item.id);
+  const explored = ids.filter((id) => id.startsWith("tail")).length;
+  assert.ok(
+    explored >= 1,
+    `pure exploitation served zero exploration slots: ${JSON.stringify(ids)}`,
+  );
+});
+
+test("already-watched Reels are pushed down in For You", async () => {
+  // §15.9 behavioural signals include repeat viewing. `scoreEdit` has carried a
+  // repetition penalty all along, but the feed handed it an empty `seenIds` set,
+  // so the penalty could never fire and the viewer was re-served the same Reels
+  // they had just watched.
+  const reels = [
+    reel("seen", { creatorId: "a", animeId: "x", score: 100 }),
+    reel("fresh", { creatorId: "b", animeId: "y", score: 90 }),
+  ];
+  const db = createFeedDb(reels, {
+    "users/alice": {},
+    "edits/seen/viewers/alice": { viewerId: "alice", lastPercent: 80 },
+  });
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { feedType: "forYou", limit: 2 },
+  });
+  assert.deepEqual(
+    page.items.map((item) => item.id),
+    ["fresh", "seen"],
+    "a higher-scoring already-watched Reel must rank below a fresh one",
+  );
+});
+
+test("seen history is read per viewer, not shared", async () => {
+  // Alice's watch history must not suppress a Reel for Bob.
+  const reels = [
+    reel("seen", { creatorId: "a", animeId: "x", score: 100 }),
+    reel("fresh", { creatorId: "b", animeId: "y", score: 90 }),
+  ];
+  const db = createFeedDb(reels, {
+    "users/alice": {},
+    "users/bob": {},
+    "edits/seen/viewers/alice": { viewerId: "alice", lastPercent: 80 },
+  });
+  const domain = feedDomain(db);
+  const bob = await domain.getEditFeed({
+    auth: { uid: "bob" },
+    data: { feedType: "forYou", limit: 2 },
+  });
+  assert.deepEqual(
+    bob.items.map((item) => item.id),
+    ["seen", "fresh"],
+    "Bob has never seen it, so the higher score must win for him",
+  );
+});
