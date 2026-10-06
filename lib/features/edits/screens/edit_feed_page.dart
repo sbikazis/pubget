@@ -470,11 +470,22 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
       final controller = await createStorageVideoController(
         widget.edit.videoUrl,
       );
+      // A mid-initialize swipe can dispose this cell before initialization
+      // completes. The guard must run *after* each await.
+      if (!mounted || !widget.active && !widget.prefetch) {
+        await controller.dispose();
+        return;
+      }
       await controller.initialize();
+      if (!mounted || !widget.active && !widget.prefetch) {
+        await controller.dispose();
+        return;
+      }
       // TikTok / IG Reels style seamless loop while visible.
       await controller.setLooping(true);
       controller.addListener(_trackProgress);
-      if (!mounted) {
+      if (!mounted || !widget.active && !widget.prefetch) {
+        controller.removeListener(_trackProgress);
         await controller.dispose();
         return;
       }
@@ -544,7 +555,9 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
       _lastReportedSecond = second;
       _sendView();
     }
-    if (mounted) setState(() {});
+    // Do NOT rebuild the entire cell per frame. The scrubber reads the
+    // controller directly; rebuilding 7 animated buttons at video framerate was
+    // a self-inflicted performance bug.
   }
 
   void _sendView({bool force = false}) {
