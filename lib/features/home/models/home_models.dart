@@ -12,11 +12,37 @@ enum HomeSectionKind {
   recommendedGroups,
   communityActivity,
   recommendedPeople,
+  animeOfTheWeek,
+  popularCharacters,
+  risingCreators,
+  friendsActivity,
+  freshestContent,
   editsPlaceholder,
   eventsPlaceholder,
   gamesPlaceholder,
   fanWorksPlaceholder,
   animePlaceholder,
+}
+
+/// Section keys used by the `getHomeSections` callable.
+///
+/// These strings are the wire contract with `functions/src/homeSectionsDomain.js`,
+/// so they are declared once here instead of being repeated as literals.
+abstract final class HomeSectionKeys {
+  static const animeOfTheWeek = 'animeOfTheWeek';
+  static const popularCharacters = 'popularCharacters';
+  static const risingCreators = 'risingCreators';
+  static const friendsActivity = 'friendsActivity';
+  static const freshestContent = 'freshestContent';
+
+  /// Every section the callable can return, in the order Home renders them.
+  static const all = <String>[
+    animeOfTheWeek,
+    popularCharacters,
+    risingCreators,
+    friendsActivity,
+    freshestContent,
+  ];
 }
 
 final class DiscoverySearchResults {
@@ -48,6 +74,45 @@ final class DiscoverySearchResults {
       reels.isEmpty;
 }
 
+/// A ranked row from `getHomeSections`, described by its type rather than a
+/// per-section model.
+///
+/// The server already returns a normalised shape for these sections, so the
+/// client keeps them as rows and renders them through the section widget. That
+/// avoids five near-identical models that would each drift from the callable.
+final class HomeRankedItem {
+  const HomeRankedItem({
+    required this.id,
+    required this.type,
+    required this.reason,
+    required this.title,
+    required this.score,
+    this.targetId,
+    this.metadata = const <String, dynamic>{},
+  });
+
+  final String id;
+  final String type;
+  final String reason;
+  final String title;
+  final num score;
+  final String? targetId;
+  final Map<String, dynamic> metadata;
+
+  factory HomeRankedItem.fromItem(DiscoveryItem item) {
+    final label = item.title?.trim();
+    return HomeRankedItem(
+      id: item.id,
+      type: item.type,
+      reason: item.reason ?? '',
+      title: label != null && label.isNotEmpty ? label : item.targetId,
+      score: item.score,
+      targetId: item.targetId.isEmpty ? null : item.targetId,
+      metadata: item.metadata,
+    );
+  }
+}
+
 final class DiscoveryItem {
   const DiscoveryItem({
     required this.id,
@@ -55,6 +120,8 @@ final class DiscoveryItem {
     required this.targetId,
     this.source = 'ranking',
     this.score = 0,
+    this.title,
+    this.reason,
     this.createdAt,
     this.metadata = const <String, dynamic>{},
   });
@@ -64,6 +131,14 @@ final class DiscoveryItem {
   final String targetId;
   final String source;
   final num score;
+
+  /// Display label supplied by the server when it has one.
+  final String? title;
+
+  /// Why the server put this row here, e.g. `this_week`, `community`,
+  /// `rising`, `social`, `recency`. Null when the section did not justify
+  /// itself, in which case the UI must not invent a reason.
+  final String? reason;
   final DateTime? createdAt;
   final Map<String, dynamic> metadata;
 
@@ -74,7 +149,11 @@ final class DiscoveryItem {
       targetId: map['targetId'] as String? ?? '',
       source: map['source'] as String? ?? 'ranking',
       score: map['score'] as num? ?? 0,
-      createdAt: map['createdAt'] is DateTime ? map['createdAt'] as DateTime : null,
+      title: map['title'] as String?,
+      reason: map['reason'] as String?,
+      createdAt: map['createdAt'] is DateTime
+          ? map['createdAt'] as DateTime
+          : null,
       metadata: map['metadata'] is Map
           ? Map<String, dynamic>.from(map['metadata'] as Map)
           : const <String, dynamic>{},

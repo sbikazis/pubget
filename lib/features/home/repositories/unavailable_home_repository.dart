@@ -43,6 +43,12 @@ final class UnavailableHomeRepository implements HomeRepository {
   }) async => _failure();
 
   @override
+  Future<Result<Map<String, DiscoverySectionPage>>> getHomeSections({
+    String? section,
+    int limit = 8,
+  }) async => _failure();
+
+  @override
   Future<Result<DiscoverySearchResults>> search(String query) async =>
       _failure();
 

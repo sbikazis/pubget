@@ -50,6 +50,7 @@ const { createFanWorksDomain } = require("./src/fanWorksDomain");
 const { createFanWorksSigner } = require("./src/fanWorksStorage");
 const { createEconomyDomain } = require("./src/economyDomain");
 const { createAchievementsDomain } = require("./src/achievementsDomain");
+const { createHomeSections } = require("./src/homeSectionsDomain");
 const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
 
 initializeApp();
@@ -258,6 +259,18 @@ exports.refreshGroupActivityScores = onSchedule(
 exports.getDiscoveryFeed = onCall(
   { region: "us-central1" },
   recommendationEngine.getDiscoveryFeed,
+);
+// Home sections that Master Spec 5.3 requires but that getDiscoveryFeed could
+// not honestly serve (anime of the week, popular characters, friends' activity,
+// rising creators, freshest content). Each returns only real signals: an empty
+// list is the correct answer when there is no signal, never filler.
+const homeSectionsDomain = createHomeSections({
+  db: getFirestore(),
+  HttpsError,
+});
+exports.getHomeSections = onCall(
+  { region: "us-central1" },
+  homeSectionsDomain.getHomeSections,
 );
 exports.setAnimeListEntry = onCall(
   { region: "us-central1" },

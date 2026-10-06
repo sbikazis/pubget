@@ -17,6 +17,7 @@ final class HomeSectionState {
     required this.state,
     this.groups = const <Group>[],
     this.people = const <PublicProfile>[],
+    this.items = const <DiscoveryItem>[],
     this.failure,
     this.hasMore = true,
   });
@@ -25,15 +26,20 @@ final class HomeSectionState {
   final LoadingState state;
   final List<Group> groups;
   final List<PublicProfile> people;
+
+  /// Ranked rows for the sections served by `getHomeSections`.
+  final List<DiscoveryItem> items;
   final Failure? failure;
   final bool hasMore;
 
-  bool get hasContent => groups.isNotEmpty || people.isNotEmpty;
+  bool get hasContent =>
+      groups.isNotEmpty || people.isNotEmpty || items.isNotEmpty;
 
   HomeSectionState copyWith({
     LoadingState? state,
     List<Group>? groups,
     List<PublicProfile>? people,
+    List<DiscoveryItem>? items,
     Failure? failure,
     bool clearFailure = false,
     bool? hasMore,
@@ -42,6 +48,7 @@ final class HomeSectionState {
     state: state ?? this.state,
     groups: groups ?? this.groups,
     people: people ?? this.people,
+    items: items ?? this.items,
     failure: clearFailure ? null : failure ?? this.failure,
     hasMore: hasMore ?? this.hasMore,
   );
@@ -63,6 +70,11 @@ final class HomeProvider extends ChangeNotifier {
     HomeSectionKind.recommendedGroups,
     HomeSectionKind.communityActivity,
     HomeSectionKind.recommendedPeople,
+    HomeSectionKind.animeOfTheWeek,
+    HomeSectionKind.popularCharacters,
+    HomeSectionKind.risingCreators,
+    HomeSectionKind.friendsActivity,
+    HomeSectionKind.freshestContent,
     HomeSectionKind.editsPlaceholder,
     HomeSectionKind.eventsPlaceholder,
     HomeSectionKind.gamesPlaceholder,
@@ -70,11 +82,26 @@ final class HomeProvider extends ChangeNotifier {
     HomeSectionKind.animePlaceholder,
   ];
 
+  /// Maps each ranked Home section onto the callable key that serves it.
+  static const _callableSections = <HomeSectionKind, String>{
+    HomeSectionKind.animeOfTheWeek: HomeSectionKeys.animeOfTheWeek,
+    HomeSectionKind.popularCharacters: HomeSectionKeys.popularCharacters,
+    HomeSectionKind.risingCreators: HomeSectionKeys.risingCreators,
+    HomeSectionKind.friendsActivity: HomeSectionKeys.friendsActivity,
+    HomeSectionKind.freshestContent: HomeSectionKeys.freshestContent,
+  };
+
   final HomeRepository _repository;
   final Analytics? _analytics;
   late Map<HomeSectionKind, HomeSectionState> _sections;
   DiscoveryFeed _feed = const DiscoveryFeed();
   String? _userId;
+
+  /// §5.2.3 rotation seed, redrawn on every [load].
+  int _rotationSeed = 0;
+
+  /// The seed Home shuffles its non-fixed sections with.
+  int get rotationSeed => _rotationSeed;
   bool _disposed = false;
   static const _pageSize = 8;
 
@@ -120,8 +147,12 @@ final class HomeProvider extends ChangeNotifier {
 
   void load(String userId) {
     _userId = userId;
+    // §5.2.3 rotates the sections after the two fixed ones once per visit, so a
+    // new seed is drawn on every Home load.
+    _rotationSeed = DateTime.now().microsecondsSinceEpoch;
     _analytics?.logEvent('home_impression');
     unawaited(_prefetchFeed());
+    unawaited(_loadHomeSections());
     ensureLoaded(HomeSectionKind.promotedGroups);
   }
 
@@ -129,9 +160,79 @@ final class HomeProvider extends ChangeNotifier {
     unawaited(_prefetchFeed(refresh: true));
     final loaded = _sectionOrder.where(
       (kind) =>
-          !_isPlaceholder(kind) && section(kind).state != LoadingState.initial,
+          !_isPlaceholder(kind) &&
+          !_callableSections.containsKey(kind) &&
+          section(kind).state != LoadingState.initial,
     );
-    await Future.wait(loaded.map((kind) => _loadSection(kind, refresh: true)));
+    // The ranked sections come from one callable, so they refresh as one unit
+    // rather than showing five independent spinners.
+    await Future.wait(<Future<void>>[
+      _loadHomeSections(refresh: true),
+      ...loaded.map((kind) => _loadSection(kind, refresh: true)),
+    ]);
+  }
+
+  /// Loads every ranked section in one callable round-trip.
+  ///
+  /// These sections come from a single server response, so they are refreshed
+  /// together rather than section by section: firing five callables would show
+  /// five independent spinners for one coherent piece of data.
+  Future<void> _loadHomeSections({bool refresh = false}) async {
+    final kinds = _callableSections.keys.toList(growable: false);
+    for (final kind in kinds) {
+      // A refresh must not blank rows the user is already reading, so the
+      // section keeps its content and only its spinner state changes.
+      final next = refresh && section(kind).hasContent
+          ? LoadingState.refreshing
+          : LoadingState.loading;
+      if (section(kind).state != next) {
+        _sections[kind] = section(
+          kind,
+        ).copyWith(state: next, clearFailure: true);
+      }
+    }
+    _safeNotify();
+
+    final result = await _repository.getHomeSections(limit: _pageSize);
+    if (_disposed || _userId == null) return;
+
+    result.fold(
+      onSuccess: (pages) {
+        for (final entry in _callableSections.entries) {
+          final page = pages[entry.value] ?? const DiscoverySectionPage();
+          _sections[entry.key] = section(entry.key).copyWith(
+            state: page.items.isEmpty
+                ? LoadingState.empty
+                : LoadingState.loaded,
+            items: page.items,
+            clearFailure: true,
+            hasMore: false,
+          );
+        }
+        _analytics?.logEvent(
+          'home_ranked_sections_loaded',
+          parameters: {
+            'sections': _callableSections.length,
+            'nonEmpty': _callableSections.entries
+                .where((entry) => section(entry.key).items.isNotEmpty)
+                .length,
+          },
+        );
+      },
+      onFailure: (failure) {
+        for (final kind in kinds) {
+          // Content that already loaded stays visible; only an empty section
+          // degrades to an error, so a refresh failure does not wipe the page.
+          _sections[kind] = section(kind).copyWith(
+            state: section(kind).hasContent
+                ? LoadingState.offline
+                : LoadingState.error,
+            failure: failure,
+          );
+        }
+      },
+    );
+    _safeNotify();
   }
 
   void ensureLoaded(HomeSectionKind kind) {
@@ -140,11 +241,22 @@ final class HomeProvider extends ChangeNotifier {
         section(kind).state != LoadingState.initial) {
       return;
     }
+    // The ranked sections are already served by the single Home callable, so
+    // they must not also be fetched one at a time or the two paths would
+    // overwrite each other.
+    if (_callableSections.containsKey(kind)) {
+      unawaited(_loadHomeSections());
+      return;
+    }
     unawaited(_loadSection(kind, refresh: false));
   }
 
   Future<void> retrySection(HomeSectionKind kind) async {
     if (_userId == null || _isPlaceholder(kind)) return;
+    if (_callableSections.containsKey(kind)) {
+      await _loadHomeSections();
+      return;
+    }
     await _loadSection(kind, refresh: true);
   }
 

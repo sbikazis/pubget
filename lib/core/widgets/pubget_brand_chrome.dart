@@ -68,6 +68,104 @@ class PubgetLuxurySettingsButton extends StatelessWidget {
   }
 }
 
+/// Search control. Required in the Home top bar by Master Spec §4.1.
+class PubgetLuxurySearchButton extends StatelessWidget {
+  const PubgetLuxurySearchButton({
+    required this.tooltip,
+    required this.onPressed,
+    this.size = 42,
+    super.key,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return PubgetTooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        child: InkWell(
+          key: const Key('home-search'),
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: Ink(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: scheme.surfaceContainerHighest,
+              border: Border.all(color: scheme.outlineVariant),
+            ),
+            child: Icon(
+              Icons.search_rounded,
+              size: size * 0.5,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dragon Store control. Required in the Home top bar by Master Spec §4.1 and
+/// distinct from the coin chip, which only shows a balance.
+class PubgetLuxuryStoreButton extends StatelessWidget {
+  const PubgetLuxuryStoreButton({
+    required this.tooltip,
+    required this.onPressed,
+    this.size = 42,
+    super.key,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return PubgetTooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        child: InkWell(
+          key: const Key('home-store'),
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: Ink(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[
+                  AppColors.goldLight,
+                  AppColors.gold,
+                  AppColors.goldDark,
+                ],
+              ),
+              border: Border.all(color: const Color(0xFFFFF6C8)),
+            ),
+            child: Icon(
+              Icons.storefront_rounded,
+              size: size * 0.5,
+              color: AppColors.royalNight,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Notifications control: one-off luxury gold faceted bell.
 class PubgetLuxuryNotifyButton extends StatelessWidget {
   const PubgetLuxuryNotifyButton({
@@ -429,6 +527,69 @@ class PubgetCoinPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+/// Compact create action for a screen's app bar or corner.
+///
+/// Master Spec §4.2 keeps the bottom bar at five destinations with no centre
+/// create button, so creation is offered per-screen instead of globally.
+class PubgetCreateFab extends StatelessWidget {
+  const PubgetCreateFab({
+    required this.tooltip,
+    required this.onPressed,
+    this.size = 56,
+    this.icon = Icons.add_rounded,
+    this.gradient,
+    super.key,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final double size;
+  final IconData icon;
+  final List<Color>? gradient;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          elevation: 8,
+          child: InkWell(
+            key: const Key('shell-create'),
+            onTap: onPressed,
+            customBorder: const CircleBorder(),
+            child: Ink(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors:
+                      gradient ??
+                      const <Color>[
+                        AppColors.goldPale,
+                        AppColors.gold,
+                        AppColors.royalPurple,
+                      ],
+                ),
+                border: Border.all(color: AppColors.goldPale, width: 2),
+              ),
+              child: SizedBox.square(
+                dimension: size,
+                child: Icon(icon, size: size * 0.5, color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class PubgetCenterCreateButton extends StatelessWidget {
   const PubgetCenterCreateButton({
     required this.tooltip,
@@ -445,7 +606,7 @@ class PubgetCenterCreateButton extends StatelessWidget {
       button: true,
       label: tooltip,
       child: GestureDetector(
-        key: const Key('shell-create'),
+        key: const Key('shell-create-center'),
         onTap: onPressed,
         child: Container(
           width: 62,

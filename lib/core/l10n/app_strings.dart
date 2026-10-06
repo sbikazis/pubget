@@ -285,6 +285,9 @@ final class AppStrings {
   String get seeAll => pick('See all', 'عرض الكل');
   String get loadMore => pick('Load more', 'تحميل المزيد');
   String get searchHint => pick('Search Pubget', 'ابحث في Pubget');
+
+  /// Tooltip/semantic label for the Home top-bar search control (§4.1).
+  String get search => pick('Search', 'بحث');
   String get communityFallback =>
       pick('A Pubget community', 'مجتمع على Pubget');
   String get pubgetUser => pick('Pubget user', 'مستخدم Pubget');
@@ -341,6 +344,63 @@ final class AppStrings {
       pick('This section could not load.', 'تعذّر تحميل هذا القسم.');
   String get tryAgainShort => pick('Please try again.', 'حاول مرة أخرى.');
   String get couldNotLoad => pick("Couldn't load this", 'تعذّر التحميل');
+  String get tryAgain => pick('Try again', 'حاول مرة أخرى');
+
+  /// Discovery failures. Kept beside the Home section titles because Home is
+  /// the only surface that renders a bare `Failure` with no screen-specific
+  /// copy of its own.
+  String get discoveryOffline => pick(
+    'Check your connection and try again.',
+    'تحقّق من اتصالك وحاول مرة أخرى.',
+  );
+  String get discoverySignInRequired =>
+      pick('Sign in to load discovery.', 'سجّل الدخول لعرض هذا المحتوى.');
+  String get discoveryUnavailable =>
+      pick('Discovery could not load.', 'تعذّر تحميل هذا المحتوى.');
+
+  /// Shown over content that is real but not personalised — the ranked signal
+  /// is unavailable, so the section must not claim a recommendation reason
+  /// (spec §5.4).
+  String get notPersonalisedYet =>
+      pick('Still getting to know you', 'نتحسّن معرفتنا بك');
+  String get notPersonalisedHint => pick(
+    'Follow groups and watch Reels to get suggestions tuned to you.',
+    'تابع المجموعات وشاهد الريلز ليصلك اقتراح مضبوط على ذوقك.',
+  );
+  String get offlineShowingSaved => pick(
+    'Offline — showing saved content',
+    'غير متصل — نعرض المحتوى المحفوظ',
+  );
+  String get loadingNow => pick('Loading', 'جارٍ التحميل');
+  String get newContentAppearsLater => pick(
+    'New content will appear here when it is available.',
+    'سيظهر محتوى جديد هنا عند توفره.',
+  );
+
+  /// Titles for the ranked Home sections served by `getHomeSections`. They
+  /// describe what the section actually measures; none of them claim a
+  /// personal recommendation the server did not make (spec §5.4).
+  String get sectionAnimeOfTheWeek => pick('Anime of the week', 'أنمي الأسبوع');
+  String get sectionPopularCharacters =>
+      pick('Popular characters', 'الشخصيات الشائعة');
+  String get sectionRisingCreators => pick('Rising creators', 'صنّاع صاعدون');
+  String get sectionFriendsActivity =>
+      pick("Friends' activity", 'نشاط أصدقائك');
+  String get sectionFreshestContent => pick('Freshest content', 'أحدث المحتوى');
+  String get sectionAchievements => pick('Achievements', 'الإنجازات');
+
+  /// Reason labels shown on ranked cards. Each one mirrors a `reason` value the
+  /// server can actually send, so a card never claims a reason it lacks.
+  String get reasonThisWeek =>
+      pick('Most rated this week', 'الأكثر تقييماً هذا الأسبوع');
+  String get reasonCommunity =>
+      pick('Active in the community', 'نشط في المجتمع');
+  String get reasonFavourites =>
+      pick('Favourited by members', 'مفضّل لدى الأعضاء');
+  String get reasonRisingCreator =>
+      pick('Publishing consistently', 'ينشر بانتظام');
+  String get reasonFriends => pick('From someone you follow', 'من شخص تتابعه');
+  String get reasonFresh => pick('Recently published', 'نُشر حديثاً');
 
   String get groupsTitle => pick('My Groups', 'مجموعاتي');
   String get joinedTitle => pick('Joined', 'المنضم إليها');

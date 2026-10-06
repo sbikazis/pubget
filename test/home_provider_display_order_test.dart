@@ -65,6 +65,12 @@ final class _OrderRepository implements HomeRepository {
       const Success(DiscoverySearchResults());
 
   @override
+  Future<Result<Map<String, DiscoverySectionPage>>> getHomeSections({
+    String? section,
+    int limit = 8,
+  }) async => const Success(<String, DiscoverySectionPage>{});
+
+  @override
   Future<Result<DiscoveryFeed>> getDiscoveryFeed({
     String? section,
     String? cursor,

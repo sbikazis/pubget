@@ -82,6 +82,12 @@ class _AnimeFavoriteCharactersPageState
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
         title: Text(copy.favoriteCharactersTitle),
+        actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            onPressed: () {},
+          ),
+        ],
       ),
       drawer: AnimeHubDrawer(current: '/anime/characters/favorites'),
       body: AnimeHubBackdrop(
