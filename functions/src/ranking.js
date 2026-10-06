@@ -162,8 +162,16 @@ function editEngagement(edit) {
  * and left the ordering to an arbitrary tie-break.
  */
 function scoreReelTrending(edit, now) {
-  const ageMs = Math.max(60 * 1000, now - toDate(edit.createdAt).getTime());
+  const createdAt = toDate(edit.createdAt).getTime();
+  const ageMs = Math.max(60 * 1000, now - createdAt);
+  // §15.10 — velocity must be computed over a moving time window. Using
+  // lifetime age with a 60s floor punished older Reels with solid engagement
+  // while elevating brand-new ones with a single like. The window keeps the
+  // algorithm honest: "what's happening now", not "what was forever".
+  const windowMs = 6 * 60 * 60 * 1000; // 6 hours
+  const windowHours = windowMs / (60 * 60 * 1000);
   const ageHours = ageMs / (60 * 60 * 1000);
+  const denominatorHours = Math.min(ageHours, windowHours);
   const qualified = Number(edit.qualifiedViewsCount) || 0;
   const likes = Number(edit.likesCount) || 0;
   const comments = Number(edit.commentsCount) || 0;
@@ -178,13 +186,13 @@ function scoreReelTrending(edit, now) {
     shares * 3;
 
   // No engagement evidence at all cannot be trending, whatever the metadata.
-  if (qualified <= 0 && weighted <= 0) return 0;
+  if (qualified < 2 && weighted < 2) return 0;
+  if (denominatorHours <= 0) return 0;
 
-  // Divide by age *before* compressing. log1p(weighted)/ageHours inverts real
-  // velocity: log1p flattens large counts while the small divisor inflates
-  // them, so a 1-like Reel an hour old outranked a 500-like Reel 12h old.
-  const engagementVelocity = Math.log1p(weighted / ageHours);
-  const viewVelocity = Math.log1p(qualified / ageHours);
+  // Divide by the windowed denominator so velocity decays past the window
+  // rather than decreasing with absolute age forever.
+  const engagementVelocity = Math.log1p(weighted / denominatorHours);
+  const viewVelocity = Math.log1p(qualified / denominatorHours);
   // Log-compressed rather than capped, so 5k qualified views still outrank
   // 500 instead of both saturating on the same evidence bonus.
   const evidence = Math.log1p(qualified / 10);
