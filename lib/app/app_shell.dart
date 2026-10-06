@@ -18,12 +18,18 @@ import 'app_shell_drawer.dart';
 import 'app_shell_scope.dart';
 import 'app_shell_tab.dart';
 
-/// Persistent shell. Bottom destinations are Explore / Groups / + / Private /
-/// Clips. Joined stays reachable from the drawer and keeps its stack slot.
+/// Persistent shell.
+///
+/// Master Spec §4.2 fixes the bottom bar at five destinations — Discover /
+/// My Groups / Joined / Private / Edits — and deliberately has **no** centre
+/// create button. Creation stays reachable from the FAB inside the screens
+/// that own it (groups, events, fan works) and from the drawer, so the bar
+/// itself is never a launchpad for unrelated flows.
 class AppShell extends StatefulWidget {
   const AppShell({super.key, this.pages});
 
   /// Production pages when null. Tests may inject five lightweight children.
+  /// The order must match [AppShellTab].
   final List<Widget>? pages;
 
   @override
@@ -84,6 +90,12 @@ class _AppShellState extends State<AppShell> {
         key: _scaffoldKey,
         drawer: const AppShellDrawer(),
         body: IndexedStack(index: tab.index, children: pages),
+        // Creation stays reachable without occupying a slot in the fixed
+        // five-tab bar (Master Spec §4.2).
+        floatingActionButton: PubgetCreateFab(
+          tooltip: copy.createNew,
+          onPressed: () => AppShellCreateSheet.show(context),
+        ),
         bottomNavigationBar: Material(
           color: Theme.of(context).colorScheme.surface,
           elevation: 8,
@@ -109,13 +121,14 @@ class _AppShellState extends State<AppShell> {
                     badge: unread.groups,
                     onTap: () => _go(path, AppShellTab.groups),
                   ),
-                  Expanded(
-                    child: Center(
-                      child: PubgetCenterCreateButton(
-                        tooltip: copy.createNew,
-                        onPressed: () => AppShellCreateSheet.show(context),
-                      ),
-                    ),
+                  _TabButton(
+                    tabKey: const Key('shell-tab-joined'),
+                    selected: tab == AppShellTab.joined,
+                    icon: Icons.group_add_outlined,
+                    selectedIcon: Icons.group_add,
+                    label: copy.tabJoined,
+                    badge: unread.groups,
+                    onTap: () => _go(path, AppShellTab.joined),
                   ),
                   _TabButton(
                     tabKey: const Key('shell-tab-private'),

@@ -223,6 +223,33 @@ final class FirebaseHomeRepository implements HomeRepository {
   }
 
   @override
+  Future<Result<Map<String, DiscoverySectionPage>>> getHomeSections({
+    String? section,
+    int limit = 8,
+  }) async {
+    try {
+      final result = await _functions.httpsCallable('getHomeSections').call(
+        <String, dynamic>{'section': ?section, 'limit': limit},
+      );
+      final raw = result.data;
+      if (raw is! Map) {
+        return const Success(<String, DiscoverySectionPage>{});
+      }
+      final sections = <String, DiscoverySectionPage>{};
+      for (final entry in raw.entries) {
+        final value = entry.value;
+        if (value is! Map) continue;
+        sections[entry.key.toString()] = DiscoverySectionPage.fromMap(
+          Map<String, dynamic>.from(value),
+        );
+      }
+      return Success(sections);
+    } on Object catch (error) {
+      return FailureResult(discoveryFailureFrom(error));
+    }
+  }
+
+  @override
   Future<Result<DiscoverySearchResults>> search(String query) async {
     final normalized = SearchQuery.prefix(query);
     if (normalized.length < SearchQuery.minLength) {
@@ -316,9 +343,7 @@ final class FirebaseHomeRepository implements HomeRepository {
             (character) => character.characterId,
           ),
           reels: _uniqueBy(
-            reels.docs.map(
-              (doc) => Edit.fromMap(doc.data(), id: doc.id),
-            ),
+            reels.docs.map((doc) => Edit.fromMap(doc.data(), id: doc.id)),
             (edit) => edit.id,
           ),
         ),

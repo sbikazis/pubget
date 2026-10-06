@@ -561,3 +561,79 @@ Passing today — protect explicitly:
 **Blocking items for HOME-01+:** C1 and C2 require an owner ruling before any navigation work. C3 requires a copy-policy ruling before the recommended/people sections are redesigned.
 
 Per the operating prompt's own gate, nothing in this report may be reported as "working" on the basis of code existing — only the items in §20 marked PASS were executed and verified.
+---
+
+## 21. IMPLEMENTATION ADDENDUM (HOME-01, same branch)
+
+This addendum records what was built against the findings above. It does not
+replace §20; where the two disagree, §20 describes the pre-fix state and this
+section describes the state at the end of the branch.
+
+### 21.1 Resolved
+
+| Finding | Resolution |
+|---|---|
+| §5.3 missing five sections | `getHomeSections` callable serves anime-of-the-week, popular characters, rising creators, friends' activity, freshest content. Wired through `HomeRankedSection`. |
+| §5.2 ordering | Promoted Groups is pinned first and personalized edits second (`FeedType.forYou`, real per-user ranking). `_rotatedSections` shuffles everything after them once per visit using `HomeProvider.rotationSeed`. |
+| §5.2.3 rotation absent | `lib/features/home/section_rotation.dart`. Seeded, so one build yields one stable order and rows never reshuffle under a finger. |
+| Fabricated edits on Home | `_editsForHome` deleted. Home now shows only real `EditsProvider` items, and an honest empty state otherwise. |
+| §5.4 false reason | Reasons are server-supplied and rendered verbatim; an unknown or absent reason renders no label at all. |
+| §1.4 English in Arabic errors | All Home failure copy routes through `discoveryFailureMessage`. Covered by `discovery_error_mapping_test.dart`. |
+| §4.1 top bar order | Logo ← coins `(+)` ← store ← search ← notifications ← profile ← menu, pinned by `home_app_bar_order_test.dart`. |
+| §4.1 forced LTR / overflow | Row order follows `Directionality`, not a forced LTR. Below 380 px the bar scales to 32 px icons and a 48 px logo with no overflow. |
+| §2.1 offline/stale ignored | A failed refresh keeps loaded rows and marks the section stale with `PubgetStaleBanner`; a refresh sets `refreshing` without blanking content. |
+| Section refresh was partial | `refresh()` now reloads the ranked sections as one unit. |
+| Ranked sections double-loaded | `ensureLoaded` and `refresh` no longer route callable-backed sections through the legacy per-section fetch, which was overwriting the callable result with an empty page. |
+
+### 21.2 Correctness issues found and fixed during implementation
+
+These were defects in the first cut of this branch, caught by writing tests
+against the real Firestore schema rather than against the code's own assumptions:
+
+- **Anime of the week could never populate.** It read `weeklyRatingCount` and
+  `lastRatedAt` from `animeCatalog`, but no code in the repository writes either
+  field. The section would have shipped permanently empty. It now counts real
+  published `edits` created in the last seven days per `animeId`, and falls back
+  to `anime_stats.updatedAt` (moved by every rating transaction) when nothing
+  was published. Covered by four tests, including one that proves edits older
+  than the window are excluded.
+- **Popular characters silently reported zero favourites.** It counted favourites
+  with `collectionGroup("character_favorites")`, which needs a collection-group
+  index that does not exist in `firestore.indexes.json`. The `.catch()` turned
+  that failure into "every character has zero favourites" and ranked the section
+  on a signal that does not exist. It now reads `character_stats.favoritesCount`,
+  which `animeListsDomain` maintains transactionally.
+- **`discussionCount` is written by nothing.** The section now treats it as
+  optional and drops any character with neither signal, instead of ranking on a
+  permanently zero field.
+
+### 21.3 Verification
+
+| Gate | Result |
+|---|---|
+| `flutter analyze --no-pub` | **PASS** — no issues |
+| Backend `npm run check` | **PASS** |
+| Backend `npm test` | **PASS** — 496/496 |
+| `functions/test/homeSections.test.js` | **PASS** — 27/27 |
+| `home_ranked_sections_test.dart` | **PASS** — 8/8 |
+| `home_section_rotation_test.dart` | **PASS** — 5/5 |
+| `home_app_bar_order_test.dart` | **PASS** — 5/5 (LTR + RTL, 320/360/412 px) |
+| `discovery_error_mapping_test.dart` | **PASS** — +7 |
+| Related Home/shell suites | **PASS** |
+| Full `flutter test` | **PASS** — 830 tests across all 132 files, run in 4 batches (a single full run exceeds the 900 s tool timeout) |
+| `flutter build apk --debug` | **PASS** — `build/app/outputs/flutter-apk/app-debug.apk` |
+| Firebase emulator rules/indexes | **NOT VERIFIED** — `getHomeSections` has not been run against the emulator |
+| Home visual QA (ar/en, light/dark, multiple widths) | **NOT VERIFIED** — no device attached |
+| `getHomeSections` deployed | **NOT VERIFIED** |
+
+### 21.4 Still open
+
+- C1/C2 (five-tab shell and `/edits` vs `/reels` deep links) and C3 (copy policy
+  for the recommended/people sections) still need an owner ruling.
+- See-more is shown only where a real listing page exists: anime of the week and
+  popular characters. Rising creators, friends' activity and freshest content
+  have no listing route yet, so they render without the action rather than
+  linking somewhere unrelated.
+- Firestore index and rule coverage for the new queries is unverified against
+  the emulator.
+- No Arabic/English, light/dark, device-width visual pass has been done.

@@ -120,6 +120,29 @@ final class AchievementItem {
   List<AchievementConditionProgress> get effectiveConditions =>
       conditions.isNotEmpty ? conditions : definition.conditions;
 
+  /// Progress towards unlocking, clamped to 0..1.
+  ///
+  /// Derived from the conditions the server sent rather than a single
+  /// `currentValue / targetValue`, because most achievements are gated on
+  /// several independent requirements and the item-level pair does not
+  /// represent them. The minimum is used because a gated achievement is as
+  /// complete as its least-complete requirement. Returns 0 when the target is
+  /// unknown so an unmeasurable achievement never claims progress.
+  double get progressRatio {
+    if (unlocked) return 1;
+    final steps = effectiveConditions;
+    if (steps.isEmpty) {
+      if (targetValue <= 0) return 0;
+      return (currentValue / targetValue).clamp(0.0, 1.0);
+    }
+    final ratios = steps
+        .where((step) => step.target > 0)
+        .map((step) => (step.current / step.target).clamp(0.0, 1.0))
+        .toList(growable: false);
+    if (ratios.isEmpty) return 0;
+    return ratios.reduce((a, b) => a < b ? a : b);
+  }
+
   AchievementItem copyWith({
     bool? unlocked,
     DateTime? unlockedAt,
