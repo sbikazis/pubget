@@ -278,4 +278,30 @@ final class _FakeEconomyRepository implements EconomyRepository {
 
   @override
   Future<Result<void>> claimReferral() async => const Success<void>(null);
-}
+
+  @override
+  Future<Result<PremiumEntitlement>> redeemPremiumCode(String code) async {
+    if (snapshot != null) {
+      final current = snapshot!;
+      snapshot = EconomySnapshot(
+        balance: current.balance,
+        premium: PremiumEntitlement(
+          userId: current.premium.userId,
+          status: PremiumStatus.active,
+          tier: 'premium',
+          adFree: true,
+          expiresAt: current.premium.expiresAt,
+          startedAt: current.premium.startedAt,
+          providerReference: current.premium.providerReference,
+          paymentConfigured: current.premium.paymentConfigured,
+        ),
+        catalog: current.catalog,
+        inventory: current.inventory,
+        equipped: current.equipped,
+      );
+    }
+    return Success(snapshot?.premium ?? const PremiumEntitlement(userId: 'user-1', status: PremiumStatus.active, adFree: true));
+  }
+
+  }
+

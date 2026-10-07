@@ -71,6 +71,15 @@ final class FirebaseEconomyRepository implements EconomyRepository {
   Future<Result<void>> claimReferral() =>
       _call('claimEconomyReward', {'source': 'referral'});
 
+  @override
+  Future<Result<PremiumEntitlement>> redeemPremiumCode(String code) =>
+      _guard(() async {
+        final result = await _functions
+            .httpsCallable('redeemPremiumCode')
+            .call({'code': code});
+        return PremiumEntitlement.fromMap(_map(result.data));
+      });
+
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
       _guard(() async {
         await _functions.httpsCallable(name).call(data);

@@ -1250,3 +1250,6 @@ const Map<String, String> _mafiaRolesAr = <String, String>{
   'doctor': 'الطبيب',
   'citizen': 'مواطن',
 };
+
+
+

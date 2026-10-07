@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/analytics/analytics.dart';
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../ads/ads_service.dart';
@@ -185,6 +186,17 @@ final class EconomyProvider extends ChangeNotifier {
     };
     final result = await _repository.unequipSlot(slot);
     if (result.isSuccess) await load(refresh: true);
+  }
+
+  Future<Result<PremiumEntitlement>> redeemPremiumCode(String code) async {
+    if (_network.isOffline) {
+      return FailureResult<PremiumEntitlement>(const NetworkError('Offline'));
+    }
+    final result = await _repository.redeemPremiumCode(code);
+    if (result.isSuccess) {
+      await load(refresh: true);
+    }
+    return result;
   }
 
   Future<void> restorePremium() async {
