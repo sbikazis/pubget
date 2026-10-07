@@ -920,10 +920,27 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
       isScrollControlled: true,
       builder: (context) => _CastSheet(
         entry: entry,
-        onPickPortrait: () => _pickImage(
-          role: FanWorkMediaRole.characterPortrait,
-          characterId: entry.id,
-        ),
+        onPickPortrait: (name, bio) async {
+          // The sheet's text lives in its own controllers and has not reached
+          // the draft yet, while the server matches the incoming portrait to a
+          // cast member by id. Folding it in first is what makes the ticket
+          // legal for a member added in this session.
+          editor.updateDraft(
+            editor.draft.copyWith(
+              characters: <FanWorkCharacter>[
+                for (final item in editor.draft.characters)
+                  if (item.id == entry.id)
+                    item.copyWith(name: name, bio: bio)
+                  else
+                    item,
+              ],
+            ),
+          );
+          await _pickImage(
+            role: FanWorkMediaRole.characterPortrait,
+            characterId: entry.id,
+          );
+        },
       ),
     );
     if (!mounted) return;
@@ -1166,7 +1183,12 @@ class _CastSheet extends StatefulWidget {
   /// as bytes, because a cast portrait is bound to a `characterId` and a
   /// `characterPortrait` role: the server mints the ticket against that slot, so
   /// the picker cannot be a plain `onPick` callback that returns a file.
-  final Future<void> Function() onPickPortrait;
+  ///
+  /// The sheet's unsaved name and bio travel with it so the caller can put
+  /// them in the draft first — the server drops a cast member with no name, so
+  /// a portrait picked before the first save would otherwise have nothing to
+  /// attach to.
+  final Future<void> Function(String name, String bio) onPickPortrait;
 
   @override
   State<_CastSheet> createState() => _CastSheetState();
@@ -1262,9 +1284,16 @@ class _CastSheetState extends State<_CastSheet> {
                   Expanded(
                     child: PubgetSecondaryButton(
                       key: const Key('fan-work-cast-portrait'),
-                      onPressed: editor.uploading
+                      // The server drops a cast member with no name, so a
+                      // portrait could not be attached to this entry yet.
+                      // Same gate the Save button uses.
+                      onPressed:
+                          editor.uploading || _name.text.trim().isEmpty
                           ? null
-                          : widget.onPickPortrait,
+                          : () => widget.onPickPortrait(
+                              _name.text.trim(),
+                              _bio.text.trim(),
+                            ),
                       semanticLabel: copy.characterPortrait,
                       child: Text(copy.characterPortrait),
                     ),

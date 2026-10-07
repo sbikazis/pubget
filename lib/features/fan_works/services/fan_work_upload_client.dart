@@ -44,6 +44,48 @@ final class FanWorkChunkAck {
   final bool complete;
 }
 
+/// The whole object for a one-shot signed `PUT`.
+///
+/// This is not a [FanWorkUploadChunk]: a signed URL has no session, so there
+/// is no `Content-Range` to send and no `308` to answer. What it does have is
+/// a signature over the headers the server chose, and those have to come back
+/// on the request verbatim.
+final class FanWorkUploadObject {
+  const FanWorkUploadObject({
+    required this.url,
+    required this.contentType,
+    required this.contentLengthRange,
+    required this.bytes,
+  });
+
+  final String url;
+  final String contentType;
+
+  /// The `x-goog-content-length-range` header the server signed into the URL
+  /// (`1,<maxBytes>` in `fanWorksStorage.js`). A signed header that is absent
+  /// from the request is a signature that does not match, so this must be
+  /// echoed exactly — which is why it travels with the ticket's `maxBytes`
+  /// rather than being invented here.
+  final String? contentLengthRange;
+
+  final Uint8List bytes;
+}
+
+/// Which wire protocol a ticket's `uploadUrl` speaks.
+///
+/// The server picks one when it mints the ticket: the document role gets a
+/// resumable session URI, every image role gets a bounded one-shot signed
+/// `PUT` (see `isDocumentRole` in `functions/src/fanWorksSchema.js`). The
+/// client has to answer with the matching request shape, because neither URL
+/// accepts the other's protocol.
+enum FanWorkUploadProtocol {
+  /// `Content-Range` slices, each answered with `308 Resume Incomplete`.
+  resumableSession,
+
+  /// One request carrying the whole object, signed headers, no ranges.
+  signedPut,
+}
+
 /// The one operation this client needs from the network, isolated so the
 /// chunking, progress, and cancellation logic can be tested without a socket.
 abstract interface class FanWorkUploadTransport {
@@ -51,6 +93,12 @@ abstract interface class FanWorkUploadTransport {
     FanWorkUploadChunk chunk, {
     Object? cancelKey,
   });
+
+  /// Sends an entire object to a one-shot signed `PUT` URL.
+  ///
+  /// Throws a [Failure] for any non-2xx status, so the caller never has to
+  /// interpret a status code itself.
+  Future<void> sendObject(FanWorkUploadObject object, {Object? cancelKey});
 }
 
 /// Default transport: a real `PUT` against the signed session URI.
@@ -92,6 +140,31 @@ final class HttpFanWorkUploadTransport implements FanWorkUploadTransport {
   }
 
   static const _timeout = Duration(minutes: 5);
+
+  @override
+  Future<void> sendObject(
+    FanWorkUploadObject object, {
+    Object? cancelKey,
+  }) async {
+    final request = http.Request('PUT', Uri.parse(object.url))
+      // The signature covers this header, so it has to be the exact MIME the
+      // server signed, not whatever the picker reported.
+      ..headers['Content-Type'] = object.contentType
+      ..bodyBytes = object.bytes;
+    final range = object.contentLengthRange;
+    if (range != null && range.isNotEmpty) {
+      request.headers['x-goog-content-length-range'] = range;
+    }
+    // Deliberately no `Content-Range`: that header belongs to the resumable
+    // protocol, and a signed URL is not a session.
+    final response = await _client.send(request).timeout(_timeout);
+    // Drain before judging, so the connection can be reused rather than left
+    // holding a body nobody reads.
+    await response.stream.drain<void>();
+    final status = response.statusCode;
+    if (status >= 200 && status < 300) return;
+    throw _failureFor(status, response.reasonPhrase);
+  }
 
   /// `"bytes=0-1023"` -> `1024`, the count of bytes the server holds.
   static int? _parseLastByte(String? range) {
@@ -157,6 +230,11 @@ final class FanWorkUploadClient {
 
   /// Uploads [bytes] to [sessionUrl].
   ///
+  /// [protocol] selects the wire shape: [FanWorkUploadProtocol.resumableSession]
+  /// for a session URI (a PDF), [FanWorkUploadProtocol.signedPut] for a
+  /// one-shot signed URL (an image). [maxBytes] is only read for the signed
+  /// PUT, where it rebuilds the length header the server signed into the URL.
+  ///
   /// Returns the number of bytes the server acknowledged. A cancelled upload
   /// reports a [CancelledError] and leaves the session resumable, so the editor
   /// can retry the same ticket instead of starting a second upload.
@@ -165,6 +243,8 @@ final class FanWorkUploadClient {
     required List<int> bytes,
     required String contentType,
     FanWorkUploadProgress? onProgress,
+    FanWorkUploadProtocol protocol = FanWorkUploadProtocol.resumableSession,
+    int maxBytes = 0,
   }) async {
     // Deliberately no `_cancelled = false` here: a cancel raised between the
     // caller starting an upload and the first chunk leaving (a widget torn down
@@ -176,6 +256,15 @@ final class FanWorkUploadClient {
     if (sessionUrl.isEmpty) {
       return const FailureResult(
         UnavailableError('The upload could not be prepared. Try again.'),
+      );
+    }
+    if (protocol == FanWorkUploadProtocol.signedPut) {
+      return _uploadSignedPut(
+        url: sessionUrl,
+        bytes: bytes,
+        contentType: contentType,
+        maxBytes: maxBytes,
+        onProgress: onProgress,
       );
     }
     final total = bytes.length;
@@ -225,6 +314,43 @@ final class FanWorkUploadClient {
       onProgress?.call((acknowledged / total).clamp(0.0, 1.0));
     }
 
+    onProgress?.call(1);
+    return Success(total);
+  }
+
+  /// The signed-PUT half of [upload]: one request, no ranges, no session.
+  ///
+  /// Everything that can fail is on that single request — a wrong header, an
+  /// expired signature, a body over the signed ceiling — so there is nothing
+  /// to resume and nothing to retry within this call. The editor retries by
+  /// re-PUTting the same ticket, which lands on the same object path.
+  Future<Result<int>> _uploadSignedPut({
+    required String url,
+    required List<int> bytes,
+    required String contentType,
+    required int maxBytes,
+    FanWorkUploadProgress? onProgress,
+  }) async {
+    final total = bytes.length;
+    onProgress?.call(0);
+    try {
+      await _transport.sendObject(
+        FanWorkUploadObject(
+          url: url,
+          contentType: contentType,
+          contentLengthRange: maxBytes > 0 ? '1,$maxBytes' : null,
+          bytes: Uint8List.fromList(bytes),
+        ),
+      );
+    } on Failure catch (failure) {
+      return FailureResult(failure);
+    } catch (_) {
+      return const FailureResult(NetworkError('The upload failed.'));
+    }
+    // The bytes may be there and the caller still asked to stop; reporting the
+    // cancel is what lets the editor offer a retry instead of confirming a
+    // file the user walked away from.
+    if (_cancelled) return const FailureResult(CancelledError());
     onProgress?.call(1);
     return Success(total);
   }

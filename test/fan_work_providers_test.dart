@@ -184,6 +184,59 @@ void main() {
     },
   );
 
+  test('a cast portrait saves the draft before the ticket is minted', () async {
+    final repository = _FakeFanWorkRepository();
+    final editor = FanWorkEditorProvider(repository: repository);
+    addTearDown(editor.dispose);
+    await editor.start();
+    editor.selectType(FanWorkType.manga);
+    // A cast member added on this device only reaches the server inside the
+    // draft, so the portrait ticket has to be asked for after the save.
+    editor.updateDraft(
+      editor.draft.copyWith(
+        characters: <FanWorkCharacter>[
+          const FanWorkCharacter(id: 'char-1', name: 'Nezuko'),
+        ],
+      ),
+    );
+
+    final result = await editor.uploadMedia(
+      bytes: <int>[1, 2, 3],
+      contentType: 'image/jpeg',
+      role: FanWorkMediaRole.characterPortrait,
+      characterId: 'char-1',
+    );
+
+    expect(result.isSuccess, isTrue);
+    expect(repository.lastUploadCharacterId, 'char-1');
+    expect(repository.ticketRequests, 1);
+    expect(
+      repository.calls,
+      containsAllInOrder(<String>['saveDraft', 'startMediaUpload']),
+    );
+    // The confirmed portrait lands back on the member it was picked for.
+    expect(editor.draft.characters.single.imagePath, isNotEmpty);
+  });
+
+  test('a draft that cannot be saved never asks for a ticket', () async {
+    final repository = _FakeFanWorkRepository()
+      ..saveFailure = const NetworkError('offline');
+    final editor = FanWorkEditorProvider(repository: repository);
+    addTearDown(editor.dispose);
+    await editor.start();
+
+    final result = await editor.uploadMedia(
+      bytes: <int>[1, 2, 3],
+      contentType: 'image/jpeg',
+      role: FanWorkMediaRole.artwork,
+    );
+
+    expect(result.failureOrNull, isA<NetworkError>());
+    expect(repository.ticketRequests, 0);
+    expect(repository.uploadAttempts, 0);
+    expect(editor.uploading, isFalse);
+  });
+
   test('details reports loading, missing, and offline states', () async {
     final repository = _FakeFanWorkRepository();
     final details = FanWorkDetailsProvider(repository: repository);
@@ -411,6 +464,9 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   Completer<Result<void>>? uploadCompleter;
   int uploadAttempts = 0;
   int cancelUploadCalls = 0;
+  int ticketRequests = 0;
+  String? lastUploadCharacterId;
+  final List<String> calls = <String>[];
   Result<FanWork>? watchWorkResult;
   final Map<String, FanWorkDraft> drafts = <String, FanWorkDraft>{};
 
@@ -632,6 +688,7 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
 
   @override
   Future<Result<String>> saveDraft(FanWorkDraft draft) async {
+    calls.add('saveDraft');
     if (saveFailure != null) return FailureResult(saveFailure!);
     final id = draft.workId ?? 'draft-1';
     drafts[id] = draft.copyWith(workId: id);
@@ -647,22 +704,28 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String workId,
     required FanWorkMediaRole role,
     required String contentType,
-  }) async => Success(
-    FanWorkUploadTicket(
-      workId: workId,
-      mediaId: 'm1',
-      path:
-          'fan_works/alice/$workId/m1'
-          '${role == FanWorkMediaRole.document ? '.pdf' : '.jpg'}',
-      contentType: contentType,
-      role: role,
-      uploadUrl: 'https://storage.test/upload/session/1',
-      maxBytes: role == FanWorkMediaRole.document
-          ? FanWorkLifecycle.maxDocumentBytes
-          : FanWorkLifecycle.maxImageBytes,
-      expiresAt: DateTime.utc(2026, 9, 1, 12, 15),
-    ),
-  );
+    String characterId = '',
+  }) async {
+    calls.add('startMediaUpload');
+    ticketRequests += 1;
+    lastUploadCharacterId = characterId;
+    return Success(
+      FanWorkUploadTicket(
+        workId: workId,
+        mediaId: 'm1',
+        path:
+            'fan_works/alice/$workId/m1'
+            '${role == FanWorkMediaRole.document ? '.pdf' : '.jpg'}',
+        contentType: contentType,
+        role: role,
+        uploadUrl: 'https://storage.test/upload/session/1',
+        maxBytes: role == FanWorkMediaRole.document
+            ? FanWorkLifecycle.maxDocumentBytes
+            : FanWorkLifecycle.maxImageBytes,
+        expiresAt: DateTime.utc(2026, 9, 1, 12, 15),
+      ),
+    );
+  }
 
   @override
   Future<Result<void>> uploadMediaBytes({
