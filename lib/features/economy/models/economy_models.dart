@@ -31,6 +31,17 @@ final class CoinBalance {
   }
 }
 
+enum StoreItemSection { cosmetic, expansion, unknown }
+
+StoreItemSection storeItemSectionFrom(Object? value) {
+  final s = (value ?? '').toString().toLowerCase();
+  return switch (s) {
+    'expansion' => StoreItemSection.expansion,
+    'cosmetic' => StoreItemSection.cosmetic,
+    _ => StoreItemSection.unknown,
+  };
+}
+
 final class StoreItem {
   const StoreItem({
     required this.id,
@@ -43,6 +54,7 @@ final class StoreItem {
     required this.rarity,
     required this.availability,
     required this.premiumOnly,
+    this.section = StoreItemSection.unknown,
     this.featured = false,
     this.version = 1,
     this.createdAt,
@@ -58,11 +70,13 @@ final class StoreItem {
   final StoreItemRarity rarity;
   final StoreItemAvailability availability;
   final bool premiumOnly;
+  final StoreItemSection section;
   final bool featured;
   final int version;
   final DateTime? createdAt;
 
   bool get isActive => availability == StoreItemAvailability.active;
+  bool get isExpansion => section == StoreItemSection.expansion || type.name == 'expansion';
 
   factory StoreItem.fromMap(Map<String, dynamic> map, {String? id}) {
     return StoreItem(
@@ -76,6 +90,7 @@ final class StoreItem {
       rarity: storeRarityFrom(map['rarity']),
       availability: storeAvailabilityFrom(map['availability']),
       premiumOnly: map['premiumOnly'] == true,
+      section: storeItemSectionFrom(map['section']),
       featured: map['featured'] == true,
       version: map['schemaVersion'] is num
           ? (map['schemaVersion'] as num).toInt()
@@ -241,6 +256,20 @@ final class PremiumEntitlement {
       paymentConfigured: map['paymentConfigured'] == true,
     );
   }
+}
+
+final class PremiumRedeemResult {
+  const PremiumRedeemResult({
+    required this.ok,
+    this.tier = 'premium',
+    this.expiresAt,
+    this.errorCode,
+  });
+
+  final bool ok;
+  final String tier;
+  final DateTime? expiresAt;
+  final String? errorCode;
 }
 
 final class EconomySnapshot {

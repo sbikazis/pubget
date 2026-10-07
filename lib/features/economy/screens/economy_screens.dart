@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/economy_models.dart';
@@ -24,7 +25,7 @@ class _StorePageState extends State<StorePage>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 5, vsync: this);
+    _tabs = TabController(length: 6, vsync: this);
     final economy = context.read<EconomyProvider>();
     economy.openStore();
     Future<void>.microtask(economy.load);
@@ -60,7 +61,8 @@ class _StorePageState extends State<StorePage>
           isScrollable: true,
           tabs: const <Widget>[
             Tab(text: EconomyStrings.featured),
-            Tab(text: EconomyStrings.categories),
+            Tab(text: EconomyStrings.dragonStoreCosmetics),
+            Tab(text: EconomyStrings.dragonStoreExpansions),
             Tab(text: EconomyStrings.items),
             Tab(text: EconomyStrings.owned),
             Tab(text: EconomyStrings.premium),
@@ -87,7 +89,16 @@ class _StorePageState extends State<StorePage>
                   .where((item) => item.featured && item.isActive)
                   .toList(),
             ),
-            const _CategoryList(),
+            _ItemGrid(
+              items: (economy.snapshot?.catalog ?? const <StoreItem>[])
+                  .where((item) => item.isActive && item.section == StoreItemSection.cosmetic)
+                  .toList(),
+            ),
+            _ItemGrid(
+              items: (economy.snapshot?.catalog ?? const <StoreItem>[])
+                  .where((item) => item.isActive && item.isExpansion)
+                  .toList(),
+            ),
             _ItemGrid(items: economy.snapshot?.catalog ?? const <StoreItem>[]),
             _ItemGrid(
               items: (economy.snapshot?.catalog ?? const <StoreItem>[])
@@ -383,12 +394,21 @@ class PremiumPage extends StatefulWidget {
 }
 
 class _PremiumPageState extends State<PremiumPage> {
+  final _codeController = TextEditingController();
+  bool _redeeming = false;
+
   @override
   void initState() {
     super.initState();
     final economy = context.read<EconomyProvider>();
     economy.viewPremium();
     Future<void>.microtask(economy.load);
+  }
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
   }
 
   @override
@@ -431,6 +451,55 @@ class _PremiumPageState extends State<PremiumPage> {
             Text(
               EconomyStrings.restoreDeferred,
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              AppStrings.of(context).dragonStorePremiumCode,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextField(
+              controller: _codeController,
+              decoration: InputDecoration(
+                hintText: AppStrings.of(context).dragonStoreCodeHint,
+                border: const OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.characters,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            PubgetPrimaryButton(
+              semanticLabel: AppStrings.of(context).dragonStoreRedeemCode,
+              onPressed: _redeeming
+                  ? null
+                  : () async {
+                      final code = _codeController.text.trim();
+                      if (code.isEmpty) return;
+                      setState(() => _redeeming = true);
+                      final economy = context.read<EconomyProvider>();
+                      final result = await economy.redeemPremiumCode(code);
+                      setState(() => _redeeming = false);
+                      if (!mounted) return;
+                      final appStr = AppStrings.of(context);
+                      if (result.isSuccess) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(appStr.dragonStoreCodeRedeemed),
+                          ),
+                        );
+                        _codeController.clear();
+                      } else {
+                        final error = result.error;
+                        final msg = error is Object && error is dynamic
+                            ? (error.message is String ? error.message as String : appStr.dragonStoreCodeInvalid)
+                            : appStr.dragonStoreCodeInvalid;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(msg)),
+                        );
+                      }
+                    },
+              child: Text(_redeeming
+                  ? '...'
+                  : AppStrings.of(context).dragonStoreRedeemCode),
             ),
           ],
         ),

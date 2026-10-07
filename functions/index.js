@@ -815,6 +815,14 @@ exports.unequipCosmetic = onCall(
   { region: "us-central1" },
   economyDomain.unequipCosmetic,
 );
+exports.redeemPremiumCode = onCall(
+  { region: "us-central1" },
+  economyDomain.redeemPremiumCode,
+);
+exports.adminGeneratePremiumCode = onCall(
+  { region: "us-central1" },
+  economyDomain.adminGeneratePremiumCode,
+);
 exports.processEventLifecycle = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },
   eventsDomain.processEventLifecycle,

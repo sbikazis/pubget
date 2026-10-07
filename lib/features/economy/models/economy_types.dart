@@ -2,7 +2,7 @@ enum StoreItemType { frame, badge, nameplate, theme }
 
 enum StoreItemAvailability { active, inactive }
 
-enum StoreItemRarity { common, rare, epic }
+enum StoreItemRarity { common, rare, epic, legendary, mythic }
 
 enum StoreCurrency { coins }
 
@@ -85,9 +85,12 @@ StoreItemAvailability storeAvailabilityFrom(Object? value) {
 }
 
 StoreItemRarity storeRarityFrom(Object? value) {
-  return switch (value) {
+  final s = (value ?? '').toString().toLowerCase();
+  return switch (s) {
     'rare' => StoreItemRarity.rare,
     'epic' => StoreItemRarity.epic,
+    'legendary' || 'legend' => StoreItemRarity.legendary,
+    'mythic' || 'mythical' => StoreItemRarity.mythic,
     _ => StoreItemRarity.common,
   };
 }
