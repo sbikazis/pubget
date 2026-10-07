@@ -1211,12 +1211,21 @@ final class FanWorkUploadTicket {
   final String contentType;
   final FanWorkMediaRole role;
 
-  /// A V4 resumable-session URL. Uploading through it never creates a
-  /// permanent `downloadToken` on the object, which is what stops a Fan Work
-  /// file from being shared as a link after the fact.
+  /// The URL the bytes go to, in one of two shapes the server chose when it
+  /// minted this ticket: a V4 resumable-session URI for a document, a bounded
+  /// one-shot signed `PUT` for an image. Neither ever creates a permanent
+  /// `downloadToken` on the object, which is what stops a Fan Work file from
+  /// being shared as a link after the fact.
   final String uploadUrl;
   final int maxBytes;
   final DateTime expiresAt;
+
+  /// Whether [uploadUrl] speaks the resumable session protocol.
+  ///
+  /// Mirrors `isDocumentRole` in `functions/src/fanWorksSchema.js`: only the
+  /// document role is opened as a session, every image role is a one-shot
+  /// signed `PUT`. Uploading with the wrong protocol fails on every attempt.
+  bool get isResumableSession => role.isDocument;
 }
 
 final class FanWorkAnalytics {
