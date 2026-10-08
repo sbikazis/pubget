@@ -460,8 +460,6 @@ AppRoute _routeFromUri(Uri uri) {
 const _requiredEntityKeys = <String, String>{
   '/event': 'eventId',
   '/game': 'gameId',
-  '/games/waiting': 'gameId',
-  '/games/room': 'gameId',
   '/mafia': 'gameId',
   '/fan-work': 'workId',
   '/work': 'workId',
