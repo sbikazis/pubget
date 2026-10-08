@@ -607,6 +607,15 @@ final class AppStrings {
       pick('Friend requests could not load.', 'تعذّر تحميل طلبات الصداقة.');
   String get achievements => pick('Achievements', 'الإنجازات');
   String get store => pick('Store', 'المتجر');
+  String get dragonStorePremiumCode =>
+      pick('Premium code', 'رمز الاشتراك المميز');
+  String get dragonStoreCodeHint =>
+      pick('Enter your premium code', 'أدخل رمزك المميز');
+  String get dragonStoreRedeemCode => pick('Redeem', 'استبدال');
+  String get dragonStoreCodeRedeemed =>
+      pick('Premium code redeemed.', 'تم استبدال الرمز المميز.');
+  String get dragonStoreCodeInvalid =>
+      pick('That premium code is not valid.', 'ذلك الرمز المميز غير صالح.');
   String get profileUnavailable =>
       pick('Profile not available', 'الملف غير متاح');
   String get profilePrivate => pick(

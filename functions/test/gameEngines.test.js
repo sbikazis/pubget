@@ -308,6 +308,32 @@ test("guess character timeout advances the round without client clocks", async (
   if (after.status === "COMPLETED") assert.equal(after.result.scores.alice, 0);
 });
 
+test("guess character answer timeout blames the player who stalled", async () => {
+  let now = new Date("2026-09-02T12:00:00Z");
+  const db = createFakeDb(seed());
+  const games = domain(db, { clock: { now: () => now } });
+  const gameId = await startGuess(db, games);
+  const before = db.store.get(`games/${gameId}`).publicState;
+  const asker = before.currentPlayerId;
+  assert.ok(asker, "ask phase must have a current player");
+  const answerer = asker === "alice" ? "bob" : "alice";
+  await games.submitGameAction({
+    auth: { uid: asker },
+    data: { gameId, actionType: "ask", payload: { question: "Is it from the 90s?" } },
+  });
+  const answering = db.store.get(`games/${gameId}`);
+  assert.equal(answering.publicState.phase, "answer");
+  assert.equal(answering.publicState.answeringPlayerId, answerer);
+  now = new Date("2026-09-02T12:01:00Z");
+  await games.processExpiredGames();
+  const after = db.store.get(`games/${gameId}`);
+  assert.notEqual(after.status, "COMPLETED");
+  assert.equal(after.publicState.phase, "ask");
+  assert.equal(after.publicState.lastAction.type, "timeout");
+  assert.equal(after.publicState.lastAction.playerId, answerer);
+  assert.equal(after.publicState.currentPlayerId, asker);
+});
+
 test("guess character does not expose selected answers", async () => {
   const db = createFakeDb(seed());
   const games = domain(db);

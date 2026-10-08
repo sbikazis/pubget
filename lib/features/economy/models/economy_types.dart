@@ -32,6 +32,8 @@ enum AdMobFormat { banner, interstitial, native, rewarded }
 
 abstract final class EconomyStrings {
   static const storeTitle = 'Store';
+  static const dragonStoreCosmetics = 'Cosmetics';
+  static const dragonStoreExpansions = 'Expansions';
   static const featured = 'Featured';
   static const categories = 'Categories';
   static const items = 'Items';

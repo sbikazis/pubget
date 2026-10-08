@@ -33,6 +33,12 @@ jobs:
       # Cloud Functions list/deploy occasionally returns HTTP 503 UNAVAILABLE.
       # Retry with backoff so a transient Google outage does not leave main
       # without the latest functions (e.g. after a rank-system merge).
+      - name: Syntax check
+        run: cd functions && npm run check
+
+      - name: Unit tests
+        run: cd functions && npm test
+
       - name: Deploy to Firebase
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

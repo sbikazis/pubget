@@ -118,32 +118,6 @@ class _StorePageState extends State<StorePage>
   }
 }
 
-class _CategoryList extends StatelessWidget {
-  const _CategoryList();
-
-  @override
-  Widget build(BuildContext context) {
-    final economy = context.watch<EconomyProvider>();
-    final catalog = economy.snapshot?.catalog ?? const <StoreItem>[];
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      children: <Widget>[
-        for (final type in StoreItemType.values)
-          PubgetCard(
-            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-            onTap: () => AppNavigation.go(
-              context,
-              '/store?type=${type.name}',
-            ),
-            child: Text(
-              '${type.name} (${catalog.where((item) => item.type == type).length})',
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 class _ItemGrid extends StatelessWidget {
   const _ItemGrid({required this.items, this.empty});
 
@@ -474,27 +448,24 @@ class _PremiumPageState extends State<PremiumPage> {
                   : () async {
                       final code = _codeController.text.trim();
                       if (code.isEmpty) return;
+                      final appStr = AppStrings.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
                       setState(() => _redeeming = true);
                       final economy = context.read<EconomyProvider>();
                       final result = await economy.redeemPremiumCode(code);
-                      setState(() => _redeeming = false);
                       if (!mounted) return;
-                      final appStr = AppStrings.of(context);
+                      setState(() => _redeeming = false);
                       if (result.isSuccess) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text(appStr.dragonStoreCodeRedeemed),
                           ),
                         );
                         _codeController.clear();
                       } else {
-                        final error = result.error;
-                        final msg = error is Object && error is dynamic
-                            ? (error.message is String ? error.message as String : appStr.dragonStoreCodeInvalid)
-                            : appStr.dragonStoreCodeInvalid;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(msg)),
-                        );
+                        final msg = result.failureOrNull?.message ??
+                            appStr.dragonStoreCodeInvalid;
+                        messenger.showSnackBar(SnackBar(content: Text(msg)));
                       }
                     },
               child: Text(_redeeming

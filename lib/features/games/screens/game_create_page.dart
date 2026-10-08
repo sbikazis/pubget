@@ -63,9 +63,11 @@ class _GameCreatePageState extends State<GameCreatePage> {
   Widget build(BuildContext context) {
     final creator = context.watch<GameCreateProvider>();
     final copy = GameCopy.of(context);
-    // Hub for playable types. Trivia goes through createGame; Mafia
-    // branches to createMafiaGame below and is excluded from genericCreate.
-    final types = GameTypeRegistry.implemented;
+    // Every implemented type is offered (Spec 12.1 lists all four games as
+    // always available). Mafia branches to createMafiaGame in _submit
+    // instead of the generic createGame, which is why its card carries
+    // genericCreate: false while still being listed here.
+    final types = GameTypeRegistry.all;
     final spec = GameTypeRegistry.of(creator.draft.type);
     final quiz = spec.capabilities.usesRounds && spec.capabilities.usesScoring;
     final isMafia = creator.draft.type == GameType.mafia;
