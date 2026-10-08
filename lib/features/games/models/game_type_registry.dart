@@ -35,6 +35,8 @@ final class GameTypeSpec {
     required this.capabilities,
     required this.winCondition,
     required this.rules,
+    required this.durationMinutes,
+    required this.difficulty,
     this.genericCreate = true,
     this.scoringId = ScoringStrategyId.noop,
   });
@@ -58,6 +60,15 @@ final class GameTypeSpec {
 
   /// Short rules summary for the Game Center Rules section.
   final String rules;
+
+  /// Nominal play time in minutes. Spec 12.1 requires every game card to
+  /// carry duration, so this is metadata, not a timer: the engines keep
+  /// their own deadlines and the server cancels a lobby that never starts.
+  final int durationMinutes;
+
+  /// Baseline difficulty shown on the card (easy · normal · hard). A game's
+  /// own difficulty setting stays in [GameConfiguration.difficulty].
+  final String difficulty;
 }
 
 abstract final class GameTypeRegistry {
@@ -79,6 +90,8 @@ abstract final class GameTypeRegistry {
       rules:
           'Each player picks a secret character from the catalog, then takes '
           'turns asking yes or no questions or guessing outright.',
+      durationMinutes: 10,
+      difficulty: 'normal',
     ),
     GameType.animeChain: GameTypeSpec(
       type: GameType.animeChain,
@@ -97,6 +110,8 @@ abstract final class GameTypeRegistry {
       rules:
           'Take turns naming an Anime that links to the previous title. A '
           'broken link, a duplicate, or a timeout ends the game.',
+      durationMinutes: 10,
+      difficulty: 'normal',
     ),
     GameType.emojiAnimeGuess: GameTypeSpec(
       type: GameType.emojiAnimeGuess,
@@ -115,6 +130,8 @@ abstract final class GameTypeRegistry {
       rules:
           'One player owns the emoji clue and cannot guess. Everyone else '
           'guesses the Anime once per round; a correct guess scores a point.',
+      durationMinutes: 15,
+      difficulty: 'easy',
     ),
     GameType.mafia: GameTypeSpec(
       type: GameType.mafia,
@@ -135,6 +152,8 @@ abstract final class GameTypeRegistry {
       rules:
           'Roles are secret and assigned by the server. Nights resolve '
           'silently, days vote one player out, and Mafia chat stays private.',
+      durationMinutes: 45,
+      difficulty: 'hard',
     ),
   };
 

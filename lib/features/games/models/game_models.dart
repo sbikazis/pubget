@@ -186,6 +186,7 @@ final class PubgetGame {
     this.currentPhase,
     this.stateVersion = 0,
     this.deadlineAt,
+    this.waitingDeadlineAt,
   });
 
   final String id;
@@ -208,6 +209,10 @@ final class PubgetGame {
   final String? currentPhase;
   final int stateVersion;
   final DateTime? deadlineAt;
+
+  /// When the server closes a lobby that never filled: gamesDomain writes a
+  /// 15-minute deadline when a game enters WAITING (WAITING_ROOM_TIMEOUT).
+  final DateTime? waitingDeadlineAt;
 
   bool get isJoinable => status == GameStatus.waiting;
   bool get isPlayable =>
@@ -236,6 +241,7 @@ final class PubgetGame {
     'currentPhase': currentPhase,
     'stateVersion': stateVersion,
     'deadlineAt': deadlineAt?.toUtc().toIso8601String(),
+    'waitingDeadlineAt': waitingDeadlineAt?.toUtc().toIso8601String(),
     'searchName': title.trim().toLowerCase(),
   };
 
@@ -272,6 +278,7 @@ final class PubgetGame {
       currentPhase: map['currentPhase'] as String?,
       stateVersion: (map['stateVersion'] as num?)?.toInt() ?? 0,
       deadlineAt: _date(map['deadlineAt']),
+      waitingDeadlineAt: _date(map['waitingDeadlineAt']),
     );
   }
 }
