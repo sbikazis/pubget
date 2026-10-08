@@ -67,6 +67,52 @@ abstract final class GameLinks {
   }
 }
 
+/// A live "waiting room closes in m:ss" line driven by the server's
+/// `waitingDeadlineAt` (gamesDomain writes WAITING_ROOM_TIMEOUT_SECONDS when
+/// a game enters WAITING, Spec 12.1).
+class WaitingRoomCountdown extends StatefulWidget {
+  const WaitingRoomCountdown({required this.deadline, super.key});
+
+  final DateTime deadline;
+
+  @override
+  State<WaitingRoomCountdown> createState() => _WaitingRoomCountdownState();
+}
+
+class _WaitingRoomCountdownState extends State<WaitingRoomCountdown> {
+  late DateTime _now;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _tick());
+  }
+
+  void _tick() {
+    if (!mounted) return;
+    if (widget.deadline.difference(_now).isNegative) return;
+    Future<void>.delayed(const Duration(seconds: 1), _tick);
+    setState(() => _now = DateTime.now());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var remaining = widget.deadline.difference(_now);
+    if (remaining.isNegative) remaining = Duration.zero;
+    final minutes = remaining.inMinutes;
+    final seconds = remaining.inSeconds
+        .remainder(60)
+        .toString()
+        .padLeft(2, '0');
+    final copy = GameCopy.of(context);
+    return Text(
+      '${copy.waitingRoomClosesIn} $minutes:$seconds',
+      style: Theme.of(context).textTheme.bodySmall,
+    );
+  }
+}
+
 class GameStatusBadge extends StatelessWidget {
   const GameStatusBadge({required this.status, super.key});
 
