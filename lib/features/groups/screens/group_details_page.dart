@@ -367,11 +367,13 @@ class _GroupControlPanel extends StatelessWidget {
           subtitle: copy.createGame,
           onTap: () => AppNavigation.go(
             context,
-            '/games?groupId=${Uri.encodeComponent(group.id)}',
+            '/games?groupId=${Uri.encodeComponent(group.id)}'
+            '&source=group_chat',
           ),
           onSecondaryTap: () => AppNavigation.go(
             context,
-            '/games/create?groupId=${Uri.encodeComponent(group.id)}',
+            '/games/create?groupId=${Uri.encodeComponent(group.id)}'
+            '&source=group_chat',
           ),
         ),
       if (canBans)

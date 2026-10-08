@@ -6,8 +6,8 @@ import 'package:provider/provider.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/game_copy.dart';
 import '../models/game_models.dart';
-import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
 import 'catalog_search_picker.dart';
 import 'game_widgets.dart';
@@ -45,7 +45,7 @@ class _GameDeadlineTimerState extends State<GameDeadlineTimer> {
     final remaining = deadline.difference(DateTime.now());
     final expired = remaining.isNegative || remaining == Duration.zero;
     final label = expired
-        ? GameStrings.timedOut
+        ? GameCopy.of(context).timedOut
         : '${remaining.inSeconds.clamp(0, 999)}s';
     return PubgetBadge(label: label);
   }
@@ -66,7 +66,10 @@ class GamePlayArea extends StatelessWidget {
       return const SizedBox.shrink();
     }
     if (!game.isPlayable) {
-      return PubgetCard(child: Text('This game is ${game.status.name}.'));
+      final copy = GameCopy.of(context);
+      return PubgetCard(
+        child: Text(copy.gameStatusLine(copy.statusLabel(game.status))),
+      );
     }
     return switch (game.type) {
       GameType.guessCharacter => GuessCharacterPlay(game: game, userId: userId),
@@ -89,21 +92,22 @@ class GameResultPanel extends StatelessWidget {
     final scores = result?.scores ?? const <String, int>{};
     final won = result?.winnerIds.contains(userId) == true;
     final draw = result?.summary['draw'] == true;
+    final copy = GameCopy.of(context);
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
             draw
-                ? 'Draw'
+                ? copy.draw
                 : won
-                ? 'You won'
-                : 'Result',
+                ? copy.youWon
+                : copy.resultTitle,
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: AppSpacing.sm),
           if (result != null && result.winnerIds.isNotEmpty)
-            Text('Winners: ${result.winnerIds.join(', ')}'),
+            Text(copy.winners(result.winnerIds)),
           for (final entry in scores.entries)
             Text('${entry.key}: ${entry.value}'),
           const SizedBox(height: AppSpacing.md),
@@ -112,15 +116,15 @@ class GameResultPanel extends StatelessWidget {
             children: <Widget>[
               PubgetSecondaryButton(
                 onPressed: () => GameLinks.open(context, game.id),
-                semanticLabel: GameStrings.viewHistory,
-                child: const Text(GameStrings.viewHistory),
+                semanticLabel: copy.viewHistory,
+                child: Text(copy.viewHistory),
               ),
               if (game.groupId != null)
                 PubgetPrimaryButton(
                   onPressed: () =>
                       GameLinks.openCreate(context, groupId: game.groupId),
-                  semanticLabel: GameStrings.playAgain,
-                  child: const Text(GameStrings.playAgain),
+                  semanticLabel: copy.playAgain,
+                  child: Text(copy.playAgain),
                 ),
             ],
           ),
@@ -189,19 +193,20 @@ class _GuessCharacterPlayState extends State<GuessCharacterPlay> {
         : null;
     final online = _online(context);
     final locked = provider.busy || !online;
+    final copy = GameCopy.of(context);
 
     Widget body;
     if (phase == 'selection') {
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(GameStrings.chooseSecret, style: _title(context)),
+          Text(copy.chooseSecret, style: _title(context)),
           const SizedBox(height: AppSpacing.sm),
           if (alreadySelected)
-            Text(GameStrings.secretLocked)
+            Text(copy.secretLocked)
           else
             CatalogSearchPicker(
-              hint: GameStrings.searchSecretCharacter,
+              hint: copy.searchSecretCharacter,
               enabled: online,
               onSelected: (item) => _submit(
                 GameActionTypes.select,
@@ -215,7 +220,7 @@ class _GuessCharacterPlayState extends State<GuessCharacterPlay> {
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(mine ? GameStrings.yourTurn : GameStrings.waitingTurn),
+          Text(mine ? copy.yourTurn : copy.waitingTurn),
           const SizedBox(height: AppSpacing.sm),
           if (question != null) Text(question),
           if (lastAction != null) _lastActionLine(context, lastAction),
@@ -223,7 +228,7 @@ class _GuessCharacterPlayState extends State<GuessCharacterPlay> {
             const SizedBox(height: AppSpacing.md),
             PubgetTextField(
               controller: _question,
-              label: GameStrings.askAQuestion,
+              label: copy.askAQuestion,
               enabled: !locked,
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -233,18 +238,18 @@ class _GuessCharacterPlayState extends State<GuessCharacterPlay> {
                   : () => _submit(GameActionTypes.ask, <String, dynamic>{
                       'question': _question.text,
                     }),
-              semanticLabel: GameStrings.ask,
+              semanticLabel: copy.ask,
               child: Text(
-                provider.busy ? GameStrings.submitting : GameStrings.ask,
+                provider.busy ? copy.submitting : copy.ask,
               ),
             ),
             const SizedBox(height: AppSpacing.md),
-            Text(GameStrings.guessInstead),
+            Text(copy.guessInstead),
             const SizedBox(height: AppSpacing.sm),
             CatalogSearchPicker(
-              hint: GameStrings.searchSecretCharacter,
+              hint: copy.searchSecretCharacter,
               enabled: online,
-              emptyLabel: GameStrings.noCatalogMatch,
+              emptyLabel: copy.noCatalogMatch,
               onSelected: (item) => _submit(
                 GameActionTypes.guess,
                 <String, dynamic>{'characterId': item.id},
@@ -258,7 +263,7 @@ class _GuessCharacterPlayState extends State<GuessCharacterPlay> {
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(mine ? GameStrings.yourTurn : GameStrings.waitingTurn),
+          Text(mine ? copy.yourTurn : copy.waitingTurn),
           const SizedBox(height: AppSpacing.sm),
           if (question != null) Text(question),
           if (mine) ...[
@@ -273,8 +278,8 @@ class _GuessCharacterPlayState extends State<GuessCharacterPlay> {
                             GameActionTypes.answer,
                             <String, dynamic>{'answer': 'yes'},
                           ),
-                    semanticLabel: GameStrings.yes,
-                    child: const Text('Yes'),
+                    semanticLabel: copy.yes,
+                    child: Text(copy.yes),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
@@ -286,8 +291,8 @@ class _GuessCharacterPlayState extends State<GuessCharacterPlay> {
                             GameActionTypes.answer,
                             <String, dynamic>{'answer': 'no'},
                           ),
-                    semanticLabel: GameStrings.no,
-                    child: const Text('No'),
+                    semanticLabel: copy.no,
+                    child: Text(copy.no),
                   ),
                 ),
               ],
@@ -296,7 +301,7 @@ class _GuessCharacterPlayState extends State<GuessCharacterPlay> {
         ],
       );
     } else {
-      body = Text(GameStrings.comingSoon);
+      body = Text(copy.comingSoon);
     }
 
     return PubgetCard(
@@ -305,14 +310,14 @@ class _GuessCharacterPlayState extends State<GuessCharacterPlay> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Text(GameStrings.guessCharacter),
+              Text(copy.guessCharacter),
               const Spacer(),
               GameDeadlineTimer(deadlineAt: game.deadlineAt),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
           body,
-          if (!online) const Text(GameStrings.offlineAction),
+          if (!online) Text(copy.offlineAction),
           GameActionFeedback(message: provider.actionFeedback),
         ],
       ),
@@ -326,11 +331,12 @@ class _GuessCharacterPlayState extends State<GuessCharacterPlay> {
     BuildContext context,
     Map<String, dynamic> lastAction,
   ) {
+    final copy = GameCopy.of(context);
     final type = lastAction['type'];
     return Text(switch (type) {
-      'answer' => '${GameStrings.answered}: ${lastAction['answer']}',
-      'wrong_guess' => GameStrings.wrongGuess,
-      'timeout' => GameStrings.turnTimedOut,
+      'answer' => '${copy.answered}: ${lastAction['answer']}',
+      'wrong_guess' => copy.wrongGuess,
+      'timeout' => copy.turnTimedOut,
       _ => '',
     }, style: Theme.of(context).textTheme.bodySmall);
   }
@@ -509,6 +515,7 @@ class _AnimeChainPlayState extends State<AnimeChainPlay> {
     final current = state['currentPlayerId'] as String?;
     final mine = current == widget.userId;
     final online = _online(context);
+    final copy = GameCopy.of(context);
     if (chain.length != _chainLength) {
       // The chain advanced, so the submitted title must not be resubmitted.
       _chainLength = chain.length;
@@ -523,21 +530,21 @@ class _AnimeChainPlayState extends State<AnimeChainPlay> {
             children: <Widget>[
               Expanded(
                 child: Text(
-                  state['rule'] as String? ?? 'Keep the chain valid.',
+                  state['rule'] as String? ?? copy.chainRule,
                 ),
               ),
               GameDeadlineTimer(deadlineAt: widget.game.deadlineAt),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(mine ? GameStrings.yourTurn : GameStrings.waitingTurn),
+          Text(mine ? copy.yourTurn : copy.waitingTurn),
           const SizedBox(height: AppSpacing.sm),
           for (final link in chain) Text(link['title'] as String? ?? ''),
           if (mine) ...[
             const SizedBox(height: AppSpacing.md),
             PubgetTextField(
               controller: _title,
-              label: GameStrings.nextTitle,
+              label: copy.nextTitle,
               enabled: !provider.busy && online,
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -554,14 +561,14 @@ class _AnimeChainPlayState extends State<AnimeChainPlay> {
                       clientActionId:
                           '${widget.game.id}-${widget.game.stateVersion}-${widget.userId}',
                     ),
-              semanticLabel: GameStrings.submit,
+              semanticLabel: copy.submit,
               child: Text(
-                provider.busy ? GameStrings.submitting : GameStrings.submit,
+                provider.busy ? copy.submitting : copy.submit,
               ),
             ),
-            if (!online) const Text(GameStrings.offlineAction),
+            if (!online) Text(copy.offlineAction),
           ],
-          Text('${GameStrings.you} ${scores[widget.userId] ?? 0}'),
+          Text('${copy.you} ${scores[widget.userId] ?? 0}'),
           GameActionFeedback(message: provider.actionFeedback),
         ],
       ),
@@ -616,6 +623,7 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
         : null;
     final scores = _scoreMap(state['scores']);
     final online = _online(context);
+    final copy = GameCopy.of(context);
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -623,7 +631,7 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
           Row(
             children: <Widget>[
               Text(
-                '${GameStrings.turn} ${turnIndex + 1}'
+                '${copy.turn} ${turnIndex + 1}'
                 '/${state['totalTurns'] ?? '?'}',
               ),
               const Spacer(),
@@ -632,7 +640,7 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            mine ? GameStrings.clueOwnerTurn : GameStrings.guessTheAnime,
+            mine ? copy.clueOwnerTurn : copy.guessTheAnime,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           if (emojis.isNotEmpty) ...[
@@ -645,11 +653,11 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
           const SizedBox(height: AppSpacing.md),
           if (!mine) ...[
             if (already)
-              const Text(GameStrings.alreadyGuessed)
+              Text(copy.alreadyGuessed)
             else ...[
               PubgetTextField(
                 controller: _guess,
-                label: GameStrings.animeTitle,
+                label: copy.animeTitle,
                 enabled: !provider.busy && online,
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -666,17 +674,17 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
                         clientActionId:
                             '${game.id}-${game.stateVersion}-${widget.userId}',
                       ),
-                semanticLabel: GameStrings.submitGuess,
-                child: const Text(GameStrings.submitGuess),
+                semanticLabel: copy.submitGuess,
+                child: Text(copy.submitGuess),
               ),
             ],
           ],
-          Text('${GameStrings.you} ${scores[widget.userId] ?? 0}'),
+          Text('${copy.you} ${scores[widget.userId] ?? 0}'),
           if (lastReveal != null && lastReveal['title'] is String) ...[
             const SizedBox(height: AppSpacing.sm),
-            Text('${GameStrings.lastTitle}: ${lastReveal['title']}'),
+            Text('${copy.lastTitle}: ${lastReveal['title']}'),
           ],
-          if (!online) const Text(GameStrings.offlineAction),
+          if (!online) Text(copy.offlineAction),
           GameActionFeedback(message: provider.actionFeedback),
         ],
       ),
