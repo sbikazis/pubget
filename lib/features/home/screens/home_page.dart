@@ -388,6 +388,9 @@ class _GroupSection extends StatelessWidget {
     }
     return _SectionFrame(
       title: title,
+      // Every group section lands on the real groups discovery surface; there
+      // is no separate promoted/recommended listing page to deep-link to.
+      onSeeAll: () => AppNavigation.go(context, '/groups'),
       child: _stateChild(
         context,
         state: state,
@@ -428,6 +431,7 @@ class _PeopleSection extends StatelessWidget {
     return _SectionFrame(
       key: const Key('home-people'),
       title: copy.sectionPeople,
+      onSeeAll: () => AppNavigation.go(context, '/search'),
       child: _stateChild(
         context,
         state: state,
@@ -485,6 +489,7 @@ class _EditsSection extends StatelessWidget {
     return _SectionFrame(
       key: const Key('home-edits'),
       title: copy.sectionEdits,
+      onSeeAll: () => AppNavigation.go(context, '/reels'),
       child: child,
     );
   }
@@ -613,19 +618,34 @@ class _AnimeSection extends StatelessWidget {
 }
 
 class _SectionFrame extends StatelessWidget {
-  const _SectionFrame({required this.title, required this.child, super.key});
+  const _SectionFrame({
+    required this.title,
+    required this.child,
+    this.onSeeAll,
+    super.key,
+  });
 
   final String title;
   final Widget child;
 
+  /// Master Spec §5.3 requires a "See all" in every section that has a
+  /// standalone section page. Null deliberately omits the action: a section
+  /// without a real listing page must not link somewhere unrelated.
+  final VoidCallback? onSeeAll;
+
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          PubgetSectionHeader(title: title),
+          PubgetSectionHeader(
+            title: title,
+            actionLabel: onSeeAll == null ? null : copy.seeAll,
+            onAction: onSeeAll,
+          ),
           child,
         ],
       ),
@@ -644,10 +664,24 @@ Widget _stateChild(
   if (state.state == LoadingState.loading && !state.hasContent) {
     return const _SkeletonSection();
   }
-  if (state.state == LoadingState.error && !state.hasContent) {
+  // §2.1 lists Offline as its own mandatory state, separate from Error and
+  // from Empty. Offline with cached rows keeps the strip and adds a retry
+  // banner, so a failed refresh never silently claims everything is fine.
+  if (state.state == LoadingState.offline && state.hasContent) {
+    return _staleColumn(home, kind, loaded);
+  }
+  // Offline or failed with nothing cached has to say the section could not be
+  // fetched. Falling through to `loaded` rendered a blank rail that read as a
+  // broken screen; falling through to the empty state told the user there is
+  // nothing when the truth is that nothing could be fetched.
+  if ((state.state == LoadingState.error ||
+          state.state == LoadingState.offline) &&
+      !state.hasContent) {
     return PubgetErrorState(
       title: copy.sectionFailed,
-      message: state.failure == null
+      message: state.state == LoadingState.offline
+          ? copy.discoveryOffline
+          : state.failure == null
           ? copy.discoveryUnavailable
           : discoveryFailureMessage(copy, state.failure!),
       onRetry: () => home.retrySection(kind),
@@ -677,6 +711,26 @@ Widget _stateChild(
     );
   }
   return loaded;
+}
+
+/// §2.1 — a refresh that failed keeps the rows the user can already act on, so
+/// the section is marked stale instead of being replaced by an error.
+Widget _staleColumn(HomeProvider home, HomeSectionKind kind, Widget loaded) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: <Widget>[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          0,
+          AppSpacing.md,
+          AppSpacing.sm,
+        ),
+        child: PubgetStaleBanner(onRetry: () => home.retrySection(kind)),
+      ),
+      loaded,
+    ],
+  );
 }
 
 class _MoreCell extends StatelessWidget {

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/errors/failure.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -450,8 +451,8 @@ class _PremiumPageState extends State<PremiumPage> {
                       if (code.isEmpty) return;
                       final appStr = AppStrings.of(context);
                       final messenger = ScaffoldMessenger.of(context);
-                      setState(() => _redeeming = true);
                       final economy = context.read<EconomyProvider>();
+                      setState(() => _redeeming = true);
                       final result = await economy.redeemPremiumCode(code);
                       if (!mounted) return;
                       setState(() => _redeeming = false);
@@ -463,9 +464,23 @@ class _PremiumPageState extends State<PremiumPage> {
                         );
                         _codeController.clear();
                       } else {
-                        final msg = result.failureOrNull?.message ??
-                            appStr.dragonStoreCodeInvalid;
-                        messenger.showSnackBar(SnackBar(content: Text(msg)));
+                        // §1.4 — `Failure.message` is developer copy in
+                        // English, so it is never rendered. The user gets the
+                        // localized answer for the failure they caused, or
+                        // localized generic copy for anything else.
+                        final failure = result.failureOrNull;
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(switch (failure) {
+                              NetworkError() => appStr.discoveryOffline,
+                              ValidationError() ||
+                              NotFoundError() ||
+                              UnknownError() ||
+                              null => appStr.dragonStoreCodeInvalid,
+                              _ => appStr.tryAgainShort,
+                            }),
+                          ),
+                        );
                       }
                     },
               child: Text(_redeeming

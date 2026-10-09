@@ -608,14 +608,14 @@ final class AppStrings {
   String get achievements => pick('Achievements', 'الإنجازات');
   String get store => pick('Store', 'المتجر');
   String get dragonStorePremiumCode =>
-      pick('Premium code', 'رمز الاشتراك المميز');
+      pick('Premium code', 'رمز الترقية');
   String get dragonStoreCodeHint =>
-      pick('Enter your premium code', 'أدخل رمزك المميز');
-  String get dragonStoreRedeemCode => pick('Redeem', 'استبدال');
+      pick('Enter your code', 'أدخل رمزك');
+  String get dragonStoreRedeemCode => pick('Redeem', 'استخدم الرمز');
   String get dragonStoreCodeRedeemed =>
-      pick('Premium code redeemed.', 'تم استبدال الرمز المميز.');
+      pick('Code redeemed.', 'تم استخدام الرمز.');
   String get dragonStoreCodeInvalid =>
-      pick('That premium code is not valid.', 'ذلك الرمز المميز غير صالح.');
+      pick('That code is not valid.', 'الرمز غير صالح.');
   String get profileUnavailable =>
       pick('Profile not available', 'الملف غير متاح');
   String get profilePrivate => pick(
