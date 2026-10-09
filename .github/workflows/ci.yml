@@ -98,6 +98,6 @@ jobs:
       # seeded discovery data) that are not part of this gate yet.
       - name: Rules tests
         run: |
-          node --test --test-concurrency=1 \
-            functions/test/firestore.rules.test.js \
-            functions/test/storage.rules.test.js
+          node ./node_modules/firebase-tools/lib/bin/firebase.js emulators:exec \
+            --project demo-pubget-security --only firestore,storage \
+            "node --test --test-concurrency=1 functions/test/firestore.rules.test.js functions/test/storage.rules.test.js"
