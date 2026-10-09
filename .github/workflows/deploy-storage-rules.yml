@@ -41,6 +41,11 @@ jobs:
           node ./node_modules/firebase-tools/lib/bin/firebase.js setup:emulators:firestore
           node ./node_modules/firebase-tools/lib/bin/firebase.js setup:emulators:storage
 
+      # The discovery-lifecycle e2e mints a real video fixture with ffmpeg
+      # (the runner does not ship it), so install it before `npm test`.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Rules tests
         run: npm test
 

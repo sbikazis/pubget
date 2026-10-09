@@ -97,11 +97,12 @@ jobs:
           node ./node_modules/firebase-tools/lib/bin/firebase.js setup:emulators:firestore
           node ./node_modules/firebase-tools/lib/bin/firebase.js setup:emulators:storage
 
-      # Scoped to the rules suites: the multi-user engine/discovery e2e files
-      # under `functions/test/*.e2e.test.js` depend on fixtures (ffmpeg probing,
-      # seeded discovery data) that are not part of this gate yet.
-      - name: Rules tests
-        run: |
-          node ./node_modules/firebase-tools/lib/bin/firebase.js emulators:exec \
-            --project demo-pubget-security --only firestore,storage \
-            "node --test --test-concurrency=1 functions/test/firestore.rules.test.js functions/test/storage.rules.test.js"
+      # The engine/discovery e2e files mint real media fixtures with ffmpeg
+      # (the runner does not ship it), so install it before the suite.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # Mirrors the deploy rules workflows: the full root suite (`npm test`)
+      # under `emulators:exec`, so a PR catches what a deploy would.
+      - name: Rules and e2e tests
+        run: npm test
