@@ -97,8 +97,31 @@ final class UnavailableEventRepository implements EventRepository {
   }) async => _fail();
 
   @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) async => _fail();
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() async => _fail();
+
+  @override
+  Future<Result<void>> crosspost({
+    required String eventId,
+    List<String> groupIds = const <String>[],
+    bool toGlobal = false,
+  }) async => _fail();
+
+  @override
   Future<Result<EventPreview>> preview({required String eventId}) async =>
       _fail();
+
+  @override
+  Future<Result<void>> reportEvent({
+    required String eventId,
+    required String category,
+    String detail = '',
+  }) async => _fail();
 
   @override
   Future<Result<EventResult>> resolve({

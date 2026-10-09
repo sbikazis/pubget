@@ -6,15 +6,17 @@ import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/events/models/event_models.dart';
-import 'package:pubget/features/events/models/event_type_registry.dart';
 import 'package:pubget/features/events/providers/event_providers.dart';
 import 'package:pubget/features/events/repositories/event_repository.dart';
 import 'package:pubget/features/events/screens/event_builder_page.dart';
+import 'package:pubget/features/groups/models/group_models.dart';
+import 'package:pubget/features/groups/providers/group_provider.dart';
+import 'package:pubget/features/groups/repositories/group_repository.dart';
 
 import 'authentication_test_support.dart';
 
 void main() {
-  testWidgets('quiz builder can add, edit, and remove questions', (
+  testWidgets('poll builder blocks advancing until every option has an image', (
     tester,
   ) async {
     final repository = _FakeEventRepository();
@@ -25,10 +27,12 @@ void main() {
     );
     await auth.initialize();
     final builder = EventBuilderProvider(repository: repository);
+    final groups = GroupProvider(repository: _FakeGroupRepository());
     addTearDown(auth.dispose);
     addTearDown(builder.dispose);
+    addTearDown(groups.dispose);
 
-    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -37,37 +41,78 @@ void main() {
       MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<GroupProvider>.value(value: groups),
           ChangeNotifierProvider<EventBuilderProvider>.value(value: builder),
         ],
         child: const MaterialApp(
-          home: EventBuilderPage(groupId: 'g1', templateId: 'guessCharacter'),
+          home: EventBuilderPage(groupId: 'g1'),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Configure'));
+    // Scope step is locked to the group.
+    expect(find.byKey(const Key('create-scope-global')), findsNothing);
+    await tester.tap(find.byKey(const Key('create-continue')).hitTestable());
     await tester.pumpAndSettle();
 
-    expect(find.text('Question 1'), findsOneWidget);
-    await tester.enterText(find.byType(TextField).first, 'Who?');
-    await tester.ensureVisible(find.text(EventStrings.addQuestion));
-    await tester.tap(find.text(EventStrings.addQuestion));
+    // Type step: pick a Poll.
+    await tester.tap(find.byKey(const Key('create-type-poll')));
     await tester.pumpAndSettle();
-    expect(find.text('Question 2'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('create-continue')).hitTestable());
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip(EventStrings.removeQuestion).last);
-    await tester.pumpAndSettle();
-    expect(find.text('Question 2'), findsNothing);
-    expect(find.text('Question 1'), findsOneWidget);
+    // Content step: title, question, and two options are pre-seeded.
+    await tester.enterText(find.byKey(const Key('create-title')), 'Who wins?');
+    await tester.enterText(
+      find.byKey(const Key('create-poll-question')),
+      'Choose your side',
+    );
+    expect(find.text('Option 1'), findsOneWidget);
 
-    await tester.tap(find.text('Review'));
+    await tester.tap(find.byKey(const Key('create-add-option')));
     await tester.pumpAndSettle();
-    expect(find.text(EventStrings.saveDraft), findsOneWidget);
+    expect(find.text('Option 3'), findsOneWidget);
+
+    final remove = find.byKey(const Key('create-remove-option-2'));
+    expect(remove, findsOneWidget);
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+    expect(find.text('Option 3'), findsNothing);
+
+    // Every option needs a label AND an image, so advancing is blocked and
+    // the draft cannot be saved until every current option is completed.
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('create-option-0')),
+        matching: find.byType(TextField),
+      ),
+      'Team A',
+    );
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('create-option-1')),
+        matching: find.byType(TextField),
+      ),
+      'Team B',
+    );
+    await tester.tap(find.byKey(const Key('create-continue')).hitTestable());
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Every poll option needs an image.'),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('create-save-draft')).hitTestable(),
+      findsNothing,
+    );
+    expect(repository.savedDrafts, isEmpty);
   });
 }
 
 final class _FakeEventRepository implements EventRepository {
+  final List<EventDraft> savedDrafts = <EventDraft>[];
+
   @override
   Future<Result<void>> archive(String eventId) async =>
       const Success<void>(null);
@@ -113,6 +158,12 @@ final class _FakeEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) async => const Success<String?>(null);
+
+  @override
   Future<Result<List<PubgetEvent>>> getRecentEvents({
     int limit = 20,
     PubgetEvent? after,
@@ -127,6 +178,24 @@ final class _FakeEventRepository implements EventRepository {
     required String animeId,
     int limit = 20,
   }) async => const Success(<PubgetEvent>[]);
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() async =>
+      const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<void>> crosspost({
+    required String eventId,
+    List<String> groupIds = const <String>[],
+    bool toGlobal = false,
+  }) async => const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<void>> reportEvent({
+    required String eventId,
+    required String category,
+    String detail = '',
+  }) async => const FailureResult(ValidationError('unused'));
 
   @override
   Future<Result<EventPreview>> preview({required String eventId}) async =>
@@ -170,11 +239,13 @@ final class _FakeEventRepository implements EventRepository {
     required String eventId,
     required DateTime startAt,
     required DateTime endAt,
-  }) async => FailureResult(UnknownError('unused'));
+  }) async => const FailureResult(UnknownError('unused'));
 
   @override
-  Future<Result<String>> saveDraft(EventDraft draft) async =>
-      const Success('draft-1');
+  Future<Result<String>> saveDraft(EventDraft draft) async {
+    savedDrafts.add(draft);
+    return const Success('draft-1');
+  }
 
   @override
   Future<Result<List<PubgetEvent>>> search(String query) async =>
@@ -189,4 +260,92 @@ final class _FakeEventRepository implements EventRepository {
   @override
   Stream<Result<PubgetEvent>> watchEvent(String eventId) =>
       const Stream<Result<PubgetEvent>>.empty();
+}
+
+Group _group() => Group(
+  id: 'g1',
+  name: 'Member Crew',
+  description: '',
+  type: GroupType.public,
+  animeId: null,
+  founderId: 'alice',
+  membersCount: 3,
+  maxMembers: 100,
+  joinPolicy: JoinPolicy.open,
+  isSearchable: true,
+  createdAt: DateTime(2026),
+  chatBackgroundUrl: null,
+  rules: '',
+  activityScore: 1,
+);
+
+final class _FakeGroupRepository implements GroupRepository {
+  @override
+  Future<Result<Group>> createGroup(GroupDraft draft) async => Success(_group());
+
+  @override
+  Future<Result<void>> disbandGroup(String groupId) async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<Group>> getGroup(String groupId) async => Success(_group());
+
+  @override
+  Future<Result<GroupMember?>> getMembership(
+    String groupId,
+    String userId,
+  ) async => Success(GroupMember(uid: userId, role: PubgetRank.ronin));
+
+  @override
+  Future<Result<void>> joinGroup({
+    required String groupId,
+    String? inviteId,
+    GroupJoinPayload? join,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> leaveGroup(String groupId) async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<void>> requestToJoin({required String groupId, GroupJoinPayload? join}) async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<List<Group>>> searchGroups(String query) async =>
+      const Success(<Group>[]);
+
+  @override
+  Future<Result<List<Group>>> listJoinedGroups(String userId) async =>
+      Success(<Group>[_group()]);
+
+  @override
+  Stream<Result<List<Group>>> watchJoinedGroups(String userId) =>
+      Stream<Result<List<Group>>>.fromFuture(listJoinedGroups(userId));
+
+  @override
+  Future<Result<void>> updateGroupSettings({
+    required String groupId,
+    required GroupSettingsUpdate settings,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<bool>> isBanned({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<bool>> hasPendingRequest({
+    required String groupId,
+    required String userId,
+  }) async => const Success(false);
+
+  @override
+  Future<Result<List<RoleplayCharacter>>> reservedCharacters(String groupId) async =>
+      const Success(<RoleplayCharacter>[]);
+
+  @override
+  Future<Result<void>> promoteGroup(String groupId) async =>
+      const Success<void>(null);
 }

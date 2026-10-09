@@ -134,6 +134,33 @@ final class EventQuizQuestion {
   );
 }
 
+final class EventAnimeLink {
+  const EventAnimeLink({
+    required this.animeId,
+    required this.title,
+    this.imageUrl = '',
+  });
+
+  final String animeId;
+  final String title;
+  final String imageUrl;
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'animeId': animeId,
+    'title': title,
+    if (imageUrl.isNotEmpty) 'imageUrl': imageUrl,
+  };
+
+  factory EventAnimeLink.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return const EventAnimeLink(animeId: '', title: '');
+    return EventAnimeLink(
+      animeId: map['animeId'] as String? ?? '',
+      title: map['title'] as String? ?? '',
+      imageUrl: map['imageUrl'] as String? ?? '',
+    );
+  }
+}
+
 final class EventConfiguration {
   const EventConfiguration({
     this.question = '',
@@ -148,6 +175,7 @@ final class EventConfiguration {
     this.criterion = '',
     this.challengeKind = '',
     this.targetEventId = '',
+    this.anime,
   });
 
   final String question;
@@ -162,6 +190,7 @@ final class EventConfiguration {
   final String criterion;
   final String challengeKind;
   final String targetEventId;
+  final EventAnimeLink? anime;
 
   EventConfiguration copyWith({
     String? question,
@@ -176,6 +205,8 @@ final class EventConfiguration {
     String? criterion,
     String? challengeKind,
     String? targetEventId,
+    EventAnimeLink? anime,
+    bool clearAnime = false,
   }) => EventConfiguration(
     question: question ?? this.question,
     prompt: prompt ?? this.prompt,
@@ -189,6 +220,7 @@ final class EventConfiguration {
     criterion: criterion ?? this.criterion,
     challengeKind: challengeKind ?? this.challengeKind,
     targetEventId: targetEventId ?? this.targetEventId,
+    anime: clearAnime ? null : anime ?? this.anime,
   );
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -204,6 +236,7 @@ final class EventConfiguration {
     if (criterion.isNotEmpty) 'criterion': criterion,
     if (challengeKind.isNotEmpty) 'challengeKind': challengeKind,
     if (targetEventId.isNotEmpty) 'targetEventId': targetEventId,
+    if (anime != null) 'anime': anime!.toMap(),
   };
 
   factory EventConfiguration.fromMap(Map<String, dynamic>? map) {
@@ -233,6 +266,11 @@ final class EventConfiguration {
           map['criterion'] as String? ?? map['question'] as String? ?? '',
       challengeKind: map['challengeKind'] as String? ?? '',
       targetEventId: map['targetEventId'] as String? ?? '',
+      anime: EventAnimeLink.fromMap(
+        map['anime'] is Map
+            ? Map<String, dynamic>.from(map['anime'] as Map)
+            : null,
+      ),
     );
   }
 }
@@ -248,6 +286,7 @@ final class EventResult {
     this.winnerIds = const <String>[],
     this.winnerOptionId,
     this.leaderboard = const <String, int>{},
+    this.stances = const <String, int>{},
   });
 
   final String kind;
@@ -259,6 +298,7 @@ final class EventResult {
   final List<String> winnerIds;
   final String? winnerOptionId;
   final Map<String, int> leaderboard;
+  final Map<String, int> stances;
 
   factory EventResult.fromMap(Map<String, dynamic>? map) {
     if (map == null) {
@@ -282,6 +322,7 @@ final class EventResult {
           const <String>[],
       winnerOptionId: map['winnerOptionId'] as String?,
       leaderboard: _intMap(map['leaderboard']),
+      stances: _intMap(map['stances']),
     );
   }
 }
@@ -292,12 +333,14 @@ final class EventTally {
     this.votes = const <String, int>{},
     this.scores = const <String, int>{},
     this.correctCounts = const <String, int>{},
+    this.stances = const <String, int>{},
   });
 
   final int submissions;
   final Map<String, int> votes;
   final Map<String, int> scores;
   final Map<String, int> correctCounts;
+  final Map<String, int> stances;
 
   factory EventTally.fromMap(Map<String, dynamic>? map) {
     if (map == null) return const EventTally();
@@ -306,6 +349,7 @@ final class EventTally {
       votes: _intMap(map['votes']),
       scores: _intMap(map['scores']),
       correctCounts: _intMap(map['correctCounts']),
+      stances: _intMap(map['stances']),
     );
   }
 }
@@ -333,6 +377,7 @@ final class PubgetEvent {
     this.scope = EventScope.group,
     this.groupIds = const <String>[],
     this.version = 1,
+    this.reactionCounts = const <String, int>{},
   });
 
   final String id;
@@ -356,6 +401,7 @@ final class PubgetEvent {
   final EventScope scope;
   final List<String> groupIds;
   final int version;
+  final Map<String, int> reactionCounts;
 
   bool get isOpen => status == EventStatus.active;
   bool get isHistorical =>
@@ -372,8 +418,16 @@ final class PubgetEvent {
     return !end.isAfter(now ?? DateTime.now());
   }
 
-  bool isInteractable([DateTime? now]) =>
-      status == EventStatus.active && !isExpired(now);
+  /// Whether the audience can participate right now: event must be live and
+  /// its scheduled start must have passed.
+  bool isInteractable([DateTime? now]) {
+    final moment = now ?? DateTime.now();
+    if (status != EventStatus.active) return false;
+    if (isExpired(moment)) return false;
+    final start = startAt;
+    if (start != null && start.isAfter(moment)) return false;
+    return true;
+  }
 
   Duration? remaining(DateTime now) {
     if (endAt == null) return null;
@@ -400,6 +454,7 @@ final class PubgetEvent {
       'votes': tally.votes,
       'scores': tally.scores,
       'correctCounts': tally.correctCounts,
+      'stances': tally.stances,
     },
     'result': result == null
         ? null
@@ -413,12 +468,14 @@ final class PubgetEvent {
             'winnerIds': result!.winnerIds,
             'winnerOptionId': result!.winnerOptionId,
             'leaderboard': result!.leaderboard,
+            'stances': result!.stances,
           },
     'createdAt': createdAt?.toUtc().toIso8601String(),
     'updatedAt': updatedAt?.toUtc().toIso8601String(),
     'coverUrl': coverUrl,
     'templateId': templateId,
     'version': version,
+    'reactionCounts': reactionCounts,
     'searchName': title.trim().toLowerCase(),
   };
 
@@ -459,6 +516,33 @@ final class PubgetEvent {
           ) ??
           const <String>[],
       version: (map['version'] as num?)?.toInt() ?? 1,
+      reactionCounts: _intMap(map['reactionCounts']),
+    );
+  }
+}
+
+final class EventCreationQuota {
+  const EventCreationQuota({
+    required this.count,
+    required this.limit,
+    required this.remaining,
+    this.day = '',
+  });
+
+  final int count;
+  final int limit;
+  final int remaining;
+  final String day;
+
+  bool get exhausted => remaining <= 0;
+
+  factory EventCreationQuota.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return const EventCreationQuota(count: 0, limit: 2, remaining: 2);
+    return EventCreationQuota(
+      count: (map['count'] as num?)?.toInt() ?? 0,
+      limit: (map['limit'] as num?)?.toInt() ?? 2,
+      remaining: (map['remaining'] as num?)?.toInt() ?? 0,
+      day: map['day'] as String? ?? '',
     );
   }
 }

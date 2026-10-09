@@ -615,6 +615,18 @@ exports.reactToEvent = onCall(
   { region: "us-central1" },
   eventsDomain.reactToEvent,
 );
+exports.crosspostEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.crosspostEvent,
+);
+exports.getEventCreationQuota = onCall(
+  { region: "us-central1" },
+  eventsDomain.getEventCreationQuota,
+);
+exports.reportEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.reportEvent,
+);
 exports.createGame = onCall(
   { region: "us-central1" },
   gamesDomain.createGame,

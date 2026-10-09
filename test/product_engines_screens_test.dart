@@ -16,7 +16,6 @@ import 'package:pubget/features/achievements/screens/achievements_page.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/events/models/event_models.dart';
-import 'package:pubget/features/events/models/event_type_registry.dart';
 import 'package:pubget/features/events/providers/event_providers.dart';
 import 'package:pubget/features/events/repositories/event_repository.dart';
 import 'package:pubget/features/events/screens/event_details_screen.dart';
@@ -576,7 +575,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Ended poll'), findsWidgets);
-    expect(find.text(EventStrings.submit), findsNothing);
+    expect(
+      find.text(AppStrings.forLanguageCode('en').eventSubmitCta),
+      findsNothing,
+    );
   });
 
   testWidgets('completed game result offers a next action', (tester) async {
@@ -1058,6 +1060,12 @@ final class _ExpiredEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) async => const Success<String?>(null);
+
+  @override
   Future<Result<List<PubgetEvent>>> getRecentEvents({
     int limit = 20,
     PubgetEvent? after,
@@ -1072,6 +1080,24 @@ final class _ExpiredEventRepository implements EventRepository {
     required String animeId,
     int limit = 20,
   }) async => const Success(<PubgetEvent>[]);
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() async =>
+      const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<void>> crosspost({
+    required String eventId,
+    List<String> groupIds = const <String>[],
+    bool toGlobal = false,
+  }) async => const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<void>> reportEvent({
+    required String eventId,
+    required String category,
+    String detail = '',
+  }) async => const FailureResult(ValidationError('unused'));
 
   @override
   Future<Result<EventPreview>> preview({required String eventId}) async =>

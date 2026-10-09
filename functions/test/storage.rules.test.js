@@ -466,3 +466,44 @@ test("profile covers require owner writes and mirror avatar privacy on reads", a
   );
   await assertSucceeds(owner.storage().ref("users/cover-private/cover.jpg").delete());
 });
+
+test("event option images are owned by the creator and readable by users", async () => {
+  const alice = env.authenticatedContext("alice");
+  const bob = env.authenticatedContext("bob");
+  await assertSucceeds(upload(
+    alice,
+    "events/alice/evt-1/option-1.jpg",
+    "image/jpeg",
+  ));
+  await assertSucceeds(upload(
+    alice,
+    "events/alice/evt-1/option-2.png",
+    "image/png",
+  ));
+  await assertFails(upload(
+    bob,
+    "events/alice/evt-1/option-1.jpg",
+    "image/jpeg",
+  ));
+  await assertFails(upload(
+    alice,
+    "events/alice/evt-1/huge.jpg",
+    "image/jpeg",
+    5 * 1024 * 1024 + 1,
+  ));
+  await assertFails(upload(
+    alice,
+    "events/alice/evt-1/secret.txt",
+    "text/plain",
+  ));
+  await assertFails(
+    env.unauthenticatedContext().storage()
+      .ref("events/alice/evt-1/option-1.jpg").getDownloadURL(),
+  );
+  await assertSucceeds(bob.storage().ref("events/alice/evt-1/option-1.jpg").getDownloadURL());
+  await assertFails(
+    alice.storage().ref("events/alice/evt-1/nope.jpg").delete(),
+  );
+  await assertFails(bob.storage().ref("events/alice/evt-1/option-1.jpg").delete());
+  await assertSucceeds(alice.storage().ref("events/alice/evt-1/option-1.jpg").delete());
+});

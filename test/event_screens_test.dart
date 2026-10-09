@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
+import 'package:pubget/core/l10n/app_strings.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/events/models/event_models.dart';
-import 'package:pubget/features/events/models/event_type_registry.dart';
 import 'package:pubget/features/events/providers/event_providers.dart';
 import 'package:pubget/features/events/repositories/event_repository.dart';
 import 'package:pubget/features/events/screens/event_details_screen.dart';
@@ -43,7 +43,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(EventStrings.noEventsTitle), findsWidgets);
+    expect(
+      find.text(AppStrings.forLanguageCode('en').eventNoActiveYet),
+      findsWidgets,
+    );
   });
 
   testWidgets('event details shows a missing-event empty state', (
@@ -69,7 +72,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(EventStrings.missing), findsWidgets);
+    expect(
+      find.text(AppStrings.forLanguageCode('en').eventMissing),
+      findsWidgets,
+    );
     expect(find.byType(PubgetEmptyState), findsOneWidget);
   });
 
@@ -199,7 +205,9 @@ void main() {
     expect(find.byType(ReorderableDragStartListener), findsNWidgets(3));
     ranking.onReorder(1, 0);
     await tester.pump();
-    await tester.tap(find.text(EventStrings.submit));
+    await tester.tap(
+      find.text(AppStrings.forLanguageCode('en').eventSubmitCta),
+    );
     await tester.pump();
     await tester.pump();
 
@@ -329,6 +337,12 @@ final class _FakeEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) async => const Success<String?>(null);
+
+  @override
   Future<Result<List<PubgetEvent>>> getRecentEvents({
     int limit = 20,
     PubgetEvent? after,
@@ -343,6 +357,24 @@ final class _FakeEventRepository implements EventRepository {
     required String animeId,
     int limit = 20,
   }) async => const Success(<PubgetEvent>[]);
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() async =>
+      const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<void>> crosspost({
+    required String eventId,
+    List<String> groupIds = const <String>[],
+    bool toGlobal = false,
+  }) async => const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<void>> reportEvent({
+    required String eventId,
+    required String category,
+    String detail = '',
+  }) async => const FailureResult(ValidationError('unused'));
 
   @override
   Future<Result<EventPreview>> preview({required String eventId}) async =>

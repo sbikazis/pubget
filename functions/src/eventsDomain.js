@@ -16,8 +16,14 @@ const TITLE_MAX = 80;
 const DESCRIPTION_MAX = 500;
 const OPTION_MAX = 10;
 const OPTION_MIN = 2;
+const POLL_OPTION_MAX = 7;
+const EVENT_REACTIONS = Object.freeze(["like", "dislike"]);
 const TEXT_MAX = 1000;
 const EVENT_ID_MAX = 128;
+// Mirrors the report dialog reasons in the Flutter client (chat_action_sheets).
+const REPORT_EVENT_CATEGORIES = new Set([
+  "inappropriate", "spam", "copyright", "harassment", "other",
+]);
 
 const EVENT_TYPES = [
   "poll", "comparison", "theory", "challenge", "ranking", "question",
@@ -430,8 +436,12 @@ function validateChallenge(input) {
 }
 
 function extractAnimeIds(configuration) {
-  if (!configuration || !configuration.options) return [];
   const ids = new Set();
+  if (configuration && configuration.anime &&
+      validString(configuration.anime.animeId, 64)) {
+    ids.add(configuration.anime.animeId);
+  }
+  if (!configuration || !configuration.options) return [...ids];
   for (const option of configuration.options) {
     if (option.animeId) ids.add(option.animeId);
   }
@@ -461,10 +471,28 @@ function validateConfiguration(type, raw) {
     const prompt = validString(input.prompt || input.question, 200)
       ? (input.prompt || input.question).trim()
       : "";
-    if (!prompt) return null;
+    if (type === "openDiscussion" && !prompt) return null;
+    let anime = null;
+    if (validString(input.anime && input.anime.animeId, 64)) {
+      const animeTitle = validString(input.anime.title, 160)
+        ? input.anime.title.trim()
+        : "";
+      const animeImage = typeof input.anime.imageUrl === "string"
+        ? input.anime.imageUrl.trim()
+        : "";
+      if (!animeTitle || (animeImage && !validHttpsImageUrl(animeImage))) {
+        return null;
+      }
+      anime = {
+        animeId: input.anime.animeId.trim(),
+        title: animeTitle,
+        imageUrl: animeImage.slice(0, 1024),
+      };
+    }
     return {
       ...base,
       prompt,
+      anime,
       allowVoting: input.allowVoting === true,
       completionRule: typeof input.completionRule === "string"
         ? input.completionRule.trim().slice(0, 200)
@@ -476,8 +504,14 @@ function validateConfiguration(type, raw) {
     : "";
   const source = input.options || input.candidates || input.items;
   const min = type === "comparison" ? 2 : OPTION_MIN;
-  const options = normalizeOptions(source, { min, max: OPTION_MAX });
+  const max = type === "poll" ? POLL_OPTION_MAX : OPTION_MAX;
+  const options = normalizeOptions(source, { min, max });
   if (!question || !options) return null;
+  if (type === "poll" && !options.every(
+    (item) => validHttpsImageUrl(item.imageUrl),
+  )) {
+    return null;
+  }
   let maxSelections = 1;
   if (type === "poll" && allowMultiple) maxSelections = options.length;
   if (type === "question") {
@@ -511,7 +545,18 @@ function validateResponse(type, configuration, data) {
       challengeKind: configuration.challengeKind || "self_report",
     };
   }
-  if (type === "theory" || type === "openDiscussion") {
+  if (type === "theory") {
+    const stance = payload.stance === "agree" || payload.stance === "disagree"
+      ? payload.stance
+      : null;
+    if (!stance) return null;
+    const text = typeof payload.text === "string" &&
+      payload.text.trim().length > 0 && payload.text.trim().length <= TEXT_MAX
+      ? payload.text.trim()
+      : "";
+    return text ? { stance, text } : { stance };
+  }
+  if (type === "openDiscussion") {
     if (!validString(payload.text, TEXT_MAX)) return null;
     return { text: payload.text.trim() };
   }
@@ -553,6 +598,7 @@ function emptyTally(configuration, type) {
       submissions: 0,
       verifiedCompletions: 0,
       selfReported: 0,
+      stances: { agree: 0, disagree: 0 },
     };
   }
   const votes = {};
@@ -575,6 +621,10 @@ function applyTally(tally, type, configuration, responseData, delta = 1, uid = n
     scoreboard: { ...(tally.scoreboard || {}) },
     verifiedCompletions: tally.verifiedCompletions || 0,
     selfReported: tally.selfReported || 0,
+    stances: {
+      agree: (tally.stances && tally.stances.agree) || 0,
+      disagree: (tally.stances && tally.stances.disagree) || 0,
+    },
   };
   if (type === "quiz") {
     const answers = payload.answers && typeof payload.answers === "object"
@@ -616,6 +666,14 @@ function applyTally(tally, type, configuration, responseData, delta = 1, uid = n
     return next;
   }
   if (type === "theory" || type === "openDiscussion") {
+    if (type === "theory" && step !== 0) {
+      const stance = payload.stance === "agree" || payload.stance === "disagree"
+        ? payload.stance
+        : null;
+      if (stance) {
+        next.stances[stance] = Math.max(0, next.stances[stance] + step);
+      }
+    }
     return next;
   }
   (payload.optionIds || []).forEach((id) => {
@@ -679,7 +737,14 @@ function calculateResult({ type, configuration, tally, responsesCount }) {
     };
   }
   if (type === "theory" || type === "openDiscussion") {
-    return { kind: type, submissions };
+    return {
+      kind: type,
+      submissions,
+      stances: {
+        agree: (tally.stances && tally.stances.agree) || 0,
+        disagree: (tally.stances && tally.stances.disagree) || 0,
+      },
+    };
   }
   if (type === "prediction") {
     return { kind: type, submissions, votes: tally.votes || {} };
@@ -781,34 +846,51 @@ function displayNameOf(user, uid) {
 }
 
 async function postEventChatActivity(db, FieldValue, {
-  groupId, eventId, kind, text,
+  groupId, groupIds = [], scope = "", eventId, kind, text,
 }) {
-  if (!validString(groupId, 128) || !validString(eventId, EVENT_ID_MAX)) return;
-  const ref = groupRef(db, groupId).collection("messages").doc();
-  await ref.set({
-    senderId: "system",
-    senderName: "Pubget",
-    senderAvatar: "",
-    senderRole: "system",
-    type: "event",
-    text: String(text || "").slice(0, 200),
-    mediaId: eventId,
-    mediaUrl: null,
-    thumbnailUrl: null,
-    replyToMessageId: null,
-    createdAt: FieldValue.serverTimestamp(),
-    editedAt: null,
-    deletedAt: null,
-    pinnedAt: null,
-    reactions: {},
-    reactionUsers: {},
-    recipientCount: 0,
-    deliveredCount: 0,
-    readCount: 0,
-    deliveredBy: {},
-    readBy: {},
-    eventActivity: kind,
-  });
+  if (!validString(eventId, EVENT_ID_MAX)) return;
+  const targets = [
+    ...(validString(groupId, 128) ? [groupId] : []),
+    ...(Array.isArray(groupIds) ? groupIds : []),
+  ].filter((id, index, all) => validString(id, 128) && all.indexOf(id) === index);
+  if (scope === "global" && targets.length === 0) return;
+  const preview = String(text || "").slice(0, 80);
+  for (const target of targets) {
+    const messageRef = groupRef(db, target)
+      .collection("messages")
+      .doc(`evt-${eventId}-${kind}`);
+    const message = await messageRef.get();
+    if (message.exists) continue;
+    await messageRef.set({
+      senderId: "system",
+      senderName: "Pubget",
+      senderAvatar: "",
+      senderRole: "system",
+      type: "event",
+      text: String(text || "").slice(0, 200),
+      mediaId: eventId,
+      mediaUrl: null,
+      thumbnailUrl: null,
+      replyToMessageId: null,
+      createdAt: FieldValue.serverTimestamp(),
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+      reactions: {},
+      reactionUsers: {},
+      recipientCount: 0,
+      deliveredCount: 0,
+      readCount: 0,
+      deliveredBy: {},
+      readBy: {},
+      eventActivity: kind,
+    });
+    await groupRef(db, target).update({
+      lastMessageAt: FieldValue.serverTimestamp(),
+      lastMessageText: preview,
+      updatedAt: FieldValue.serverTimestamp(),
+    }).catch(() => {});
+  }
 }
 
 function notifySafe(builder, payload) {
@@ -930,6 +1012,7 @@ function createEventsDomain({
          groupId: groupId || "",
          groupIds: targetGroups,
          scope,
+         eventTitle: title || "",
        },
       title: started ? "Event started" : "Results are ready",
       body: title || (started ? "An event just started." : "Event ended — tap to see results."),
@@ -1132,6 +1215,14 @@ function createEventsDomain({
           "Preview the Event and confirm it before publishing.",
         );
       }
+      if (current.type === "theory" &&
+          !(typeof current.description === "string" &&
+            current.description.trim().length > 0)) {
+        throw new HttpsError(
+          "invalid-argument",
+          "A Theory needs body text before publishing.",
+        );
+      }
       const limitRef = eventCreationLimitRef(db, uid);
       const limitSnapshot = await transaction.get(limitRef);
       const limit = limitSnapshot.exists ? limitSnapshot.data() || {} : {};
@@ -1159,6 +1250,9 @@ function createEventsDomain({
         audienceMemberIds,
         legacyMode: legacyCaller,
         publishedAt: FieldValue.serverTimestamp(),
+        startNotifiedAt: start.getTime() <= Date.now()
+          ? FieldValue.serverTimestamp()
+          : null,
         resultLockedAt: null,
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -1190,6 +1284,8 @@ function createEventsDomain({
     if (published && published.canonicalStatus === "ACTIVE" && published.startsAt <= Date.now()) {
       await postEventChatActivity(db, FieldValue, {
         groupId: published.groupId,
+        groupIds: published.groupIds,
+        scope: published.scope,
         eventId: published.eventId,
         kind: "started",
         text: `Event started: ${published.title}`,
@@ -1206,6 +1302,8 @@ function createEventsDomain({
     } else if (published) {
       await postEventChatActivity(db, FieldValue, {
         groupId: published.groupId,
+        groupIds: published.groupIds,
+        scope: published.scope,
         eventId: published.eventId,
         kind: "created",
         text: `Event published: ${published.title}`,
@@ -1256,13 +1354,17 @@ function createEventsDomain({
       cancelled = {
         eventId: ref.id,
         status: "DELETED",
-        groupId: current.groupId,
+        groupId: current.groupId || null,
+        groupIds: Array.isArray(current.groupIds) ? current.groupIds : [],
+        scope: normalizeScope(current.scope || (current.groupId ? "group" : "global")),
         title: current.title,
       };
     });
-    if (cancelled && cancelled.groupId && cancelled.status === "DELETED") {
+    if (cancelled && cancelled.status === "DELETED") {
       await postEventChatActivity(db, FieldValue, {
         groupId: cancelled.groupId,
+        groupIds: cancelled.groupIds,
+        scope: cancelled.scope,
         eventId: cancelled.eventId,
         kind: "deleted",
         text: `Event deleted: ${cancelled.title}`,
@@ -1275,7 +1377,7 @@ function createEventsDomain({
     const current = snapshot.data() || {};
     const status = normalizeEventStatus(current.status);
     if (status === "ENDED" || status === "ARCHIVED" || status === "DELETED") {
-      return current;
+      return { ...current, finalizedNow: false };
     }
     assertTransition(status, "ENDED", HttpsError);
     const result = calculateResult({
@@ -1295,7 +1397,7 @@ function createEventsDomain({
       resultLockedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    return { ...current, status: endedStatus, result };
+    return { ...current, status: endedStatus, result, finalizedNow: true };
   }
 
   async function endEvent(request) {
@@ -1325,7 +1427,7 @@ function createEventsDomain({
       }
       ended = await finalizeEvent(transaction, snapshot, { reason: "manual" });
     });
-    if (ended && normalizeEventStatus(ended.status) === "ENDED") {
+    if (ended && ended.finalizedNow === true) {
       await postEventChatActivity(db, FieldValue, {
         groupId: ended.groupId,
         groupIds: Array.isArray(ended.groupIds) ? ended.groupIds : [],
@@ -1338,6 +1440,8 @@ function createEventsDomain({
         kind: "ended",
         eventId: ref.id,
         groupId: ended.groupId,
+        groupIds: Array.isArray(ended.groupIds) ? ended.groupIds : [],
+        scope: normalizeScope(ended.scope || (ended.groupId ? "group" : "global")),
         creatorId: ended.creatorId || uid,
         title: ended.title,
       });
@@ -1631,7 +1735,7 @@ function createEventsDomain({
 
   async function processEventLifecycle() {
     const now = new Date();
-    const [canonicalExpiring, legacyExpiring, legacyScheduled] = await Promise.all([
+    const [canonicalExpiring, legacyExpiring, legacyScheduled, starting] = await Promise.all([
       db.collection("events")
         .where("status", "==", "ACTIVE")
         .where("endAt", "<=", now)
@@ -1647,6 +1751,12 @@ function createEventsDomain({
         .where("startAt", "<=", now)
         .limit(25)
         .get(),
+      db.collection("events")
+        .where("status", "==", "ACTIVE")
+        .where("startAt", "<=", now)
+        .where("startNotifiedAt", "==", null)
+        .limit(25)
+        .get(),
     ]);
     for (const doc of legacyScheduled.docs) {
       await db.runTransaction(async (transaction) => {
@@ -1657,6 +1767,33 @@ function createEventsDomain({
           updatedAt: FieldValue.serverTimestamp(),
         });
       });
+    }
+    for (const doc of starting.docs) {
+      let started;
+      await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(doc.ref);
+        if (!snap.exists || snap.data().status !== "ACTIVE") return;
+        const current = snap.data() || {};
+        const scope = normalizeScope(current.scope || (current.groupId ? "group" : "global"));
+        const groupIds = Array.isArray(current.groupIds) ? current.groupIds : [];
+        const groupId = current.groupId || (groupIds.length === 1 ? groupIds[0] : null);
+        started = { eventId: doc.id, groupId, groupIds, scope, title: current.title || "" };
+        transaction.update(doc.ref, {
+          startNotifiedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      });
+      if (started) {
+        await notifyEventLifecycle({
+          kind: "started",
+          eventId: doc.id,
+          groupId: started.groupId,
+          groupIds: started.groupIds,
+          scope: started.scope,
+          creatorId: null,
+          title: started.title,
+        });
+      }
     }
     const expiring = [
       ...canonicalExpiring.docs,
@@ -1670,9 +1807,11 @@ function createEventsDomain({
         if (!snap.exists || normalizeEventStatus(snap.data().status) !== "ACTIVE") return;
         ended = await finalizeEvent(transaction, snap, { reason: "expired" });
       });
-      if (ended && normalizeEventStatus(ended.status) === "ENDED") {
+      if (ended && ended.finalizedNow === true) {
         await postEventChatActivity(db, FieldValue, {
           groupId: ended.groupId,
+          groupIds: Array.isArray(ended.groupIds) ? ended.groupIds : [],
+          scope: normalizeScope(ended.scope || (ended.groupId ? "group" : "global")),
           eventId: doc.id,
           kind: "ended",
           text: `Event ended: ${ended.title || "Event"}`,
@@ -1814,14 +1953,47 @@ function createEventsDomain({
       if (scope !== "global" && !access.member) {
         throw new HttpsError("permission-denied", "You cannot react to this Event.");
       }
-      transaction.set(reactionRef, {
-        userId: uid,
-        reaction: reaction.trim().slice(0, 32),
-        createdAt: existing.exists
-          ? (existing.data() || {}).createdAt || FieldValue.serverTimestamp()
-          : FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      const reactionValue = typeof reaction === "string" ? reaction.trim() : "";
+      if (!EVENT_REACTIONS.includes(reactionValue)) {
+        throw new HttpsError("invalid-argument", "Unsupported reaction.");
+      }
+      const prior = existing.exists
+        ? (existing.data() || {}).reaction
+        : null;
+      const counts = {
+        like: 0,
+        dislike: 0,
+        ...((event.reactionCounts && typeof event.reactionCounts === "object")
+          ? event.reactionCounts
+          : {}),
+      };
+      if (prior === reactionValue) {
+        transaction.delete(reactionRef);
+        if (prior === "like" || prior === "dislike") {
+          counts[prior] = Math.max(0, (counts[prior] || 0) - 1);
+        }
+        transaction.update(ref, {
+          reactionCounts: counts,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        transaction.set(reactionRef, {
+          userId: uid,
+          reaction: reactionValue,
+          createdAt: existing.exists
+            ? (existing.data() || {}).createdAt || FieldValue.serverTimestamp()
+            : FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        if (prior === "like" || prior === "dislike") {
+          counts[prior] = Math.max(0, (counts[prior] || 0) - 1);
+        }
+        counts[reactionValue] = (counts[reactionValue] || 0) + 1;
+        transaction.update(ref, {
+          reactionCounts: counts,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
     });
     return { ok: true, eventId: ref.id };
   }
@@ -1961,11 +2133,169 @@ function createEventsDomain({
     };
   }
 
+  async function getEventCreationQuota(request) {
+    const uid = requireAuth(request, HttpsError);
+    const limitRef = eventCreationLimitRef(db, uid);
+    const snapshot = await limitRef.get();
+    const limit = snapshot.exists ? snapshot.data() || {} : {};
+    const count = Number.isInteger(limit.count) ? limit.count : 0;
+    return {
+      count,
+      limit: 2,
+      day: utcDayKey(),
+      remaining: Math.max(0, 2 - count),
+    };
+  }
+
+  async function crosspostEvent(request) {
+    const uid = requireAuth(request, HttpsError);
+    const eventId = request.data && request.data.eventId;
+    if (!validString(eventId, EVENT_ID_MAX)) {
+      throw new HttpsError("invalid-argument", "eventId is required.");
+    }
+    const rawGroupIds = Array.isArray(request.data && request.data.groupIds)
+      ? request.data.groupIds
+        .filter((value) => validString(value, 128))
+        .map((value) => value.trim())
+      : [];
+    const requested = [...new Set(rawGroupIds)];
+    const makeGlobal = request.data && request.data.toGlobal === true;
+    if (!makeGlobal && requested.length === 0) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Choose at least one group or global scope to cross-post to.",
+      );
+    }
+    const ref = eventRef(db, eventId.trim());
+    let result;
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+      const current = snapshot.data() || {};
+      const status = normalizeEventStatus(current.status);
+      if (status !== "ACTIVE") {
+        throw new HttpsError(
+          "failed-precondition",
+          "Only active Events can be cross-posted.",
+        );
+      }
+      const scope = normalizeScope(current.scope || (current.groupId ? "group" : "global"));
+      const originGroupId = current.groupId || null;
+      const originGroupIds = Array.isArray(current.groupIds)
+        ? current.groupIds
+        : [];
+      const manageAccess = await loadScopePermissions(
+        transaction,
+        db,
+        { scope, groupId: originGroupId, groupIds: originGroupIds },
+        uid,
+      );
+      if (current.creatorId !== uid && !manageAccess.manageEvents) {
+        throw new HttpsError(
+          "permission-denied",
+          "You cannot cross-post this Event.",
+        );
+      }
+      if (!makeGlobal && requested.length > 0) {
+        const joinAccess = await loadScopePermissions(
+          transaction,
+          db,
+          { scope: "multiGroup", groupId: null, groupIds: requested },
+          uid,
+        );
+        if (joinAccess.missingGroup) {
+          throw new HttpsError("not-found", "A selected group was not found.");
+        }
+        if (!joinAccess.member) {
+          throw new HttpsError(
+            "permission-denied",
+            "You must belong to every selected group.",
+          );
+        }
+      }
+      let nextScope = scope;
+      let nextGroupId = originGroupId;
+      let nextGroupIds = [...originGroupIds];
+      if (scope === "group" && originGroupId) {
+        nextGroupIds = [originGroupId, ...nextGroupIds];
+        nextGroupIds = [...new Set(nextGroupIds)];
+      }
+      const alreadyTargeted = new Set(nextGroupIds);
+      const added = requested.filter((id) => !alreadyTargeted.has(id));
+      nextGroupIds = [...new Set([...nextGroupIds, ...added])];
+      if (makeGlobal) {
+        if (scope !== "global") {
+          nextScope = "global";
+          nextGroupId = null;
+          nextGroupIds = [...new Set(nextGroupIds)];
+        }
+      } else if (added.length > 0 && nextScope !== "global") {
+        nextScope = nextGroupId ? "multiGroup" : scope;
+        if (nextGroupId) {
+          nextGroupIds = [nextGroupId, ...nextGroupIds];
+          nextGroupIds = [...new Set(nextGroupIds)];
+          nextGroupId = null;
+        }
+      }
+      const audienceMemberIds = nextScope === "global"
+        ? []
+        : uniqueRecipientIds(
+          (await Promise.all(
+            (nextGroupId ? [nextGroupId] : nextGroupIds)
+              .filter(Boolean)
+              .map((id) => listGroupMemberIds(db, id)),
+          )).flat(),
+        );
+      transaction.update(ref, {
+        scope: nextScope,
+        groupId: nextGroupId,
+        groupIds: nextGroupIds,
+        audienceMemberIds,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      result = {
+        eventId: ref.id,
+        scope: nextScope,
+        added,
+        skipped: requested.filter((id) => !added.includes(id)),
+      };
+    });
+    if (result && result.added.length > 0) {
+      const snapshot = await ref.get();
+      const title = (snapshot.exists ? snapshot.data() || {} : {}).title || "Event";
+      for (const groupId of result.added) {
+        await postEventChatActivity(db, FieldValue, {
+          groupId,
+          eventId: ref.id,
+          kind: "created",
+          text: `Event published: ${title}`,
+        });
+      }
+    }
+    return { ok: true, ...result };
+  }
+
   async function grantEventRewards(eventId, event) {
     if (!economy || typeof economy.grantDomainRewards !== "function") return;
-    const winners = Array.isArray(event && event.result && event.result.winnerIds)
-      ? event.result.winnerIds
-      : [];
+    const result = event && event.result ? event.result : {};
+    let winners = Array.isArray(result.winnerIds) ? result.winnerIds : [];
+    if (winners.length === 0) return;
+    if (!["prediction", "challenge"].includes(result.kind)) {
+      const winningOptions = new Set(winners);
+      const responses = await eventRef(db, eventId).collection("responses").get();
+      const voterIds = new Set();
+      for (const entry of responses.docs) {
+        const responseData = (entry.data() || {}).responseData || {};
+        const chosen = result.kind === "ranking"
+          ? responseData.rankedIds
+          : (responseData.optionIds || responseData.optionId);
+        const choices = Array.isArray(chosen) ? chosen : [chosen];
+        if (choices.filter(Boolean).some((id) => winningOptions.has(id))) {
+          voterIds.add(entry.id);
+        }
+      }
+      winners = [...voterIds];
+    }
     if (winners.length === 0) return;
     await economy.grantDomainRewards(winners, {
       type: "earn_event",
@@ -1981,6 +2311,96 @@ function createEventsDomain({
         metadata: { eventId },
       });
     }
+  }
+
+  // §14.6 — abuse report queue for Events. One open queue entry per
+  // reporter per Event; re-reporting only retags the existing entry.
+  async function reportEvent(request) {
+    const actor = requireAuth(request, HttpsError);
+    const rawEventId = request.data && request.data.eventId;
+    if (!validString(rawEventId, EVENT_ID_MAX)) {
+      throw new HttpsError("invalid-argument", "eventId is required.");
+    }
+    const eventId = rawEventId.trim();
+    const rawCategory = request.data && request.data.category;
+    const category = validString(rawCategory, 32) ? rawCategory.trim() : "";
+    if (!REPORT_EVENT_CATEGORIES.has(category)) {
+      throw new HttpsError("invalid-argument", "Report category is invalid.");
+    }
+    const rawDetail = request.data && request.data.detail;
+    const detail = typeof rawDetail === "string"
+      ? rawDetail.trim().slice(0, 500)
+      : "";
+    const ref = eventRef(db, eventId);
+    const snapshot = await ref.get();
+    if (!snapshot.exists) throw new HttpsError("not-found", "Event not found.");
+    const current = snapshot.data() || {};
+    if (current.creatorId === actor) {
+      throw new HttpsError(
+        "failed-precondition",
+        "You cannot report your own Event.",
+      );
+    }
+    const reportRef = ref.collection("reports").doc(actor);
+    const prior = await reportRef.get();
+    if (prior.exists) {
+      const previous = prior.data() || {};
+      await reportRef.set({
+        category,
+        detail: detail || previous.detail || null,
+        actorId: previous.actorId || actor,
+        targetId: previous.targetId || eventId,
+        creatorId: previous.creatorId || current.creatorId || null,
+        status: previous.status || "open",
+        createdAt: previous.createdAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        repeatCount: (Number(previous.repeatCount) || 1) + 1,
+      });
+      return { ok: true, alreadyReported: true };
+    }
+    const gate = await enforceEventReportRateLimit(actor);
+    if (!gate.allowed) {
+      throw new HttpsError("resource-exhausted", gate.message);
+    }
+    await reportRef.set({
+      category,
+      detail: detail || null,
+      actorId: actor,
+      targetId: eventId,
+      creatorId: current.creatorId || null,
+      status: "open",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      repeatCount: 1,
+    });
+    return { ok: true, alreadyReported: false };
+  }
+
+  // §14.6 — thin abuse gate on the report queue itself: the cost of a false
+  // positive is a rejected report, the cost of no limit is a triage queue
+  // nobody can clear.
+  async function enforceEventReportRateLimit(actor, now = Date.now()) {
+    const doc = db.collection("eventReportRate").doc(actor);
+    const windowMs = 60 * 60 * 1000;
+    const maxPerWindow = 10;
+    return db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(doc);
+      const startedAt = Number(snapshot.data()?.startedAt) || 0;
+      const count = Number(snapshot.data()?.count) || 0;
+      const elapsed = now - startedAt;
+      if (elapsed > windowMs || elapsed < 0) {
+        transaction.set(doc, { startedAt: now, count: 1 });
+        return { allowed: true };
+      }
+      if (count >= maxPerWindow) {
+        return {
+          allowed: false,
+          message: "You have sent a few reports already. Try again later.",
+        };
+      }
+      transaction.set(doc, { startedAt, count: count + 1 });
+      return { allowed: true };
+    });
   }
 
   return {
@@ -1999,6 +2419,9 @@ function createEventsDomain({
     getEventAnalytics,
     addEventComment,
     reactToEvent,
+    crosspostEvent,
+    getEventCreationQuota,
+    reportEvent,
   };
 }
 
@@ -2022,4 +2445,5 @@ module.exports = {
   COMPARISON_TYPES,
   normalizeEventType,
   normalizeEventStatus,
+  REPORT_EVENT_CATEGORIES,
 };

@@ -65,7 +65,29 @@ abstract interface class EventRepository {
     required String userId,
   });
 
+  /// The current user's own reaction doc: returns 'like', 'dislike', or null.
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  });
+
+  Future<Result<EventCreationQuota>> getCreationQuota();
+
+  /// Extends a live event to additional groups (or global) without copying it.
+  Future<Result<void>> crosspost({
+    required String eventId,
+    List<String> groupIds = const <String>[],
+    bool toGlobal = false,
+  });
+
   Future<Result<EventPreview>> preview({required String eventId});
+
+  /// §14.6 — files an abuse report against an Event for moderation triage.
+  Future<Result<void>> reportEvent({
+    required String eventId,
+    required String category,
+    String detail = '',
+  });
 
   Future<Result<EventResult>> resolve({
     required String eventId,

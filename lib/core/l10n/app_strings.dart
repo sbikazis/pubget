@@ -247,6 +247,66 @@ final class AppStrings {
       pick('My Favorite Characters', 'شخصياتي المفضلة');
   String get myAnime => pick('My Anime', 'أنميّاتي');
   String get notifications => pick('Notifications', 'الإشعارات');
+  String get notificationsMarkAllRead =>
+      pick('Mark all read', 'تحديد الكل كمقروء');
+  String get notificationsEmptyTitle => pick('No notifications', 'لا إشعارات');
+  String get notificationsEmptyMessage => pick(
+    'Important activity will appear here.',
+    'ستظهر الأنشطة المهمة هنا.',
+  );
+  String get notificationsLoadFailed =>
+      pick('Notifications could not load.', 'تعذّر تحميل الإشعارات.');
+  String get notificationsEnablePush =>
+      pick('Enable push', 'تفعيل الإشعارات');
+  String get notificationsPushEnabled =>
+      pick('Push notifications enabled', 'تم تفعيل إشعارات Push');
+  String get notificationsPushDenied => pick(
+    'Notification permission was not granted',
+    'لم يتم منح إذن الإشعارات',
+  );
+  String get notificationsGeneric => pick('Notification', 'إشعار');
+
+  /// Inbox item titles (§12.4). Event notifications carry the event name in
+  /// `eventTitle`; everything else falls back to a generic label.
+  String notificationTitle(String type, {String eventTitle = ''}) =>
+      switch (type) {
+        'group_message' => pick('New group message', 'رسالة مجموعة جديدة'),
+        'private_message' => pick('New private message', 'رسالة خاصة جديدة'),
+        'mention' => pick('You were mentioned', 'تم ذِكرُك'),
+        'join_request' => pick('Join request', 'طلب انضمام'),
+        'request_accepted' => pick('Request accepted', 'تم قبول الطلب'),
+        'friend_request' => pick('Friend request', 'طلب صداقة'),
+        'respect_received' => pick('Respect received', 'تم استلام احترام'),
+        'game_invite' => pick('Game invite', 'دعوة للعبة'),
+        'game_started' => pick('Game starting', 'اللعبة تبدأ قريبًا'),
+        'game_completed' => pick('Game result', 'نتيجة اللعبة'),
+        'achievement_unlocked' => pick('Achievement unlocked', 'إنجاز جديد'),
+        'edit_published' => pick('Edit published', 'تم نشر المونتاج'),
+        'edit_failed' => pick('Edit processing failed', 'فشلت معالجة المونتاج'),
+        'edit_needs_review' =>
+          pick('Edit held for review', 'المونتاج بانتظار المراجعة'),
+        'rank_promoted' => pick('Rank promoted', 'ترقية في الرتبة'),
+        'rank_demoted' => pick('Rank demoted', 'خفض في الرتبة'),
+        'member_warning' => pick('Member warning', 'تحذير للعضو'),
+        'event_starting' => eventTitle.isEmpty
+            ? pick('Event starting', 'فعالية تبدأ قريبًا')
+            : pick('Event starting: $eventTitle', 'الفعالية تبدأ: $eventTitle'),
+        'event_result_available' => eventTitle.isEmpty
+            ? pick('Event result ready', 'جاهزة نتيجة الفعالية')
+            : pick(
+                'Event result: $eventTitle',
+                'نتيجة الفعالية: $eventTitle',
+              ),
+        _ => notificationsGeneric,
+      };
+
+  /// Supporting line for notification types that do not ship their own body.
+  String notificationBody(String type) => switch (type) {
+    'event_starting' => pick('Tap to join', 'اضغط للمشاركة'),
+    'event_result_available' =>
+      pick('Tap to see the result', 'اضغط لعرض النتيجة'),
+    _ => '',
+  };
 
   String drawerLabel(String id) => switch (id) {
     'profile' => drawerProfile,
@@ -285,6 +345,19 @@ final class AppStrings {
   String get seeAll => pick('See all', 'عرض الكل');
   String get loadMore => pick('Load more', 'تحميل المزيد');
   String get searchHint => pick('Search Pubget', 'ابحث في Pubget');
+  String get searchLoadFailed => pick('Search failed.', 'فشل البحث.');
+
+  /// Entity-kind labels for discovery search results (§13.5).
+  String searchHitLabel(String type) => switch (type) {
+    'group' => pick('Group', 'مجموعة'),
+    'user' => pick('Person', 'شخص'),
+    'event' => pick('Event', 'فعالية'),
+    'anime' => pick('Anime', 'أنمي'),
+    'fanWork' => pick('Fan work', 'عمل معجبين'),
+    'character' => pick('Character', 'شخصية'),
+    'reel' => pick('Reel', 'ريل'),
+    _ => '',
+  };
 
   /// Tooltip/semantic label for the Home top-bar search control (§4.1).
   String get search => pick('Search', 'بحث');
@@ -544,6 +617,20 @@ final class AppStrings {
   String get yes => pick('Yes', 'نعم');
   String get no => pick('No', 'لا');
 
+  String eventStatusLabel(String status) => switch (status) {
+    'active' => pick('Live', 'مباشر'),
+    'ended' => pick('Ended', 'منتهية'),
+    'archived' => pick('Archived', 'مؤرشفة'),
+    'deleted' => pick('Deleted', 'محذوفة'),
+    _ => pick('Draft', 'مسودة'),
+  };
+
+  String eventScopeLabel(String scope) => switch (scope) {
+    'global' => pick('All of Pubget', 'كل Pubget'),
+    'multiGroup' => pick('Multiple groups', 'عدة مجموعات'),
+    _ => pick('Group', 'مجموعة'),
+  };
+
   String eventTypeLabel(String type) => switch (type) {
     'poll' || 'multipleChoice' => pick('Poll', 'تصويت'),
     'ranking' => pick('Ranking', 'ترتيب'),
@@ -584,6 +671,319 @@ final class AppStrings {
   String get eventSubmissions => pick('Submissions', 'الإجابات');
   String get eventWinner => pick('Winner', 'الفائز');
 
+  // ---- Events master (Axis 14) -----------------------------------------
+  String get eventCreate => pick('Create event', 'إنشاء فعالية');
+  String get eventPublish => pick('Publish', 'نشر');
+  String get eventContinue => pick('Continue', 'متابعة');
+  String get eventBack => pick('Back', 'رجوع');
+  String get eventDiscardDraft => pick('Discard draft', 'تجاهل المسودة');
+  String get eventDiscardDraftConfirm => pick(
+    'Discard this draft? Its content will be lost.',
+    'هل تريد تجاهل هذه المسودة؟ سيُفقد محتواها.',
+  );
+  String get eventStepScope => pick('Audience', 'الجمهور');
+  String get eventStepType => pick('Type', 'النوع');
+  String get eventStepContent => pick('Content', 'المحتوى');
+  String get eventStepDuration => pick('Duration', 'المدة');
+  String get eventStepPreview => pick('Preview', 'معاينة');
+  String get eventGlobal => pick('All of Pubget', 'جميع أعضاء Pubget');
+  String get eventGlobalHint => pick(
+    'Anyone on Pubget can see and join this event.',
+    'يمكن لأي عضو في Pubget رؤية هذه الفعالية والمشاركة فيها.',
+  );
+  String get eventToGroups => pick('Specific groups', 'مجموعات محددة');
+  String get eventToGroupsHint => pick(
+    'Choose one or more groups to host the event.',
+    'اختر مجموعة أو أكثر لاستضافة الفعالية.',
+  );
+  String get eventChooseGroups => pick('Choose groups', 'اختر المجموعات');
+  String eventSelectedGroups(int count) => count == 1
+      ? pick('1 group selected', 'تم اختيار مجموعة واحدة')
+      : pick('$count groups selected', 'تم اختيار $count مجموعات');
+  String get eventGroupRequired => pick('Select at least one group.',
+      'اختر مجموعة واحدة على الأقل.');
+  String get eventPollChoice => pick('Poll', 'تصويت');
+  String get eventPollChoiceHint => pick(
+    'Ask a question and let people vote on colorful options.',
+    'اطرح سؤالاً ودع الأعضاء يصوتون على الخيارات المصورة.',
+  );
+  String get eventTheoryChoice => pick('Theory', 'نظرية');
+  String get eventTheoryChoiceHint => pick(
+    'Share a theory with an optional anime and gather reactions.',
+    'شارك نظريتك مع ربط اختياري بأنمي واجمع التفاعلات.',
+  );
+  String get eventTitleLabel => pick('Title', 'العنوان');
+  String get eventTitleHint => pick(
+    'Keep it short and catchy (max 80 characters).',
+    'اجعلها مختصرة وجذابة (حتى 80 حرفاً).',
+  );
+  String get eventQuestionLabel => pick('Question', 'السؤال');
+  String get eventQuestionHint => pick(
+    'What do you want people to vote on?',
+    'على ماذا تريد أن يصوت الأعضاء؟',
+  );
+  String get eventTheoryBodyLabel => pick('The theory', 'النظرية');
+  String get eventTheoryBodyHint => pick(
+    'Write down the theory so people can discuss it (max 500 characters).',
+    'اكتب نظرية بحيث يمكن للأعضاء مناقشتها (حتى 500 حرف).',
+  );
+  String get eventAnimeAttach => pick('Attach anime', 'ربط أنمي');
+  String get eventAnimeRemove => pick('Remove anime', 'إزالة الأنمي');
+  String get eventAnimeSearchHint => pick(
+    'Search the catalog to attach a related anime.',
+    'ابحث في الكتالوج لربط أنمي ذي صلة.',
+  );
+  String eventOptionLabel(int index) =>
+      pick('Option ${index + 1}', 'الخيار ${index + 1}');
+  String get eventOptionImage => pick('Option image', 'صورة الخيار');
+  String get eventImageUploadFailed => pick(
+    'The image could not be uploaded. Try another image.',
+    'تعذّر رفع الصورة. جرّب صورة أخرى.',
+  );
+  String get eventNoGroupsJoined => pick(
+    'Join a group first to host an event there.',
+    'انضم إلى مجموعة أولاً لاستضافة فعالية فيها.',
+  );
+  String get eventAddOption => pick('Add option', 'إضافة خيار');
+  String get eventRemoveOption => pick('Remove option', 'حذف الخيار');
+  String get eventPollOptionsHint => pick(
+    '2 to 7 options, each with an image.',
+    'من 2 إلى 7 خيارات، مع صورة لكل خيار.',
+  );
+  String get eventDurationQuick1h => pick('1 hour', 'ساعة واحدة');
+  String get eventDurationQuick24h => pick('24 hours', '24 ساعة');
+  String get eventDurationQuick3d => pick('3 days', '3 أيام');
+  String get eventDurationQuick7d => pick('7 days', '7 أيام');
+  String get eventStartNow => pick('Start now', 'ابدأ الآن');
+  String get eventEndDefault => pick('Lasts 24 hours (max 7 days)',
+      'تستمر 24 ساعة (الحد الأقصى 7 أيام)');
+  String get eventStartsAt => pick('Starts at', 'تبدأ في');
+  String get eventEndsAt => pick('Ends at', 'تنتهي في');
+  String get eventPickStart => pick('Choose start time', 'اختر وقت البدء');
+  String get eventPickEnd => pick('Choose end time', 'اختر وقت النهاية');
+  String get eventPreviewTitle => pick('Preview', 'معاينة');
+  String get eventPreviewCheck => pick(
+    'Check every detail before publishing.',
+    'راجع كل التفاصيل قبل النشر.',
+  );
+  String get eventPreviewOk => pick('Everything looks good.', 'كل شيء يبدو جيداً.');
+  String get eventSaveDraft => pick('Save draft', 'حفظ مسودة');
+  String get eventDraftSaved => pick('Draft saved', 'تم حفظ المسودة');
+  String get eventDraftSaveFailed => pick(
+    'Could not save draft.',
+    'تعذّر حفظ المسودة.',
+  );
+  String get eventAlreadyParticipated => pick(
+    'You already participated',
+    'لقد شاركت بالفعل',
+  );
+  String get eventJoinToParticipate => pick(
+    'Join this event to take part.',
+    'انضم إلى هذه الفعالية للمشاركة.',
+  );
+  String get eventEndedNotice =>
+      pick('This event has ended.', 'انتهت هذه الفعالية.');
+  String get eventDeleted => pick(
+    'This event is no longer available.',
+    'هذه الفعالية لم تعد متاحة.',
+  );
+  String get eventArchived => pick('This event is archived.', 'هذه الفعالية مؤرشفة.');
+  String get eventNotStartedYet => pick(
+    'This event has not started yet.',
+    'لم تبدأ هذه الفعالية بعد.',
+  );
+  String get eventMissing => pick('This event no longer exists.', 'لم تعد هذه الفعالية موجودة.');
+  String get eventNoPermission => pick(
+    "You don't have permission to manage events.",
+    'ليست لديك صلاحية إدارة الفعاليات.',
+  );
+  String get eventSubmitFailed => pick('Submission failed. Try again.', 'فشل الإرسال. حاول مجدداً.');
+  String get eventOffline => pick(
+    'You are offline. The action was not saved.',
+    'أنت غير متصل. لم يُحفظ الإجراء.',
+  );
+  String get eventCreateLimit => pick(
+    'You reached today’s limit of 2 events.',
+    'وصلت إلى الحد اليومي وهو فعاليتان.',
+  );
+  String eventCreateLimitRemaining(int remaining) => remaining == 1
+      ? pick('1 event left today', 'لديك فعالية واحدة متبقية اليوم')
+      : pick('$remaining events left today', 'لديك $remaining فعاليات متبقية اليوم');
+  String get eventJoinCta => pick('Join event', 'انضم إلى الفعالية');
+  String get eventLeaveCta => pick('Leave event', 'غادر الفعالية');
+  String get eventSubmitCta => pick('Submit', 'إرسال');
+  String get eventRetry => pick('Try again', 'حاول مجدداً');
+  String get eventShare => pick('Share event', 'مشاركة الفعالية');
+  String get eventCopyLink => pick('Copy link', 'نسخ الرابط');
+  String get eventLinkCopied => pick('Event link copied', 'تم نسخ رابط الفعالية');
+  String get eventSeeAll => pick('See all events', 'عرض كل الفعاليات');
+  String get eventNoActiveYet => pick('No active events yet', 'لا توجد فعاليات نشطة بعد');
+  String get eventNoActiveMessage => pick(
+    'Discover groups or create an event.',
+    'اكتشف المجموعات أو أنشئ فعالية.',
+  );
+  String get eventGroupEventsTitle => pick('Group events', 'فعاليات المجموعة');
+  String get eventEndCta => pick('End event', 'إنهاء الفعالية');
+  String get eventCancelCta => pick('Cancel event', 'إلغاء الفعالية');
+  String get eventArchiveCta => pick('Archive', 'أرشفة');
+  String get eventEndConfirmTitle => pick('End this event?', 'إنهاء هذه الفعالية؟');
+  String get eventEndConfirmMessage => pick(
+    'Results will be locked and rewards granted. This cannot be undone.',
+    'ستُقفل النتائج وتُمنح المكافآت. لا يمكن التراجع عن هذا.',
+  );
+  String get eventCancelConfirmTitle => pick('Cancel this event?', 'إلغاء هذه الفعالية؟');
+  String get eventCancelConfirmMessage => pick(
+    'Participants will be removed. This cannot be undone.',
+    'سيتوقف الإرسال من المشاركين. لا يمكن التراجع عن هذا.',
+  );
+  String get eventArchiveConfirmTitle => pick('Archive this event?', 'أرشفة هذه الفعالية؟');
+  String get eventArchiveConfirmMessage => pick(
+    'The event will disappear from public lists. This cannot be undone.',
+    'ستختفي الفعالية من القوائم العامة. لا يمكن التراجع عن هذا.',
+  );
+  String get eventCrosspostTitle => pick('Share this event more', 'شارك هذه الفعالية أكثر');
+  String get eventCrosspostHint => pick(
+    'Extend the same event to another audience.',
+    'وسّع نطاق الفعالية نفسها إلى جمهور آخر.',
+  );
+  String get eventCrosspostToGlobal => pick('All of Pubget', 'جميع أعضاء Pubget');
+  String get eventCrosspostDone => pick('Event shared', 'تمت المشاركة');
+  String eventParticipants(int count) => pick(
+    '$count participants',
+    '$count مشارك',
+  );
+  String get eventAgree => pick('Agree', 'أتفق');
+  String get eventDisagree => pick('Disagree', 'لا أتفق');
+  String get eventLike => pick('Like', 'أعجبني');
+  String get eventDislike => pick('Dislike', 'لم يعجبني');
+  String get eventComments => pick('Comments', 'تعليقات');
+  String get eventVotesCount => pick('votes', 'أصوات');
+  String eventTotalVotes(int count) =>
+      pick('$count votes', '$count صوت');
+  String get eventNoVotesYet => pick('No votes yet', 'لا توجد أصوات بعد');
+  String get eventYourVote => pick('Your vote', 'صوتك');
+  String get eventLeading => pick('Leading', 'متقدم');
+  String get eventReport => pick('Report event', 'الإبلاغ عن الفعالية');
+  String eventReportTitle(int count) => eventReport;
+  String get eventResultLocked => pick(
+    'Results were locked when the event ended.',
+    'أُقفلت النتائج عند انتهاء الفعالية.',
+  );
+  String get eventCommentHint => pick('Add a comment…', 'أضف تعليقاً…');
+  String get eventPost => pick('Post', 'نشر');
+  String get eventTitleFallback => pick('Event', 'فعالية');
+  String get eventNoComments => pick(
+    'No comments yet. Start the conversation.',
+    'لا توجد تعليقات بعد. ابدأ المحادثة.',
+  );
+  String eventCommentsCount(int count) =>
+      pick('Comments ($count)', 'التعليقات ($count)');
+  String get eventYourResponse => pick('Your response', 'ردّك');
+  String get eventVotesLabel => pick('Votes', 'الأصوات');
+  String get eventScoresLabel => pick('Scores', 'النقاط');
+  String eventActiveParticipants(int count) => pick(
+    '$count active participants',
+    '$count مشارك نشط',
+  );
+  String get eventAnalyticsTitle => pick('Event analytics', 'تحليلات الفعالية');
+  String eventResponsesCount(int count) =>
+      pick('Responses ($count)', 'الردود ($count)');
+  String get eventNoResponses => pick('No responses yet.', 'لا توجد ردود بعد.');
+  String get eventResolveResult => pick('Resolve result', 'حسم النتيجة');
+  String get eventLockResult => pick('Lock result', 'قفل النتيجة');
+  String get eventSelectWinner =>
+      pick('Select the winning option', 'اختر الخيار الفائز');
+  String get eventSelectWinners => pick('Select the winner(s)', 'اختر الفائزين');
+  String get eventNoChallengeResponses =>
+      pick('No challenge responses yet.', 'لا توجد ردود على التحدي بعد.');
+  String get eventShareMore => pick('Share with more people', 'شارك مع المزيد');
+  String get eventListTitle => pick('Events', 'الفعاليات');
+  String get eventTabActive => pick('Active', 'نشطة');
+  String get eventTabUpcoming => pick('Upcoming', 'قادمة');
+  String get eventTabRecent => pick('Recent', 'حديثة');
+  String get eventTabMine => pick('Mine', 'مالي');
+  String get eventLoadFailed =>
+      pick('Events could not load.', 'تعذّر تحميل الفعاليات.');
+  String get eventSearchHint => pick('Search events', 'ابحث في الفعاليات');
+  String get eventFilterType => pick('Type', 'النوع');
+  String get eventFilterAll => pick('All', 'الكل');
+  String get eventCreateGlobal =>
+      pick('Create a global Event', 'أنشئ فعالية عامة');
+
+  String eventValidationMessage(String key) => switch (key) {
+    'ev.titleRequired' => pick('A title is required.', 'العنوان مطلوب.'),
+    'ev.titleTooLong' => pick(
+        'The title is too long (max 80 characters).',
+        'العنوان طويل جداً (حتى 80 حرفاً).'),
+    'ev.descriptionTooLong' => pick(
+        'The description is too long (max 500 characters).',
+        'الوصف طويل جداً (حتى 500 حرف).'),
+    'ev.chooseGroup' => pick('Choose a group for this event.',
+        'اختر مجموعة لهذه الفعالية.'),
+    'ev.chooseTwoGroups' => pick('Choose at least two groups.',
+        'اختر مجموعتين على الأقل.'),
+    'ev.windowEndAfterStart' => pick('End time must be after start time.',
+        'يجب أن يكون وقت الانتهاء بعد وقت البدء.'),
+    'ev.windowMinDuration' => pick('Events must last at least one hour.',
+        'يجب أن تستمر الفعالية ساعة واحدة على الأقل.'),
+    'ev.windowMaxDuration' => pick('Events cannot last longer than 7 days.',
+        'لا يمكن أن تتجاوز الفعالية 7 أيام.'),
+    'ev.questionRequired' => pick('A question is required.', 'السؤال مطلوب.'),
+    'ev.pollOptionsRange' => pick(
+        'Provide between 2 and 7 options.',
+        'قدّم بين خيارين و7 خيارات.'),
+    'ev.optionLabelRequired' => pick('Every option needs a label.',
+        'كل خيار يحتاج عنواناً.'),
+    'ev.optionImageRequired' => pick(
+        'Every poll option needs an image.',
+        'كل خيار في التصويت يحتاج صورة.'),
+    'ev.promptRequired' => pick('A prompt is required.', 'المحفّز مطلوب.'),
+    'ev.theoryBodyRequired' => pick(
+        'A Theory needs body text before publishing.',
+        'النظرية تحتاج نصاً قبل النشر.'),
+    'ev.challengeKind' => pick('Choose a valid challenge type.',
+        'اختر نوع تحدٍ صالح.'),
+    'ev.targetEventRequired' => pick('A target event is required.',
+        'الفعالية المستهدفة مطلوبة.'),
+    'ev.criterionRequired' => pick('A comparison criterion is required.',
+        'معيار المقارنة مطلوب.'),
+    'ev.candidatesRange' => pick('Provide between 2 and 10 candidates.',
+        'قدّم بين فردين و10 مرشحين.'),
+    'ev.characterCatalogId' => pick(
+        'Every character candidate needs a catalog ID.',
+        'كل مرشح شخصية يحتاج معرفاً من الكتالوج.'),
+    'ev.animeCatalogId' => pick(
+        'Every anime candidate needs a catalog ID.',
+        'كل مرشح أنمي يحتاج معرفاً من الكتالوج.'),
+    'ev.imageCandidateMeta' => pick(
+        'Image candidates need a HTTPS URL, MIME type, license, and attribution.',
+        'مرشحات الصور تحتاج رابطاً HTTPS ونوع MIME ورخصة ونسباً.'),
+    'ev.duplicateCandidates' => pick('Duplicate candidates are not allowed.',
+        'المرشحون المكررون غير مسموحين.'),
+    'ev.animeInvalid' => pick(
+        'The attached anime is incomplete.',
+        'الأنمي المرتبط غير مكتمل.'),
+    'ev.typeNotAllowed' => pick(
+        'That event type cannot be created here.',
+        'لا يمكن إنشاء هذا النوع من الفعاليات هنا.'),
+    'ev.optionsRange' => pick('Provide between 2 and 10 options.',
+        'قدّم بين خيارين و10 خيارات.'),
+    'ev.quizNeedsQuestions' => pick('A quiz needs between 1 and 20 questions.',
+        'الاختبار يحتاج بين سؤال و20 سؤالاً.'),
+    'ev.quizPromptRequired' => pick('Every question needs text.',
+        'كل سؤال يحتاج نصاً.'),
+    'ev.quizAnswerRange' => pick('Every question needs 2 to 6 answers.',
+        'كل سؤال يحتاج بين إجابتين و6 إجابات.'),
+    'ev.quizEmptyAnswer' => pick('A question has an empty answer.',
+        'أحد الأسئلة يحتوي إجابة فارغة.'),
+    'ev.quizCorrectAnswer' => pick('Every question needs a correct answer.',
+        'كل سؤال يحتاج إجابة صحيحة.'),
+    'ev.limitReached' => pick(
+        'You reached today’s limit of 2 events.',
+        'وصلت إلى الحد اليومي وهو فعاليتان.'),
+    _ => key,
+  };
+
   String pagesCount(int count) => pick('$count pages', '$count صفحة');
   String readMinutes(int minutes) =>
       pick('$minutes min read', 'قراءة $minutes دقائق');
@@ -607,6 +1007,13 @@ final class AppStrings {
       pick('Friend requests could not load.', 'تعذّر تحميل طلبات الصداقة.');
   String get achievements => pick('Achievements', 'الإنجازات');
   String get store => pick('Store', 'المتجر');
+  String get dragonStorePremiumCode => pick('Premium code', 'رمز الترقية');
+  String get dragonStoreCodeHint => pick('Enter your code', 'أدخل رمزك');
+  String get dragonStoreRedeemCode => pick('Redeem', 'استخدم الرمز');
+  String get dragonStoreCodeRedeemed =>
+      pick('Code redeemed.', 'تم استخدام الرمز.');
+  String get dragonStoreCodeInvalid =>
+      pick('That code is not valid.', 'الرمز غير صالح.');
   String get profileUnavailable =>
       pick('Profile not available', 'الملف غير متاح');
   String get profilePrivate => pick(

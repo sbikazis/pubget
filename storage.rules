@@ -194,6 +194,13 @@ service firebase.storage {
       allow delete: if signedIn() && isGroupOwner(groupId);
     }
 
+    match /events/{userId}/{eventId}/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == userId &&
+          imageUpload(5 * 1024 * 1024);
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
     match /groups/{groupId}/characters/{fileName} {
       allow read: if signedIn() && isGroupMember(groupId);
       allow create, update: if signedIn() &&
