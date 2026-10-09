@@ -237,6 +237,7 @@ async function publishCreatorStory(title = "Log pose notes") {
         mediaId,
         path: `fan_works/${CREATOR}/stories/${mediaId}.pdf`,
         contentType: "application/pdf",
+        pageCount: 1,
       },
       copyright: {
         originalWorkId: "one_piece",
@@ -264,6 +265,11 @@ async function createSearchableGroup(uid, name) {
       description: "Straw hat sailors talk strategy every week here",
       type: "animeRoleplay",
       animeId: "one_piece",
+      character: {
+        key: "luffy",
+        name: "Monkey D. Luffy",
+        avatarUrl: "",
+      },
       joinPolicy: "open",
       isSearchable: true,
       rules: "No spoilers in the main chat please stay kind",
