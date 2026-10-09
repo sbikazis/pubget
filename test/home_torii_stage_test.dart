@@ -71,6 +71,8 @@ void main() {
     expect(find.byKey(const Key('home-notifications')), findsOneWidget);
     expect(find.byKey(const Key('home-coins')), findsOneWidget);
     expect(find.text('120'), findsOneWidget);
+    // §4.1 asks for a red circle *with a count*, not an uncounted dot.
+    expect(find.text('2'), findsOneWidget);
   });
 
   testWidgets('event home card keeps a fixed height and localized type', (

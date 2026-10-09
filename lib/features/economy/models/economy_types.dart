@@ -34,6 +34,8 @@ abstract final class EconomyStrings {
   static const storeTitle = 'Store';
   static const featured = 'Featured';
   static const categories = 'Categories';
+  static const dragonStoreCosmetics = 'Cosmetics';
+  static const dragonStoreExpansions = 'Expansions';
   static const items = 'Items';
   static const owned = 'Owned';
   static const premium = 'Premium';
