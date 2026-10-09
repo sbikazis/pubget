@@ -93,5 +93,10 @@ jobs:
           node ./node_modules/firebase-tools/lib/bin/firebase.js setup:emulators:firestore
           node ./node_modules/firebase-tools/lib/bin/firebase.js setup:emulators:storage
 
+      # productDiscoveryLifecycle.e2e shells out to `ffmpeg` to probe video
+      # uploads; the runner image does not always ship it.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Rules tests
         run: npm test

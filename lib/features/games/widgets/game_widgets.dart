@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -80,20 +82,24 @@ class WaitingRoomCountdown extends StatefulWidget {
 }
 
 class _WaitingRoomCountdownState extends State<WaitingRoomCountdown> {
+  Timer? _timer;
   late DateTime _now;
 
   @override
   void initState() {
     super.initState();
     _now = DateTime.now();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _tick());
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _now = DateTime.now());
+      if (widget.deadline.difference(_now).isNegative) _timer?.cancel();
+    });
   }
 
-  void _tick() {
-    if (!mounted) return;
-    if (widget.deadline.difference(_now).isNegative) return;
-    Future<void>.delayed(const Duration(seconds: 1), _tick);
-    setState(() => _now = DateTime.now());
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   @override
