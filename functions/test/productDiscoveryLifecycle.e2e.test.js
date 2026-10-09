@@ -263,13 +263,8 @@ async function createSearchableGroup(uid, name) {
     data: {
       name,
       description: "Straw hat sailors talk strategy every week here",
-      type: "animeRoleplay",
+      type: "public",
       animeId: "one_piece",
-      character: {
-        key: "luffy",
-        name: "Monkey D. Luffy",
-        avatarUrl: "",
-      },
       joinPolicy: "open",
       isSearchable: true,
       rules: "No spoilers in the main chat please stay kind",
