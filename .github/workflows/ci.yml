@@ -29,8 +29,12 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-pub
 
+      # Golden tests are rasterized per-platform: the committed PNGs were
+      # produced on macOS, so Linux (this runner) renders the Arabic text
+      # differently and the comparison fails. Exclude the `golden` tag here;
+      # run `flutter test` locally on macOS to validate goldens.
       - name: Tests
-        run: flutter test
+        run: flutter test --exclude-tags golden
 
   functions-gate:
     name: Functions syntax and unit tests
