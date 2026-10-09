@@ -33,11 +33,6 @@ service firebase.storage {
       return request.resource.contentType == 'application/pdf';
     }
 
-    function fanWorkUpload() {
-      return imageUpload(12 * 1024 * 1024) ||
-          (isPdf() && request.resource.size <= 50 * 1024 * 1024);
-    }
-
     // Chat paths historically use a .jpg suffix even for audio and video.
     // The suffix is therefore not used as a security signal; the declared MIME
     // type and a media-type-specific size ceiling are enforced instead.
@@ -365,6 +360,18 @@ service firebase.storage {
     }
 
     match /fan_works/{userId}/{workId}/{fileName} {
+      // The declared MIME type must agree with the object name: a `.gif` path
+      // carrying `application/pdf` would otherwise be served to the reader as
+      // an image. Images cap at 12 MB, PDFs at 50 MB.
+      function isPdfName() {
+        return fileName.matches('.*[.][pP][dD][fF]$');
+      }
+
+      function fanWorkUpload() {
+        return (isPdf() && isPdfName() && request.resource.size <= 50 * 1024 * 1024) ||
+            (isImage() && !isPdfName() && request.resource.size <= 12 * 1024 * 1024);
+      }
+
       // Images stay directly readable so a viewer can render them with the
       // SDK. A `.pdf` is deliberately NOT readable here: the in-app reader is
       // handed a short-lived V4 signed URL by `getFanWorkDocumentAccess`, and a

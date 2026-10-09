@@ -24,7 +24,7 @@ const {
 } = require("@firebase/rules-unit-testing");
 const { serverTimestamp } = require("firebase/firestore");
 const { createGamesDomain } = require("../src/gamesDomain");
-const catalog = require("../src/gameCatalog");
+const { createFakeAnimeCatalog, FAKE_ANIME } = require("./support/fakeAnimeCatalog");
 const { createEventsDomain } = require("../src/eventsDomain");
 const { createAchievementsDomain } = require("../src/achievementsDomain");
 const { createMafiaDomain } = require("../src/mafia/mafiaDomain");
@@ -49,7 +49,12 @@ function auth(uid) {
 }
 
 function games() {
-  return createGamesDomain({ db, FieldValue, HttpsError: TestHttpsError });
+  return createGamesDomain({
+    db,
+    FieldValue,
+    HttpsError: TestHttpsError,
+    catalog: createFakeAnimeCatalog(),
+  });
 }
 
 function events() {
@@ -77,13 +82,16 @@ async function seedGroup() {
   await db.doc("users/bob").set({ username: "Bob" });
   await db.doc("users/charlie").set({ username: "Charlie" });
   await db.doc("users/dave").set({ username: "Dave" });
+  await db.doc("users/eve").set({ username: "Eve" });
+  await db.doc("users/frank").set({ username: "Frank" });
+  await db.doc("users/grace").set({ username: "Grace" });
   await db.doc("groups/g-e2e").set({
     founderId: "alice", name: "E2E", hasRunningGame: false,
   });
   await db.doc("groups/g-e2e/members/alice").set({ role: "founder", userId: "alice" });
-  await db.doc("groups/g-e2e/members/bob").set({ role: "member", userId: "bob" });
-  await db.doc("groups/g-e2e/members/charlie").set({ role: "member", userId: "charlie" });
-  await db.doc("groups/g-e2e/members/dave").set({ role: "member", userId: "dave" });
+  for (const uid of ["bob", "charlie", "dave", "eve", "frank", "grace"]) {
+    await db.doc(`groups/g-e2e/members/${uid}`).set({ role: "member", userId: uid });
+  }
 }
 
 test.before(async () => {
@@ -129,11 +137,11 @@ test("guess character multiplayer create/join/start/submit hides the secret", as
   await assertFails(client("bob").doc(`games/${created.gameId}/secret/round`).get());
   await domain.submitGameAction({
     ...auth("alice"),
-    data: { gameId: created.gameId, actionType: "select", payload: { characterId: "luffy" } },
+    data: { gameId: created.gameId, actionType: "select", payload: { characterId: "jikan:2001" } },
   });
   await domain.submitGameAction({
     ...auth("bob"),
-    data: { gameId: created.gameId, actionType: "select", payload: { characterId: "naruto" } },
+    data: { gameId: created.gameId, actionType: "select", payload: { characterId: "jikan:2003" } },
   });
   const selected = (await db.doc(`games/${created.gameId}`).get()).data();
   assert.equal(selected.publicState.phase, "ask");
@@ -156,7 +164,7 @@ test("guess character multiplayer create/join/start/submit hides the secret", as
   await assert.rejects(
     domain.submitGameAction({
       ...auth("charlie"),
-      data: { gameId: created.gameId, actionType: "guess", payload: { characterId: "luffy" } },
+      data: { gameId: created.gameId, actionType: "guess", payload: { characterId: "jikan:2001" } },
     }),
     (error) => error.code === "permission-denied" || error.code === "failed-precondition",
   );
@@ -191,7 +199,7 @@ test("emoji anime guess turn progression and invalid answers", async () => {
   assert.equal(JSON.stringify(game.publicState).includes(secretRound.title), false);
   const before = (await db.doc(`games/${created.gameId}`).get()).data();
   const beforeScore = before.publicState.scores[other] || 0;
-  const wrongTitle = catalog.ANIME.find((item) => item.id !== secretRound.targetAnimeId).title;
+  const wrongTitle = FAKE_ANIME.find((item) => item.id !== secretRound.targetAnimeId).title;
   await domain.submitGameAction({
     ...auth(other),
     data: {
@@ -321,13 +329,14 @@ test("achievements unlock once and cannot be forged", async () => {
 
 test("mafia lobby, private roles, night, vote, and unauthorized actions", async () => {
   const domain = mafia();
+  const players = ["alice", "bob", "charlie", "dave", "eve", "frank", "grace"];
   const created = await domain.createMafiaGame({
     ...auth("alice"),
-    data: { groupId: "g-e2e", minPlayers: 4, maxPlayers: 8 },
+    data: { groupId: "g-e2e", minPlayers: 7, maxPlayers: 8 },
   });
-  await domain.joinMafiaGame({ ...auth("bob"), data: { gameId: created.gameId } });
-  await domain.joinMafiaGame({ ...auth("charlie"), data: { gameId: created.gameId } });
-  await domain.joinMafiaGame({ ...auth("dave"), data: { gameId: created.gameId } });
+  for (const uid of players.slice(1)) {
+    await domain.joinMafiaGame({ ...auth(uid), data: { gameId: created.gameId } });
+  }
   await domain.startMafiaGame({ ...auth("alice"), data: { gameId: created.gameId } });
   const starting = (await db.doc(`mafia_games/${created.gameId}`).get()).data();
   const assigned = await assignRoles(created.gameId, {
@@ -340,8 +349,8 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
     await db.doc(`mafia_games/${created.gameId}`).update({
       status: "STARTING",
       currentPhase: "STARTING",
-      playersCount: 4,
-      minPlayers: 4,
+      playersCount: players.length,
+      minPlayers: 7,
       maxPlayers: 8,
       roleAssignmentClaim: {
         owner: "e2e",
@@ -349,16 +358,16 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
       },
     });
     const retried = await assignRoles(created.gameId, {
-      minPlayers: 4,
+      minPlayers: 7,
       maxPlayers: 8,
-      playersCount: 4,
+      playersCount: players.length,
       roleAssignmentOwner: "e2e",
       version: "classic",
     });
     assert.equal(retried, true);
   }
   const roles = {};
-  for (const uid of ["alice", "bob", "charlie", "dave"]) {
+  for (const uid of players) {
     const privateSnap = await db.doc(
       `mafia_games/${created.gameId}/players/${uid}/private/data`,
     ).get();
@@ -433,7 +442,7 @@ test("mafia lobby, private roles, night, vote, and unauthorized actions", async 
     status: "VOTING", currentPhase: "VOTING", currentDay: 1, phaseEndsAt: null,
   });
   const alive = [];
-  for (const uid of ["alice", "bob", "charlie", "dave"]) {
+  for (const uid of players) {
     const player = (await db.doc(`mafia_games/${created.gameId}/players/${uid}`).get()).data();
     if (player.isAlive === true) alive.push(uid);
   }

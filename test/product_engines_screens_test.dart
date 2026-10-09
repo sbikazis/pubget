@@ -530,7 +530,7 @@ void main() {
     expect(find.text('A straw hat pirate.'), findsOneWidget);
   });
 
-  testWidgets('game create exposes the current Phase games without Mafia', (
+  testWidgets('game create offers every implemented type, Mafia included', (
     tester,
   ) async {
     final creator = GameCreateProvider(repository: _LiveGameRepository());
@@ -551,7 +551,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Guess the Character'), findsOneWidget);
-    expect(find.text('Mafia'), findsNothing);
+    expect(find.text('Mafia'), findsOneWidget);
     expect(find.text('Rules', skipOffstage: false), findsOneWidget);
   });
 

@@ -279,7 +279,12 @@ function onTimeout(ctx) {
     return endGame(transaction, ctx, [], "global_timeout");
   }
   if (state.phase === "ask" || state.phase === "answer") {
-    const loser = state.phase === "answer" ? state.currentPlayerId : state.currentPlayerId;
+    // In the answer phase the stall belongs to answeringPlayerId: currentPlayerId
+    // still points at the asker, so blaming it hands the turn to the player who
+    // failed to act.
+    const loser = state.phase === "answer"
+      ? state.answeringPlayerId || state.currentPlayerId
+      : state.currentPlayerId;
     const next = { ...state, phase: "ask", currentPlayerId: players.find((id) => id !== loser), question: null, answerOptions: null, answeringPlayerId: null, lastAction: { type: "timeout", playerId: loser } };
     transaction.update(ctx.gameRef, {
       publicState: next,
