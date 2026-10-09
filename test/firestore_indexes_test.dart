@@ -55,4 +55,32 @@ void main() {
       isTrue,
     );
   });
+
+  test('group events feed has an events index on groupIds + status + startAt', () {
+    final indexes = spec['indexes'] as List<dynamic>;
+    expect(
+      indexes.any((raw) {
+        final index = raw as Map<String, dynamic>;
+        if (index['collectionGroup'] != 'events') return false;
+        if (index['queryScope'] != 'COLLECTION') return false;
+        final fields = (index['fields'] as List<dynamic>)
+            .cast<Map<String, dynamic>>();
+        final real = fields
+            .where((field) => field['fieldPath'] != '__name__')
+            .toList(growable: false);
+        return real.length == 3 &&
+            real[0]['fieldPath'] == 'groupIds' &&
+            real[0]['arrayConfig'] == 'CONTAINS' &&
+            real[1]['fieldPath'] == 'status' &&
+            real[1]['order'] == 'ASCENDING' &&
+            real[2]['fieldPath'] == 'startAt' &&
+            real[2]['order'] == 'DESCENDING';
+      }),
+      isTrue,
+      reason:
+          'getGroupEvents filters events by groupIds array-contains plus '
+          'status, ordered by startAt descending; this needs an explicit '
+          'composite index 14 events (Axis 14).',
+    );
+  });
 }

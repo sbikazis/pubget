@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/errors/failure.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -114,32 +115,6 @@ class _StorePageState extends State<StorePage>
           ],
         ),
       ),
-    );
-  }
-}
-
-class _CategoryList extends StatelessWidget {
-  const _CategoryList();
-
-  @override
-  Widget build(BuildContext context) {
-    final economy = context.watch<EconomyProvider>();
-    final catalog = economy.snapshot?.catalog ?? const <StoreItem>[];
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      children: <Widget>[
-        for (final type in StoreItemType.values)
-          PubgetCard(
-            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-            onTap: () => AppNavigation.go(
-              context,
-              '/store?type=${type.name}',
-            ),
-            child: Text(
-              '${type.name} (${catalog.where((item) => item.type == type).length})',
-            ),
-          ),
-      ],
     );
   }
 }
@@ -474,26 +449,37 @@ class _PremiumPageState extends State<PremiumPage> {
                   : () async {
                       final code = _codeController.text.trim();
                       if (code.isEmpty) return;
-                      setState(() => _redeeming = true);
-                      final economy = context.read<EconomyProvider>();
-                      final result = await economy.redeemPremiumCode(code);
-                      setState(() => _redeeming = false);
-                      if (!mounted) return;
                       final appStr = AppStrings.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
+                      final economy = context.read<EconomyProvider>();
+                      setState(() => _redeeming = true);
+                      final result = await economy.redeemPremiumCode(code);
+                      if (!mounted) return;
+                      setState(() => _redeeming = false);
                       if (result.isSuccess) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text(appStr.dragonStoreCodeRedeemed),
                           ),
                         );
                         _codeController.clear();
                       } else {
-                        final error = result.error;
-                        final msg = error is Object && error is dynamic
-                            ? (error.message is String ? error.message as String : appStr.dragonStoreCodeInvalid)
-                            : appStr.dragonStoreCodeInvalid;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(msg)),
+                        // §1.4 — `Failure.message` is developer copy in
+                        // English, so it is never rendered. The user gets the
+                        // localized answer for the failure they caused, or
+                        // localized generic copy for anything else.
+                        final failure = result.failureOrNull;
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(switch (failure) {
+                              NetworkError() => appStr.discoveryOffline,
+                              ValidationError() ||
+                              NotFoundError() ||
+                              UnknownError() ||
+                              null => appStr.dragonStoreCodeInvalid,
+                              _ => appStr.tryAgainShort,
+                            }),
+                          ),
                         );
                       }
                     },
