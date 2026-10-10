@@ -283,6 +283,12 @@ final class _EmptyEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) async => const Success<String?>(null);
+
+  @override
   Future<Result<List<PubgetEvent>>> getRecentEvents({
     int limit = 20,
     PubgetEvent? after,
@@ -297,6 +303,24 @@ final class _EmptyEventRepository implements EventRepository {
     required String animeId,
     int limit = 20,
   }) async => const Success(<PubgetEvent>[]);
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() async =>
+      const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<void>> crosspost({
+    required String eventId,
+    List<String> groupIds = const <String>[],
+    bool toGlobal = false,
+  }) async => const FailureResult(ValidationError('unused'));
+
+  @override
+  Future<Result<void>> reportEvent({
+    required String eventId,
+    required String category,
+    String detail = '',
+  }) async => const FailureResult(ValidationError('unused'));
 
   @override
   Future<Result<EventPreview>> preview({required String eventId}) async =>

@@ -161,8 +161,16 @@ void main() {
           configuration: const EventConfiguration(
             question: 'Q',
             options: <EventOption>[
-              EventOption(id: 'opt-1', label: 'A'),
-              EventOption(id: 'opt-2', label: 'B'),
+              EventOption(
+                id: 'opt-1',
+                label: 'A',
+                imageUrl: 'https://cdn.example.com/a.png',
+              ),
+              EventOption(
+                id: 'opt-2',
+                label: 'B',
+                imageUrl: 'https://cdn.example.com/b.png',
+              ),
             ],
           ),
         ),
@@ -260,6 +268,155 @@ void main() {
         ),
       ),
       isNotNull,
+    );
+  });
+
+  test('theory stances and anime links round-trip through the event map', () {
+    final original = PubgetEvent(
+      id: 'e-theory',
+      type: EventType.theory,
+      creatorId: 'alice',
+      groupId: null,
+      title: 'The silk trade',
+      description: 'It never collapsed.',
+      configuration: const EventConfiguration(
+        anime: EventAnimeLink(
+          animeId: 'mal-123',
+          title: 'Spice and Wolf',
+          imageUrl: 'https://cdn.example.com/wolf.jpg',
+        ),
+      ),
+      status: EventStatus.ended,
+      startAt: DateTime.utc(2026, 9, 1),
+      endAt: DateTime.utc(2026, 9, 2),
+      participantsCount: 2,
+      responsesCount: 2,
+      tally: const EventTally(
+        submissions: 2,
+        stances: <String, int>{'agree': 1, 'disagree': 1},
+      ),
+      result: const EventResult(
+        kind: 'theory',
+        submissions: 2,
+        stances: <String, int>{'agree': 1, 'disagree': 1},
+      ),
+      createdAt: DateTime.utc(2026, 9, 1),
+      updatedAt: DateTime.utc(2026, 9, 1),
+    );
+
+    final restored = PubgetEvent.fromMap(original.toMap(), id: original.id);
+    expect(restored.configuration.anime?.animeId, 'mal-123');
+    expect(restored.configuration.anime?.title, 'Spice and Wolf');
+    expect(restored.configuration.anime?.imageUrl, isNotEmpty);
+    expect(restored.tally.stances['agree'], 1);
+    expect(restored.result?.stances['disagree'], 1);
+  });
+
+  test('a scheduled-but-live event is not interactable before its start', () {
+    final now = DateTime.utc(2026, 9, 2, 12);
+    final event = PubgetEvent(
+      id: 'e1',
+      type: EventType.poll,
+      creatorId: 'alice',
+      groupId: null,
+      title: 'Vote',
+      description: '',
+      configuration: const EventConfiguration(),
+      status: EventStatus.active,
+      startAt: DateTime.utc(2026, 9, 3, 12),
+      endAt: DateTime.utc(2026, 9, 4, 12),
+      participantsCount: 0,
+      responsesCount: 0,
+      tally: const EventTally(),
+      result: null,
+      createdAt: DateTime.utc(2026, 9, 1),
+      updatedAt: DateTime.utc(2026, 9, 1),
+    );
+    expect(event.isExpired(now), isFalse);
+    expect(event.isInteractable(now), isFalse);
+
+    final started = PubgetEvent(
+      id: event.id,
+      type: EventType.poll,
+      creatorId: event.creatorId,
+      groupId: event.groupId,
+      title: event.title,
+      description: event.description,
+      configuration: event.configuration,
+      status: EventStatus.active,
+      startAt: DateTime.utc(2026, 9, 1),
+      endAt: DateTime.utc(2026, 9, 4, 12),
+      participantsCount: event.participantsCount,
+      responsesCount: event.responsesCount,
+      tally: event.tally,
+      result: event.result,
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    );
+    expect(started.isInteractable(now), isTrue);
+  });
+
+  test('event creation quota maps remaining allowance and exhaustion', () {
+    final quota = EventCreationQuota.fromMap(const <String, dynamic>{
+      'count': 2,
+      'limit': 2,
+      'day': '2026-09-02',
+      'remaining': 0,
+    });
+    expect(quota.limit, 2);
+    expect(quota.remaining, 0);
+    expect(quota.exhausted, isTrue);
+
+    expect(
+      EventCreationQuota.fromMap(const <String, dynamic>{}).exhausted,
+      isTrue,
+    );
+    expect(
+      EventCreationQuota.fromMap(const <String, dynamic>{'remaining': 2})
+          .exhausted,
+      isFalse,
+    );
+  });
+
+  test('publish validation requires a theory body and a valid anime', () {
+    expect(
+      EventValidation.publish(
+        EventDraft(
+          scope: EventScope.global,
+          type: EventType.theory,
+          title: 'Theory',
+        ),
+      ),
+      'ev.theoryBodyRequired',
+    );
+    expect(
+      EventValidation.publish(
+        EventDraft(
+          scope: EventScope.global,
+          type: EventType.theory,
+          title: 'Theory',
+          description: 'A body.',
+          configuration: const EventConfiguration(
+            anime: EventAnimeLink(
+              animeId: 'mal-1',
+              title: 'Title',
+              imageUrl: 'javascript:alert(1)',
+            ),
+          ),
+        ),
+      ),
+      'ev.animeInvalid',
+    );
+    expect(
+      EventValidation.publish(
+        EventDraft(
+          scope: EventScope.global,
+          type: EventType.theory,
+          title: 'Theory',
+          description: 'A body.',
+        ),
+      ),
+      isNull,
     );
   });
 }

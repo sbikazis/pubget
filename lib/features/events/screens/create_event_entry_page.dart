@@ -76,8 +76,8 @@ class _CreateEventEntryPageState extends State<CreateEventEntryPage> {
             ListTile(
               key: const Key('create-global-event'),
               leading: const Icon(Icons.public_outlined),
-              title: const Text('Create a global Event'),
-              subtitle: const Text('Visible to the whole Pubget community'),
+              title: Text(copy.eventCreateGlobal),
+              subtitle: Text(copy.eventGlobalHint),
               onTap: () {
                 final template = widget.templateId;
                 final path = template == null || template.isEmpty

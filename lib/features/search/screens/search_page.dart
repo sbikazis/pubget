@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -119,7 +120,7 @@ class _SearchBody extends StatelessWidget {
     }
     if (search.state == LoadingState.error) {
       return PubgetErrorState(
-        message: search.failure?.message ?? 'Search failed.',
+        message: search.failure?.message ?? AppStrings.of(context).searchLoadFailed,
         onRetry: search.retry,
       );
     }
@@ -142,12 +143,34 @@ class SearchHitTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final subtitle = _localizedSubtitle(copy);
     return ListTile(
       leading: _leading,
       title: Text(hit.title),
-      subtitle: hit.subtitle == null ? null : Text(hit.subtitle!),
+      subtitle: subtitle == null ? null : Text(subtitle),
       onTap: () => hit.open(context),
     );
+  }
+
+  /// Discovery results carry literal kind labels ('Event', 'Person', …) baked
+  /// in at search time. Swap the known literals for the localized label and
+  /// keep anything authored (e.g. a fan-work creator name) untouched.
+  String? _localizedSubtitle(AppStrings copy) {
+    final raw = hit.subtitle;
+    if (raw == null || raw.isEmpty) return null;
+    final isKindLiteral = switch (hit.type) {
+      SearchHitType.group => raw == 'Group',
+      SearchHitType.user => raw == 'Person',
+      SearchHitType.event => raw == 'Event',
+      SearchHitType.anime => raw == 'Anime',
+      SearchHitType.fanWork => raw == 'Fan Work',
+      SearchHitType.character => raw == 'شخصية',
+      SearchHitType.reel => raw == 'ريل',
+    };
+    if (!isKindLiteral) return raw;
+    final label = copy.searchHitLabel(hit.type.name);
+    return label.isEmpty ? raw : label;
   }
 
   Widget get _leading {

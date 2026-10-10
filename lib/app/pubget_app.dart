@@ -1083,11 +1083,13 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         },
         '/events/create': (parameters) {
           final groupId = parameters['groupId'];
-          if (groupId == null || groupId.isEmpty) {
+          final hasGroup = groupId != null && groupId.isNotEmpty;
+          // No explicit audience yet -> let the creator pick one first.
+          if (!hasGroup && parameters['scope'] == null) {
             return CreateEventEntryPage(templateId: parameters['templateId']);
           }
           return EventBuilderPage(
-            groupId: groupId,
+            groupId: hasGroup ? groupId : null,
             templateId: parameters['templateId'],
           );
         },
