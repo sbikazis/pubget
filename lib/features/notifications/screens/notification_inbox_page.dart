@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -17,27 +18,28 @@ class NotificationInboxPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<NotificationProvider>();
+    final copy = AppStrings.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text('Notifications'),
+        title: Text(copy.notifications),
         actions: <Widget>[
           TextButton(
             onPressed: provider.unreadCount > 0 ? provider.markAllAsRead : null,
-            child: const Text('Mark all read'),
+            child: Text(copy.notificationsMarkAllRead),
           ),
         ],
       ),
       body: PubgetLoadingStateView(
         state: provider.state,
         onRetry: () => unawaited(provider.retry()),
-        empty: const PubgetEmptyState(
-          title: 'No notifications',
-          message: 'Important activity will appear here.',
+        empty: PubgetEmptyState(
+          title: copy.notificationsEmptyTitle,
+          message: copy.notificationsEmptyMessage,
         ),
         error: PubgetErrorState(
           key: const Key('notification-inbox-retry'),
-          message: provider.failure?.message ?? 'Notifications could not load.',
+          message: provider.failure?.message ?? copy.notificationsLoadFailed,
           onRetry: () => unawaited(provider.retry()),
         ),
         offline: PubgetOfflineState(
@@ -79,15 +81,15 @@ class NotificationInboxPage extends StatelessWidget {
             SnackBar(
               content: Text(
                 enabled
-                    ? 'Push notifications enabled'
+                    ? copy.notificationsPushEnabled
                     : result.failureOrNull?.message ??
-                          'Notification permission was not granted',
+                          copy.notificationsPushDenied,
               ),
             ),
           );
         },
         icon: const Icon(Icons.notifications_active_outlined),
-        label: const Text('Enable push'),
+        label: Text(copy.notificationsEnablePush),
       )
           : null,
     );
@@ -102,6 +104,8 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final body = _body(copy, item);
     return PubgetCard(
       onTap: onTap,
       child: Row(
@@ -118,14 +122,14 @@ class _NotificationTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  _title(item),
+                  _title(copy, item),
                   style: TextStyle(
                     fontWeight: item.isUnread
                         ? FontWeight.w800
                         : FontWeight.w500,
                   ),
                 ),
-                Text(_body(item)),
+                if (body.isNotEmpty) Text(body),
               ],
             ),
           ),
@@ -150,6 +154,8 @@ class _NotificationTile extends StatelessWidget {
     'rank_promoted' => Icons.trending_up,
     'rank_demoted' => Icons.trending_down,
     'member_warning' => Icons.warning_amber_outlined,
+    'event_starting' => Icons.celebration_outlined,
+    'event_result_available' => Icons.poll_outlined,
     _ => Icons.notifications_none,
   };
 
@@ -159,40 +165,30 @@ class _NotificationTile extends StatelessWidget {
     return '';
   }
 
-  String _title(AppNotification item) {
+  static const _metaTitleTypes = <String>{
+    'rank_promoted',
+    'rank_demoted',
+    'member_warning',
+  };
+
+  String _title(AppStrings copy, AppNotification item) {
     final fromMeta = _metadataText(item, 'title');
-    if (fromMeta.isNotEmpty &&
-        (item.type == 'rank_promoted' ||
-            item.type == 'rank_demoted' ||
-            item.type == 'member_warning')) {
+    if (fromMeta.isNotEmpty && _metaTitleTypes.contains(item.type)) {
       return fromMeta;
     }
-    return switch (item.type) {
-      'group_message' => 'New group message',
-      'join_request' => 'Join request',
-      'request_accepted' => 'Request accepted',
-      'friend_request' => 'Friend request',
-      'respect_received' => 'Respect received',
-      'game_invite' => 'Game invite',
-      'game_started' => 'Game starting',
-      'game_completed' => 'Game result',
-      'achievement_unlocked' => 'Achievement unlocked',
-      'edit_published' => 'Edit published',
-      'edit_failed' => 'Edit processing failed',
-      'edit_needs_review' => 'Edit held for review',
-      'rank_promoted' => 'Rank promoted',
-      'rank_demoted' => 'Rank demoted',
-      'member_warning' => 'Member warning',
-      _ => fromMeta.isNotEmpty ? fromMeta : 'Notification',
-    };
+    return copy.notificationTitle(
+      item.type,
+      eventTitle: _metadataText(item, 'eventTitle'),
+    );
   }
 
-  String _body(AppNotification item) {
+  String _body(AppStrings copy, AppNotification item) {
+    if (item.type == 'event_starting' ||
+        item.type == 'event_result_available') {
+      return copy.notificationBody(item.type);
+    }
     final fromMeta = _metadataText(item, 'body');
-    if (fromMeta.isNotEmpty &&
-        (item.type == 'rank_promoted' ||
-            item.type == 'rank_demoted' ||
-            item.type == 'member_warning')) {
+    if (fromMeta.isNotEmpty && _metaTitleTypes.contains(item.type)) {
       return fromMeta;
     }
     if (fromMeta.isNotEmpty && item.action.trim().isEmpty) return fromMeta;

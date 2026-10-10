@@ -153,7 +153,12 @@ final class FirebaseEventRepository implements EventRepository {
     int limit = 20,
   }) => _query(
     _events
-        .where('groupId', isEqualTo: groupId)
+        .where(
+          Filter.or(
+            Filter('groupId', isEqualTo: groupId),
+            Filter('groupIds', arrayContains: groupId),
+          ),
+        )
         .where('status', whereIn: <String>['ACTIVE', 'ENDED'])
         .orderBy('startAt', descending: true)
         .limit(limit),
@@ -223,6 +228,42 @@ final class FirebaseEventRepository implements EventRepository {
   });
 
   @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) => _guard(() async {
+    final snapshot = await _events
+        .doc(eventId)
+        .collection('reactions')
+        .doc(userId)
+        .get();
+    if (!snapshot.exists) return null;
+    final reaction = snapshot.data()?['reaction'];
+    return reaction is String ? reaction : null;
+  });
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() => _guard(() async {
+    final result = await _functions
+        .httpsCallable('getEventCreationQuota')
+        .call(<String, dynamic>{});
+    return EventCreationQuota.fromMap(
+      Map<String, dynamic>.from(result.data as Map),
+    );
+  });
+
+  @override
+  Future<Result<void>> crosspost({
+    required String eventId,
+    List<String> groupIds = const <String>[],
+    bool toGlobal = false,
+  }) => _call('crosspostEvent', {
+    'eventId': eventId,
+    if (toGlobal) 'toGlobal': true,
+    if (groupIds.isNotEmpty) 'groupIds': groupIds,
+  });
+
+  @override
   Future<Result<EventPreview>> preview({required String eventId}) =>
       _guard(() async {
         final result = await _functions
@@ -232,6 +273,17 @@ final class FirebaseEventRepository implements EventRepository {
           Map<String, dynamic>.from(result.data as Map),
         );
       });
+
+  @override
+  Future<Result<void>> reportEvent({
+    required String eventId,
+    required String category,
+    String detail = '',
+  }) => _call('reportEvent', {
+    'eventId': eventId,
+    'category': category,
+    if (detail.trim().isNotEmpty) 'detail': detail.trim(),
+  });
 
   @override
   Future<Result<EventResult>> resolve({

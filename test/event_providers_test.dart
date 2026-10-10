@@ -205,6 +205,10 @@ final class _FakeEventRepository implements EventRepository {
   int submitCalls = 0;
   int joinCalls = 0;
   int publishCalls = 0;
+  int crosspostCalls = 0;
+  Result<void> crosspostResult = const Success<void>(null);
+  int reportCalls = 0;
+  Result<void> reportResult = const Success<void>(null);
   List<PubgetEvent> nextPage = const <PubgetEvent>[];
   Result<EventResult> resolveResult = const Success(
     EventResult(kind: '', submissions: 0),
@@ -259,6 +263,12 @@ final class _FakeEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) async => const Success<String?>(null);
+
+  @override
   Future<Result<List<PubgetEvent>>> getRecentEvents({
     int limit = 20,
     PubgetEvent? after,
@@ -273,6 +283,30 @@ final class _FakeEventRepository implements EventRepository {
     required String animeId,
     int limit = 20,
   }) async => const Success(<PubgetEvent>[]);
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() async =>
+      const FailureResult(ValidationError('not used'));
+
+  @override
+  Future<Result<void>> crosspost({
+    required String eventId,
+    List<String> groupIds = const <String>[],
+    bool toGlobal = false,
+  }) async {
+    crosspostCalls += 1;
+    return crosspostResult;
+  }
+
+  @override
+  Future<Result<void>> reportEvent({
+    required String eventId,
+    required String category,
+    String detail = '',
+  }) async {
+    reportCalls += 1;
+    return reportResult;
+  }
 
   @override
   Future<Result<EventPreview>> preview({required String eventId}) async =>
