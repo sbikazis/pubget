@@ -44,6 +44,13 @@ final class AppStrings {
   );
   String get youAreOffline => pick('You are offline', 'أنت غير متصل');
 
+  String get linkNotAvailable =>
+      pick('This link is not available', 'هذا الرابط غير متاح');
+  String get linkNotAvailableMessage => pick(
+    'The address may be incomplete, outdated, or mistyped.',
+    'قد يكون العنوان ناقصاً أو قديماً أو به خطأ إملائي.',
+  );
+
   String get language => pick('Language', 'اللغة');
   String get chooseLanguage => pick('Choose your language', 'اختر لغتك');
   String get languageArabic => 'العربية';
@@ -851,6 +858,10 @@ final class AppStrings {
   String get voicePlayFailed => pick(
     'Voice message could not be played.',
     'تعذّر تشغيل الرسالة الصوتية.',
+  );
+  String get voiceNoteFailed => pick(
+    'Your voice message could not be saved. Please try again.',
+    'تعذّر حفظ رسالتك الصوتية. حاول مرة أخرى.',
   );
   String get voiceMicPermissionDenied => pick(
     'Microphone access is required to record a voice message.',

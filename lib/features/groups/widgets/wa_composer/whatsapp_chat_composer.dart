@@ -476,7 +476,9 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
     VoiceClip? clip;
     try {
       clip = await widget.voiceCapture.stop();
-    } catch (_) {}
+    } catch (_) {
+      clip = null;
+    }
 
     if (!mounted) {
       _sending = false;
@@ -498,7 +500,15 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
       _recordElapsed = Duration.zero;
     });
     _sending = false;
-    if (clip == null) return;
+    if (clip == null) {
+      // A null clip here is not a user cancel (that path is _cancelRecord); it
+      // means capture failed or produced nothing. Tell the user instead of
+      // silently dropping the note they just recorded.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppStrings.of(context).voiceNoteFailed)),
+      );
+      return;
+    }
     if (clip.exceedsLimits) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.of(context).voiceNoteLimits)),

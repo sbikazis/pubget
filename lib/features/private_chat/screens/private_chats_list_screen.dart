@@ -8,6 +8,7 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../notifications/providers/unread_engine.dart';
 import '../../notifications/widgets/unread_badge.dart';
+import '../l10n/private_chat_copy.dart';
 import '../models/private_chat_models.dart';
 import '../providers/private_chat_list_provider.dart';
 
@@ -55,13 +56,14 @@ class _PrivateChatsListScreenState extends State<PrivateChatsListScreen> {
   @override
   Widget build(BuildContext context) {
     final list = context.watch<PrivateChatListProvider>();
+    final copy = PrivateChatCopy.of(context);
     final uid = context.watch<AuthProvider>().currentUser?.id ?? '';
     return Scaffold(
       appBar: AppBar(
         leading: const AppShellMenuButton(),
         title: UnreadBadge(
           count: context.watch<UnreadEngine>().privateChats,
-          child: const Text('Private'),
+          child: Text(copy.listTitle),
         ),
       ),
       body: PubgetLoadingStateView(
@@ -71,18 +73,17 @@ class _PrivateChatsListScreenState extends State<PrivateChatsListScreen> {
           context.read<PrivateChatListProvider>().open(uid);
         },
         empty: PubgetEmptyState(
-          title: 'No private chats yet',
-          message:
-              'Start a conversation from a Friend or Fan profile.',
+          title: copy.emptyTitle,
+          message: copy.emptyMessage,
           icon: Icons.chat_bubble_outline,
           action: PubgetSecondaryButton(
             onPressed: () => AppNavigation.go(context, '/search'),
-            semanticLabel: 'Find people',
-            child: const Text('Find people'),
+            semanticLabel: copy.findPeople,
+            child: Text(copy.findPeople),
           ),
         ),
         error: PubgetErrorState(
-          message: list.failure?.message ?? 'Private chats could not load.',
+          message: list.failure?.message ?? copy.loadFailed,
           onRetry: () {
             if (uid.isEmpty) return;
             context.read<PrivateChatListProvider>().open(uid);
@@ -103,10 +104,14 @@ class _PrivateChatsListScreenState extends State<PrivateChatsListScreen> {
             if (index >= list.chats.length) {
               return TextButton(
                 onPressed: list.loadMore,
-                child: const Text('Load older chats'),
+                child: Text(copy.loadOlder),
               );
             }
-            return _ChatTile(chat: list.chats[index], currentUserId: uid);
+            return _ChatTile(
+              chat: list.chats[index],
+              currentUserId: uid,
+              noMessagesLabel: copy.noMessages,
+            );
           },
         ),
       ),
@@ -115,10 +120,15 @@ class _PrivateChatsListScreenState extends State<PrivateChatsListScreen> {
 }
 
 class _ChatTile extends StatelessWidget {
-  const _ChatTile({required this.chat, required this.currentUserId});
+  const _ChatTile({
+    required this.chat,
+    required this.currentUserId,
+    required this.noMessagesLabel,
+  });
 
   final PrivateChatSummary chat;
   final String currentUserId;
+  final String noMessagesLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -141,7 +151,7 @@ class _ChatTile extends StatelessWidget {
         ),
         title: Text(chat.otherDisplayName(currentUserId)),
         subtitle: Text(
-          chat.lastMessageText.isEmpty ? 'No messages yet' : chat.lastMessageText,
+          chat.lastMessageText.isEmpty ? noMessagesLabel : chat.lastMessageText,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),

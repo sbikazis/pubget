@@ -9,6 +9,7 @@ import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/app_notification.dart';
+import '../l10n/notification_copy.dart';
 import '../providers/notification_provider.dart';
 
 class NotificationInboxPage extends StatelessWidget {
@@ -17,27 +18,28 @@ class NotificationInboxPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<NotificationProvider>();
+    final copy = NotificationCopy.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text('Notifications'),
+        title: Text(copy.title),
         actions: <Widget>[
           TextButton(
             onPressed: provider.unreadCount > 0 ? provider.markAllAsRead : null,
-            child: const Text('Mark all read'),
+            child: Text(copy.markAllRead),
           ),
         ],
       ),
       body: PubgetLoadingStateView(
         state: provider.state,
         onRetry: () => unawaited(provider.retry()),
-        empty: const PubgetEmptyState(
-          title: 'No notifications',
-          message: 'Important activity will appear here.',
+        empty: PubgetEmptyState(
+          title: copy.emptyTitle,
+          message: copy.emptyMessage,
         ),
         error: PubgetErrorState(
           key: const Key('notification-inbox-retry'),
-          message: provider.failure?.message ?? 'Notifications could not load.',
+          message: provider.failure?.message ?? copy.loadFailed,
           onRetry: () => unawaited(provider.retry()),
         ),
         offline: PubgetOfflineState(
@@ -57,6 +59,7 @@ class NotificationInboxPage extends StatelessWidget {
               final item = provider.items[index];
               return _NotificationTile(
                 item: item,
+                copy: copy,
                 onTap: () async {
                   await provider.markAsRead(item);
                   if (context.mounted) {
@@ -79,15 +82,14 @@ class NotificationInboxPage extends StatelessWidget {
             SnackBar(
               content: Text(
                 enabled
-                    ? 'Push notifications enabled'
-                    : result.failureOrNull?.message ??
-                          'Notification permission was not granted',
+                    ? copy.pushEnabled
+                    : result.failureOrNull?.message ?? copy.pushDenied,
               ),
             ),
           );
         },
         icon: const Icon(Icons.notifications_active_outlined),
-        label: const Text('Enable push'),
+        label: Text(copy.enablePush),
       )
           : null,
     );
@@ -95,9 +97,14 @@ class NotificationInboxPage extends StatelessWidget {
 }
 
 class _NotificationTile extends StatelessWidget {
-  const _NotificationTile({required this.item, required this.onTap});
+  const _NotificationTile({
+    required this.item,
+    required this.copy,
+    required this.onTap,
+  });
 
   final AppNotification item;
+  final NotificationCopy copy;
   final VoidCallback onTap;
 
   @override
@@ -167,24 +174,8 @@ class _NotificationTile extends StatelessWidget {
             item.type == 'member_warning')) {
       return fromMeta;
     }
-    return switch (item.type) {
-      'group_message' => 'New group message',
-      'join_request' => 'Join request',
-      'request_accepted' => 'Request accepted',
-      'friend_request' => 'Friend request',
-      'respect_received' => 'Respect received',
-      'game_invite' => 'Game invite',
-      'game_started' => 'Game starting',
-      'game_completed' => 'Game result',
-      'achievement_unlocked' => 'Achievement unlocked',
-      'edit_published' => 'Edit published',
-      'edit_failed' => 'Edit processing failed',
-      'edit_needs_review' => 'Edit held for review',
-      'rank_promoted' => 'Rank promoted',
-      'rank_demoted' => 'Rank demoted',
-      'member_warning' => 'Member warning',
-      _ => fromMeta.isNotEmpty ? fromMeta : 'Notification',
-    };
+    if (item.type == 'unknown' && fromMeta.isNotEmpty) return fromMeta;
+    return copy.titleFor(item.type);
   }
 
   String _body(AppNotification item) {

@@ -6,6 +6,7 @@ import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../anime/l10n/anime_copy.dart';
+import '../l10n/search_copy.dart';
 import '../search_hit.dart';
 import '../search_provider.dart';
 import '../search_query.dart';
@@ -38,7 +39,7 @@ class _SearchPageState extends State<SearchPage> {
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text('Search')),
+        title: Text(SearchCopy.of(context).title)),
       body: Column(
         children: <Widget>[
           Padding(
@@ -88,11 +89,11 @@ class _SearchBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = SearchCopy.of(context);
     if (!search.isRunnable) {
       return PubgetEmptyState(
-        title: 'Search Pubget',
-        message:
-            'Type at least ${SearchQuery.minLength} characters to find groups, people, events, anime, and Fan Works.',
+        title: copy.emptyTitle,
+        message: copy.emptyMessage(SearchQuery.minLength),
         icon: Icons.search,
       );
     }
@@ -109,9 +110,9 @@ class _SearchBody extends StatelessWidget {
       );
     }
     if (search.state == LoadingState.empty) {
-      return const PubgetEmptyState(
-        title: 'Nothing found',
-        message: 'Try another group, username, event, anime, or Fan Work.',
+      return PubgetEmptyState(
+        title: copy.nothingTitle,
+        message: copy.nothingMessage,
       );
     }
     if (search.state == LoadingState.offline) {
@@ -119,7 +120,7 @@ class _SearchBody extends StatelessWidget {
     }
     if (search.state == LoadingState.error) {
       return PubgetErrorState(
-        message: search.failure?.message ?? 'Search failed.',
+        message: search.failure?.message ?? copy.failed,
         onRetry: search.retry,
       );
     }
@@ -142,10 +143,14 @@ class SearchHitTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = SearchCopy.of(context);
+    final title = hit.title.trim().isEmpty ? copy.unknownUser : hit.title;
+    final override = hit.subtitle?.trim() ?? '';
+    final subtitle = override.isEmpty ? copy.labelFor(hit.type) : override;
     return ListTile(
       leading: _leading,
-      title: Text(hit.title),
-      subtitle: hit.subtitle == null ? null : Text(hit.subtitle!),
+      title: Text(title),
+      subtitle: Text(subtitle),
       onTap: () => hit.open(context),
     );
   }
