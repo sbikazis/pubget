@@ -5,11 +5,11 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/app_notification.dart';
-import '../l10n/notification_copy.dart';
 import '../providers/notification_provider.dart';
 
 class NotificationInboxPage extends StatelessWidget {
@@ -18,15 +18,15 @@ class NotificationInboxPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<NotificationProvider>();
-    final copy = NotificationCopy.of(context);
+    final copy = AppStrings.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(copy.title),
+        title: Text(copy.notifications),
         actions: <Widget>[
           TextButton(
             onPressed: provider.unreadCount > 0 ? provider.markAllAsRead : null,
-            child: Text(copy.markAllRead),
+            child: Text(copy.notificationsMarkAllRead),
           ),
         ],
       ),
@@ -34,12 +34,12 @@ class NotificationInboxPage extends StatelessWidget {
         state: provider.state,
         onRetry: () => unawaited(provider.retry()),
         empty: PubgetEmptyState(
-          title: copy.emptyTitle,
-          message: copy.emptyMessage,
+          title: copy.notificationsEmptyTitle,
+          message: copy.notificationsEmptyMessage,
         ),
         error: PubgetErrorState(
           key: const Key('notification-inbox-retry'),
-          message: provider.failure?.message ?? copy.loadFailed,
+          message: provider.failure?.message ?? copy.notificationsLoadFailed,
           onRetry: () => unawaited(provider.retry()),
         ),
         offline: PubgetOfflineState(
@@ -59,7 +59,6 @@ class NotificationInboxPage extends StatelessWidget {
               final item = provider.items[index];
               return _NotificationTile(
                 item: item,
-                copy: copy,
                 onTap: () async {
                   await provider.markAsRead(item);
                   if (context.mounted) {
@@ -82,14 +81,15 @@ class NotificationInboxPage extends StatelessWidget {
             SnackBar(
               content: Text(
                 enabled
-                    ? copy.pushEnabled
-                    : result.failureOrNull?.message ?? copy.pushDenied,
+                    ? copy.notificationsPushEnabled
+                    : result.failureOrNull?.message ??
+                          copy.notificationsPushDenied,
               ),
             ),
           );
         },
         icon: const Icon(Icons.notifications_active_outlined),
-        label: Text(copy.enablePush),
+        label: Text(copy.notificationsEnablePush),
       )
           : null,
     );
@@ -97,18 +97,15 @@ class NotificationInboxPage extends StatelessWidget {
 }
 
 class _NotificationTile extends StatelessWidget {
-  const _NotificationTile({
-    required this.item,
-    required this.copy,
-    required this.onTap,
-  });
+  const _NotificationTile({required this.item, required this.onTap});
 
   final AppNotification item;
-  final NotificationCopy copy;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final body = _body(copy, item);
     return PubgetCard(
       onTap: onTap,
       child: Row(
@@ -125,14 +122,14 @@ class _NotificationTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  _title(item),
+                  _title(copy, item),
                   style: TextStyle(
                     fontWeight: item.isUnread
                         ? FontWeight.w800
                         : FontWeight.w500,
                   ),
                 ),
-                Text(_body(item)),
+                if (body.isNotEmpty) Text(body),
               ],
             ),
           ),
@@ -157,6 +154,8 @@ class _NotificationTile extends StatelessWidget {
     'rank_promoted' => Icons.trending_up,
     'rank_demoted' => Icons.trending_down,
     'member_warning' => Icons.warning_amber_outlined,
+    'event_starting' => Icons.celebration_outlined,
+    'event_result_available' => Icons.poll_outlined,
     _ => Icons.notifications_none,
   };
 
@@ -166,24 +165,30 @@ class _NotificationTile extends StatelessWidget {
     return '';
   }
 
-  String _title(AppNotification item) {
+  static const _metaTitleTypes = <String>{
+    'rank_promoted',
+    'rank_demoted',
+    'member_warning',
+  };
+
+  String _title(AppStrings copy, AppNotification item) {
     final fromMeta = _metadataText(item, 'title');
-    if (fromMeta.isNotEmpty &&
-        (item.type == 'rank_promoted' ||
-            item.type == 'rank_demoted' ||
-            item.type == 'member_warning')) {
+    if (fromMeta.isNotEmpty && _metaTitleTypes.contains(item.type)) {
       return fromMeta;
     }
-    if (item.type == 'unknown' && fromMeta.isNotEmpty) return fromMeta;
-    return copy.titleFor(item.type);
+    return copy.notificationTitle(
+      item.type,
+      eventTitle: _metadataText(item, 'eventTitle'),
+    );
   }
 
-  String _body(AppNotification item) {
+  String _body(AppStrings copy, AppNotification item) {
+    if (item.type == 'event_starting' ||
+        item.type == 'event_result_available') {
+      return copy.notificationBody(item.type);
+    }
     final fromMeta = _metadataText(item, 'body');
-    if (fromMeta.isNotEmpty &&
-        (item.type == 'rank_promoted' ||
-            item.type == 'rank_demoted' ||
-            item.type == 'member_warning')) {
+    if (fromMeta.isNotEmpty && _metaTitleTypes.contains(item.type)) {
       return fromMeta;
     }
     if (fromMeta.isNotEmpty && item.action.trim().isEmpty) return fromMeta;

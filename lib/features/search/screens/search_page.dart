@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../anime/l10n/anime_copy.dart';
-import '../l10n/search_copy.dart';
 import '../search_hit.dart';
 import '../search_provider.dart';
 import '../search_query.dart';
@@ -39,7 +39,7 @@ class _SearchPageState extends State<SearchPage> {
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(SearchCopy.of(context).title)),
+        title: const Text('Search')),
       body: Column(
         children: <Widget>[
           Padding(
@@ -89,11 +89,11 @@ class _SearchBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final copy = SearchCopy.of(context);
     if (!search.isRunnable) {
       return PubgetEmptyState(
-        title: copy.emptyTitle,
-        message: copy.emptyMessage(SearchQuery.minLength),
+        title: 'Search Pubget',
+        message:
+            'Type at least ${SearchQuery.minLength} characters to find groups, people, events, anime, and Fan Works.',
         icon: Icons.search,
       );
     }
@@ -110,9 +110,9 @@ class _SearchBody extends StatelessWidget {
       );
     }
     if (search.state == LoadingState.empty) {
-      return PubgetEmptyState(
-        title: copy.nothingTitle,
-        message: copy.nothingMessage,
+      return const PubgetEmptyState(
+        title: 'Nothing found',
+        message: 'Try another group, username, event, anime, or Fan Work.',
       );
     }
     if (search.state == LoadingState.offline) {
@@ -120,7 +120,7 @@ class _SearchBody extends StatelessWidget {
     }
     if (search.state == LoadingState.error) {
       return PubgetErrorState(
-        message: search.failure?.message ?? copy.failed,
+        message: search.failure?.message ?? AppStrings.of(context).searchLoadFailed,
         onRetry: search.retry,
       );
     }
@@ -143,16 +143,34 @@ class SearchHitTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final copy = SearchCopy.of(context);
-    final title = hit.title.trim().isEmpty ? copy.unknownUser : hit.title;
-    final override = hit.subtitle?.trim() ?? '';
-    final subtitle = override.isEmpty ? copy.labelFor(hit.type) : override;
+    final copy = AppStrings.of(context);
+    final subtitle = _localizedSubtitle(copy);
     return ListTile(
       leading: _leading,
-      title: Text(title),
-      subtitle: Text(subtitle),
+      title: Text(hit.title),
+      subtitle: subtitle == null ? null : Text(subtitle),
       onTap: () => hit.open(context),
     );
+  }
+
+  /// Discovery results carry literal kind labels ('Event', 'Person', …) baked
+  /// in at search time. Swap the known literals for the localized label and
+  /// keep anything authored (e.g. a fan-work creator name) untouched.
+  String? _localizedSubtitle(AppStrings copy) {
+    final raw = hit.subtitle;
+    if (raw == null || raw.isEmpty) return null;
+    final isKindLiteral = switch (hit.type) {
+      SearchHitType.group => raw == 'Group',
+      SearchHitType.user => raw == 'Person',
+      SearchHitType.event => raw == 'Event',
+      SearchHitType.anime => raw == 'Anime',
+      SearchHitType.fanWork => raw == 'Fan Work',
+      SearchHitType.character => raw == 'شخصية',
+      SearchHitType.reel => raw == 'ريل',
+    };
+    if (!isKindLiteral) return raw;
+    final label = copy.searchHitLabel(hit.type.name);
+    return label.isEmpty ? raw : label;
   }
 
   Widget get _leading {
