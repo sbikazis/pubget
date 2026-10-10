@@ -505,4 +505,43 @@ final class GroupCopy {
   String get newMembersWeek => _s.pick('New members this week', 'أعضاء جدد هذا الأسبوع');
   String get chatActivity => _s.pick('Chat activity', 'نشاط الدردشة');
   String get activeMembers => _s.pick('Active members', 'أعضاء نشطون');
+
+  // ---- Group settings screen ----
+  String get settingsTitle => _s.pick('Group settings', 'إعدادات المجموعة');
+  String get settingsUnavailable =>
+      _s.pick('Group unavailable', 'المجموعة غير متاحة');
+  String get settingsLoadFailed =>
+      _s.pick('Settings could not load.', 'تعذّر تحميل الإعدادات.');
+  String get settingsNotAllowed => _s.pick(
+    'You cannot manage group settings',
+    'لا يمكنك إدارة إعدادات المجموعة',
+  );
+  String get settingsNotAllowedMessage => _s.pick(
+    'Only MIKADO or a role with manageSettings can edit these fields.',
+    'الميكادو فقط أو رتبة تملك صلاحية manageSettings يمكنها تعديل هذه الحقول.',
+  );
+  String get showInSearchToggle => _s.pick(
+    'Show in search and Discover',
+    'إظهار في البحث والاستكشاف',
+  );
+  String get saveSettings => _s.pick('Save settings', 'حفظ الإعدادات');
+  String get saveSettingsSemantic =>
+      _s.pick('Save group settings', 'حفظ إعدادات المجموعة');
+
+  // ---- Role permissions screen ----
+  String get rolePermissionsTitle =>
+      _s.pick('Role permissions', 'صلاحيات الرتب');
+  String get noRoles => _s.pick('No roles', 'لا توجد رتب');
+  String get rolesLoadFailed =>
+      _s.pick('Roles could not load.', 'تعذّر تحميل الرتب.');
+  String get immutable => _s.pick('Immutable', 'غير قابلة للتعديل');
+  String permissionsCount(int count) =>
+      _s.pick('$count permissions', '$count صلاحية');
+  String permissionsFor(String roleLabel) =>
+      _s.pick('$roleLabel permissions', 'صلاحيات $roleLabel');
+  String get cancel => _s.pick('Cancel', 'إلغاء');
+  String get cancelRoleChangesSemantic =>
+      _s.pick('Cancel role changes', 'إلغاء تغييرات الرتبة');
+  String get saveRolePermissionsSemantic =>
+      _s.pick('Save role permissions', 'حفظ صلاحيات الرتبة');
 }

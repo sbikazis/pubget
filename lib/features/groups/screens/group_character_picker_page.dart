@@ -323,11 +323,10 @@ class _SeasonStrip extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
             itemBuilder: (context, index) {
               final season = seasons[index];
-              return PubgetSelectionChip(
+              return PubgetInfoChip(
                 key: Key('group-season-${season.id}'),
                 label: season.label.isEmpty ? season.title : season.label,
-                selected: false,
-                onSelected: (_) {},
+                icon: Icons.local_movies_outlined,
               );
             },
           ),

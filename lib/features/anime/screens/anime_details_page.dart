@@ -972,12 +972,6 @@ class _ReelCard extends StatelessWidget {
                     )
                   else
                     const ColoredBox(color: AppColors.darkSurfaceMuted),
-                  Positioned.fill(
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(onTap: () {}),
-                    ),
-                  ),
                 ],
               ),
             ),
