@@ -502,7 +502,7 @@ test("event option images are owned by the creator and readable by users", async
   );
   await assertSucceeds(bob.storage().ref("events/alice/evt-1/option-1.jpg").getDownloadURL());
   await assertFails(
-    alice.storage().ref("events/alice/evt-1/nope.jpg").delete(),
+    alice.storage().ref("events/bob/evt-1/option-1.jpg").delete(),
   );
   await assertFails(bob.storage().ref("events/alice/evt-1/option-1.jpg").delete());
   await assertSucceeds(alice.storage().ref("events/alice/evt-1/option-1.jpg").delete());
