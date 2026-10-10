@@ -23,8 +23,9 @@ migrate_working_dir/
 # is commented out by default.
 #.vscode/
 
-# Node (root security-rule tests and Cloud Functions)
-node_modules/
+# Node (root security-rule tests and Cloud Functions). Matched without the
+# trailing slash so a symlinked node_modules is ignored too.
+node_modules
 
 # Flutter/Dart/Pub related
 **/doc/api/

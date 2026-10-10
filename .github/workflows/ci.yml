@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  flutter-gate:
+    name: Flutter analyze and tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          # Pinned to the version this project is developed and locked against;
+          # keep in sync with build.yml (pdfrx pins Dart < 3.9).
+          flutter-version: '3.32.8'
+          channel: 'stable'
+          cache: true
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-pub
+
+      # Golden tests are rasterized per-platform: the committed PNGs were
+      # produced on macOS, so Linux (this runner) renders the Arabic text
+      # differently and the comparison fails. Exclude the `golden` tag here;
+      # run `flutter test` locally on macOS to validate goldens.
+      - name: Tests
+        run: flutter test --exclude-tags golden
+
+  functions-gate:
+    name: Functions syntax and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: functions
+
+      # npm can exit 0 after a partially materialized tree, which surfaces
+      # later as an unrelated deploy error. Fail here instead.
+      - name: Verify Functions SDK is installed
+        run: node -e "require.resolve('firebase-functions')"
+        working-directory: functions
+
+      - name: Syntax check
+        run: npm run check
+        working-directory: functions
+
+      - name: Unit tests
+        run: npm test
+        working-directory: functions
+
+  rules-gate:
+    name: Firestore and Storage rules tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # firebase-tools 15.x refuses to run the emulators on JDK < 21.
+      # The APK build keeps Java 17 for Gradle/AGP; this job is independent.
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Downloading the emulator jars can exceed the emulator startup budget
+      # inside emulators:exec, which fails with "Port 8080 ... was not active
+      # within 60000ms". Warm the cache first so the exec only starts them.
+      - name: Pre-fetch emulator binaries
+        run: |
+          node ./node_modules/firebase-tools/lib/bin/firebase.js setup:emulators:firestore
+          node ./node_modules/firebase-tools/lib/bin/firebase.js setup:emulators:storage
+
+      # The engine/discovery e2e files mint real media fixtures with ffmpeg
+      # (the runner does not ship it), so install it before the suite.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # Mirrors the deploy rules workflows: the full root suite (`npm test`)
+      # under `emulators:exec`, so a PR catches what a deploy would.
+      - name: Rules and e2e tests
+        run: npm test

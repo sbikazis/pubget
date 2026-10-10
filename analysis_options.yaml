@@ -17,6 +17,16 @@ analyzer:
     - node_modules/**
     - "**/node_modules/**"
     - test_legacy/**
+    # Local scratch and build output. These trees hold hundreds of thousands of
+    # files (a full repo copy lives in .p02_worktree), and walking them made a
+    # plain `flutter analyze` take longer than the analysis itself.
+    - build/**
+    - .p02_worktree/**
+    - .worktrees/**
+    - .p01_state/**
+    - .p01_artifacts/**
+    - backups/**
+    - migration/**
 
 linter:
   # The lint rules applied to this project can be customized in the

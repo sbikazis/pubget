@@ -449,9 +449,9 @@ class _PremiumPageState extends State<PremiumPage> {
                   : () async {
                       final code = _codeController.text.trim();
                       if (code.isEmpty) return;
-                      final economy = context.read<EconomyProvider>();
                       final appStr = AppStrings.of(context);
                       final messenger = ScaffoldMessenger.of(context);
+                      final economy = context.read<EconomyProvider>();
                       setState(() => _redeeming = true);
                       final result = await economy.redeemPremiumCode(code);
                       if (!mounted) return;
@@ -464,6 +464,10 @@ class _PremiumPageState extends State<PremiumPage> {
                         );
                         _codeController.clear();
                       } else {
+                        // §1.4 — `Failure.message` is developer copy in
+                        // English, so it is never rendered. The user gets the
+                        // localized answer for the failure they caused, or
+                        // localized generic copy for anything else.
                         final failure = result.failureOrNull;
                         messenger.showSnackBar(
                           SnackBar(
