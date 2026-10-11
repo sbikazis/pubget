@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
+import '../media/media_reference.dart';
+
 /// Network/stored image with decode-time downscaling.
 ///
 /// The two defects this fixes are the reason a media chat felt heavy and blurry:
@@ -89,7 +91,9 @@ class _AppImageLoaderState extends State<AppImageLoader> {
   Future<Uint8List?>? _bytesForStorageUrl() {
     final url = widget.imageUrl;
     if (_storageBytes != null) return _storageBytes;
-    if (url.isEmpty) {
+    // Empty or an opaque scheme (e.g. a `pubget://` preset) is not a Storage
+    // object: resolve to the fallback instead of issuing a doomed download.
+    if (url.trim().isEmpty || isOpaqueMediaReference(url)) {
       return _storageBytes = Future<Uint8List?>.value();
     }
     return _storageBytes = FirebaseStorage.instance
