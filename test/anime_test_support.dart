@@ -120,6 +120,7 @@ final class FakeAnimeHttpClient implements AnimeHttpClient {
 
   final Map<String, AnimeHttpResponse> responses;
   final List<Uri> calls = <Uri>[];
+  final List<Object?> postBodies = <Object?>[];
   Object? throwError;
   int failuresBeforeSuccess = 0;
   bool alwaysThrow = false;
@@ -158,6 +159,7 @@ final class FakeAnimeHttpClient implements AnimeHttpClient {
     AnimeRequestPriority priority = AnimeRequestPriority.catalog,
   }) {
     calls.add(uri);
+    postBodies.add(body);
     if (alwaysThrow && throwError != null) {
       throw throwError!;
     }

@@ -7,10 +7,14 @@ import 'anime_repository.dart';
 
 /// Fetches the anime catalog from AniList's public GraphQL endpoint. It is the
 /// alternative provider: the hub keeps working when the primary provider
-/// (Jikan/MyAnimeList) is unreachable. Ids are AniList ids, except that
-/// numeric (Mal) ids are resolved through the companion `idMal` field so the
-/// local Firestore cache and community favorites keep working across either
-/// provider.
+/// (Jikan/MyAnimeList) is unreachable.
+///
+/// Canonical ids match the primary provider: every mapped [Anime.id] is the
+/// MyAnimeList id (AniList's `idMal`) when AniList exposes one, falling back to
+/// the native AniList id only for entries with no MyAnimeList equivalent.
+/// Requests resolve either kind back through the `id`/`idMal` arguments, so
+/// the durable cache, community ratings and favorites stay keyed on one stable
+/// id regardless of which provider answered.
 final class AniListAnimeRepository implements AnimeRepository {
   AniListAnimeRepository({required AnimeHttpClient http, Uri? baseUri})
     : _http = http,
@@ -18,6 +22,7 @@ final class AniListAnimeRepository implements AnimeRepository {
 
   static const String mediaFields = '''
 id
+idMal
 title { romaji english native userPreferred }
 description
 format
@@ -34,7 +39,8 @@ coverImage { extraLarge large medium }
 bannerImage
 genres
 studios { nodes { id name isAnimationStudio } }
-relations { edges { relationType node { id type format title { romaji english } coverImage { large medium } } } }
+productionCompanies { nodes { id name } }
+relations { edges { relationType node { id idMal type format title { romaji english } coverImage { large medium } } } }
 source
 nextAiringEpisode { episode timeUntilAiring }
 trailer { id site }
@@ -176,7 +182,7 @@ isAdult''';
           '''
 query Summaries(\$_ids: [Int]) {
   Page(perPage: ${chunk.length}) {
-    media(id_in: \$_ids, type: ANIME) {
+    media(idMal_in: \$_ids, type: ANIME) {
       id
       idMal
       title { romaji english native }
@@ -274,6 +280,7 @@ query Character(\$_id: Int, \$_idMal: Int) {
     media(page: 1, perPage: 25, sort: [POPULARITY_DESC]) {
       nodes {
         id
+        idMal
         type
         title { romaji english userPreferred }
         coverImage { large medium }
@@ -522,9 +529,14 @@ query Media(\$_id: Int, \$_idMal: Int) {
     );
   }
 
+  /// Resolves a canonical (MyAnimeList) id through AniList's `idMal`
+  /// argument. Non-numeric ids cannot exist for anime, and sending a null
+  /// `_id` is an invalid GraphQL variable, so anything non-numeric resolves
+  /// to no argument at all (the query then returns null -> NotFound) rather
+  /// than the former `{'_id': null}` shape.
   Map<String, Object?> _idVariables(String id) {
-    final numeric = int.tryParse(id);
-    return {if (numeric != null) '_idMal': numeric else '_id': numeric};
+    final numeric = int.tryParse(id.trim());
+    return <String, Object?>{'_idMal': ?numeric};
   }
 
   Map<String, Object?> _searchFilters(AnimeSearchFilter filter) {

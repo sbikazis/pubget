@@ -95,6 +95,9 @@ void main() {
       expect(restored.relations.first.imageUrl, 'https://example.test/related.jpg');
       expect(restored.relations[1].title, 'Sousou no Frieren');
       expect(restored.relations[1].type, isNull);
+      // Durable-cache decodes must be flagged as cached so the UI can render
+      // its offline banner instead of presenting stale data as a live fetch.
+      expect(restored.fromCache, isTrue);
     });
 
     test('anime page preserves items, page, and hasNextPage', () {
@@ -112,6 +115,8 @@ void main() {
       expect(restored.items, hasLength(2));
       expect(restored.items.first.id, '52991');
       expect(restored.items[1].title, 'Dorohedoro');
+      expect(restored.fromCache, isTrue);
+      expect(restored.items.every((item) => item.fromCache), isTrue);
     });
 
     test('character preserves profile and helpers', () {

@@ -2,6 +2,11 @@ import '../models/anime_models.dart';
 
 /// Serializes anime catalog models to JSON-safe maps for the durable
 /// Firestore cache and restores them to fresh domain objects.
+///
+/// Decoding always marks the result [Anime.fromCache]/[AnimePage.fromCache]
+/// as true: the only consumer of these decoders is the durable cache read
+/// path, which must surface stale data as stale so the UI can show its
+/// offline banner instead of presenting a cached page as a live fetch.
 abstract final class AnimeCacheCodec {
   static Anime animeFromMap(Map<String, dynamic> map) {
     return Anime(
@@ -55,6 +60,7 @@ abstract final class AnimeCacheCodec {
           .toList(growable: false),
       nextEpisodeLabel: map['nextEpisodeLabel'] as String?,
       airing: map['airing'] as bool?,
+      fromCache: true,
     );
   }
 
@@ -107,6 +113,7 @@ abstract final class AnimeCacheCodec {
           .toList(growable: false),
       page: _int(map['page']) ?? 1,
       hasNextPage: map['hasNextPage'] as bool? ?? false,
+      fromCache: true,
     );
   }
 
