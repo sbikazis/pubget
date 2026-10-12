@@ -392,16 +392,25 @@ Failure _chatFailure(Object error) {
       'not-found' => const NotFoundError(ChatFailureCodes.notFound),
       'unavailable' ||
       'deadline-exceeded' ||
-      'resource-exhausted' => const NetworkError(ChatFailureCodes.network),
+      'resource-exhausted' ||
+      'internal' ||
+      'aborted' ||
+      'data-loss' => const NetworkError(ChatFailureCodes.network),
       'invalid-argument' ||
       'failed-precondition' ||
       'already-exists' => const ValidationError(ChatFailureCodes.validation),
-      _ => UnknownError(error.message ?? ChatFailureCodes.unknown),
+      _ => const UnknownError(ChatFailureCodes.unknown),
     };
   }
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError(ChatFailureCodes.network);
+  if (error is FirebaseException) {
+    return switch (error.code) {
+      'unavailable' ||
+      'deadline-exceeded' ||
+      'internal' ||
+      'aborted' ||
+      'data-loss' => const NetworkError(ChatFailureCodes.network),
+      _ => const UnknownError(ChatFailureCodes.unknown),
+    };
   }
-  return UnknownError(error.toString());
+  return const UnknownError(ChatFailureCodes.unknown);
 }

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../../anime/models/anime_rating_models.dart';
 import '../../edits/models/edit_models.dart';
 import '../../events/models/event_models.dart';
@@ -24,6 +25,9 @@ final class FirebaseHomeRepository implements HomeRepository {
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
 
+  Future<T> _retry<T>(Future<T> Function() action) =>
+      runWithRetry(action, mapError: discoveryFailureFrom);
+
   Query<Map<String, dynamic>> _groups() =>
       _firestore.collection('groups').where('isSearchable', isEqualTo: true);
 
@@ -31,7 +35,7 @@ final class FirebaseHomeRepository implements HomeRepository {
     Query<Map<String, dynamic>> query,
   ) async {
     try {
-      final snapshot = await query.get();
+      final snapshot = await _retry(query.get);
       return Success(
         snapshot.docs
             .where((doc) => doc.data()['deletionPending'] != true)
@@ -181,10 +185,9 @@ final class FirebaseHomeRepository implements HomeRepository {
     PublicProfile? after,
   }) async {
     try {
-      final snapshot = await _firestore
-          .collection('public_profiles')
-          .limit(limit + 8)
-          .get();
+      final snapshot = await _retry(
+        () => _firestore.collection('public_profiles').limit(limit + 8).get(),
+      );
       var people = snapshot.docs
           .map((doc) => PublicProfile.fromMap(doc.data(), uid: doc.id))
           .where((person) => person.uid != userId)
@@ -208,12 +211,14 @@ final class FirebaseHomeRepository implements HomeRepository {
     int limit = 8,
   }) async {
     try {
-      final result = await _functions.httpsCallable('getDiscoveryFeed').call(
-        <String, dynamic>{
-          'section': ?section,
-          'cursor': ?cursor,
-          'limit': limit,
-        },
+      final result = await _retry(
+        () => _functions.httpsCallable('getDiscoveryFeed').call(
+          <String, dynamic>{
+            'section': ?section,
+            'cursor': ?cursor,
+            'limit': limit,
+          },
+        ),
       );
       final data = Map<String, dynamic>.from(result.data as Map);
       return Success(DiscoveryFeed.fromMap(data));
@@ -228,8 +233,10 @@ final class FirebaseHomeRepository implements HomeRepository {
     int limit = 8,
   }) async {
     try {
-      final result = await _functions.httpsCallable('getHomeSections').call(
-        <String, dynamic>{'section': ?section, 'limit': limit},
+      final result = await _retry(
+        () => _functions.httpsCallable('getHomeSections').call(
+          <String, dynamic>{'section': ?section, 'limit': limit},
+        ),
       );
       final raw = result.data;
       if (raw is! Map) {
@@ -257,55 +264,51 @@ final class FirebaseHomeRepository implements HomeRepository {
     }
     try {
       final end = '$normalized\uf8ff';
-      final groupsFuture = _firestore
+      final groupsQuery = _firestore
           .collection('groups')
           .where('isSearchable', isEqualTo: true)
           .where('searchName', isGreaterThanOrEqualTo: normalized)
           .where('searchName', isLessThanOrEqualTo: end)
-          .limit(20)
-          .get();
-      final peopleFuture = _firestore
+          .limit(20);
+      final peopleQuery = _firestore
           .collection('public_profiles')
           .where('username', isGreaterThanOrEqualTo: normalized)
           .where('username', isLessThanOrEqualTo: end)
-          .limit(20)
-          .get();
-      final eventsFuture = _firestore
+          .limit(20);
+      final eventsQuery = _firestore
           .collection('events')
           .where('status', whereIn: <String>['ACTIVE', 'ENDED'])
           .where('searchName', isGreaterThanOrEqualTo: normalized)
           .where('searchName', isLessThanOrEqualTo: end)
-          .limit(20)
-          .get();
-      final fanWorksFuture = _firestore
+          .limit(20);
+      final fanWorksQuery = _firestore
           .collection('fanWorks')
           .where('status', isEqualTo: 'published')
           .where('moderationStatus', isEqualTo: 'approved')
           .where('searchTitle', isGreaterThanOrEqualTo: normalized)
           .where('searchTitle', isLessThanOrEqualTo: end)
-          .limit(20)
-          .get();
-      final charactersFuture = _firestore
+          .limit(20);
+      final charactersQuery = _firestore
           .collection('character_stats')
           .where('searchName', isGreaterThanOrEqualTo: normalized)
           .where('searchName', isLessThanOrEqualTo: end)
-          .limit(20)
-          .get();
-      final reelsFuture = _firestore
+          .limit(20);
+      final reelsQuery = _firestore
           .collection('edits')
           .where('status', isEqualTo: 'published')
           .where('searchName', isGreaterThanOrEqualTo: normalized)
           .where('searchName', isLessThanOrEqualTo: end)
-          .limit(20)
-          .get();
-      final results = await Future.wait([
-        groupsFuture,
-        peopleFuture,
-        eventsFuture,
-        fanWorksFuture,
-        charactersFuture,
-        reelsFuture,
-      ]);
+          .limit(20);
+      final results = await _retry(
+        () => Future.wait([
+          groupsQuery.get(),
+          peopleQuery.get(),
+          eventsQuery.get(),
+          fanWorksQuery.get(),
+          charactersQuery.get(),
+          reelsQuery.get(),
+        ]),
+      );
       final groups = results[0];
       final people = results[1];
       final events = results[2];

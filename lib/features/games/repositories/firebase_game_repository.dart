@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/game_errors.dart';
 import '../models/game_models.dart';
 import 'game_repository.dart';
@@ -271,7 +273,7 @@ final class FirebaseGameRepository implements GameRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: _gameFailure));
     } on GameException catch (error) {
       return FailureResult<T>(error.toFailure());
     } on Object catch (error) {
@@ -287,18 +289,16 @@ Failure _gameFailure(Object error) {
         error.message ?? "You don't have permission.",
       ),
       'not-found' => NotFoundError(error.message ?? 'Game not found.'),
-      'unavailable' || 'resource-exhausted' => NetworkError(
+      'unavailable' ||
+      'resource-exhausted' ||
+      'deadline-exceeded' => NetworkError(
         error.message ?? 'Check your connection and try again.',
       ),
       'already-exists' => ValidationError(
         error.message ?? 'That game action was already submitted.',
       ),
-      _ => ValidationError(error.message ?? 'This game action failed.'),
+      _ => mapFirebaseFailure(error, message: 'This game action failed.'),
     };
   }
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError('Check your connection and try again.');
-  }
-  return UnknownError(error.toString());
+  return mapFirebaseFailure(error);
 }
