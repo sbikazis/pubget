@@ -32,7 +32,7 @@ final class CachedAnimeRepository implements AnimeRepository {
     final trimmed = query.trim().toLowerCase();
     final resolved = filter ?? AnimeSearchFilter(text: query);
     return _cachedPage(
-      'search:$trimmed:$page:$limit:${resolved.genreId}:${resolved.studioId}:${resolved.type?.name}:${resolved.season?.name}:${resolved.year}:${resolved.sort.name}',
+      'search:$trimmed:$page:$limit:${resolved.genreId}:${resolved.studioId}:${resolved.type?.name}:${resolved.season?.name}:${resolved.year}:${resolved.sort.name}:${resolved.minScore}:${resolved.maxScore}',
       AnimeCacheTtl.search,
       () =>
           _inner.searchAnime(query, page: page, limit: limit, filter: resolved),

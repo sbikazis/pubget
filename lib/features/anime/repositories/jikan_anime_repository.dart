@@ -338,8 +338,18 @@ final class JikanAnimeRepository implements AnimeRepository {
         AnimeAgeFilter.adult => 'r17',
       };
     }
+    final minScore = filter.minScore;
+    if (minScore != null) query['min_score'] = _scoreParam(minScore);
+    final maxScore = filter.maxScore;
+    if (maxScore != null) query['max_score'] = _scoreParam(maxScore);
     return query;
   }
+
+  // Jikan expects the 0–10 score with a trailing `.0` trimmed for whole
+  // numbers (`7`, `7.5`), matching the form the filter sheet produces.
+  static String _scoreParam(double value) => value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(1);
 
   Uri _uri(
     String path, [

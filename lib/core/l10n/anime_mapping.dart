@@ -934,6 +934,11 @@ final class AppTranslationMapping {
   String get filterSeason => pick('Season', 'الموسم');
   String get filterSort => pick('Sort', 'الترتيب');
   String get filterAll => pick('All', 'الكل');
+  String get filterScore => pick('Rating', 'التقييم');
+  String get filterScoreMin => pick('Min', 'الحد الأدنى');
+  String get filterScoreMax => pick('Max', 'الحد الأعلى');
+  String scoreRangeLabel(String min, String max) =>
+      pick('Rating $min – $max', 'التقييم $min – $max');
   String get sortMembers => pick('Popularity', 'الأكثر أعضاء');
   String get sortTitle => pick('Title', 'العنوان');
   String get sortNewest => pick('Newest', 'الأحدث');

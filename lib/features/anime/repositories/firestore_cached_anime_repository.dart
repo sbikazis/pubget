@@ -38,7 +38,7 @@ final class FirestoreCachedAnimeRepository implements AnimeRepository {
   }) {
     final resolved = filter ?? AnimeSearchFilter(text: query);
     return _durable(
-      'search:${query.trim().toLowerCase()}:$page:$limit:${resolved.genreId}:${resolved.studioId}:${resolved.type?.name}:${resolved.season?.name}:${resolved.year}:${resolved.sort.name}',
+      'search:${query.trim().toLowerCase()}:$page:$limit:${resolved.genreId}:${resolved.studioId}:${resolved.type?.name}:${resolved.season?.name}:${resolved.year}:${resolved.sort.name}:${resolved.minScore}:${resolved.maxScore}',
       AnimeCacheTtl.search,
       () =>
           _inner.searchAnime(query, page: page, limit: limit, filter: resolved),

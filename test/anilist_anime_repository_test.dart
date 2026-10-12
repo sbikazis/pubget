@@ -113,6 +113,22 @@ void main() {
       expect(anime.externalLinks.first.label, 'Crunchyroll');
     });
 
+    test('searchAnime forwards score bounds as averageScore variables',
+        () async {
+      final (repository, client) = await repo({
+        'MediaPage': _pageBody(_mediaJson),
+      });
+      await repository.searchAnime(
+        'Attack on Titan',
+        filter: const AnimeSearchFilter(minScore: 7, maxScore: 9.5),
+      );
+      final body = client.postBodies.single! as Map<String, Object?>;
+      final variables = body['variables']! as Map<String, Object?>;
+      // AniList's averageScore is 0..100, so the 0..10 bounds scale up.
+      expect(variables['averageScore_greater'], 70);
+      expect(variables['averageScore_lesser'], 95);
+    });
+
     test('getAnimeDetails with a numeric (Mal) id resolves via idMal',
         () async {
       final (repository, client) = await repo({

@@ -473,10 +473,10 @@ query Studios(\$page: Int, \$perPage: Int) {
     };
     final query =
         '''
-query MediaPage(\$search: String, \$page: Int, \$perPage: Int, \$season: MediaSeason, \$seasonYear: Int, \$format_in: [MediaFormat], \$genre_in: [String], \$studioId: Int, \$status: MediaStatus, \$sort: [MediaSort], \$isAdult: Boolean) {
+query MediaPage(\$search: String, \$page: Int, \$perPage: Int, \$season: MediaSeason, \$seasonYear: Int, \$format_in: [MediaFormat], \$genre_in: [String], \$studioId: Int, \$status: MediaStatus, \$sort: [MediaSort], \$isAdult: Boolean, \$averageScore_greater: Int, \$averageScore_lesser: Int) {
   Page(page: \$page, perPage: \$perPage) {
     pageInfo { currentPage hasNextPage }
-    media(search: \$search, season: \$season, seasonYear: \$seasonYear, format_in: \$format_in, genre_in: \$genre_in, studioId: \$studioId, status: \$status, sort: \$sort, isAdult: \$isAdult, type: ANIME) {
+    media(search: \$search, season: \$season, seasonYear: \$seasonYear, format_in: \$format_in, genre_in: \$genre_in, studioId: \$studioId, status: \$status, sort: \$sort, isAdult: \$isAdult, averageScore_greater: \$averageScore_greater, averageScore_lesser: \$averageScore_lesser, type: ANIME) {
       $mediaFields
     }
   }
@@ -541,6 +541,10 @@ query Media(\$_id: Int, \$_idMal: Int) {
 
   Map<String, Object?> _searchFilters(AnimeSearchFilter filter) {
     final studioId = int.tryParse(filter.studioId?.trim() ?? '');
+    // AniList scores are 0..100 while the filter (and Jikan) use 0..10, so the
+    // bounds are scaled up. `_anilistScore` divides by 10 on the way back.
+    final minScore = filter.minScore;
+    final maxScore = filter.maxScore;
     return <String, Object?>{
       if (filter.type != null)
         'format_in': <String>[_anilistFormat(filter.type!)],
@@ -550,6 +554,8 @@ query Media(\$_id: Int, \$_idMal: Int) {
       if (filter.genreId != null && filter.genreId!.isNotEmpty)
         'genre_in': <String>[filter.genreId!],
       'studioId': ?studioId,
+      'averageScore_greater': ?(minScore == null ? null : (minScore * 10).round()),
+      'averageScore_lesser': ?(maxScore == null ? null : (maxScore * 10).round()),
     };
   }
 

@@ -203,3 +203,33 @@ functions suite. Unrun checks MUST be reported as unrun, never as passing.
 
 Any change to identity, cache, or provider semantics MUST update this contract
 in the same change. This document is versioned with the code.
+
+## 29. Search and filter contract (Prompt 02 — discovery)
+
+1. `AnimeSearchFilter` is the single filter shape; the UI only ever mutates the
+   provider through `applyFilter`, never through bespoke query strings.
+2. Every constraint the filter carries MUST be forwarded to the answering
+   provider and MUST appear in the request cache key of every tier
+   (`_requestKey` in the provider, the search cache keys in both durable
+   wrappers). A constraint absent from one tier is a defect.
+3. Filtering a locally held catalog snapshot
+   (`AnimeListProvider.applyFilter` while a catalog is open) MUST pass each
+   item through `AnimeSearchFilter.matchesCatalog`; a title whose rating is
+   unknown MUST NOT be silently dropped by a score bound.
+4. Score bounds use the 0–10 scale that both providers already expose
+   (`Anime.score`). AniList's 0–100 `averageScore` is scaled back to 0–10 by
+   the mapper, so the filter bounds are multiplied by 10 when forwarded to
+   AniList and sent verbatim to Jikan (`min_score`/`max_score`, trailing `.0`
+   trimmed).
+5. A score bound MUST be emitted only when set; omitting an unset bound is the
+   default and MUST stay true for both providers.
+6. Search result generations are ordered by request; a response MUST be
+   discarded when a newer generation already owns the list, so a slow early
+   query can never clobber the latest results (race-condition guard).
+
+## 30. Prompt 02 — non-goals reaffirmed
+
+The discovery system reuses the Phase 1 foundation unchanged. No new
+dependencies were introduced. Community rating values on discovery cards
+(§ in the completion report) remain a documented limitation where no aggregate
+endpoint exists; per-card live scoring is deliberately avoided.

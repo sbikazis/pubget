@@ -214,6 +214,7 @@ final class FakeAnimeRepository implements AnimeRepository {
   bool filterSearchByQuery;
   Completer<void>? gate;
   Completer<void>? characterDetailsGate;
+  final Map<String, Completer<void>> searchGates = <String, Completer<void>>{};
   int searchCalls = 0;
   String lastQuery = '';
   int detailsCalls = 0;
@@ -282,6 +283,8 @@ final class FakeAnimeRepository implements AnimeRepository {
     searchCalls++;
     lastQuery = query;
     lastFilter = filter;
+    final searchGate = searchGates[query.trim()];
+    if (searchGate != null) await searchGate.future;
     final result = await _pageResult(page);
     final needle = query.trim().toLowerCase();
     if (!filterSearchByQuery || needle.isEmpty) return result;

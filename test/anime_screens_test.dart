@@ -417,13 +417,28 @@ void main() {
     expect(find.byKey(const Key('filter-season-fall')), findsNothing);
     await tester.tap(find.byKey(const Key('hub-open-search')));
     await tester.pumpAndSettle();
+
+    // Type and season now live inside the filter sheet, so open it, pick the
+    // chip, and apply.
+    await tester.tap(find.byKey(const Key('anime-search-filter')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('filter-type-tv')));
     await tester.tap(find.byKey(const Key('filter-type-tv')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('filter-apply')));
+    await tester.tap(find.byKey(const Key('filter-apply')));
     await tester.pumpAndSettle();
     expect(repository.searchCalls, greaterThan(0));
     expect(repository.lastFilter?.type, AnimeTypeFilter.tv);
     expect(find.text('Frieren'), findsWidgets);
 
+    await tester.tap(find.byKey(const Key('anime-search-filter')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('filter-season-fall')));
     await tester.tap(find.byKey(const Key('filter-season-fall')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('filter-apply')));
+    await tester.tap(find.byKey(const Key('filter-apply')));
     await tester.pumpAndSettle();
     expect(repository.lastFilter?.season, AnimeSeason.fall);
     expect(repository.lastFilter?.year, isNotNull);

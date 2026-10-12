@@ -596,7 +596,7 @@ final class AnimeListProvider extends ChangeNotifier {
   }
 
   String _requestKey({required int page, required String searchQuery}) =>
-      '${_catalog?.name}|$_latest|$_genreId|$_studioId|$_year|${_season?.name}|${_filter.genreId}|${_filter.studioId}|${_filter.type?.name}|${_filter.season?.name}|${_filter.year}|${_filter.sort.name}|$searchQuery|$page';
+      '${_catalog?.name}|$_latest|$_genreId|$_studioId|$_year|${_season?.name}|${_filter.genreId}|${_filter.studioId}|${_filter.type?.name}|${_filter.season?.name}|${_filter.year}|${_filter.sort.name}|${_filter.minScore}|${_filter.maxScore}|$searchQuery|$page';
 
   List<Anime> _merge(List<Anime> current, List<Anime> incoming) {
     final seen = current.map((item) => item.id).toSet();

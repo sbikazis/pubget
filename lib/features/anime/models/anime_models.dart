@@ -124,6 +124,8 @@ final class AnimeSearchFilter {
     this.year,
     this.airing,
     this.ageRating,
+    this.minScore,
+    this.maxScore,
     this.sort = AnimeSearchSort.members,
   });
 
@@ -135,6 +137,14 @@ final class AnimeSearchFilter {
   final int? year;
   final AnimeAiringFilter? airing;
   final AnimeAgeFilter? ageRating;
+
+  /// Inclusive lower bound on the external/global rating, on the same 0–10
+  /// scale the providers expose (Jikan `score`, AniList `averageScore / 10`).
+  final double? minScore;
+
+  /// Inclusive upper bound on the external/global rating, same scale as
+  /// [minScore]. A `null` bound means "unbounded".
+  final double? maxScore;
   final AnimeSearchSort sort;
 
   bool get hasQuery => text.trim().isNotEmpty;
@@ -144,7 +154,12 @@ final class AnimeSearchFilter {
       type != null ||
       (season != null && year != null) ||
       airing != null ||
-      ageRating != null;
+      ageRating != null ||
+      hasScoreRange;
+
+  /// True when either score bound is set. Kept public so the filter sheet can
+  /// show a score-specific active indicator without inspecting both fields.
+  bool get hasScoreRange => minScore != null || maxScore != null;
   bool get hasConstraints => hasQuery || hasNonTextConstraints;
 
   bool matchesCatalog(Anime anime) {
@@ -183,6 +198,13 @@ final class AnimeSearchFilter {
     if (age != null) {
       if (anime.ageRating != age) return false;
     }
+    // Score bounds only apply when the title actually carries a score; an
+    // unknown score is never silently dropped by a client-side preview.
+    final score = anime.score;
+    if (score != null && hasScoreRange) {
+      if (minScore != null && score < minScore!) return false;
+      if (maxScore != null && score > maxScore!) return false;
+    }
     return true;
   }
 
@@ -208,6 +230,10 @@ final class AnimeSearchFilter {
     bool clearAiring = false,
     AnimeAgeFilter? ageRating,
     bool clearAgeRating = false,
+    double? minScore,
+    bool clearMinScore = false,
+    double? maxScore,
+    bool clearMaxScore = false,
     AnimeSearchSort? sort,
   }) => AnimeSearchFilter(
     text: text ?? this.text,
@@ -218,6 +244,8 @@ final class AnimeSearchFilter {
     year: clearYear ? null : year ?? this.year,
     airing: clearAiring ? null : airing ?? this.airing,
     ageRating: clearAgeRating ? null : ageRating ?? this.ageRating,
+    minScore: clearMinScore ? null : minScore ?? this.minScore,
+    maxScore: clearMaxScore ? null : maxScore ?? this.maxScore,
     sort: sort ?? this.sort,
   );
 }

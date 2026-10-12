@@ -291,6 +291,11 @@ final class AnimeCopy {
   String get filterSeason => _t.filterSeason;
   String get filterSort => _t.filterSort;
   String get filterAll => _t.filterAll;
+  String get filterScore => _t.filterScore;
+  String get filterScoreMin => _t.filterScoreMin;
+  String get filterScoreMax => _t.filterScoreMax;
+  String scoreRangeLabel(String min, String max) =>
+      _t.scoreRangeLabel(min, max);
   String get applyFilters => _t.applyFilters;
   String get resetFilters => _t.resetFilters;
   String get filters => _t.filters;
