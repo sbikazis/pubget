@@ -15,13 +15,24 @@ import 'package:pubget/features/notifications/providers/unread_engine.dart';
 import 'authentication_test_support.dart';
 
 void main() {
-  testWidgets('five tabs render and switch to the matching destination', (
+  testWidgets('four tabs render and switch to the matching destination', (
     tester,
   ) async {
     final env = await _pumpShell(tester);
 
     expect(find.text('Discover body count 0'), findsOneWidget);
     expect(find.textContaining('Groups body'), findsNothing);
+
+    // The bottom bar has four slots. Joined is not one of them any more.
+    for (final key in <String>[
+      'shell-tab-discover',
+      'shell-tab-groups',
+      'shell-tab-private',
+      'shell-tab-edits',
+    ]) {
+      expect(find.byKey(Key(key)), findsOneWidget, reason: '$key must render');
+    }
+    expect(find.byKey(const Key('shell-tab-joined')), findsNothing);
 
     await tester.tap(find.byKey(const Key('shell-tab-groups')));
     await tester.pumpAndSettle();
@@ -42,7 +53,28 @@ void main() {
     await tester.tap(find.byKey(const Key('shell-create')));
     await tester.pumpAndSettle();
     expect(find.text('Create a group'), findsOneWidget);
+    // The enum keeps all five tabs so /joined still resolves; only the bar
+    // dropped the Joined slot.
     expect(AppShellTab.values, hasLength(5));
+  });
+
+  testWidgets('Joined stays reachable from the drawer, not the bottom bar', (
+    tester,
+  ) async {
+    final env = await _pumpShell(tester);
+
+    expect(find.byKey(const Key('shell-tab-joined')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('app-shell-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('drawer-joined')));
+    await tester.pumpAndSettle();
+
+    expect(
+      (env.delegate.currentConfiguration as ParameterizedRoute).path,
+      '/joined',
+    );
+    expect(find.text('Joined body count 0'), findsOneWidget);
   });
 
   testWidgets('Drawer opens from every shell tab', (tester) async {
@@ -82,8 +114,8 @@ void main() {
           continue;
         }
         final box = tester.getRect(finder);
-        final viewport = tester.view.physicalSize.height /
-            tester.view.devicePixelRatio;
+        final viewport =
+            tester.view.physicalSize.height / tester.view.devicePixelRatio;
         if (box.top >= 0 && box.bottom <= viewport) break;
         final shift = box.top < 0 ? box.top + 48 : box.bottom - viewport + 48;
         await tester.drag(list, Offset(0, shift));
@@ -104,9 +136,7 @@ void main() {
     expect(profile.parameters['uid'], 'alice');
     expect(find.textContaining('Profile'), findsWidgets);
 
-    await env.delegate.setNewRoutePath(
-      const ParameterizedRoute(path: '/home'),
-    );
+    await env.delegate.setNewRoutePath(const ParameterizedRoute(path: '/home'));
     await tester.pumpAndSettle();
     await openAndTap('private');
     expect(find.text('Private body count 0'), findsOneWidget);
@@ -123,23 +153,17 @@ void main() {
     await openAndTap('store');
     expect(find.text('Store page'), findsOneWidget);
 
-    await env.delegate.setNewRoutePath(
-      const ParameterizedRoute(path: '/home'),
-    );
+    await env.delegate.setNewRoutePath(const ParameterizedRoute(path: '/home'));
     await tester.pumpAndSettle();
     await openAndTap('premium');
     expect(find.text('Premium page'), findsOneWidget);
 
-    await env.delegate.setNewRoutePath(
-      const ParameterizedRoute(path: '/home'),
-    );
+    await env.delegate.setNewRoutePath(const ParameterizedRoute(path: '/home'));
     await tester.pumpAndSettle();
     await openAndTap('settings');
     expect(find.text('Settings page'), findsOneWidget);
 
-    await env.delegate.setNewRoutePath(
-      const ParameterizedRoute(path: '/home'),
-    );
+    await env.delegate.setNewRoutePath(const ParameterizedRoute(path: '/home'));
     await tester.pumpAndSettle();
     await openAndTap('guide');
     expect(find.text('Guide page'), findsOneWidget);
@@ -148,7 +172,9 @@ void main() {
     // The main drawer keeps exactly one Anime entry; the six hub pages live in
     // the hub's own drawer instead of being flattened into the global one.
     expect(
-      AppShellDrawerDestinations.items.where((i) => i.path.startsWith('/anime')),
+      AppShellDrawerDestinations.items.where(
+        (i) => i.path.startsWith('/anime'),
+      ),
       hasLength(1),
     );
   });
@@ -233,7 +259,8 @@ Future<_ShellEnv> _pumpShell(
       '/guide': const Text('Guide page'),
     },
     parameterizedPages: <String, ParameterizedPageBuilder>{
-      '/profile': (parameters) => Text('Profile ${parameters['uid'] ?? 'self'}'),
+      '/profile': (parameters) =>
+          Text('Profile ${parameters['uid'] ?? 'self'}'),
     },
     initialRoute: const ParameterizedRoute(path: '/home'),
   );

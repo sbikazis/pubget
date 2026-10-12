@@ -26,6 +26,7 @@ import '../../events/widgets/home_event_card.dart';
 import '../../fan_works/providers/fan_work_providers.dart';
 import '../../fan_works/widgets/home_fan_work_card.dart';
 import '../../notifications/providers/unread_engine.dart';
+import '../discovery_module.dart';
 import '../models/home_models.dart';
 import '../providers/home_provider.dart';
 import '../section_rotation.dart';
@@ -72,26 +73,24 @@ class _HomePageState extends State<HomePage> {
         name: name,
         avatarUrl: profile?.avatarUrl ?? auth.currentUser?.avatarUrl,
         frameId: economy?.equipped.frameId,
-        coins: economy?.coins,
         notifyCount: unread.notifications,
       ),
       body: PubgetAtmosphere(
         child: RefreshIndicator(
           onRefresh: home.refresh,
           child: CustomScrollView(
-            // §5.2 fixes promoted groups first and personalized edits second,
-            // then rotates everything between visits so the same discovery
-            // surfaces do not own the same screen twice.
+            // §5.2 fixes promoted groups first, personalized edits second, and
+            // a people strip third; everything after that rotates between
+            // visits so the same discovery surfaces do not own the same screen
+            // twice. The order and membership live in
+            // [DiscoveryModuleRegistry], not in this widget.
             slivers: <Widget>[
-              _groupSliver(
-                key: const Key('home-promoted'),
-                title: copy.sectionPromoted,
-                kind: HomeSectionKind.promotedGroups,
-                finish: HomeGroupFinish.gold,
-              ),
-              const SliverToBoxAdapter(child: _EditsSection()),
-              _peopleSliver(),
-              ..._rotatedSections(copy, home.rotationSeed),
+              for (final module in DiscoveryModuleRegistry.pinned)
+                _moduleSliver(context, copy, module),
+              ...<Widget>[
+                for (final module in DiscoveryModuleRegistry.rotating)
+                  _moduleSliver(context, copy, module),
+              ].rotate(home.rotationSeed),
               const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
             ],
           ),
@@ -100,67 +99,49 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// §5.2.3 — every section after the two fixed ones is rotated once per visit
-  /// using a seed that changes on every Home load.
-  ///
-  /// Promotion stays pinned inside its own group so a rotating section can
-  /// never jump ahead of a promoted item, and the rotation never reorders
-  /// within a single build, so a rebuild cannot make rows swap under a finger.
-  List<Widget> _rotatedSections(AppStrings copy, int rotationSeed) {
-    final rotated = <Widget>[
-      const SliverToBoxAdapter(child: _HomeAdSlot()),
-      const SliverToBoxAdapter(child: _EventsSection()),
-      _groupSliver(
-        key: const Key('home-suggested'),
-        title: copy.sectionRecommended,
-        kind: HomeSectionKind.recommendedGroups,
-        finish: HomeGroupFinish.silver,
-      ),
-      _groupSliver(
-        key: const Key('home-rising'),
-        title: copy.sectionRising,
-        kind: HomeSectionKind.risingGroups,
-        finish: HomeGroupFinish.rising,
-      ),
-      SliverToBoxAdapter(
-        child: HomeRankedSection(
-          key: const Key('home-anime-of-week'),
-          kind: HomeSectionKind.animeOfTheWeek,
-          title: copy.sectionAnimeOfTheWeek,
-          seeMorePath: '/anime',
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: HomeRankedSection(
-          key: const Key('home-popular-characters'),
-          kind: HomeSectionKind.popularCharacters,
-          title: copy.sectionPopularCharacters,
-          seeMorePath: '/anime/characters',
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: HomeRankedSection(
-          key: const Key('home-rising-creators'),
-          kind: HomeSectionKind.risingCreators,
-          title: copy.sectionRisingCreators,
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: HomeRankedSection(
-          key: const Key('home-friends-activity'),
-          kind: HomeSectionKind.friendsActivity,
-          title: copy.sectionFriendsActivity,
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: HomeRankedSection(
-          key: const Key('home-freshest'),
-          kind: HomeSectionKind.freshestContent,
-          title: copy.sectionFreshestContent,
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: Padding(
+  /// A single registry entry as a sliver. Every module renders through
+  /// [_moduleWidget], which is the one place that maps a
+  /// [DiscoveryModuleType] to a concrete section widget.
+  Widget _moduleSliver(
+    BuildContext context,
+    AppStrings copy,
+    DiscoveryModule module,
+  ) {
+    return SliverToBoxAdapter(child: _moduleWidget(context, copy, module));
+  }
+
+  Widget _moduleWidget(
+    BuildContext context,
+    AppStrings copy,
+    DiscoveryModule module,
+  ) {
+    switch (module.type) {
+      case DiscoveryModuleType.groupStrip:
+        final groupKind = module.kind!;
+        return _GroupSection(
+          key: Key('home-${module.id}'),
+          title: _groupTitle(copy, groupKind),
+          kind: groupKind,
+          finish: _groupFinish(groupKind),
+        );
+      case DiscoveryModuleType.peopleStrip:
+        return const _PeopleSection();
+      case DiscoveryModuleType.edits:
+        return const _EditsSection();
+      case DiscoveryModuleType.adSlot:
+        return const _HomeAdSlot();
+      case DiscoveryModuleType.events:
+        return const _EventsSection();
+      case DiscoveryModuleType.rankedRow:
+        final rankedKind = module.kind!;
+        return HomeRankedSection(
+          key: Key('home-${module.id}'),
+          kind: rankedKind,
+          title: _rankedTitle(copy, rankedKind),
+          seeMorePath: module.seeMorePath,
+        );
+      case DiscoveryModuleType.achievements:
+        return Padding(
           padding: const EdgeInsets.only(top: AppSpacing.md),
           child: _SectionFrame(
             title: copy.sectionAchievements,
@@ -171,28 +152,33 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-        ),
-      ),
-      const SliverToBoxAdapter(child: _FanWorksSection()),
-      const SliverToBoxAdapter(child: _AnimeSection()),
-    ];
-    return rotated.rotate(rotationSeed);
+        );
+      case DiscoveryModuleType.fanWorks:
+        return const _FanWorksSection();
+      case DiscoveryModuleType.animeCatalog:
+        return const _AnimeSection();
+    }
   }
 
-  Widget _groupSliver({
-    required Key key,
-    required String title,
-    required HomeSectionKind kind,
-    required HomeGroupFinish finish,
-  }) {
-    return SliverToBoxAdapter(
-      child: _GroupSection(key: key, title: title, kind: kind, finish: finish),
-    );
-  }
+  String _groupTitle(AppStrings copy, HomeSectionKind kind) => switch (kind) {
+    HomeSectionKind.promotedGroups => copy.sectionPromoted,
+    HomeSectionKind.risingGroups => copy.sectionRising,
+    _ => copy.sectionRecommended,
+  };
 
-  Widget _peopleSliver() {
-    return const SliverToBoxAdapter(child: _PeopleSection());
-  }
+  HomeGroupFinish _groupFinish(HomeSectionKind kind) => switch (kind) {
+    HomeSectionKind.promotedGroups => HomeGroupFinish.gold,
+    HomeSectionKind.risingGroups => HomeGroupFinish.rising,
+    _ => HomeGroupFinish.silver,
+  };
+
+  String _rankedTitle(AppStrings copy, HomeSectionKind kind) => switch (kind) {
+    HomeSectionKind.animeOfTheWeek => copy.sectionAnimeOfTheWeek,
+    HomeSectionKind.popularCharacters => copy.sectionPopularCharacters,
+    HomeSectionKind.risingCreators => copy.sectionRisingCreators,
+    HomeSectionKind.friendsActivity => copy.sectionFriendsActivity,
+    _ => copy.sectionFreshestContent,
+  };
 }
 
 class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
@@ -200,7 +186,6 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
     required this.name,
     required this.avatarUrl,
     required this.frameId,
-    required this.coins,
     required this.notifyCount,
     super.key,
   });
@@ -208,23 +193,21 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
   final String? name;
   final String? avatarUrl;
   final String? frameId;
-  final int? coins;
   final int notifyCount;
 
   static const barHeight = 56.0;
   static const iconSize = 36.0;
   static const logoSize = 54.0;
-  static const coinStripHeight = 36.0;
   static const itemGap = 8.0;
   static const edgePad = 8.0;
 
-  /// Narrow-phone metrics. The logo stays 1.5x the icons, as §4.1 requires.
+  /// Narrow-phone metrics. The logo stays 1.5x the icons.
   static const iconSizeCompact = 32.0;
   static const logoSizeCompact = 48.0;
   static const itemGapCompact = 4.0;
   static const edgePadCompact = 6.0;
 
-  /// Below this width the seven §4.1 controls stop fitting at full size.
+  /// Below this width the controls stop fitting at full size.
   static const _compactBreakpoint = 380.0;
 
   @override
@@ -238,18 +221,13 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
       toolbarHeight: barHeight,
       titleSpacing: 0,
       clipBehavior: Clip.none,
-      // Master Spec §4.1 fixes this order:
-      //   logo ← coins (+) ← dragon store ← search ← notifications ← profile ← ☰
-      // The row is directional, so declaring the children in that order
-      // produces that reading order in Arabic and mirrors it in English.
-      // There is no forced `TextDirection.ltr` anywhere — that is what used to
-      // place the avatar on the wrong side of the bar in the Arabic UI.
+      // Revised §4.1 layout: the drawer affordance leads, the Pubget brand is
+      // visually centred on the bar, and the discovery/act controls trail
+      // (search, notifications, profile). Store and the coin balance moved into
+      // the navigation drawer, so the bar is no longer crowded by seven
+      // controls. The row is directional, so it mirrors correctly for Arabic.
       title: LayoutBuilder(
         builder: (context, constraints) {
-          // Seven controls at full size overflow a narrow phone, so the bar
-          // scales its metrics down together rather than clipping or dropping
-          // a control. The 1.5x logo ratio from §4.1 is preserved at every
-          // size, and the bar height never changes.
           final compact = constraints.maxWidth < _compactBreakpoint;
           final icon = compact ? iconSizeCompact : iconSize;
           final logo = compact ? logoSizeCompact : logoSize;
@@ -260,72 +238,63 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
             width: double.infinity,
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: pad),
-              child: Row(
+              child: Stack(
+                alignment: Alignment.center,
                 children: <Widget>[
+                  // Centred brand mark, independent of how wide the leading and
+                  // trailing clusters are.
                   PubgetLogoMark(key: const Key('home-logo'), size: logo),
-                  SizedBox(width: gap),
-                  _CoinChipSlot(
-                    balance: coins,
-                    tooltip: copy.store,
-                    compact: compact,
-                  ),
-                  SizedBox(width: gap),
-                  SizedBox.square(
-                    dimension: icon,
-                    child: PubgetLuxuryStoreButton(
-                      tooltip: copy.store,
-                      size: icon,
-                      onPressed: () => AppNavigation.go(context, '/store'),
-                    ),
-                  ),
-                  SizedBox(width: gap),
-                  SizedBox.square(
-                    dimension: icon,
-                    child: PubgetLuxurySearchButton(
-                      tooltip: copy.search,
-                      size: icon,
-                      onPressed: () => AppNavigation.go(context, '/search'),
-                    ),
-                  ),
-                  SizedBox(width: gap),
-                  SizedBox.square(
-                    dimension: icon,
-                    child: PubgetLuxuryNotifyButton(
-                      tooltip: copy.notifications,
-                      badge: notifyCount,
-                      size: icon,
-                      onPressed: () =>
-                          AppNavigation.go(context, '/notifications'),
-                    ),
-                  ),
-                  SizedBox(width: gap),
-                  SizedBox.square(
-                    dimension: icon,
-                    child: Semantics(
-                      button: true,
-                      label: name ?? copy.profile,
-                      child: InkWell(
-                        key: const Key('home-avatar'),
-                        onTap: () => AppNavigation.go(context, '/profile'),
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
-                        child: FittedBox(
-                          child: EquippedAvatar(
-                            imageUrl: avatarUrl,
-                            name: name,
-                            frameId: frameId,
-                            size: compact
-                                ? PubgetAvatarSize.small
-                                : PubgetAvatarSize.nav,
-                            compactFrame: true,
+                  Row(
+                    children: <Widget>[
+                      SizedBox.square(
+                        dimension: icon,
+                        child: AppShellMenuButton(size: icon),
+                      ),
+                      const Spacer(),
+                      SizedBox.square(
+                        dimension: icon,
+                        child: PubgetLuxurySearchButton(
+                          tooltip: copy.search,
+                          size: icon,
+                          onPressed: () => AppNavigation.go(context, '/search'),
+                        ),
+                      ),
+                      SizedBox(width: gap),
+                      SizedBox.square(
+                        dimension: icon,
+                        child: PubgetLuxuryNotifyButton(
+                          tooltip: copy.notifications,
+                          badge: notifyCount,
+                          size: icon,
+                          onPressed: () =>
+                              AppNavigation.go(context, '/notifications'),
+                        ),
+                      ),
+                      SizedBox(width: gap),
+                      SizedBox.square(
+                        dimension: icon,
+                        child: Semantics(
+                          button: true,
+                          label: name ?? copy.profile,
+                          child: InkWell(
+                            key: const Key('home-avatar'),
+                            onTap: () => AppNavigation.go(context, '/profile'),
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                            child: FittedBox(
+                              child: EquippedAvatar(
+                                imageUrl: avatarUrl,
+                                name: name,
+                                frameId: frameId,
+                                size: compact
+                                    ? PubgetAvatarSize.small
+                                    : PubgetAvatarSize.nav,
+                                compactFrame: true,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  SizedBox(width: gap),
-                  SizedBox.square(
-                    dimension: icon,
-                    child: AppShellMenuButton(size: icon),
+                    ],
                   ),
                 ],
               ),
@@ -333,36 +302,6 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
           );
         },
       ),
-    );
-  }
-}
-
-/// Inline coins. The previous layout parked coins in a second strip under the
-/// bar; §4.1 puts them in the bar itself.
-class _CoinChipSlot extends StatelessWidget {
-  const _CoinChipSlot({
-    required this.balance,
-    required this.tooltip,
-    this.compact = false,
-  });
-
-  final int? balance;
-  final String tooltip;
-
-  /// True on narrow phones, where the chip gives up its horizontal padding
-  /// before any control is dropped.
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    if (balance == null) return const SizedBox.shrink();
-    // The chip owns its own tap target and semantics, so it is used directly
-    // rather than being nested in another InkWell.
-    return PubgetKatanaCoinChip(
-      balance: balance!,
-      tooltip: tooltip,
-      compact: compact,
-      onPressed: () => AppNavigation.go(context, '/store'),
     );
   }
 }
