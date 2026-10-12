@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
 import '../models/pubget_user.dart';
 import '../models/username_status.dart';
@@ -149,10 +150,12 @@ final class FirebaseUserRepository implements UserRepository {
         'already-exists' => const ValidationError(
           'This username is already taken.',
         ),
-        'unavailable' || 'deadline-exceeded' => const NetworkError(
+        'unavailable' ||
+        'deadline-exceeded' ||
+        'resource-exhausted' => const NetworkError(
           'Check your connection and try again.',
         ),
-        _ => UnknownError(error.message ?? 'Profile update failed.'),
+        _ => mapFirebaseFailure(error, message: 'Profile update failed.'),
       };
     }
     if (error is FirebaseException) {
@@ -161,12 +164,15 @@ final class FirebaseUserRepository implements UserRepository {
           'You do not have permission to update this profile.',
         ),
         'not-found' => const NotFoundError('Profile not found.'),
+        'already-exists' => const ValidationError(
+          'This username is already taken.',
+        ),
         'unavailable' || 'deadline-exceeded' => const NetworkError(
           'Check your connection and try again.',
         ),
-        _ => UnknownError(error.message ?? 'Profile update failed.'),
+        _ => mapFirebaseFailure(error, message: 'Profile update failed.'),
       };
     }
-    return const UnknownError('We could not save this profile.');
+    return mapFirebaseFailure(error, message: 'We could not save this profile.');
   }
 }

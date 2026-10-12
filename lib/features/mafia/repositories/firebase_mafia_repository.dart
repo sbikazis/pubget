@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/mafia_models.dart';
 import 'mafia_repository.dart';
 
@@ -238,7 +240,7 @@ final class FirebaseMafiaRepository implements MafiaRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: _fail));
     } on Object catch (error) {
       return FailureResult<T>(_fail(error));
     }
@@ -252,15 +254,13 @@ Failure _fail(Object error) {
         error.message ?? "You don't have permission.",
       ),
       'not-found' => NotFoundError(error.message ?? 'Mafia game not found.'),
-      'unavailable' => NetworkError(
+      'unavailable' ||
+      'resource-exhausted' ||
+      'deadline-exceeded' => NetworkError(
         error.message ?? 'Check your connection and try again.',
       ),
-      _ => ValidationError(error.message ?? 'This Mafia action failed.'),
+      _ => mapFirebaseFailure(error, message: 'This Mafia action failed.'),
     };
   }
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError('Check your connection and try again.');
-  }
-  return UnknownError(error.toString());
+  return mapFirebaseFailure(error);
 }

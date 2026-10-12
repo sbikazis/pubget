@@ -336,16 +336,27 @@ Failure _chatFailure(Object error) {
         ChatFailureCodes.permission,
       ),
       'not-found' => const NotFoundError(ChatFailureCodes.notFound),
-      'unavailable' || 'deadline-exceeded' || 'resource-exhausted' =>
-        const NetworkError(ChatFailureCodes.network),
-      'invalid-argument' || 'failed-precondition' || 'already-exists' =>
-        const ValidationError(ChatFailureCodes.validation),
-      _ => ValidationError(error.message ?? ChatFailureCodes.unknown),
+      'unavailable' ||
+      'deadline-exceeded' ||
+      'resource-exhausted' ||
+      'internal' ||
+      'aborted' ||
+      'data-loss' => const NetworkError(ChatFailureCodes.network),
+      'invalid-argument' ||
+      'failed-precondition' ||
+      'already-exists' => const ValidationError(ChatFailureCodes.validation),
+      _ => const UnknownError(ChatFailureCodes.unknown),
     };
   }
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError(ChatFailureCodes.network);
+  if (error is FirebaseException) {
+    return switch (error.code) {
+      'unavailable' ||
+      'deadline-exceeded' ||
+      'internal' ||
+      'aborted' ||
+      'data-loss' => const NetworkError(ChatFailureCodes.network),
+      _ => const UnknownError(ChatFailureCodes.unknown),
+    };
   }
-  return UnknownError(error.toString());
+  return const UnknownError(ChatFailureCodes.unknown);
 }

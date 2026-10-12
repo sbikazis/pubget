@@ -4,6 +4,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../data/edit_storage_put.dart';
 import '../models/edit_models.dart';
 import 'edits_repository.dart';
@@ -30,7 +31,7 @@ Failure mapEditException(Object error) {
 Failure _mapCode(String code, String? message) {
   final normalized = code.toLowerCase();
   final body = (message ?? '').toLowerCase();
-  if (normalized == 'canceled') {
+  if (normalized == 'canceled' || normalized == 'cancelled') {
     return const CancelledError('Upload canceled.');
   }
   if (normalized == 'unavailable' ||
@@ -71,6 +72,14 @@ Failure _mapCode(String code, String? message) {
   }
   if (normalized == 'invalid-argument') {
     return ValidationError(message ?? 'That Edit request was invalid.');
+  }
+  if (normalized == 'internal' ||
+      normalized == 'unknown' ||
+      normalized == 'aborted' ||
+      normalized == 'data-loss') {
+    return const UnavailableError(
+      'The upload could not be prepared. Please try again.',
+    );
   }
   return const UnknownError(
     'Something went wrong while preparing your Edit. Please try again.',
@@ -137,7 +146,9 @@ class FirebaseEditsRepository
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success(await action());
+      return Success(
+        await runWithRetry(action, mapError: mapEditException),
+      );
     } on Failure catch (error) {
       return FailureResult(error);
     } on Object catch (error) {
