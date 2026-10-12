@@ -131,6 +131,72 @@ test("startUpload ignores client moderation fields and starts pending", async ()
   assert.equal(stored.counters.views, 0);
 });
 
+test("deleteEdit revokes media receipts instead of throwing", async () => {
+  const db = createMutableDb({
+    "edits/e1": {
+      creatorId: "alice",
+      status: "published",
+      moderationStatus: "approved",
+      originalStoragePath: "edits/alice/e1.mp4",
+    },
+  });
+  const domain = createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+    // Deleting the bytes is best-effort; the receipt flip is the enforcement.
+    bucket: { file: () => ({ delete: async () => {} }) },
+  });
+
+  const result = await domain.deleteEdit({
+    auth: { uid: "alice" },
+    data: { editId: "e1" },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(db.store.get("edits/e1").status, "deleted");
+  // §15.18 — this call used to throw a ReferenceError because `setMediaVisible`
+  // was never imported, leaving every object readable after a takedown.
+  const receipt = db.store.get("edits/alice/media/e1.mp4");
+  assert.ok(receipt, "expected a media receipt for the source object");
+  assert.equal(receipt.visible, false);
+});
+
+test("repost idempotency key is creator-scoped and never double-charges quota", async () => {
+  const db = createMutableDb({
+    "edits/orig": {
+      creatorId: "bob",
+      status: "published",
+      publishedAt: new Date(),
+      caption: "clean copy",
+    },
+  });
+  const domain = createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+  });
+
+  const first = await domain.repost({
+    auth: { uid: "alice" },
+    data: { editId: "orig", idempotencyKey: "dup" },
+  });
+  // A replay with the same key returns the same Reel and does not draw again.
+  const replay = await domain.repost({
+    auth: { uid: "alice" },
+    data: { editId: "orig", idempotencyKey: "dup" },
+  });
+  assert.equal(replay.editId, first.editId);
+  assert.equal(replay.reused, true);
+  // The key is namespaced by creator, so a different account reusing the same
+  // key must not receive the first creator's editId.
+  const other = await domain.repost({
+    auth: { uid: "carol" },
+    data: { editId: "orig", idempotencyKey: "dup" },
+  });
+  assert.notEqual(other.editId, first.editId);
+});
+
 test("view and signal validation rejects client-controlled invalid values", async () => {
   await assert.rejects(
     handlers().recordView({
@@ -149,14 +215,83 @@ test("view and signal validation rejects client-controlled invalid values", asyn
 });
 function createMutableDb(seed = {}) {
   const store = new Map(Object.entries(seed));
+  let auto = 0;
   return withTransactions({
     store,
+    // Top-level document refs (by absolute path) and batched writes are used by
+    // the media-revocation receipt flip in deleteEdit.
+    doc(path) {
+      return {
+        id: path.split("/").pop(),
+        path,
+        async get() {
+          const data = store.get(path);
+          return { id: path.split("/").pop(), path, exists: Boolean(data), data: () => data };
+        },
+        async set(data, options = {}) {
+          const current = options.merge ? (store.get(path) || {}) : {};
+          store.set(path, { ...current, ...data });
+        },
+        async update(data) {
+          store.set(path, { ...(store.get(path) || {}), ...data });
+        },
+        async delete() {
+          store.delete(path);
+        },
+      };
+    },
+    batch() {
+      const ops = [];
+      return {
+        set(ref, data, options = {}) {
+          ops.push(() => {
+            const current = options.merge ? (store.get(ref.path) || {}) : {};
+            store.set(ref.path, { ...current, ...data });
+          });
+        },
+        delete(ref) {
+          ops.push(() => store.delete(ref.path));
+        },
+        async commit() {
+          for (const op of ops) op();
+        },
+      };
+    },
     collection(name) {
       return {
-        doc(id) {
-          const path = `${name}/${id}`;
+        where(field, op, value) {
           return {
-            id,
+            limit() {
+              return this;
+            },
+            async get() {
+              const rows = [];
+              for (const [path, data] of store.entries()) {
+                const rest = path.slice(name.length + 1);
+                if (!path.startsWith(`${name}/`) || rest.includes("/")) continue;
+                if (data && data[field] === value) {
+                  rows.push({
+                    id: rest,
+                    path,
+                    ref: { path },
+                    data: () => data,
+                  });
+                }
+              }
+              return { empty: rows.length === 0, docs: rows };
+            },
+          };
+        },
+        async add(data) {
+          const id = `auto-${++auto}`;
+          store.set(`${name}/${id}`, { ...data });
+          return { id };
+        },
+        doc(id) {
+          const resolvedId = id || `auto-${++auto}`;
+          const path = `${name}/${resolvedId}`;
+          return {
+            id: resolvedId,
             path,
             async get() {
               const data = store.get(path);
@@ -207,6 +342,11 @@ function createMutableDb(seed = {}) {
                     .filter(([p]) => p.startsWith(prefix))
                     .map(([p, data]) => ({ id: p.slice(prefix.length), data }));
                   return { docs: rows.map((r) => ({ id: r.id, data: () => r.data })) };
+                },
+                async add(data) {
+                  const childId = `auto-${++auto}`;
+                  store.set(`${prefix}${childId}`, { ...data });
+                  return { id: childId };
                 },
                 orderBy(field, direction = "asc") {
                   const readRows = () =>

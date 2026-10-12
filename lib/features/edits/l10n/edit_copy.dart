@@ -124,6 +124,21 @@ final class EditCopy {
   String get play => _s.pick('Play', 'تشغيل');
   String get pause => _s.pick('Pause', 'إيقاف');
   String views(int count) => _s.pick('$count views', '$count مشاهدة');
+  String likes(int count) => _s.pick('$count likes', '$count إعجاب');
+  String get reply => _s.pick('Reply', 'رد');
+  String get cancelReply => _s.pick('Cancel reply', 'إلغاء الرد');
+  String replyingTo(String text) =>
+      _s.pick('Replying to $text', 'ردًا على $text');
+  String get noCommentsMessage => _s.pick(
+        'Be the first to reply to this Edit.',
+        'كن أول من يرد على هذا المقطع.',
+      );
+  String get loadingMore => _s.pick('Loading…', 'جارٍ التحميل…');
+  String get loadMore => _s.pick('Load more', 'عرض المزيد');
+  String get loadMoreFailed => _s.pick(
+        'Could not load more comments.',
+        'تعذّر تحميل المزيد من التعليقات.',
+      );
 
   // Axis 15 §15.16 — feed strategy labels.
   String feedLabel(FeedType type) => switch (type) {
