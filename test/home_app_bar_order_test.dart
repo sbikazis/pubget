@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pubget/app/app_route.dart';
+import 'package:pubget/app/app_router.dart';
 import 'package:pubget/app/app_shell_scope.dart';
 import 'package:pubget/app/app_shell_tab.dart';
 import 'package:pubget/features/home/screens/home_page.dart';
 
-/// Pins Master Spec §4.1, which fixes the Home top bar order:
+/// Pins the revised Home top bar layout:
 ///
-///   logo ← coins (+) ← dragon store ← search ← notifications ← profile ← ☰
+///   [☰ drawer]              Pubget              [search][notifications][avatar]
 ///
-/// The previous version of this test asserted the opposite (a centred logo,
-/// coins on a second strip below it, and a settings button). That encoded the
-/// defect the audit found: the bar was forced LTR, had no search or store
-/// button, and coins were not part of the bar.
+/// The drawer affordance leads, the brand mark is visually centred, and the
+/// discovery/act controls trail. Store and the coin balance deliberately moved
+/// into the navigation drawer (§4.1 revision), so the bar is no longer crowded
+/// by seven controls and never renders `home-store` / `home-coins`.
 void main() {
   Future<void> pumpBar(
     WidgetTester tester, {
     required Size size,
     TextDirection direction = TextDirection.rtl,
+    int notifyCount = 1,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -30,13 +33,12 @@ void main() {
           child: AppShellScope(
             openDrawer: () {},
             currentTab: AppShellTab.discover,
-            child: const Scaffold(
+            child: Scaffold(
               appBar: HomeTopBar(
                 name: 'Zak',
                 avatarUrl: null,
                 frameId: null,
-                coins: 42,
-                notifyCount: 1,
+                notifyCount: notifyCount,
               ),
             ),
           ),
@@ -45,81 +47,96 @@ void main() {
     );
   }
 
-  /// The seven controls in spec order. In RTL the first is rightmost, so each
-  /// control must sit to the *left* of the previous one.
-  void expectSpecOrder(WidgetTester tester) {
-    final logo = tester.getRect(find.byKey(const Key('home-logo')));
-    final coins = tester.getRect(find.byKey(const Key('home-coins')));
-    final store = tester.getRect(find.byKey(const Key('home-store')));
-    final search = tester.getRect(find.byKey(const Key('home-search')));
-    final notify = tester.getRect(find.byKey(const Key('home-notifications')));
-    final avatar = tester.getRect(find.byKey(const Key('home-avatar')));
-    final menu = tester.getRect(find.byKey(const Key('app-shell-menu')));
+  Rect rect(WidgetTester tester, String key) =>
+      tester.getRect(find.byKey(Key(key)));
 
-    // RTL: start edge is the right edge, so each next item is further left.
-    expect(logo.left, greaterThan(coins.left));
-    expect(coins.left, greaterThan(store.left));
-    expect(store.left, greaterThan(search.left));
+  /// RTL reading order is right to left, so each control sits further left than
+  /// the previous one: menu, logo, search, notifications, avatar.
+  void expectRtlOrder(WidgetTester tester) {
+    final menu = rect(tester, 'app-shell-menu');
+    final logo = rect(tester, 'home-logo');
+    final search = rect(tester, 'home-search');
+    final notify = rect(tester, 'home-notifications');
+    final avatar = rect(tester, 'home-avatar');
+
+    expect(menu.left, greaterThan(logo.left), reason: 'drawer leads (right)');
+    expect(logo.left, greaterThan(search.left));
     expect(search.left, greaterThan(notify.left));
-    expect(notify.left, greaterThan(avatar.left));
-    expect(avatar.left, greaterThan(menu.left));
+    expect(
+      notify.left,
+      greaterThan(avatar.left),
+      reason: 'avatar trails (left)',
+    );
+  }
+
+  /// The same source order mirrors in English: menu, logo, search, notify,
+  /// avatar left to right.
+  void expectLtrOrder(WidgetTester tester) {
+    final menu = rect(tester, 'app-shell-menu');
+    final logo = rect(tester, 'home-logo');
+    final search = rect(tester, 'home-search');
+    final notify = rect(tester, 'home-notifications');
+    final avatar = rect(tester, 'home-avatar');
+
+    expect(menu.left, lessThan(logo.left), reason: 'drawer leads (left)');
+    expect(logo.left, lessThan(search.left));
+    expect(search.left, lessThan(notify.left));
+    expect(notify.left, lessThan(avatar.left), reason: 'avatar trails (right)');
   }
 
   void expectNoOverlapAndSizing(WidgetTester tester) {
-    final logo = tester.getRect(find.byKey(const Key('home-logo')));
-    final coins = tester.getRect(find.byKey(const Key('home-coins')));
-    final store = tester.getRect(find.byKey(const Key('home-store')));
-    final search = tester.getRect(find.byKey(const Key('home-search')));
-    final notify = tester.getRect(find.byKey(const Key('home-notifications')));
-    final menu = tester.getRect(find.byKey(const Key('app-shell-menu')));
+    final logo = rect(tester, 'home-logo');
+    final menu = rect(tester, 'app-shell-menu');
+    final search = rect(tester, 'home-search');
+    final notify = rect(tester, 'home-notifications');
+    final avatar = rect(tester, 'home-avatar');
     final screen = tester.getSize(find.byType(Scaffold));
 
-    // No two controls may overlap.
-    expect(logo.overlaps(coins), isFalse);
-    expect(coins.overlaps(store), isFalse);
-    expect(store.overlaps(search), isFalse);
-    expect(search.overlaps(notify), isFalse);
-    expect(notify.overlaps(menu), isFalse);
-
-    // Everything stays inside the bar horizontally.
-    for (final rect in <Rect>[logo, coins, store, search, notify, menu]) {
-      expect(rect.left, greaterThanOrEqualTo(0));
-      expect(rect.right, lessThanOrEqualTo(screen.width));
+    for (final r in <Rect>[logo, menu, search, notify, avatar]) {
+      expect(r.left, greaterThanOrEqualTo(0));
+      expect(r.right, lessThanOrEqualTo(screen.width));
     }
 
-    // §4.1 "unified icons": every icon control is the same size. The absolute
-    // size is allowed to shrink on narrow phones, but never to differ.
-    for (final rect in <Rect>[store, search, notify, menu]) {
-      expect(rect.width, closeTo(notify.width, 1));
-      expect(rect.height, closeTo(notify.height, 1));
+    // The logo lives in the centre and must not be collided into by either
+    // cluster.
+    expect(logo.overlaps(menu), isFalse);
+    expect(logo.overlaps(search), isFalse);
+    expect(logo.overlaps(notify), isFalse);
+    expect(logo.overlaps(avatar), isFalse);
+    expect(menu.overlaps(search), isFalse);
+    expect(search.overlaps(notify), isFalse);
+    expect(notify.overlaps(avatar), isFalse);
+
+    // Every icon control is the same size (it may shrink on narrow phones but
+    // never differ between controls).
+    for (final r in <Rect>[menu, search, notify, avatar]) {
+      expect(r.width, closeTo(notify.width, 1));
+      expect(r.height, closeTo(notify.height, 1));
     }
 
     // The logo stays visually dominant at 1.5x the icons.
     expect(
       logo.width / notify.width,
       closeTo(1.5, 0.12),
-      reason: '§4.1 keeps the logo visually dominant at 1.5x the icons',
+      reason: 'the brand mark stays dominant at 1.5x the icons',
     );
 
-    // Coins are part of the bar row, vertically centred with the icons,
-    // rather than sitting on a second strip underneath it.
-    expect(coins.center.dy, closeTo(notify.center.dy, 4));
-
-    // The bar adds no extra height for a coin strip any more.
+    // The bar height never changes.
     final bar = tester.widget<HomeTopBar>(find.byType(HomeTopBar));
     expect(bar.preferredSize.height, HomeTopBar.barHeight);
   }
 
-  testWidgets('RTL bar follows the §4.1 order: logo, coins, store, search, '
-      'notifications, profile, menu', (tester) async {
+  testWidgets('RTL bar reads menu, logo, search, notifications, avatar', (
+    tester,
+  ) async {
     await pumpBar(tester, size: const Size(1080, 1920));
-    expectSpecOrder(tester);
+    expectRtlOrder(tester);
     expectNoOverlapAndSizing(tester);
   });
 
   testWidgets('RTL bar has zero overlap on a narrow phone', (tester) async {
     await pumpBar(tester, size: const Size(360, 800));
-    expectSpecOrder(tester);
+    expectRtlOrder(tester);
     expectNoOverlapAndSizing(tester);
   });
 
@@ -131,49 +148,88 @@ void main() {
       size: const Size(1080, 1920),
       direction: TextDirection.ltr,
     );
-
-    final logo = tester.getRect(find.byKey(const Key('home-logo')));
-    final menu = tester.getRect(find.byKey(const Key('app-shell-menu')));
-
-    // Same source order, mirrored geometry: logo first in reading order.
-    expect(logo.left, lessThan(menu.left));
+    expectLtrOrder(tester);
+    expectNoOverlapAndSizing(tester);
   });
 
-  testWidgets('the bar exposes search and store, which §4.1 requires', (
-    tester,
-  ) async {
+  testWidgets('store and coins are no longer part of the bar', (tester) async {
     await pumpBar(tester, size: const Size(1080, 1920));
 
+    expect(find.byKey(const Key('app-shell-menu')), findsOneWidget);
+    expect(find.byKey(const Key('home-logo')), findsOneWidget);
     expect(find.byKey(const Key('home-search')), findsOneWidget);
-    expect(find.byKey(const Key('home-store')), findsOneWidget);
-    expect(find.byKey(const Key('home-coins')), findsOneWidget);
+    expect(find.byKey(const Key('home-notifications')), findsOneWidget);
+    expect(find.byKey(const Key('home-avatar')), findsOneWidget);
+
+    // Moved into the drawer.
+    expect(find.byKey(const Key('home-store')), findsNothing);
+    expect(find.byKey(const Key('home-coins')), findsNothing);
   });
 
-  testWidgets('coins are hidden, not faked, when the balance is unknown', (
+  testWidgets('search, notifications and avatar open their real destinations', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1080, 1920);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final delegate = AppRouterDelegate(
+      homePage: Builder(
+        builder: (context) => Scaffold(
+          appBar: HomeTopBar(
+            name: 'Zak',
+            avatarUrl: null,
+            frameId: null,
+            notifyCount: 2,
+          ),
+        ),
+      ),
+      domainPages: <String, Widget>{
+        '/search': const Text('Search destination'),
+        '/notifications': const Text('Notifications destination'),
+        '/profile': const Text('Profile destination'),
+      },
+    );
+
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('en'),
         home: Directionality(
-          textDirection: TextDirection.rtl,
+          textDirection: TextDirection.ltr,
           child: AppShellScope(
             openDrawer: () {},
             currentTab: AppShellTab.discover,
-            child: const Scaffold(
-              appBar: HomeTopBar(
-                name: 'Zak',
-                avatarUrl: null,
-                frameId: null,
-                coins: null,
-                notifyCount: 0,
-              ),
+            child: Router<AppRoute>(
+              routerDelegate: delegate,
+              routeInformationParser: AppRouteInformationParser(),
             ),
           ),
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('home-coins')), findsNothing);
-    expect(tester.takeException(), isNull);
+    Future<void> tapAndReturn(
+      String key,
+      String path,
+      String destination,
+    ) async {
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
+      expect((delegate.currentConfiguration as ParameterizedRoute).path, path);
+      expect(find.text(destination), findsOneWidget);
+      // Return to Home (a shell path resolves back to the home page).
+      await delegate.navigate(AppRouter.routeFromString('/home'));
+      await tester.pumpAndSettle();
+    }
+
+    await tapAndReturn('home-search', '/search', 'Search destination');
+    await tapAndReturn(
+      'home-notifications',
+      '/notifications',
+      'Notifications destination',
+    );
+    await tapAndReturn('home-avatar', '/profile', 'Profile destination');
   });
 }
