@@ -964,11 +964,12 @@ class _ReelCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: <Widget>[
                   if (edit.thumbnailUrl.isNotEmpty)
-                    Image.network(
-                      edit.thumbnailUrl,
+                    AppImageLoader(
+                      imageUrl: edit.thumbnailUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          const ColoredBox(color: AppColors.darkSurfaceMuted),
+                      errorWidget: const ColoredBox(
+                        color: AppColors.darkSurfaceMuted,
+                      ),
                     )
                   else
                     const ColoredBox(color: AppColors.darkSurfaceMuted),

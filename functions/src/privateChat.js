@@ -29,6 +29,7 @@ const {
   MEDIA_TYPES,
   REPORT_REASONS,
   USER_MESSAGE_TYPES,
+  expectedMediaType,
   mediaDimensions,
   replyPreviewFrom,
   timestampDate,
@@ -334,12 +335,27 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
           mediaRef(db, chatId, data.mediaId),
         );
         media = mediaSnapshot.exists ? mediaSnapshot.data() : null;
-        const expectedType = data.type === "video" ? "video" : "image";
+        const expectedType = expectedMediaType(data.type);
         if (!media || media.status !== "ready" ||
             media.uploaderId !== uid || media.mediaType !== expectedType ||
-            !validString(media.originalPath, 1024) ||
-            !validString(media.thumbnailPath, 1024) ||
-            (expectedType === "image" && !validString(media.mediumPath, 1024))) {
+            !validString(media.originalPath, 1024)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Media must finish processing and belong to the sender.",
+          );
+        }
+        // Images need a medium rendition for the bubble and a thumbnail;
+        // videos need a thumbnail; audio (private voice notes) has neither.
+        if (expectedType === "image" &&
+            (!validString(media.thumbnailPath, 1024) ||
+             !validString(media.mediumPath, 1024))) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Media must finish processing and belong to the sender.",
+          );
+        }
+        if (expectedType === "video" &&
+            !validString(media.thumbnailPath, 1024)) {
           throw new HttpsError(
             "failed-precondition",
             "Media must finish processing and belong to the sender.",

@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../app/app_router.dart';
 import '../../../../core/l10n/app_strings.dart';
+import '../../../../core/media/media_reference.dart';
 import '../../data/sticker_store.dart';
 import '../../data/user_sticker_store.dart';
 import '../../models/chat_models.dart';
@@ -287,7 +288,7 @@ class _WhatsAppChatComposerState extends State<WhatsAppChatComposer>
         WaCapturedMedia(
           bytes: bytes,
           fileName: file.name,
-          contentType: 'video/${file.name.split('.').last.toLowerCase()}',
+          contentType: videoContentTypeFor(file.name),
           isVideo: true,
         ),
       );
