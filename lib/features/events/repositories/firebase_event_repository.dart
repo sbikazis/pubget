@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/event_models.dart';
 import 'event_repository.dart';
 
@@ -382,7 +384,9 @@ final class FirebaseEventRepository implements EventRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(
+        await runWithRetry(action, mapError: _eventFailure),
+      );
     } on Object catch (error) {
       return FailureResult<T>(_eventFailure(error));
     }
@@ -396,18 +400,16 @@ Failure _eventFailure(Object error) {
         error.message ?? "You don't have permission.",
       ),
       'not-found' => NotFoundError(error.message ?? 'Event not found.'),
-      'unavailable' || 'resource-exhausted' => NetworkError(
+      'unavailable' ||
+      'resource-exhausted' ||
+      'deadline-exceeded' => NetworkError(
         error.message ?? 'Check your connection and try again.',
       ),
       'already-exists' => ValidationError(
         error.message ?? 'You already submitted a response.',
       ),
-      _ => ValidationError(error.message ?? 'This event action failed.'),
+      _ => mapFirebaseFailure(error, message: 'This event action failed.'),
     };
   }
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError('Check your connection and try again.');
-  }
-  return UnknownError(error.toString());
+  return mapFirebaseFailure(error);
 }

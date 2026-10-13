@@ -26,8 +26,21 @@ Failure _mapCode(String code, String? message) {
     return const PermissionError('You do not have permission for this audio action.');
   }
   if (normalized == 'not-found') return const NotFoundError('Audio not found.');
+  if (normalized == 'resource-exhausted' || normalized == 'quota-exceeded') {
+    return RateLimitedError(
+      message ?? 'Too many audio requests. Please wait a moment.',
+    );
+  }
   if (normalized == 'failed-precondition') {
     return ValidationError(message ?? 'This audio action cannot be completed right now.');
+  }
+  if (normalized == 'internal' ||
+      normalized == 'unknown' ||
+      normalized == 'aborted' ||
+      normalized == 'data-loss') {
+    return const UnavailableError(
+      'Something went wrong with audio. Please try again.',
+    );
   }
   return const UnknownError('Something went wrong with audio. Please try again.');
 }

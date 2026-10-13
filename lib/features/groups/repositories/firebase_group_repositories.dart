@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/group_authority.dart';
 import '../models/group_models.dart';
 import 'group_members_repository.dart';
@@ -283,7 +285,7 @@ final class FirebaseGroupRepository
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: _groupFailure));
     } on Object catch (error) {
       return FailureResult<T>(_groupFailure(error));
     }
@@ -609,7 +611,7 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: _groupFailure));
     } on Object catch (error) {
       return FailureResult<T>(_groupFailure(error));
     }
@@ -677,7 +679,7 @@ final class FirebaseRoleplayRepository implements RoleplayRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: _groupFailure));
     } on Object catch (error) {
       return FailureResult<T>(_groupFailure(error));
     }
@@ -697,15 +699,13 @@ Failure _groupFailure(Object error) {
         error.message ?? 'This group action is not allowed.',
       ),
       'not-found' => NotFoundError(error.message ?? 'Group not found.'),
-      'unavailable' || 'resource-exhausted' => NetworkError(
+      'unavailable' ||
+      'resource-exhausted' ||
+      'deadline-exceeded' => NetworkError(
         error.message ?? 'Please try again.',
       ),
-      _ => ValidationError(error.message ?? 'Group action failed.'),
+      _ => mapFirebaseFailure(error, message: 'Group action failed.'),
     };
   }
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError('Check your connection and try again.');
-  }
-  return UnknownError(error.toString());
+  return mapFirebaseFailure(error);
 }

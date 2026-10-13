@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/fan_work_lifecycle.dart';
 import '../models/fan_work_models.dart';
 import '../services/fan_work_upload_client.dart';
@@ -593,7 +595,7 @@ final class FirebaseFanWorkRepository
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: _fanWorkFailure));
     } on Object catch (error) {
       return FailureResult<T>(_fanWorkFailure(error));
     }
@@ -632,7 +634,7 @@ Failure _fanWorkFailure(Object error) {
       'failed-precondition' => ValidationError(
         error.message ?? 'This Fan Work cannot be published yet.',
       ),
-      _ => ValidationError(error.message ?? 'This Fan Work action failed.'),
+      _ => mapFirebaseFailure(error, message: 'This Fan Work action failed.'),
     };
   }
   if (error is FirebaseException &&
@@ -651,5 +653,5 @@ Failure _fanWorkFailure(Object error) {
   if (error is FirebaseException && error.code == 'not-found') {
     return const NotFoundError('Fan Work not found.');
   }
-  return UnknownError('Something went wrong. Try again.');
+  return mapFirebaseFailure(error);
 }

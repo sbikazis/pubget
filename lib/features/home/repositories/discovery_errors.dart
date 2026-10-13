@@ -29,7 +29,12 @@ String discoveryFailureMessage(AppStrings copy, Failure failure) {
 
 Failure discoveryFailureFromCode(String code) {
   return switch (code) {
-    'unavailable' || 'deadline-exceeded' => const NetworkError(),
+    'unavailable' ||
+    'deadline-exceeded' ||
+    'internal' ||
+    'aborted' ||
+    'data-loss' ||
+    'resource-exhausted' => const NetworkError(),
     'unauthenticated' => const PermissionError(),
     'permission-denied' => const UnknownError(),
     'failed-precondition' => const UnknownError(),

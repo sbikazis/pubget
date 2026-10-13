@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
 import '../models/social_models.dart';
 import 'social_repository.dart';
@@ -109,12 +110,14 @@ final class FirebaseSocialRepository implements SocialRepository {
         'invalid-argument' || 'failed-precondition' => ValidationError(
           error.message ?? 'This social action is not available.',
         ),
-        'resource-exhausted' || 'unavailable' => const NetworkError(
+        'resource-exhausted' ||
+        'unavailable' ||
+        'deadline-exceeded' => const NetworkError(
           'Please wait a moment and try again.',
         ),
-        _ => UnknownError(error.message ?? 'Social action failed.'),
+        _ => mapFirebaseFailure(error, message: 'Social action failed.'),
       };
     }
-    return const UnknownError('We could not complete that social action.');
+    return mapFirebaseFailure(error, message: 'We could not complete that social action.');
   }
 }

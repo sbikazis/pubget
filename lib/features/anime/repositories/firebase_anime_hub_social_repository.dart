@@ -3,7 +3,9 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/anime_list_models.dart';
 import '../models/anime_rating_models.dart';
 import 'anime_hub_social_repository.dart';
@@ -307,7 +309,9 @@ final class FirebaseAnimeHubSocialRepository
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success(await action());
+      return Success(
+        await runWithRetry(action, mapError: _fail),
+      );
     } on Object catch (error) {
       return FailureResult(_fail(error));
     }
@@ -329,8 +333,8 @@ Failure _fail(Object error) {
       'invalid-argument' => ValidationError(
         error.message ?? 'That rating is not valid.',
       ),
-      _ => UnknownError(error.message ?? 'Anime rating update failed.'),
+      _ => mapFirebaseFailure(error, message: 'Anime rating update failed.'),
     };
   }
-  return const UnknownError('Anime rating update failed.');
+  return mapFirebaseFailure(error, message: 'Anime rating update failed.');
 }
