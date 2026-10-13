@@ -1057,6 +1057,11 @@ final class _FakeCharacterSocialRepository implements AnimeHubSocialRepository {
   ) async => const Success(<AnimeCustomList>[]);
 
   @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) async => const Success(<AnimeCommunityStats>[]);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -1360,6 +1365,11 @@ final class _FakeStatsSocialRepository implements AnimeHubSocialRepository {
   ]);
 
   @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) async => const Success(<AnimeCommunityStats>[]);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -1401,6 +1411,11 @@ final class _FakeRankingSocialRepository implements AnimeHubSocialRepository {
       favoritesCount: 800,
     ),
   ]);
+
+  @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) async => const Success(<AnimeCommunityStats>[]);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

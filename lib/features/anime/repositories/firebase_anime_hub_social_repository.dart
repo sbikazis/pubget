@@ -162,6 +162,29 @@ final class FirebaseAnimeHubSocialRepository
       });
 
   @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) => _guard(() async {
+    final ids = {
+      for (final raw in animeIds)
+        if (raw.trim().isNotEmpty) raw.trim(),
+    }.toList(growable: false);
+    if (ids.isEmpty) return const <AnimeCommunityStats>[];
+    final result = await _functions
+        .httpsCallable('getAnimeCommunityStats')
+        .call(<String, dynamic>{'animeIds': ids});
+    final data = Map<String, dynamic>.from(result.data as Map);
+    final raw = data['stats'] as Map? ?? const <String, dynamic>{};
+    return <AnimeCommunityStats>[
+      for (final entry in raw.entries)
+        AnimeCommunityStats.fromMap(
+          Map<String, dynamic>.from(entry.value as Map),
+          id: entry.key,
+        ),
+    ];
+  });
+
+  @override
   Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({
     int limit = 40,
   }) => _guard(() async {

@@ -53,6 +53,32 @@ function createFakeDb() {
         doc(id = `auto-${store.size + 1}`) {
           return ref(`${name}/${id}`);
         },
+        where(field, op, value) {
+          return {
+            async get() {
+              const prefix = `${name}/`;
+              const docs = [];
+              for (const [path, saved] of store) {
+                if (!path.startsWith(prefix)) continue;
+                const id = path.slice(prefix.length);
+                const matches =
+                  field === "__name__" && op === "in"
+                    ? (Array.isArray(value) ? value : []).includes(id)
+                    : true;
+                if (matches) {
+                  const data = { ...saved };
+                  docs.push({ id, exists: true, data: () => data });
+                }
+              }
+              return {
+                docs,
+                forEach(callback) {
+                  docs.forEach(callback);
+                },
+              };
+            },
+          };
+        },
       };
     },
     async runTransaction(fn) {
@@ -539,4 +565,85 @@ test("a zero overall is rated but never plotted", async () => {
   assert.equal(stats.ratingCount, 1);
   const total = Object.values(stats.scoreDistribution).reduce((sum, n) => sum + n, 0);
   assert.equal(total, 0, "1-10 has no bucket for a zero score");
+});
+
+test("getAnimeCommunityStats returns aggregates for seeded titles only", async () => {
+  const { hub, db } = domain();
+  db.store.set("anime_stats/16498", {
+    animeId: "16498",
+    title: "Attack on Titan",
+    imageUrl: "https://example.test/aot.png",
+    averageScore: 8.8,
+    ratingCount: 12,
+    scoreSum: 105.6,
+    listedCount: 4,
+    statusCounts: { completed: 2, watching: 2 },
+    scoreDistribution: { "5": 1, "9": 1, "8": 10 },
+  });
+  db.store.set("anime_stats/1535", {
+    animeId: "1535",
+    title: "Death Note",
+    averageScore: 6.0,
+    ratingCount: 1,
+  });
+
+  const result = await hub.getAnimeCommunityStats({
+    auth: { uid: "alice" },
+    data: { animeIds: ["16498", "1535", "does-not-exist", " 16498 "] },
+  });
+  assert.equal(result.stats["16498"].title, "Attack on Titan");
+  assert.equal(result.stats["16498"].averageScore, 8.8);
+  assert.equal(result.stats["16498"].ratingCount, 12);
+  assert.equal(result.stats["16498"].listedCount, 4);
+  assert.deepEqual(result.stats["16498"].statusCounts, { completed: 2, watching: 2 });
+  assert.deepEqual(result.stats["16498"].scoreDistribution, { "5": 1, "9": 1, "8": 10 });
+  assert.equal(result.stats["1535"].title, "Death Note");
+  assert.equal(result.stats["1535"].imageUrl, null);
+  assert.ok(!("does-not-exist" in result.stats), "missing titles are absent, never zero");
+});
+
+test("getAnimeCommunityStats chunks past ten ids and dedupes", async () => {
+  const { hub, db } = domain();
+  const ids = [];
+  for (let i = 1; i <= 11; i += 1) {
+    const animeId = `a${i}`;
+    ids.push(animeId);
+    db.store.set(`anime_stats/${animeId}`, {
+      animeId,
+      title: `Title ${i}`,
+      averageScore: 7.5,
+      ratingCount: 2,
+    });
+  }
+  const result = await hub.getAnimeCommunityStats({
+    auth: { uid: "alice" },
+    data: { animeIds: [...ids, "a1"] },
+  });
+  const found = Object.keys(result.stats).sort();
+  assert.equal(found.length, 11);
+  for (const animeId of ids) {
+    assert.ok(found.includes(animeId), `missing ${animeId}`);
+  }
+});
+
+test("getAnimeCommunityStats validates its input", async () => {
+  const { hub } = domain();
+  for (const payload of [
+    { animeIds: [] },
+    { animeIds: [""] },
+    { animeIds: [42] },
+    { animeIds: new Array(31).fill("x") },
+    {},
+    { animeIds: undefined },
+  ]) {
+    await assert.rejects(
+      () => hub.getAnimeCommunityStats({ auth: { uid: "alice" }, data: payload }),
+      (error) => error.code === "invalid-argument",
+      `expected invalid-argument for ${JSON.stringify(payload)}`,
+    );
+  }
+  await assert.rejects(
+    () => hub.getAnimeCommunityStats({ data: { animeIds: ["16498"] } }),
+    (error) => error.code === "unauthenticated",
+  );
 });

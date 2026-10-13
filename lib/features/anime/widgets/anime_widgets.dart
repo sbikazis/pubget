@@ -551,14 +551,39 @@ class _AnimePaginatedListState extends State<AnimePaginatedList> {
   void initState() {
     super.initState();
     _controller.addListener(_maybeAutoFill);
+    widget.list.addListener(_refreshCommunityStats);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshCommunityStats());
   }
 
   @override
   void dispose() {
+    widget.list.removeListener(_refreshCommunityStats);
     _controller
       ..removeListener(_maybeAutoFill)
       ..dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(AnimePaginatedList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.list != widget.list) {
+      oldWidget.list.removeListener(_refreshCommunityStats);
+      widget.list.addListener(_refreshCommunityStats);
+    }
+  }
+
+  /// Keeps the poster wall's score badges honest: when a page of titles lands,
+  /// ask the social provider for their real community aggregates in one batch.
+  /// The provider de-dupes, so this is cheap to fire on every list update.
+  void _refreshCommunityStats() {
+    if (!mounted) return;
+    if (list.state != LoadingState.loaded || list.items.isEmpty) return;
+    final ids = <String>[for (final anime in list.items) anime.id];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      maybeAnimeHubSocial(context, listen: false)?.loadStatsFor(ids);
+    });
   }
 
   /// Keeps pulling pages until the grid is taller than the viewport.
