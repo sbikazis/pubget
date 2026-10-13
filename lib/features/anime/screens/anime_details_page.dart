@@ -2252,7 +2252,10 @@ EventRepository? _eventRepository(BuildContext context) {
 
 AnimeEditsRepository? _animeEditsRepository(BuildContext context) {
   try {
-    return Provider.of<AnimeEditsRepository>(context, listen: false);
+    final repository = Provider.of<EditsRepository>(context, listen: false);
+    return repository is AnimeEditsRepository
+        ? repository as AnimeEditsRepository
+        : null;
   } on ProviderNotFoundException {
     return null;
   }

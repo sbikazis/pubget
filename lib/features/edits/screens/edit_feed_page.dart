@@ -403,10 +403,14 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
   var _userPaused = false;
   var _showPlayGlyph = false;
   Timer? _glyphTimer;
+  // Captured in initState so the final view flush in dispose does not read an
+  // ancestor Provider after the element is deactivated.
+  EditsProvider? _editsProvider;
 
   @override
   void initState() {
     super.initState();
+    _editsProvider = context.read<EditsProvider>();
     _loadProfiles();
     if (widget.active || widget.prefetch) {
       unawaited(_ensureController());
@@ -563,7 +567,9 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
   void _sendView({bool force = false}) {
     if (_controller == null || _sessionId == null) return;
     if (_maxPercent < Limits.editQualifiedViewPercent && !force) return;
-    context.read<EditsProvider>().view(
+    // `_editsProvider` is null only if this ran before the first
+    // didChangeDependencies, which cannot happen for a mounted cell.
+    _editsProvider?.view(
       editId: widget.edit.id,
       sessionId: _sessionId!,
       percent: _maxPercent,
@@ -1033,13 +1039,15 @@ class _EditActionRail extends StatelessWidget {
   Future<void> _share(BuildContext context, EditsProvider provider) async {
     // Open the share sheet immediately (optimistic UX); signal in parallel.
     unawaited(provider.share(edit.id));
-    final url = PubgetLinks.canonical(ReelsBrand.route);
+    // §15.18 — share the specific Reel's canonical link. A generic `/reels`
+    // link dropped the viewer at the top of the feed instead of this Reel.
+    final url = PubgetLinks.reel(edit.id);
     final text = edit.caption.isEmpty
         ? url
         : '${edit.caption}\n$url';
     try {
       await SharePlus.instance.share(
-        ShareParams(text: text, title: 'Pubget Edit'),
+        ShareParams(text: text, title: EditCopy.of(context).feedTitle),
       );
     } catch (_) {
       if (!context.mounted) return;
