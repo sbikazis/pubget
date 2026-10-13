@@ -230,9 +230,11 @@ in the same change. This document is versioned with the code.
 ## 30. Prompt 02 — non-goals reaffirmed
 
 The discovery system reuses the Phase 1 foundation unchanged. No new
-dependencies were introduced. Community rating values on discovery cards
-(§ in the completion report) remain a documented limitation where no aggregate
-endpoint exists; per-card live scoring is deliberately avoided.
+dependencies were introduced. Community rating values on discovery cards are
+now served by the batched `getAnimeCommunityStats` callable added in §33; a card
+shows the Pubget aggregate only when the server actually holds one for that
+title, and falls back to the external score otherwise. Per-card live
+(one-request-per-title) scoring is still deliberately avoided.
 
 ## 31. Details and characters contract (Prompt 03)
 
@@ -272,3 +274,25 @@ endpoint exists; per-card live scoring is deliberately avoided.
 No new dependencies. No fabricated data. No streaming/broadcasting feature. No
 separate staff-only page (staff render as info-only cards). No PR or merge
 (final integration is reserved for Prompt 04).
+
+## 33. Final integration contract (Prompt 04)
+
+1. `origin/main` is merged into the branch; the merge is a fast-forwardable
+   commit whose only textual overlaps are resolved by keeping both workstreams
+   (the report-anime flow and the transient-Firebase retry guard in the social
+   repository; the staff strip and the shared `AppImageLoader` reel path in the
+   details page).
+2. **Batched community aggregates.** `getAnimeCommunityStats({animeIds})` is a
+   signed-in callable that reads the server-authoritative `anime_stats` store in
+   chunks of 10 (Firestore `in` limit) for up to 30 ids, returning the same
+   shape as the single-title read. It never fabricates a value: a title with no
+   document is simply absent, never reported as zero.
+3. **Discovery grid wiring.** `AnimePaginatedList` batches the ids on screen and
+   asks the social provider to fill its stats cache after the frame; the
+   provider de-dupes by cached and in-flight ids, so each unseen title is
+   fetched at most once and a rebuild issues no request. Cards read the cache
+   through the existing `statsFor` lookup, so no card widget forks.
+4. **Non-goals.** The callable adds no schema, no dependency, and no client-side
+   aggregation; ranking pages keep their dedicated `listTopRated`/
+   `listMostListed` reads. No production deploy, no merge to main from this
+   phase.
