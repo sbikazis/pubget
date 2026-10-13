@@ -198,6 +198,21 @@ final class JikanAnimeRepository implements AnimeRepository {
   }
 
   @override
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId) {
+    final normalized = animeId.trim();
+    if (normalized.isEmpty) {
+      return Future<Result<List<AnimeStaff>>>.value(
+        const FailureResult(ValidationError('Anime id is required.')),
+      );
+    }
+    return _list(
+      _uri('anime/${Uri.encodeComponent(normalized)}/staff'),
+      mapJikanStaff,
+      priority: AnimeRequestPriority.interactive,
+    );
+  }
+
+  @override
   Future<Result<List<AnimeGenre>>> getGenres() async {
     final genres = await _list(
       _uri('genres/anime', const <String, String>{'filter': 'genres'}),

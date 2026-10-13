@@ -264,6 +264,44 @@ query Characters(\$_id: Int, \$_idMal: Int) {
   }
 
   @override
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId) async {
+    final normalized = animeId.trim();
+    if (normalized.isEmpty) {
+      return const FailureResult(ValidationError('Anime id is required.'));
+    }
+    final query = '''
+query Staff(\$_id: Int, \$_idMal: Int) {
+  Media(id: \$_id, idMal: \$_idMal) {
+    staff {
+      edges {
+        role
+        node {
+          id
+          name { full native }
+          image { large medium }
+        }
+      }
+    }
+  }
+}''';
+    final payload = await _graphQl(query, _idVariables(normalized));
+    return payload.fold(
+      onSuccess: (json) {
+        try {
+          final connection = _map(_map(json['data'])?['Media'])?['staff'];
+          final edges = connection?['edges'] as List? ?? const <Object?>[];
+          return Success<List<AnimeStaff>>(
+            List<AnimeStaff>.unmodifiable(mapAniListStaff(edges)),
+          );
+        } on Object catch (error) {
+          return animeHttpFailure<List<AnimeStaff>>(error);
+        }
+      },
+      onFailure: FailureResult<List<AnimeStaff>>.new,
+    );
+  }
+
+  @override
   Future<Result<AnimeCharacter>> getCharacterDetails(String characterId) async {
     final normalized = characterId.trim();
     if (normalized.isEmpty) {

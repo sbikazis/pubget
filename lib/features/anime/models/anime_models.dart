@@ -437,6 +437,30 @@ final class AnimeCharacter {
       mangaography.isNotEmpty;
 }
 
+/// A credit behind an anime: director, composer, writer or animator.
+///
+/// Staff is deliberately lighter than [AnimeCharacter]: the details page only
+/// needs to surface the people behind a title, so there is no profile page or
+/// follow list to attach here.
+final class AnimeStaff {
+  const AnimeStaff({
+    required this.id,
+    required this.name,
+    this.imageUrl,
+    this.roles = const <String>[],
+  });
+
+  final String id;
+  final String name;
+  final String? imageUrl;
+  final List<String> roles;
+
+  String get rolesLabel {
+    final joined = roles.where((role) => role.trim().isNotEmpty).join(' · ');
+    return joined;
+  }
+}
+
 final class CharacterAboutSections {
   const CharacterAboutSections({required this.facts, required this.narrative});
 

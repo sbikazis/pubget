@@ -118,6 +118,19 @@ final class FirebaseAnimeHubSocialRepository
   });
 
   @override
+  Future<Result<void>> reportAnime({
+    required String animeId,
+    required String reason,
+    String details = '',
+  }) => _guard(() async {
+    await _functions.httpsCallable('reportAnime').call(<String, dynamic>{
+      'animeId': animeId,
+      'category': reason,
+      'detail': details,
+    });
+  });
+
+  @override
   Future<Result<List<AnimeCommunityStats>>> listTopRated({int limit = 40}) =>
       _guard(() async {
         final snap = await _firestore

@@ -170,6 +170,26 @@ void main() {
       expect(restored.map((c) => c.name), ['Frieren', 'Fern']);
     });
 
+    test('staff list round trip', () {
+      const original = <AnimeStaff>[
+        AnimeStaff(
+          id: '100',
+          name: 'Kanehito Yamada',
+          imageUrl: 'https://example.test/p1.jpg',
+          roles: <String>['Series Composition', 'Script'],
+        ),
+        AnimeStaff(id: '', name: 'Dropped'),
+      ];
+      final restored = AnimeCacheCodec.staffFromMap(
+        AnimeCacheCodec.staffToMap(original),
+      );
+      expect(restored, hasLength(1));
+      expect(restored.single.id, '100');
+      expect(restored.single.name, 'Kanehito Yamada');
+      expect(restored.single.roles, <String>['Series Composition', 'Script']);
+      expect(restored.single.imageUrl, 'https://example.test/p1.jpg');
+    });
+
     test('genres round trip', () {
       const original = <AnimeGenre>[
         AnimeGenre(id: '1', name: 'Action'),

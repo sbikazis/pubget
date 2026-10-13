@@ -54,6 +54,12 @@ abstract final class AnimeLinks {
   static void openCharacter(BuildContext context, String characterId) =>
       AppNavigation.go(context, characterPath(characterId));
 
+  static String castPath(String animeId) =>
+      '/anime/cast?animeId=${Uri.encodeComponent(animeId)}';
+
+  static void openCast(BuildContext context, String animeId) =>
+      AppNavigation.go(context, castPath(animeId));
+
   static void openCatalog(BuildContext context, AnimeCatalogKind kind) =>
       AppNavigation.go(context, catalogPath(kind));
 

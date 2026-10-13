@@ -316,6 +316,37 @@ abstract final class AnimeCacheCodec {
     };
   }
 
+  static List<AnimeStaff> staffFromMap(Map<String, dynamic> map) {
+    return (map['items'] as List? ?? const [])
+        .map(
+          (item) => AnimeStaff(
+            id: (item as Map)['id'] as String? ?? '',
+            name: (item['name'] as String?) ?? '',
+            imageUrl: item['imageUrl'] as String?,
+            roles: (item['roles'] as List? ?? const [])
+                .cast<String>()
+                .toList(growable: false),
+          ),
+        )
+        .where((item) => item.id.isNotEmpty && item.name.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  static Map<String, dynamic> staffToMap(List<AnimeStaff> staff) {
+    return <String, dynamic>{
+      'items': staff
+          .map(
+            (item) => <String, dynamic>{
+              'id': item.id,
+              'name': item.name,
+              'imageUrl': item.imageUrl,
+              'roles': item.roles,
+            },
+          )
+          .toList(),
+    };
+  }
+
   static List<Anime> summariesFromMap(Map<String, dynamic> map) {
     return (map['items'] as List? ?? const [])
         .map(

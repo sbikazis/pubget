@@ -638,6 +638,16 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if false;
     }
+    // Anime reports: one document per reporter per anime, written only by the
+    // server-side callable; clients may read their own reports.
+    match /anime_reports/{animeId}/reports/{reporterId} {
+      allow read: if isAdmin() || self(reporterId);
+      allow write: if false;
+    }
+    match /animeReportRate/{actor} {
+      allow read: if self(actor);
+      allow write: if false;
+    }
     // Achievements: server-authored badges and progress are readable (profile
     // strips show unlocked badges to any signed-in visitor) but never
     // client-writable.

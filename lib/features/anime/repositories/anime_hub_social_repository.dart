@@ -29,6 +29,14 @@ abstract interface class AnimeHubSocialRepository {
     String details = '',
   });
 
+  /// Reports an anime title from the More menu. Lands in the server-side
+  /// abuse queue; the callable is idempotent per reporter.
+  Future<Result<void>> reportAnime({
+    required String animeId,
+    required String reason,
+    String details = '',
+  });
+
   Future<Result<List<AnimeCommunityStats>>> listTopRated({int limit = 40});
 
   Future<Result<List<AnimeCommunityStats>>> listMostListed({int limit = 40});

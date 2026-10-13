@@ -161,6 +161,22 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
     );
   }
 
+  /// Reports the currently open anime from the More menu.
+  Future<Result<void>> reportAnime({
+    required String reason,
+    String details = '',
+  }) async {
+    final animeId = _animeId;
+    if (animeId == null) {
+      return const FailureResult(ValidationError('Anime is required.'));
+    }
+    return _repository.reportAnime(
+      animeId: animeId,
+      reason: reason,
+      details: details,
+    );
+  }
+
   Future<void> loadTopRated() async {
     _topState = LoadingState.loading;
     _safeNotify();

@@ -369,6 +369,16 @@ class _InfoTab extends StatelessWidget {
             ),
           ),
         _FactsCard(anime: anime),
+        if (anime.ageRating == AnimeAgeFilter.adult)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.xl,
+              AppSpacing.lg,
+              0,
+            ),
+            child: const AnimeSensitiveContentNotice(),
+          ),
         if (anime.synopsis != null && anime.synopsis!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(
@@ -454,7 +464,10 @@ class _CharactersTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _CharactersSection(details: details);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+      child: _CharactersSection(details: details),
+    );
   }
 }
 
@@ -964,11 +977,12 @@ class _ReelCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: <Widget>[
                   if (edit.thumbnailUrl.isNotEmpty)
-                    Image.network(
-                      edit.thumbnailUrl,
+                    AppImageLoader(
+                      imageUrl: edit.thumbnailUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          const ColoredBox(color: AppColors.darkSurfaceMuted),
+                      errorWidget: const ColoredBox(
+                        color: AppColors.darkSurfaceMuted,
+                      ),
                     )
                   else
                     const ColoredBox(color: AppColors.darkSurfaceMuted),
@@ -1219,7 +1233,11 @@ class _CharactersSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (details.charactersState == LoadingState.loading) {
+    final copy = AnimeCopy.of(context);
+    final loading =
+        details.charactersState == LoadingState.loading ||
+        details.staffState == LoadingState.loading;
+    if (loading) {
       return const Padding(
         padding: EdgeInsets.fromLTRB(
           AppSpacing.lg,
@@ -1230,70 +1248,173 @@ class _CharactersSection extends StatelessWidget {
         child: PubgetSkeleton.card(height: 140),
       );
     }
-    if (details.characters.isEmpty) return const SizedBox.shrink();
+    final hasCharacters = details.characters.isNotEmpty;
+    final hasStaff =
+        details.staffState == LoadingState.loaded && details.staff.isNotEmpty;
+    if (!hasCharacters && !hasStaff) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: AppSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            child: Text(
-              AnimeCopy.of(context).charactersTitle,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          SizedBox(
-            height: 196,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              scrollDirection: Axis.horizontal,
-              itemCount: details.characters.length,
-              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.md),
-              itemBuilder: (context, index) {
-                final character = details.characters[index];
-                return SizedBox(
-                  width: 128,
-                  child: PubgetCard(
-                    key: Key('character-${character.id}'),
-                    padding: EdgeInsets.zero,
-                    onTap: () => _showCharacter(context, details, character),
-                    child: Column(
-                      children: <Widget>[
-                        Expanded(
-                          child: AnimePoster(
-                            images: AnimeImages(
-                              thumbnailUrl: character.imageUrl,
-                            ),
-                            memCacheWidth: 180,
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.all(AppSpacing.sm),
-                          child: Column(
-                            children: <Widget>[
-                              Text(
-                                character.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleSmall,
-                              ),
-                              if (character.role != null)
-                                Text(
-                                  AnimeCopy.of(context).role(character.role),
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
+          if (hasCharacters) ...<Widget>[
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+              ),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      copy.charactersTitle,
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
-                );
-              },
+                  if (details.anime != null)
+                    PubgetTextButton(
+                      key: const Key('anime-see-all-cast'),
+                      onPressed: () =>
+                          AnimeLinks.openCast(context, details.anime!.id),
+                      semanticLabel: copy.seeAll,
+                      child: Text(copy.seeAll),
+                    ),
+                ],
+              ),
             ),
-          ),
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 196,
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg,
+                ),
+                scrollDirection: Axis.horizontal,
+                itemCount: details.characters.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(width: AppSpacing.md),
+                itemBuilder: (context, index) {
+                  final character = details.characters[index];
+                  return SizedBox(
+                    width: 128,
+                    child: PubgetCard(
+                      key: Key('character-${character.id}'),
+                      padding: EdgeInsets.zero,
+                      onTap: () =>
+                          _showCharacter(context, details, character),
+                      child: Column(
+                        children: <Widget>[
+                          Expanded(
+                            child: AnimePoster(
+                              images: AnimeImages(
+                                thumbnailUrl: character.imageUrl,
+                              ),
+                              memCacheWidth: 180,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(AppSpacing.sm),
+                            child: Column(
+                              children: <Widget>[
+                                Text(
+                                  character.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleSmall,
+                                ),
+                                if (character.role != null)
+                                  Text(
+                                    copy.role(character.role),
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+          if (hasStaff) ...<Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.xl,
+                AppSpacing.lg,
+                0,
+              ),
+              child: Text(
+                copy.staffTitle,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 172,
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg,
+                ),
+                scrollDirection: Axis.horizontal,
+                itemCount: details.staff.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(width: AppSpacing.md),
+                itemBuilder: (context, index) {
+                  final staff = details.staff[index];
+                  return SizedBox(
+                    width: 128,
+                    child: PubgetCard(
+                      key: Key('staff-${staff.id}'),
+                      padding: EdgeInsets.zero,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: AnimePoster(
+                                images: AnimeImages(
+                                  thumbnailUrl: staff.imageUrl,
+                                ),
+                                memCacheWidth: 180,
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(AppSpacing.sm),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  staff.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleSmall,
+                                ),
+                                if (staff.rolesLabel.isNotEmpty)
+                                  Text(
+                                    staff.rolesLabel,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1664,7 +1785,7 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
               const SizedBox(height: AppSpacing.md),
               PubgetTextButton(
                 onPressed: () => AnimeLinks.copyUrl(context, character.url!),
-                semanticLabel: AnimeCopy.of(context).copied,
+                semanticLabel: AnimeCopy.of(context).copyLink,
                 child: Text(
                   character.url!,
                   maxLines: 2,
@@ -1743,31 +1864,38 @@ class _CharacterProfileSheetState extends State<_CharacterProfileSheet> {
       Text(title, style: theme.textTheme.titleMedium),
       const SizedBox(height: AppSpacing.sm),
       for (final item in items)
-        Padding(
-          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              if (item.imageUrl != null) ...<Widget>[
-                SizedBox(
-                  width: 40,
-                  height: 56,
-                  child: AnimePoster(
-                    images: AnimeImages(thumbnailUrl: item.imageUrl),
-                    memCacheWidth: 80,
+        InkWell(
+          onTap: item.id.isEmpty
+              ? null
+              : () => AnimeLinks.openDetails(context, item.id),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                if (item.imageUrl != null) ...<Widget>[
+                  SizedBox(
+                    width: 40,
+                    height: 56,
+                    child: AnimePoster(
+                      images: AnimeImages(thumbnailUrl: item.imageUrl),
+                      memCacheWidth: 80,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                ],
+                Expanded(
+                  child: Text(
+                    [
+                      item.title,
+                      if (item.role != null && item.role!.isNotEmpty)
+                        item.role!,
+                    ].join(' · '),
                   ),
                 ),
-                const SizedBox(width: AppSpacing.sm),
               ],
-              Expanded(
-                child: Text(
-                  [
-                    item.title,
-                    if (item.role != null && item.role!.isNotEmpty) item.role!,
-                  ].join(' · '),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
     ];
@@ -1811,7 +1939,7 @@ class _ReviewsSection extends StatelessWidget {
                         Expanded(
                           child: Text(
                             review.username.isEmpty
-                                ? 'Pubget user'
+                                ? AnimeCopy.of(context).pubgetUser
                                 : review.username,
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
@@ -1832,10 +1960,7 @@ class _ReviewsSection extends StatelessWidget {
                       child: PubgetTextButton(
                         onPressed: social == null
                             ? null
-                            : () => social!.reportReview(
-                                targetUserId: review.userId,
-                                reason: 'inappropriate',
-                              ),
+                            : () => _submitReviewReport(context, social!, review),
                         semanticLabel: AnimeCopy.of(context).reportReview,
                         child: Text(AnimeCopy.of(context).reportLabel),
                       ),
@@ -1845,6 +1970,33 @@ class _ReviewsSection extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _submitReviewReport(
+    BuildContext context,
+    AnimeHubSocialProvider social,
+    AnimeReview review,
+  ) async {
+    final copy = AnimeCopy.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final submitted = await promptAnimeReport(
+      context,
+      onSubmit: (reason) async {
+        final result = await social.reportReview(
+          targetUserId: review.userId,
+          reason: reason,
+        );
+        return result.isSuccess;
+      },
+    );
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          submitted ? copy.reportSubmitted : copy.reportFailed,
+        ),
       ),
     );
   }
@@ -2284,6 +2436,28 @@ class _MoreMenu extends StatelessWidget {
 
   final Anime anime;
 
+  Future<void> _report(BuildContext context) async {
+    final copy = AnimeCopy.of(context);
+    final social = maybeAnimeHubSocial(context, listen: false);
+    if (social == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final submitted = await promptAnimeReport(
+      context,
+      onSubmit: (reason) async {
+        final result = await social.reportAnime(reason: reason);
+        return result.isSuccess;
+      },
+    );
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          submitted ? copy.reportSubmitted : copy.reportFailed,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final copy = AnimeCopy.of(context);
@@ -2298,10 +2472,7 @@ class _MoreMenu extends StatelessWidget {
             await AnimeLinks.copyCanonical(context, anime.id);
             break;
           case 'report':
-            // simple report action
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(copy.reportTitle)),
-            );
+            await _report(context);
             break;
         }
       },
@@ -2312,7 +2483,7 @@ class _MoreMenu extends StatelessWidget {
         ),
         PopupMenuItem<String>(
           value: 'copy',
-          child: Text(copy.copied),
+          child: Text(copy.copyLink),
         ),
         PopupMenuItem<String>(
           value: 'report',

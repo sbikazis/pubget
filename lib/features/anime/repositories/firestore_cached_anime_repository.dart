@@ -158,6 +158,15 @@ final class FirestoreCachedAnimeRepository implements AnimeRepository {
       );
 
   @override
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId) => _durable(
+    'staff:${animeId.trim()}',
+    AnimeCacheTtl.staff,
+    () => _inner.getStaff(animeId),
+    encode: AnimeCacheCodec.staffToMap,
+    decode: AnimeCacheCodec.staffFromMap,
+  );
+
+  @override
   Future<Result<AnimeCharacter>> getCharacterDetails(String characterId) =>
       _durable(
         'character:${characterId.trim()}',

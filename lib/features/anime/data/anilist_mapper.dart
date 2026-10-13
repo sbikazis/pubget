@@ -104,6 +104,36 @@ List<AnimeCharacter> mapAniListCharacters(Object? raw) {
   );
 }
 
+AnimeStaff? mapAniListStaffEntry(Object? raw) {
+  if (raw is! Map) return null;
+  final map = Map<String, dynamic>.from(raw);
+  final node = _map(map['node']);
+  if (node == null) return null;
+  final id = anilistIdOf(node['id']);
+  final name = _staffName(node['name']);
+  if (id == null || name == null || name.isEmpty) return null;
+  final role = _string(map['role'])?.trim();
+  return AnimeStaff(
+    id: id,
+    name: name,
+    imageUrl: _anilistCharacterImage(node['image']),
+    roles: role == null || role.isEmpty ? const <String>[] : <String>[role],
+  );
+}
+
+List<AnimeStaff> mapAniListStaff(Object? raw) {
+  if (raw is! List) return const <AnimeStaff>[];
+  return List<AnimeStaff>.unmodifiable(
+    raw.map(mapAniListStaffEntry).whereType<AnimeStaff>(),
+  );
+}
+
+String? _staffName(Object? raw) {
+  final map = _map(raw);
+  if (map == null) return _string(raw);
+  return _string(map['full']) ?? _string(map['native']);
+}
+
 List<AnimeGenre> mapAniListGenres(Object? raw) {
   if (raw is! List) return const <AnimeGenre>[];
   final items = <AnimeGenre>[];

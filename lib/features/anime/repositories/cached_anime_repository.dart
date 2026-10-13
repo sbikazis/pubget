@@ -115,6 +115,15 @@ final class CachedAnimeRepository implements AnimeRepository {
   }
 
   @override
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId) {
+    return _cached(
+      'staff:${animeId.trim()}',
+      AnimeCacheTtl.staff,
+      () => _inner.getStaff(animeId),
+    );
+  }
+
+  @override
   Future<Result<List<Anime>>> getAnimeSummaries(
     List<String> ids, {
     int chunkSize = 100,

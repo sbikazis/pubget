@@ -250,6 +250,59 @@ test("review reports flag the review and cannot target yourself", async () => {
   assert.ok(db.store.get("anime_stats/16498/reviews/alice/reports/bob"));
 });
 
+test("anime reports are idempotent and rate-limited per reporter", async () => {
+  const { hub, db } = domain();
+  const first = await hub.reportAnime({
+    auth: { uid: "bob" },
+    data: { animeId: "16498", category: "spam", detail: "Clickbait." },
+  });
+  assert.equal(first.alreadyReported, false);
+  assert.equal(
+    db.store.get("anime_reports/16498/reports/bob").category,
+    "spam",
+  );
+  assert.equal(db.store.get("anime_reports/16498/reports/bob").repeatCount, 1);
+  const second = await hub.reportAnime({
+    auth: { uid: "bob" },
+    data: { animeId: "16498", category: "copyright" },
+  });
+  assert.equal(second.alreadyReported, true);
+  assert.equal(
+    db.store.get("anime_reports/16498/reports/bob").repeatCount,
+    2,
+  );
+  assert.equal(
+    db.store.get("anime_reports/16498/reports/bob").category,
+    "copyright",
+  );
+});
+
+test("anime reports reject unknown reasons and enforce the abuse gate", async () => {
+  const { hub } = domain();
+  await assert.rejects(
+    hub.reportAnime({ auth: { uid: "bob" }, data: { animeId: "16498", category: "nonsense" } }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    hub.reportAnime({ data: { animeId: "16498", category: "spam" } }),
+    (error) => error.code === "unauthenticated",
+  );
+  const { hub: rateHub } = domain();
+  for (let i = 0; i < 10; i += 1) {
+    await rateHub.reportAnime({
+      auth: { uid: "mallory" },
+      data: { animeId: `anime-${i}`, category: "spam" },
+    });
+  }
+  await assert.rejects(
+    rateHub.reportAnime({
+      auth: { uid: "mallory" },
+      data: { animeId: "anime-10", category: "spam" },
+    }),
+    (error) => error.code === "resource-exhausted",
+  );
+});
+
 test("character discussion posts are authored by the caller", async () => {
   const { hub, db } = domain();
   const result = await hub.postCharacterDiscussion({

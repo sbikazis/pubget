@@ -233,3 +233,42 @@ The discovery system reuses the Phase 1 foundation unchanged. No new
 dependencies were introduced. Community rating values on discovery cards
 (§ in the completion report) remain a documented limitation where no aggregate
 endpoint exists; per-card live scoring is deliberately avoided.
+
+## 31. Details and characters contract (Prompt 03)
+
+1. **Real data only.** Every title, character, staff member, voice role,
+   appearance, synopsis, rating, favorite count and ranking shown on the details
+   and characters surfaces originates from the answering provider or the Pubget
+   backend. No value is fabricated, seeded, or inferred to fill a gap.
+2. **No broadcasting surface.** The details page exposes no episode list, no
+   player, no watch button, and no streaming section. A trailer is shown only
+   when the provider returns a genuine trailer URL, and it plays through the
+   existing shared Reels player — never a bespoke player.
+3. **Independent section loading.** The characters and staff strips load
+   independently of the title payload; a failure in one MUST NOT sink the other
+   or the page. `NetworkError`/`TimeoutError` map to the offline state via
+   `animeFailureState`; only genuine provider errors surface as `error`.
+4. **Character favorites** are persisted through the single
+   `character_favorites` repository with an idempotent `setCharacterFavorite`.
+   The pre-existing dual source of truth for anime favorites (profile
+   `favoriteAnimeIds` vs. library `isFavorite`) is intentionally left unchanged
+   and remains a documented limitation.
+5. **Reporting** reuses the shared `REPORT_REASONS` catalog
+   (`["inappropriate","spam","copyright","harassment","other"]`) on both the
+   client and the backend. `reportAnime` mirrors `reportEvent`: the client sends
+   `{animeId, category, detail}`, the backend stores idempotently per reporter at
+   `anime_reports/{animeId}/reports/{reporterId}` (with `repeatCount`) and rate
+   limits via `animeReportRate` (60-minute window, 10 max), bypassed for a
+   repeat report of the same title.
+6. **Localization.** Every new user-visible string is declared in
+   `anime_mapping.dart` and surfaced through `AnimeCopy`; widgets never
+   hardcode an Arabic or English label. Data tokens (staff roles, genres,
+   status) remain provider-original.
+7. **Scrollable tabs.** Each details tab is independently scrollable; a tab's
+   content MUST NOT overflow its viewport.
+
+## 32. Prompt 03 — non-goals reaffirmed
+
+No new dependencies. No fabricated data. No streaming/broadcasting feature. No
+separate staff-only page (staff render as info-only cards). No PR or merge
+(final integration is reserved for Prompt 04).
