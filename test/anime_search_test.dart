@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
@@ -201,6 +203,46 @@ void main() {
     expect(repository.searchCalls, 1);
   });
 
+  test('a slow early query never overwrites the latest results', () async {
+    final repository = FakeAnimeRepository(
+      filterSearchByQuery: true,
+      page: AnimePage(
+        items: <Anime>[
+          sampleAnime(id: '1', title: 'Aria'),
+          sampleAnime(id: '2', title: 'Anohana'),
+          sampleAnime(id: '3', title: 'Animatrix'),
+        ],
+      ),
+    );
+    repository.searchGates['a'] = Completer<void>();
+    repository.searchGates['an'] = Completer<void>();
+    repository.searchGates['ani'] = Completer<void>();
+    final list = AnimeListProvider(
+      repository: repository,
+      debounce: Duration.zero,
+    );
+    addTearDown(list.dispose);
+
+    // Three queries fire back-to-back; every response is held open.
+    list.searchChanged('a');
+    list.searchChanged('an');
+    list.searchChanged('ani');
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.searchCalls, 3);
+
+    // The newest query resolves first; the stale ones land afterward and must
+    // be discarded rather than clobbering the current results.
+    repository.searchGates['ani']!.complete();
+    await Future<void>.delayed(Duration.zero);
+    repository.searchGates['an']!.complete();
+    await Future<void>.delayed(Duration.zero);
+    repository.searchGates['a']!.complete();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(list.query, 'ani');
+    expect(list.items.map((item) => item.title), <String>['Animatrix']);
+  });
+
   test('home discovery search is owned by SearchProvider', () async {
     final search = SearchProvider(
       homeRepository: _FakeHomeRepository(),
@@ -235,6 +277,35 @@ void main() {
       ).matchesCatalog(sampleAnime()),
       isFalse,
     );
+  });
+
+  test('score-range filter constrains the catalog and clears cleanly', () {
+    const filter = AnimeSearchFilter(minScore: 8, maxScore: 9.5);
+    expect(filter.hasScoreRange, isTrue);
+    expect(filter.hasNonTextConstraints, isTrue);
+    expect(filter.matchesCatalog(sampleAnime()), isTrue);
+
+    const tooHigh = AnimeSearchFilter(minScore: 9.5);
+    expect(tooHigh.matchesCatalog(sampleAnime()), isFalse);
+
+    final cleared = filter.copyWith(clearMinScore: true, clearMaxScore: true);
+    expect(cleared.hasScoreRange, isFalse);
+    expect(cleared.hasNonTextConstraints, isFalse);
+  });
+
+  test('score filter reaches the repository', () async {
+    final repository = FakeAnimeRepository();
+    final list = AnimeListProvider(
+      repository: repository,
+      debounce: Duration.zero,
+    );
+    addTearDown(list.dispose);
+    list.applyFilter(const AnimeSearchFilter(minScore: 8, maxScore: 9));
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    expect(repository.searchCalls, 1);
+    expect(repository.lastFilter?.minScore, 8);
+    expect(repository.lastFilter?.maxScore, 9);
+    expect(list.items, isNotEmpty);
   });
 
   test('typing a prefix filters the catalog snapshot without restoring misses',

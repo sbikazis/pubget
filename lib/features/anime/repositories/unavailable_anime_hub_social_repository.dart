@@ -46,6 +46,13 @@ final class UnavailableAnimeHubSocialRepository
   }) async => _fail();
 
   @override
+  Future<Result<void>> reportAnime({
+    required String animeId,
+    required String reason,
+    String details = '',
+  }) async => _fail();
+
+  @override
   Future<Result<List<AnimeCommunityStats>>> listTopRated({
     int limit = 40,
   }) async => _fail();
@@ -54,6 +61,11 @@ final class UnavailableAnimeHubSocialRepository
   Future<Result<List<AnimeCommunityStats>>> listMostListed({
     int limit = 40,
   }) async => _fail();
+
+  @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) async => _fail();
 
   @override
   Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({

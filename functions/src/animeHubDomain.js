@@ -30,6 +30,8 @@ const TITLE_MAX = 200;
 const NAME_MAX = 120;
 const IMAGE_MAX = 2048;
 const ID_MAX = 64;
+const STATS_BATCH_MAX = 30;
+const STATS_CHUNK = 10;
 
 function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
   function uid(request) {
@@ -319,11 +321,158 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
     return { ok: true };
   }
 
+  function animeReportRef(animeId) {
+    return db.collection("anime_reports").doc(animeId).collection("reports");
+  }
+
+  async function reportAnime(request) {
+    const reporterId = uid(request);
+    const animeId = validString(request.data && request.data.animeId, ID_MAX)
+      ? request.data.animeId.trim()
+      : null;
+    const category = validString(request.data && request.data.category, 32)
+      ? request.data.category.trim()
+      : null;
+    if (!animeId || !REPORT_REASONS.includes(category)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "A structured report reason is required.",
+      );
+    }
+    const detail = optionalString(request.data && request.data.detail, COMMENT_MAX);
+    if (detail === null) {
+      throw new HttpsError("invalid-argument", "Report details are too long.");
+    }
+    const reportRef = animeReportRef(animeId).doc(reporterId);
+    const prior = await reportRef.get();
+    if (prior.exists) {
+      const previous = prior.data() || {};
+      await reportRef.set({
+        category,
+        detail: detail || previous.detail || null,
+        reporterId: previous.reporterId || reporterId,
+        animeId: previous.animeId || animeId,
+        status: previous.status || "open",
+        createdAt: previous.createdAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        repeatCount: (Number(previous.repeatCount) || 1) + 1,
+      });
+      return { ok: true, alreadyReported: true };
+    }
+    const gate = await enforceAnimeReportRateLimit(reporterId);
+    if (!gate.allowed) {
+      throw new HttpsError("resource-exhausted", gate.message);
+    }
+    await reportRef.set({
+      category,
+      detail: detail || null,
+      reporterId,
+      animeId,
+      status: "open",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      repeatCount: 1,
+    });
+    return { ok: true, alreadyReported: false };
+  }
+
+  // Thin abuse gate on the anime report queue, mirroring the events report
+  // gate: the cost of a false positive is a rejected report, the cost of no
+  // limit is a triage queue nobody can clear.
+  async function enforceAnimeReportRateLimit(actor, now = Date.now()) {
+    const doc = db.collection("animeReportRate").doc(actor);
+    const windowMs = 60 * 60 * 1000;
+    const maxPerWindow = 10;
+    return db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(doc);
+      const startedAt = Number(snapshot.data()?.startedAt) || 0;
+      const count = Number(snapshot.data()?.count) || 0;
+      const elapsed = now - startedAt;
+      if (elapsed > windowMs || elapsed < 0) {
+        transaction.set(doc, { startedAt: now, count: 1 });
+        return { allowed: true };
+      }
+      if (count >= maxPerWindow) {
+        return {
+          allowed: false,
+          message: "You have sent a few reports already. Try again later.",
+        };
+      }
+      transaction.set(doc, { startedAt, count: count + 1 });
+      return { allowed: true };
+    });
+  }
+
   function discussionRef(characterId) {
     return db
       .collection("character_discussions")
       .doc(characterId)
       .collection("posts");
+  }
+
+  // Batch aggregate read for discovery grids. Firestore caps an `in` query at
+  // 10 ids, so the request is chunked; the shape mirrors the single-title
+  // getAnimeStats read so the same client codec understands both. Only
+  // aggregated public facts are returned, never per-user rows.
+  async function getAnimeCommunityStats(request) {
+    uid(request);
+    const raw = request.data && Array.isArray(request.data.animeIds)
+      ? request.data.animeIds
+      : null;
+    if (!raw || raw.length === 0) {
+      throw new HttpsError("invalid-argument", "animeIds is required.");
+    }
+    if (raw.length > STATS_BATCH_MAX) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Request up to ${STATS_BATCH_MAX} anime ids at a time.`,
+      );
+    }
+    const ids = [];
+    const seen = new Set();
+    for (const item of raw) {
+      const candidate = typeof item === "string" ? item.trim() : "";
+      if (validString(candidate, ID_MAX) && !seen.has(candidate)) {
+        seen.add(candidate);
+        ids.push(candidate);
+      }
+    }
+    if (ids.length === 0) {
+      throw new HttpsError("invalid-argument", "No valid anime ids provided.");
+    }
+    const stats = {};
+    for (let index = 0; index < ids.length; index += STATS_CHUNK) {
+      const chunk = ids.slice(index, index + STATS_CHUNK);
+      const snapshot = await db
+        .collection("anime_stats")
+        .where("__name__", "in", chunk)
+        .get();
+      snapshot.forEach((doc) => {
+        const data = doc.data() || {};
+        const animeId = validString(data.animeId, ID_MAX)
+          ? String(data.animeId).trim()
+          : doc.id;
+        const payload = {
+          title: validString(data.title, TITLE_MAX)
+            ? String(data.title).trim()
+            : "",
+          imageUrl: validString(data.imageUrl, IMAGE_MAX)
+            ? String(data.imageUrl).trim()
+            : null,
+          averageScore: Number(data.averageScore) || 0,
+          ratingCount: Number(data.ratingCount) || 0,
+          listedCount: Number(data.listedCount) || 0,
+        };
+        if (data.scoreDistribution && typeof data.scoreDistribution === "object") {
+          payload.scoreDistribution = data.scoreDistribution;
+        }
+        if (data.statusCounts && typeof data.statusCounts === "object") {
+          payload.statusCounts = data.statusCounts;
+        }
+        stats[animeId] = payload;
+      });
+    }
+    return { stats };
   }
 
   async function postCharacterDiscussion(request) {
@@ -389,6 +538,8 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
     upsertAnimeRating,
     deleteAnimeRating,
     reportAnimeReview,
+    reportAnime,
+    getAnimeCommunityStats,
     postCharacterDiscussion,
     deleteCharacterDiscussion,
     CRITERIA,

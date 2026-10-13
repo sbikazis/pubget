@@ -80,6 +80,7 @@ import '../features/anime/repositories/provider_chain_anime_repository.dart';
 import '../features/anime/theme/anime_hub_colors.dart';
 import '../features/anime/providers/anime_character_provider.dart';
 import '../features/anime/screens/anime_browse_page.dart';
+import '../features/anime/screens/anime_cast_page.dart';
 import '../features/anime/screens/anime_character_page.dart';
 import '../features/anime/screens/anime_details_page.dart';
 import '../features/anime/screens/anime_favorite_characters_page.dart';
@@ -1126,6 +1127,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             const AnimeFavoriteCharactersPage(),
         '/anime/character': (parameters) =>
             AnimeCharacterPage(characterId: parameters['characterId'] ?? ''),
+        '/anime/cast': (parameters) =>
+            AnimeCastPage(animeId: parameters['animeId'] ?? ''),
         '/anime/me': (parameters) => AnimeMyPage(userId: parameters['uid']),
         '/game': (parameters) =>
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),
