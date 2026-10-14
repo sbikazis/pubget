@@ -38,6 +38,8 @@ final class AnimeCopy {
   String get nothingFoundMessage => _t.nothingFoundMessage;
   String get unableToLoad => _t.unableToLoad;
   String get checkConnection => _t.checkConnection;
+  String get tooManyRequests => _t.tooManyRequests;
+  String get serviceUnavailable => _t.serviceUnavailable;
   String get retry => _t.retry;
   String get cachedBanner => _t.cachedBanner;
   String get offlineCached => _t.offlineCached;
@@ -384,12 +386,13 @@ final class AnimeCopy {
 
   /// Tab labels for the hub's own destinations. Reuses the catalog copy for the
   /// seasonal and popular tabs so a title is never spelled two ways.
-  String hubDestination(AnimeHubDestination destination) => switch (destination) {
-    AnimeHubDestination.latest => _t.latestUpdates,
-    AnimeHubDestination.thisSeason => catalog(AnimeCatalogKind.thisSeason),
-    AnimeHubDestination.popular => catalog(AnimeCatalogKind.popular),
-    AnimeHubDestination.community => _t.communityStats,
-  };
+  String hubDestination(AnimeHubDestination destination) =>
+      switch (destination) {
+        AnimeHubDestination.latest => _t.latestUpdates,
+        AnimeHubDestination.thisSeason => catalog(AnimeCatalogKind.thisSeason),
+        AnimeHubDestination.popular => catalog(AnimeCatalogKind.popular),
+        AnimeHubDestination.community => _t.communityStats,
+      };
 
   String customListItemCount(int count) => _t.customListItemCount(count);
   String listedCount(int count) => _t.listedCount(count);

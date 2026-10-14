@@ -600,6 +600,16 @@ final class AppTranslationMapping {
     'You are offline. Showing cached data.',
     'أنت غير متصل. عرض بيانات محفوظة.',
   );
+  // Backend throttle and outage copy. Neither is a connectivity problem, so the
+  // member is never told to check a connection that is working.
+  String get tooManyRequests => pick(
+    'Too many requests. Please try again shortly.',
+    'طلبات كثيرة. حاول مرة أخرى بعد قليل.',
+  );
+  String get serviceUnavailable => pick(
+    'Anime is unavailable right now. Please try again.',
+    'الأنمي غير متاح الآن. حاول مرة أخرى.',
+  );
   String get genresTitle => pick('Browse by genre', 'تصفح حسب التصنيف');
   String get seasonsTitle => pick('Browse by season', 'تصفح حسب الموسم');
   String get charactersTitle => pick('Characters', 'الشخصيات');
@@ -719,6 +729,7 @@ final class AppTranslationMapping {
       pick('What members rated', 'ما الذي يقيّمه الأعضاء');
   String get listBreakdown =>
       pick('How members track it', 'كيف يتابع الأعضاء هذا العمل');
+
   /// Shown when the server has not published an aggregate yet. The chart must
   /// say so rather than drawing a partial one built from the reviews this
   /// client happened to load.

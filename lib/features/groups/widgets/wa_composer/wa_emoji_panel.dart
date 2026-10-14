@@ -504,7 +504,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
                   ),
                   if (favored)
                     const Align(
-                      alignment: Alignment.topRight,
+                      alignment: AlignmentDirectional.topEnd,
                       child: Icon(Icons.star, size: 16),
                     ),
                 ],
@@ -548,7 +548,7 @@ class _WaEmojiPanelState extends State<WaEmojiPanel> {
           for (final key in _recent)
             if (!_showFavorites && stickerByKey(key) != null)
               Padding(
-                padding: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsetsDirectional.only(start: 8),
                 child: InkWell(
                   key: Key('recent-sticker-$key'),
                   borderRadius: BorderRadius.circular(10),

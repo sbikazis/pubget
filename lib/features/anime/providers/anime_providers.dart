@@ -216,7 +216,9 @@ final class AnimeHubProvider extends ChangeNotifier {
     try {
       result = await _repository.getAvailableSeasons();
     } on Object catch (error) {
-      result = FailureResult<List<AnimeSeasonYear>>(animeFailureFromError(error));
+      result = FailureResult<List<AnimeSeasonYear>>(
+        animeFailureFromError(error),
+      );
     }
     if (_disposed) return;
     result.fold(
@@ -911,7 +913,9 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     try {
       result = await _repository.getCharacters(id);
     } on Object catch (error) {
-      result = FailureResult<List<AnimeCharacter>>(animeFailureFromError(error));
+      result = FailureResult<List<AnimeCharacter>>(
+        animeFailureFromError(error),
+      );
     }
     if (_disposed || _loadedId != id) return;
     result.fold(
@@ -948,16 +952,12 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     result.fold(
       onSuccess: (staff) {
         _staff = staff;
-        _staffState =
-            staff.isEmpty ? LoadingState.empty : LoadingState.loaded;
+        _staffState = staff.isEmpty ? LoadingState.empty : LoadingState.loaded;
         _staffFailure = null;
       },
       onFailure: (failure) {
         _staffFailure = failure;
-        _staffState = animeFailureState(
-          failure,
-          hasContent: _staff.isNotEmpty,
-        );
+        _staffState = animeFailureState(failure, hasContent: _staff.isNotEmpty);
       },
     );
     _safeNotify();

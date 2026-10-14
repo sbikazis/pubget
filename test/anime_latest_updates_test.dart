@@ -53,9 +53,7 @@ class _StubAnimeRepository implements AnimeRepository {
     latestCalls++;
     switch (mode) {
       case _Mode.ok:
-        return Success<AnimePage>(
-          _page(<Anime>[_sampleAnime()]),
-        );
+        return Success<AnimePage>(_page(<Anime>[_sampleAnime()]));
       case _Mode.empty:
         return Success<AnimePage>(_page(const <Anime>[]));
       case _Mode.failure:
@@ -137,19 +135,22 @@ void main() {
       expect(list.failure, isNotNull);
     });
 
-    test('a thrown exception surfaces as an error, never stuck loading', () async {
-      final repository = _StubAnimeRepository(mode: _Mode.throws);
-      final list = AnimeListProvider(
-        repository: repository,
-        debounce: Duration.zero,
-      );
-      addTearDown(list.dispose);
+    test(
+      'a thrown exception surfaces as an error, never stuck loading',
+      () async {
+        final repository = _StubAnimeRepository(mode: _Mode.throws);
+        final list = AnimeListProvider(
+          repository: repository,
+          debounce: Duration.zero,
+        );
+        addTearDown(list.dispose);
 
-      await list.openLatest();
+        await list.openLatest();
 
-      expect(list.state, LoadingState.error);
-      expect(list.failure, isNotNull);
-    });
+        expect(list.state, LoadingState.error);
+        expect(list.failure, isNotNull);
+      },
+    );
 
     test('retry after a thrown exception re-issues the request', () async {
       final repository = _StubAnimeRepository(mode: _Mode.throws);
@@ -293,7 +294,10 @@ void main() {
         'hasNextPage': false,
       };
 
-      expect(tryDecodeDurableCache<AnimePage>(stale, AnimeCacheCodec.pageFromMap), isNull);
+      expect(
+        tryDecodeDurableCache<AnimePage>(stale, AnimeCacheCodec.pageFromMap),
+        isNull,
+      );
     });
 
     test('a valid payload still decodes', () {
