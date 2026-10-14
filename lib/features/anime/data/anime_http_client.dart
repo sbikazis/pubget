@@ -360,6 +360,16 @@ Result<T> animeHttpFailure<T>(
   );
 }
 
+/// Normalizes any thrown value into a [Failure].
+///
+/// Repository and cache tiers are expected to return a [Result], but an
+/// unexpected throw (a mapper hitting an unexpected shape, a durable cache
+/// entry written by an older schema, a Firestore read failing) must never
+/// escape into a provider. Mapping it here keeps the failure typed so callers
+/// can move out of their loading state instead of hanging forever.
+Failure animeFailureFromError(Object error) =>
+    error is Failure ? error : mapAnimeHttpFailure(error);
+
 Map<String, dynamic> decodeAnimeJsonObject(String body) {
   final decoded = jsonDecode(body);
   if (decoded is Map<String, dynamic>) return decoded;
