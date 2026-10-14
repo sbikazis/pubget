@@ -503,7 +503,7 @@ class _StickerColumn extends StatelessWidget {
             onRetryMedia: onRetryMedia,
           ),
           Padding(
-            padding: const EdgeInsets.only(top: 2, left: 4),
+            padding: const EdgeInsetsDirectional.only(top: 2, start: 4),
             child: _TimeStatusRow(
               message: message,
               isMine: isMine,

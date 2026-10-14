@@ -7,15 +7,21 @@ import 'package:pubget/features/anime/providers/anime_hub_social_provider.dart';
 import 'package:pubget/features/anime/repositories/anime_hub_social_repository.dart';
 
 void main() {
-  test('reportAnime needs a bound anime and forwards once loaded', () async {
+  test('reportReview needs a bound anime and forwards once loaded', () async {
     final social = AnimeHubSocialProvider(repository: _FakeHubSocialRepository());
     addTearDown(social.dispose);
 
-    final unbound = await social.reportAnime(reason: 'spam');
+    final unbound = await social.reportReview(
+      targetUserId: 'bob',
+      reason: 'spam',
+    );
     expect(unbound.isSuccess, isFalse);
 
     await social.loadAnime('16498');
-    final reported = await social.reportAnime(reason: 'spam', details: 'x');
+    final reported = await social.reportReview(
+      targetUserId: 'bob',
+      reason: 'spam',
+    );
     expect(reported.isSuccess, isTrue);
   });
 
@@ -321,13 +327,6 @@ final class _FakeHubSocialRepository implements AnimeHubSocialRepository {
   Future<Result<void>> reportReview({
     required String animeId,
     required String targetUserId,
-    required String reason,
-    String details = '',
-  }) async => const Success<void>(null);
-
-  @override
-  Future<Result<void>> reportAnime({
-    required String animeId,
     required String reason,
     String details = '',
   }) async => const Success<void>(null);
