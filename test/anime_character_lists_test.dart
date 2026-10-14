@@ -197,6 +197,11 @@ final class _FakeSocialRepository implements AnimeHubSocialRepository {
   }
 
   @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) async => const Success(<AnimeCommunityStats>[]);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

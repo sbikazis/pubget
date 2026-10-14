@@ -7,10 +7,14 @@ import 'anime_repository.dart';
 
 /// Fetches the anime catalog from AniList's public GraphQL endpoint. It is the
 /// alternative provider: the hub keeps working when the primary provider
-/// (Jikan/MyAnimeList) is unreachable. Ids are AniList ids, except that
-/// numeric (Mal) ids are resolved through the companion `idMal` field so the
-/// local Firestore cache and community favorites keep working across either
-/// provider.
+/// (Jikan/MyAnimeList) is unreachable.
+///
+/// Canonical ids match the primary provider: every mapped [Anime.id] is the
+/// MyAnimeList id (AniList's `idMal`) when AniList exposes one, falling back to
+/// the native AniList id only for entries with no MyAnimeList equivalent.
+/// Requests resolve either kind back through the `id`/`idMal` arguments, so
+/// the durable cache, community ratings and favorites stay keyed on one stable
+/// id regardless of which provider answered.
 final class AniListAnimeRepository implements AnimeRepository {
   AniListAnimeRepository({required AnimeHttpClient http, Uri? baseUri})
     : _http = http,
@@ -18,6 +22,7 @@ final class AniListAnimeRepository implements AnimeRepository {
 
   static const String mediaFields = '''
 id
+idMal
 title { romaji english native userPreferred }
 description
 format
@@ -34,7 +39,8 @@ coverImage { extraLarge large medium }
 bannerImage
 genres
 studios { nodes { id name isAnimationStudio } }
-relations { edges { relationType node { id type format title { romaji english } coverImage { large medium } } } }
+productionCompanies { nodes { id name } }
+relations { edges { relationType node { id idMal type format title { romaji english } coverImage { large medium } } } }
 source
 nextAiringEpisode { episode timeUntilAiring }
 trailer { id site }
@@ -176,7 +182,7 @@ isAdult''';
           '''
 query Summaries(\$_ids: [Int]) {
   Page(perPage: ${chunk.length}) {
-    media(id_in: \$_ids, type: ANIME) {
+    media(idMal_in: \$_ids, type: ANIME) {
       id
       idMal
       title { romaji english native }
@@ -258,6 +264,44 @@ query Characters(\$_id: Int, \$_idMal: Int) {
   }
 
   @override
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId) async {
+    final normalized = animeId.trim();
+    if (normalized.isEmpty) {
+      return const FailureResult(ValidationError('Anime id is required.'));
+    }
+    final query = '''
+query Staff(\$_id: Int, \$_idMal: Int) {
+  Media(id: \$_id, idMal: \$_idMal) {
+    staff {
+      edges {
+        role
+        node {
+          id
+          name { full native }
+          image { large medium }
+        }
+      }
+    }
+  }
+}''';
+    final payload = await _graphQl(query, _idVariables(normalized));
+    return payload.fold(
+      onSuccess: (json) {
+        try {
+          final connection = _map(_map(json['data'])?['Media'])?['staff'];
+          final edges = connection?['edges'] as List? ?? const <Object?>[];
+          return Success<List<AnimeStaff>>(
+            List<AnimeStaff>.unmodifiable(mapAniListStaff(edges)),
+          );
+        } on Object catch (error) {
+          return animeHttpFailure<List<AnimeStaff>>(error);
+        }
+      },
+      onFailure: FailureResult<List<AnimeStaff>>.new,
+    );
+  }
+
+  @override
   Future<Result<AnimeCharacter>> getCharacterDetails(String characterId) async {
     final normalized = characterId.trim();
     if (normalized.isEmpty) {
@@ -274,6 +318,7 @@ query Character(\$_id: Int, \$_idMal: Int) {
     media(page: 1, perPage: 25, sort: [POPULARITY_DESC]) {
       nodes {
         id
+        idMal
         type
         title { romaji english userPreferred }
         coverImage { large medium }
@@ -466,10 +511,10 @@ query Studios(\$page: Int, \$perPage: Int) {
     };
     final query =
         '''
-query MediaPage(\$search: String, \$page: Int, \$perPage: Int, \$season: MediaSeason, \$seasonYear: Int, \$format_in: [MediaFormat], \$genre_in: [String], \$studioId: Int, \$status: MediaStatus, \$sort: [MediaSort], \$isAdult: Boolean) {
+query MediaPage(\$search: String, \$page: Int, \$perPage: Int, \$season: MediaSeason, \$seasonYear: Int, \$format_in: [MediaFormat], \$genre_in: [String], \$studioId: Int, \$status: MediaStatus, \$sort: [MediaSort], \$isAdult: Boolean, \$averageScore_greater: Int, \$averageScore_lesser: Int) {
   Page(page: \$page, perPage: \$perPage) {
     pageInfo { currentPage hasNextPage }
-    media(search: \$search, season: \$season, seasonYear: \$seasonYear, format_in: \$format_in, genre_in: \$genre_in, studioId: \$studioId, status: \$status, sort: \$sort, isAdult: \$isAdult, type: ANIME) {
+    media(search: \$search, season: \$season, seasonYear: \$seasonYear, format_in: \$format_in, genre_in: \$genre_in, studioId: \$studioId, status: \$status, sort: \$sort, isAdult: \$isAdult, averageScore_greater: \$averageScore_greater, averageScore_lesser: \$averageScore_lesser, type: ANIME) {
       $mediaFields
     }
   }
@@ -522,13 +567,22 @@ query Media(\$_id: Int, \$_idMal: Int) {
     );
   }
 
+  /// Resolves a canonical (MyAnimeList) id through AniList's `idMal`
+  /// argument. Non-numeric ids cannot exist for anime, and sending a null
+  /// `_id` is an invalid GraphQL variable, so anything non-numeric resolves
+  /// to no argument at all (the query then returns null -> NotFound) rather
+  /// than the former `{'_id': null}` shape.
   Map<String, Object?> _idVariables(String id) {
-    final numeric = int.tryParse(id);
-    return {if (numeric != null) '_idMal': numeric else '_id': numeric};
+    final numeric = int.tryParse(id.trim());
+    return <String, Object?>{'_idMal': ?numeric};
   }
 
   Map<String, Object?> _searchFilters(AnimeSearchFilter filter) {
     final studioId = int.tryParse(filter.studioId?.trim() ?? '');
+    // AniList scores are 0..100 while the filter (and Jikan) use 0..10, so the
+    // bounds are scaled up. `_anilistScore` divides by 10 on the way back.
+    final minScore = filter.minScore;
+    final maxScore = filter.maxScore;
     return <String, Object?>{
       if (filter.type != null)
         'format_in': <String>[_anilistFormat(filter.type!)],
@@ -538,6 +592,8 @@ query Media(\$_id: Int, \$_idMal: Int) {
       if (filter.genreId != null && filter.genreId!.isNotEmpty)
         'genre_in': <String>[filter.genreId!],
       'studioId': ?studioId,
+      'averageScore_greater': ?(minScore == null ? null : (minScore * 10).round()),
+      'averageScore_lesser': ?(maxScore == null ? null : (maxScore * 10).round()),
     };
   }
 

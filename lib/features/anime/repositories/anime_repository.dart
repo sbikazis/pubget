@@ -34,6 +34,10 @@ abstract interface class AnimeRepository {
 
   Future<Result<AnimeCharacter>> getCharacterDetails(String characterId);
 
+  /// The people behind an anime — directors, composers, writers. Info-only
+  /// cards, so a lightweight list of credits is enough.
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId);
+
   /// Lightweight catalog metadata for a set of ids, used to decorate the
   /// member's own list without a request per title. Ids that cannot be
   /// resolved are simply absent from the result.
@@ -72,6 +76,7 @@ abstract final class AnimeCacheTtl {
   static const details = Duration(hours: 12);
   static const characters = Duration(hours: 12);
   static const characterDetails = Duration(hours: 12);
+  static const staff = Duration(hours: 12);
   static const summaries = Duration(hours: 24);
   static const genres = Duration(hours: 24);
   static const seasonsIndex = Duration(hours: 24);

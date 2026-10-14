@@ -198,6 +198,21 @@ final class JikanAnimeRepository implements AnimeRepository {
   }
 
   @override
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId) {
+    final normalized = animeId.trim();
+    if (normalized.isEmpty) {
+      return Future<Result<List<AnimeStaff>>>.value(
+        const FailureResult(ValidationError('Anime id is required.')),
+      );
+    }
+    return _list(
+      _uri('anime/${Uri.encodeComponent(normalized)}/staff'),
+      mapJikanStaff,
+      priority: AnimeRequestPriority.interactive,
+    );
+  }
+
+  @override
   Future<Result<List<AnimeGenre>>> getGenres() async {
     final genres = await _list(
       _uri('genres/anime', const <String, String>{'filter': 'genres'}),
@@ -338,8 +353,18 @@ final class JikanAnimeRepository implements AnimeRepository {
         AnimeAgeFilter.adult => 'r17',
       };
     }
+    final minScore = filter.minScore;
+    if (minScore != null) query['min_score'] = _scoreParam(minScore);
+    final maxScore = filter.maxScore;
+    if (maxScore != null) query['max_score'] = _scoreParam(maxScore);
     return query;
   }
+
+  // Jikan expects the 0–10 score with a trailing `.0` trimmed for whole
+  // numbers (`7`, `7.5`), matching the form the filter sheet produces.
+  static String _scoreParam(double value) => value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(1);
 
   Uri _uri(
     String path, [

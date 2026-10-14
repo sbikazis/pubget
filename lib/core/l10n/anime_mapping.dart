@@ -635,6 +635,24 @@ final class AppTranslationMapping {
   String get shareAnime => pick('Share', 'مشاركة');
   String get reportLabel => pick('Report', 'إبلاغ');
   String get reportTitle => pick('Report this anime', 'الإبلاغ عن هذا الأنمي');
+  String get reportAnime => pick('Report anime', 'الإبلاغ عن الأنمي');
+  String get confirmReport => pick('Confirm report', 'تأكيد الإبلاغ');
+  String reportConfirmContent(String reason) => pick(
+    'Submit this anime report for “$reason”?',
+    'إرسال بلاغ عن هذا الأنمي بسبب «$reason»؟',
+  );
+  String reportReasonLabel(String key) => switch (key) {
+    'inappropriate' => pick('Inappropriate content', 'محتوى غير مناسب'),
+    'spam' => pick('Spam', 'سبام'),
+    'copyright' => pick('Copyright', 'حقوق الطبع'),
+    'harassment' => pick('Harassment', 'تحرّش أو إزعاج'),
+    'other' => pick('Other', 'أخرى'),
+    _ => key,
+  };
+  String get reportSubmitted => pick('Report submitted', 'تم الإبلاغ');
+  String get reportFailed => pick('Report failed.', 'فشل الإبلاغ.');
+  String get pubgetUser => pick('Pubget user', 'مستخدم Pubget');
+  String get copyLink => pick('Copy link', 'نسخ الرابط');
   String get sensitiveContent => pick(
     'This title contains sensitive content.',
     'هذا العنوان يحتوي على محتوى حساس.',
@@ -843,6 +861,10 @@ final class AppTranslationMapping {
     'اضغط على القلب في أي شخصية للاحتفاظ بها هنا.',
   );
   String get viewAllCharacters => pick('View all', 'عرض الكل');
+  String get staffTitle => pick('Staff', 'طاقم العمل');
+  String get searchInCharacters =>
+      pick('Search this anime\'s characters', 'ابحث في شخصيات هذا الأنمي');
+  String get charactersSearchEmpty => noCharactersFound;
   String get noCharactersFound => pick('No characters found', 'لا توجد شخصيات');
   String get searchCharacters => pick('Search characters', 'ابحث في الشخصيات');
   String get roleplay => pick('Roleplay', 'ريولبلي');
@@ -934,6 +956,11 @@ final class AppTranslationMapping {
   String get filterSeason => pick('Season', 'الموسم');
   String get filterSort => pick('Sort', 'الترتيب');
   String get filterAll => pick('All', 'الكل');
+  String get filterScore => pick('Rating', 'التقييم');
+  String get filterScoreMin => pick('Min', 'الحد الأدنى');
+  String get filterScoreMax => pick('Max', 'الحد الأعلى');
+  String scoreRangeLabel(String min, String max) =>
+      pick('Rating $min – $max', 'التقييم $min – $max');
   String get sortMembers => pick('Popularity', 'الأكثر أعضاء');
   String get sortTitle => pick('Title', 'العنوان');
   String get sortNewest => pick('Newest', 'الأحدث');

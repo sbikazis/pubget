@@ -410,6 +410,7 @@ class FirebaseEditsRepository
     var query = _firestore
         .collection(_collection)
         .where('status', isEqualTo: 'published')
+        .where('moderationStatus', isEqualTo: 'approved')
         .orderBy('score', descending: true)
         .orderBy('createdAt', descending: true)
         .orderBy(FieldPath.documentId, descending: true);
@@ -458,6 +459,7 @@ class FirebaseEditsRepository
         .collection(_collection)
         .where('creatorId', isEqualTo: creatorId)
         .where('status', isEqualTo: 'published')
+        .where('moderationStatus', isEqualTo: 'approved')
         .orderBy('createdAt', descending: true)
         .orderBy(FieldPath.documentId, descending: true)
         .limit(limit)
@@ -477,6 +479,7 @@ class FirebaseEditsRepository
     final snapshot = await _firestore
         .collection(_collection)
         .where('status', isEqualTo: 'published')
+        .where('moderationStatus', isEqualTo: 'approved')
         .where('characterIds', arrayContains: id)
         .orderBy('score', descending: true)
         .orderBy('createdAt', descending: true)
@@ -498,6 +501,7 @@ class FirebaseEditsRepository
     final snapshot = await _firestore
         .collection(_collection)
         .where('status', isEqualTo: 'published')
+        .where('moderationStatus', isEqualTo: 'approved')
         .where('animeTag', isEqualTo: id)
         .orderBy('score', descending: true)
         .orderBy('createdAt', descending: true)
@@ -635,6 +639,17 @@ class FirebaseEditsRepository
     required String editId,
     required String type,
   }) => _call(_callable('recordEditSignal'), {'editId': editId, 'type': type});
+
+  @override
+  Future<Result<void>> reportEdit({
+    required String editId,
+    required String category,
+    String? detail,
+  }) => _call(_callable('reportEdit'), {
+    'editId': editId,
+    'category': category,
+    if (detail != null && detail.isNotEmpty) 'detail': detail,
+  });
 
   @override
   Future<Result<void>> muteReelCreator({

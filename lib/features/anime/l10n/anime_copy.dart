@@ -69,6 +69,14 @@ final class AnimeCopy {
   String get sensitiveContentBody => _t.sensitiveContentBody;
   String get reportLabel => _t.reportLabel;
   String get reportTitle => _t.reportTitle;
+  String get reportAnime => _t.reportAnime;
+  String get confirmReport => _t.confirmReport;
+  String reportConfirmContent(String reason) => _t.reportConfirmContent(reason);
+  String reportReasonLabel(String key) => _t.reportReasonLabel(key);
+  String get reportSubmitted => _t.reportSubmitted;
+  String get reportFailed => _t.reportFailed;
+  String get pubgetUser => _t.pubgetUser;
+  String get copyLink => _t.copyLink;
   String get recommendations => _t.recommendations;
   String get downloads => _t.downloads;
   String get showMore => _t.showMore;
@@ -239,6 +247,9 @@ final class AnimeCopy {
   String get noCharactersFound => _t.noCharactersFound;
   String get searchCharacters => _t.searchCharacters;
   String get viewAllCharacters => _t.viewAllCharacters;
+  String get staffTitle => _t.staffTitle;
+  String get searchInCharacters => _t.searchInCharacters;
+  String get charactersSearchEmpty => _t.charactersSearchEmpty;
   String get favoriteCharacter => _t.favoriteCharacter;
   String get roleplay => _t.roleplay;
   String get reels => _t.reels;
@@ -291,6 +302,11 @@ final class AnimeCopy {
   String get filterSeason => _t.filterSeason;
   String get filterSort => _t.filterSort;
   String get filterAll => _t.filterAll;
+  String get filterScore => _t.filterScore;
+  String get filterScoreMin => _t.filterScoreMin;
+  String get filterScoreMax => _t.filterScoreMax;
+  String scoreRangeLabel(String min, String max) =>
+      _t.scoreRangeLabel(min, max);
   String get applyFilters => _t.applyFilters;
   String get resetFilters => _t.resetFilters;
   String get filters => _t.filters;

@@ -29,9 +29,24 @@ abstract interface class AnimeHubSocialRepository {
     String details = '',
   });
 
+  /// Reports an anime title from the More menu. Lands in the server-side
+  /// abuse queue; the callable is idempotent per reporter.
+  Future<Result<void>> reportAnime({
+    required String animeId,
+    required String reason,
+    String details = '',
+  });
+
   Future<Result<List<AnimeCommunityStats>>> listTopRated({int limit = 40});
 
   Future<Result<List<AnimeCommunityStats>>> listMostListed({int limit = 40});
+
+  /// Batch aggregate read used by discovery grids: a few titles at a time from
+  /// the same server-authoritative `anime_stats` store the ranking pages use.
+  /// Untouched titles are simply absent from the returned list.
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  );
 
   Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({
     int limit = 40,

@@ -58,9 +58,11 @@ final class FakeEditsRepository implements EditsRepository {
   Failure? commentActionFailure;
   Failure? muteFailure;
   Failure? savedReelsFailure;
+  Failure? reportFailure;
   List<Edit> savedReels = <Edit>[];
   bool savedReelsHasMore = false;
   final List<Map<String, dynamic>> muteCalls = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> reportCalls = <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> savedPagesCalls = <Map<String, dynamic>>[];
   final List<Map<String, String>> commentActionCalls = <Map<String, String>>[];
   Future<Result<void>> Function(bool like)? likeHandler;
@@ -240,6 +242,21 @@ final class FakeEditsRepository implements EditsRepository {
     required String type,
   }) async {
     if (signalFailure != null) return FailureResult(signalFailure!);
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<void>> reportEdit({
+    required String editId,
+    required String category,
+    String? detail,
+  }) async {
+    reportCalls.add(<String, dynamic>{
+      'editId': editId,
+      'category': category,
+      'detail': detail,
+    });
+    if (reportFailure != null) return FailureResult(reportFailure!);
     return const Success<void>(null);
   }
 

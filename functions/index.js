@@ -336,6 +336,14 @@ exports.reportAnimeReview = onCall(
   { region: "us-central1" },
   animeHubDomain.reportAnimeReview,
 );
+exports.reportAnime = onCall(
+  { region: "us-central1" },
+  animeHubDomain.reportAnime,
+);
+exports.getAnimeCommunityStats = onCall(
+  { region: "us-central1" },
+  animeHubDomain.getAnimeCommunityStats,
+);
 exports.postCharacterDiscussion = onCall(
   { region: "us-central1" },
   animeHubDomain.postCharacterDiscussion,

@@ -1136,3 +1136,61 @@ class AnimeSensitiveContentNotice extends StatelessWidget {
     );
   }
 }
+
+/// The structured report reasons offered for an anime title. Mirrors the chat
+/// report catalog so the triage queue speaks one vocabulary.
+const animeReportReasons = <String>[
+  'inappropriate',
+  'spam',
+  'copyright',
+  'harassment',
+  'other',
+];
+
+/// Asks for a structured report reason, then confirms, then submits.
+///
+/// Returns true only when [onSubmit] reported a server-side success. The
+/// reason labels are localized through [AnimeCopy].
+Future<bool> promptAnimeReport(
+  BuildContext context, {
+  required Future<bool> Function(String reason) onSubmit,
+}) async {
+  final copy = AnimeCopy.of(context);
+  final reason = await showDialog<String>(
+    context: context,
+    builder: (dialogContext) => SimpleDialog(
+      title: Text(copy.reportAnime),
+      children: animeReportReasons
+          .map(
+            (value) => SimpleDialogOption(
+              key: Key('anime-report-$value'),
+              onPressed: () => Navigator.pop(dialogContext, value),
+              child: Text(copy.reportReasonLabel(value)),
+            ),
+          )
+          .toList(growable: false),
+    ),
+  );
+  if (reason == null || !context.mounted) return false;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      key: const Key('anime-report-confirm'),
+      title: Text(copy.confirmReport),
+      content: Text(copy.reportConfirmContent(copy.reportReasonLabel(reason))),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: Text(copy.mapping.pick('Cancel', 'إلغاء')),
+        ),
+        FilledButton(
+          key: const Key('anime-report-confirm-accept'),
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: Text(copy.mapping.pick('Confirm', 'تأكيد')),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return false;
+  return onSubmit(reason);
+}

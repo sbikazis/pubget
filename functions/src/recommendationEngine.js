@@ -190,7 +190,12 @@ function createRecommendationEngine({ db, HttpsError, clock }) {
       .filter((entry) => visibleToViewer(entry, profile))
       .sort((a, b) => b.score - a.score));
 
+    // §15.18 — only approved Reels may be recommended. A reported/flagged Reel
+    // keeps `status: 'published'` (see editsDomain takedown/restore), so without
+    // this gate a report would actually increase reach. Fan works already filter
+    // this way below; Reels did not.
     const editsRanked = mixExploration(applyDiversity(edits
+      .filter((doc) => doc.data.moderationStatus === "approved")
       .map((doc) => item("edit", doc, scoreEdit(doc.data, profile, current), {
         metadata: {
           creatorId: doc.data.creatorId,
