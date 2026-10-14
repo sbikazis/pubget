@@ -1421,6 +1421,49 @@ test("message reports are readable by the reporter and not client-writable", asy
   }));
 });
 
+test("unapproved Reels are unreadable and reports are server-owned", async () => {
+  // §15.18 — a reported/flagged Reel keeps `status: 'published'` so moderation
+  // can restore it, but neither a direct read nor a list query may surface it.
+  // And a report doc is written only by the `reportEdit` callable: a client
+  // `create` used to bypass category validation, dedupe, and the rate limit.
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("edits/clean").set({
+      creatorId: "alice", status: "published", moderationStatus: "approved",
+      caption: "ok",
+    });
+    await admin.doc("edits/flagged").set({
+      creatorId: "alice", status: "published", moderationStatus: "flagged",
+      caption: "nope",
+    });
+    await admin.doc("edits/flagged/reports/bob").set({
+      reporterId: "bob", category: "harassment", detail: "",
+      createdAt: new Date(),
+    });
+  });
+  await assertSucceeds(db("bob").doc("edits/clean").get());
+  await assertFails(db("bob").doc("edits/flagged").get());
+  await assertFails(
+    db("bob").collection("edits").where("status", "==", "published").get(),
+  );
+  await assertSucceeds(
+    db("bob")
+      .collection("edits")
+      .where("status", "==", "published")
+      .where("moderationStatus", "==", "approved")
+      .get(),
+  );
+  await assertSucceeds(db("bob").doc("edits/flagged/reports/bob").get());
+  await assertFails(db("mallory").doc("edits/flagged/reports/bob").get());
+  await assertFails(db("bob").doc("edits/flagged/reports/bob").set({
+    reporterId: "bob", category: "spam",
+  }));
+  await assertFails(db("mallory").doc("edits/clean/reports/mallory").create({
+    reporterId: "mallory", category: "spam", detail: "x",
+    createdAt: new Date(),
+  }));
+});
+
 test("collection-group members queries only return the caller's own membership", async () => {
   await assertSucceeds(
     db("bob").collectionGroup("members").where("uid", "==", "bob").get(),

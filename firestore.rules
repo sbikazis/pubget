@@ -1025,9 +1025,16 @@ service cloud.firestore {
         );
       }
       allow get: if editReadable(request.auth.uid);
-      // A collection query must carry `where status == 'published'` for this to
-      // succeed; Firestore rejects queries that could return anything else.
-      allow list: if signedIn() && resource.data.status == 'published';
+      // §15.18 — a reported/flagged Reel keeps `status: 'published'` so the
+      // takedown path can restore it, which is why the list rule must also
+      // require `moderationStatus == 'approved'`. Without it any signed-in
+      // client could query flagged, needs_review, or removed Reels directly.
+      // A collection query must carry both `where status == 'published'` and
+      // `where moderationStatus == 'approved'`; Firestore rejects a query that
+      // could return anything else.
+      allow list: if signedIn() &&
+        resource.data.status == 'published' &&
+        resource.data.moderationStatus == 'approved';
       // Edit documents and all aggregate counters are server-authoritative.
       allow create, update, delete: if false;
       // §15.18 audit trail — written only by the server takedown path.
@@ -1036,10 +1043,13 @@ service cloud.firestore {
         allow write: if false;
       }
       // §15.18 §15.3 — real moderation reports, one document per reporter.
+      // Written only by the `reportEdit` callable, which validates the category
+      // and enforces a per-user rate limit. A client-side `create` bypassed both
+      // (any signed-in user could write an arbitrary category and flood the
+      // queue), so the reporter keeps read access but no write access.
       match /reports/{uid} {
         allow read: if isAdmin() || self(uid);
-        allow create: if signedIn() && uid == request.auth.uid;
-        allow update, delete: if false;
+        allow write: if false;
       }
       match /comments/{commentId} {
         // Subcollection reads are not implicitly covered by the parent rule, so
@@ -1055,10 +1065,10 @@ service cloud.firestore {
         allow read: if parentReadable();
         allow create, update, delete: if false;
         match /likes/{uid} { allow read: if self(uid); allow write: if false; }
+        // Comment reports are written only by the `editCommentAction` callable.
         match /reports/{uid} {
           allow read: if isAdmin() || self(uid);
-          allow create: if signedIn() && uid == request.auth.uid;
-          allow update, delete: if false;
+          allow write: if false;
         }
       }
       match /likes/{uid} { allow read: if self(uid); allow write: if false; }
