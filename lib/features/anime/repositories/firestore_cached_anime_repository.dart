@@ -6,8 +6,26 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../core/errors/result.dart';
 import '../data/anime_cache_codec.dart';
+import '../data/anime_http_client.dart';
 import '../models/anime_models.dart';
 import 'anime_repository.dart';
+
+/// Decodes a durable cache payload, returning `null` when the stored shape is
+/// stale, partial or otherwise incompatible with the current codec.
+///
+/// A cache entry written by an older schema must degrade to a cache miss. If
+/// the codec's type error escaped it would surface as a load failure and, in
+/// the unguarded provider path, leave the screen stuck on its skeleton forever.
+T? tryDecodeDurableCache<T>(
+  Map<String, dynamic> payload,
+  T Function(Map<String, dynamic>) decode,
+) {
+  try {
+    return decode(payload);
+  } on Object {
+    return null;
+  }
+}
 
 /// Durable catalog cache stored in Firestore under the current user.
 ///
@@ -255,7 +273,14 @@ final class FirestoreCachedAnimeRepository implements AnimeRepository {
     required Map<String, dynamic> Function(T) encode,
     required T Function(Map<String, dynamic>) decode,
   }) async {
-    final result = await load();
+    Result<T> result;
+    try {
+      result = await load();
+    } on Object catch (error) {
+      // The inner chain is expected to return a Result, but if any tier throws
+      // we still hand back a typed failure rather than leaking the exception.
+      result = FailureResult<T>(animeFailureFromError(error));
+    }
     if (result is Success<T> && !_alreadyCached(result.value)) {
       unawaited(_write(key, encode(result.value), ttl));
       return result;
@@ -263,7 +288,8 @@ final class FirestoreCachedAnimeRepository implements AnimeRepository {
     if (result is Success<T>) return result;
     final cached = await _read(key);
     if (cached != null) {
-      return Success<T>(decode(cached));
+      final decoded = tryDecodeDurableCache<T>(cached, decode);
+      if (decoded != null) return Success<T>(decoded);
     }
     return result;
   }
@@ -306,7 +332,8 @@ final class FirestoreCachedAnimeRepository implements AnimeRepository {
           .doc(uid)
           .collection('anime_cache')
           .doc(_keyOf(key))
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 8));
       final data = snap.data();
       if (data == null) return null;
       final payload = data['payload'];
