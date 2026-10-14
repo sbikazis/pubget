@@ -326,7 +326,26 @@ final class EditsProvider extends ChangeNotifier {
     return _repository.recordSignal(editId: editId, type: 'share');
   }
 
-  Future<Result<void>> report(String editId) {
+  /// Axis 15 §15.18 — a categorized moderation report. This is deliberately
+  /// distinct from [notInterested]: a report is a moderation action with a
+  /// category and a queue entry, while "not interested" is a private taste
+  /// signal that only softens future recommendations.
+  Future<Result<void>> report(
+    String editId, {
+    required String category,
+    String? detail,
+  }) {
+    return _repository.reportEdit(
+      editId: editId,
+      category: category,
+      detail: detail,
+    );
+  }
+
+  /// Axis 15 §15.9/§15.18 — a private negative taste signal. Hides the Reel
+  /// locally and reduces similar content; it never notifies moderation.
+  Future<Result<void>> notInterested(String editId) {
+    skipBroken(editId);
     return _repository.recordSignal(editId: editId, type: 'negative');
   }
 
