@@ -1458,7 +1458,7 @@ test("unapproved Reels are unreadable and reports are server-owned", async () =>
   await assertFails(db("bob").doc("edits/flagged/reports/bob").set({
     reporterId: "bob", category: "spam",
   }));
-  await assertFails(db("mallory").doc("edits/clean/reports/mallory").create({
+  await assertFails(db("mallory").doc("edits/clean/reports/mallory").set({
     reporterId: "mallory", category: "spam", detail: "x",
     createdAt: new Date(),
   }));
