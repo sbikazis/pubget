@@ -187,8 +187,9 @@ class _MarqueePainter extends CustomPainter {
       old.text != text || old.style != style || old.scroll != scroll;
 }
 
-/// The hub's 3-column poster grid used by the catalog, search, library and
-/// character screens.
+/// The hub's poster grid used by the catalog, search, library and character
+/// screens. Three columns on a phone, more on a tablet, with a row height that
+/// always leaves room for the card's text.
 class AnimeHubGrid extends StatelessWidget {
   const AnimeHubGrid({
     required this.itemCount,
@@ -206,18 +207,45 @@ class AnimeHubGrid extends StatelessWidget {
   final NullableIndexedWidgetBuilder itemBuilder;
   final EdgeInsets padding;
 
+  /// Room below the poster for the title (two lines) plus the personal-state
+  /// and format lines a library card can carry. It is a fixed budget, not a
+  /// ratio, so the row does not shrink below the text on a narrow phone.
+  static const double _textBudget = 82;
+
+  int _columnsFor(double available) {
+    if (available >= 900) return 5;
+    if (available >= 640) return 4;
+    return 3;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      padding: padding,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: AppSpacing.md,
-        crossAxisSpacing: AppSpacing.md,
-        childAspectRatio: 0.56,
-      ),
-      itemCount: itemCount,
-      itemBuilder: itemBuilder,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // A fixed [childAspectRatio] gave a short row on small phones once a
+        // poster card carried three lines of copy, which overflowed. Deriving a
+        // [mainAxisExtent] from the real cell width keeps the 3:4 poster plus a
+        // constant text budget, so nothing is clipped.
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 360.0;
+        final columns = _columnsFor(width - padding.horizontal);
+        final spacing = AppSpacing.md;
+        final cellWidth =
+            (width - padding.horizontal - spacing * (columns - 1)) / columns;
+        final posterHeight = cellWidth * 4 / 3;
+        return GridView.builder(
+          padding: padding,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+            mainAxisExtent: posterHeight + _textBudget,
+          ),
+          itemCount: itemCount,
+          itemBuilder: itemBuilder,
+        );
+      },
     );
   }
 }
@@ -229,7 +257,7 @@ String animePosterHeroTag(String animeId) => 'anime-poster-$animeId';
 String animeCharacterHeroTag(String characterId) =>
     'anime-character-$characterId';
 
-/// Three-column shimmer placeholder that matches [AnimeHubGrid].
+/// Shimmer placeholder laid out on the same grid as [AnimeHubGrid].
 class AnimeHubGridSkeleton extends StatelessWidget {
   const AnimeHubGridSkeleton({this.itemCount = 9, super.key});
 

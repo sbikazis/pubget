@@ -7,8 +7,10 @@ import '../../../core/analytics/analytics.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
+import '../../authentication/models/pubget_user.dart';
 import '../../authentication/providers/onboarding_provider.dart';
 import '../../social/repositories/profile_repository.dart';
+import '../data/anime_http_client.dart';
 import '../data/anime_search_ranker.dart';
 import '../models/anime_models.dart';
 import '../repositories/anime_repository.dart';
@@ -129,7 +131,12 @@ final class AnimeHubProvider extends ChangeNotifier {
       state: LoadingState.loading,
     );
     _safeNotify();
-    final result = await _fetchCatalog(kind, page: 1);
+    Result<AnimePage> result;
+    try {
+      result = await _fetchCatalog(kind, page: 1);
+    } on Object catch (error) {
+      result = FailureResult<AnimePage>(animeFailureFromError(error));
+    }
     if (_disposed) return;
     result.fold(
       onSuccess: (page) {
@@ -153,7 +160,12 @@ final class AnimeHubProvider extends ChangeNotifier {
 
   Future<void> _loadGenres() async {
     _genresState = LoadingState.loading;
-    final result = await _repository.getGenres();
+    Result<List<AnimeGenre>> result;
+    try {
+      result = await _repository.getGenres();
+    } on Object catch (error) {
+      result = FailureResult<List<AnimeGenre>>(animeFailureFromError(error));
+    }
     if (_disposed) return;
     result.fold(
       onSuccess: (genres) {
@@ -175,7 +187,12 @@ final class AnimeHubProvider extends ChangeNotifier {
 
   Future<void> _loadStudios() async {
     _studiosState = LoadingState.loading;
-    final result = await _repository.getStudios();
+    Result<List<AnimeStudio>> result;
+    try {
+      result = await _repository.getStudios();
+    } on Object catch (error) {
+      result = FailureResult<List<AnimeStudio>>(animeFailureFromError(error));
+    }
     if (_disposed) return;
     result.fold(
       onSuccess: (studios) {
@@ -195,7 +212,14 @@ final class AnimeHubProvider extends ChangeNotifier {
 
   Future<void> _loadSeasons() async {
     _seasonsState = LoadingState.loading;
-    final result = await _repository.getAvailableSeasons();
+    Result<List<AnimeSeasonYear>> result;
+    try {
+      result = await _repository.getAvailableSeasons();
+    } on Object catch (error) {
+      result = FailureResult<List<AnimeSeasonYear>>(
+        animeFailureFromError(error),
+      );
+    }
     if (_disposed) return;
     result.fold(
       onSuccess: (seasons) {
@@ -504,7 +528,18 @@ final class AnimeListProvider extends ChangeNotifier {
     }
     _safeNotify();
 
-    final result = await _fetch(page: page, searchQuery: searchQuery);
+    // A repository, mapper or cache-tier exception must surface as a terminal
+    // failure state. Without this guard an unexpected throw leaves `_state` on
+    // `loading` and keeps `_inflightKey` set, so the skeleton never clears and
+    // every later retry (same key) short-circuits as a no-op.
+    Result<AnimePage> result;
+    try {
+      result = await _fetch(page: page, searchQuery: searchQuery);
+    } on Object catch (error) {
+      result = FailureResult<AnimePage>(animeFailureFromError(error));
+    } finally {
+      _loadingMore = false;
+    }
     if (_disposed) return;
     if (generation != null && generation != _searchGeneration) {
       final currentKey = _requestKey(page: 1, searchQuery: _query.trim());
@@ -514,7 +549,6 @@ final class AnimeListProvider extends ChangeNotifier {
       }
     }
     _inflightKey = null;
-    _loadingMore = false;
 
     result.fold(
       onSuccess: (pageResult) {
@@ -733,7 +767,12 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     _safeNotify();
     _analytics?.logEvent('anime_open', parameters: {'animeId': id});
     unawaited(_loadCharacters(id));
-    final result = await _repository.getAnimeDetails(id);
+    Result<Anime> result;
+    try {
+      result = await _repository.getAnimeDetails(id);
+    } on Object catch (error) {
+      result = FailureResult<Anime>(animeFailureFromError(error));
+    }
     if (_disposed || _loadedId != id) return;
     result.fold(
       onSuccess: (anime) {
@@ -779,7 +818,12 @@ final class AnimeDetailsProvider extends ChangeNotifier {
   }
 
   Future<AnimeCharacter> _loadCharacterProfile(AnimeCharacter preview) async {
-    final result = await _repository.getCharacterDetails(preview.id);
+    Result<AnimeCharacter> result;
+    try {
+      result = await _repository.getCharacterDetails(preview.id);
+    } on Object catch (error) {
+      result = FailureResult<AnimeCharacter>(animeFailureFromError(error));
+    }
     final merged = result.fold(
       onSuccess: preview.mergeDetails,
       onFailure: (_) => preview,
@@ -819,10 +863,15 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     _savingFavorite = true;
     _favoriteIds = next;
     _safeNotify();
-    final result = await profiles.updateProfile(
-      userId,
-      ProfileUpdate(favoriteAnimeIds: next),
-    );
+    Result<PubgetUser> result;
+    try {
+      result = await profiles.updateProfile(
+        userId,
+        ProfileUpdate(favoriteAnimeIds: next),
+      );
+    } on Object catch (error) {
+      result = FailureResult<PubgetUser>(animeFailureFromError(error));
+    }
     if (_disposed) return;
     result.fold(
       onSuccess: (profile) {
@@ -844,7 +893,14 @@ final class AnimeDetailsProvider extends ChangeNotifier {
 
   Future<void> _loadCharacters(String id) async {
     _charactersState = LoadingState.loading;
-    final result = await _repository.getCharacters(id);
+    Result<List<AnimeCharacter>> result;
+    try {
+      result = await _repository.getCharacters(id);
+    } on Object catch (error) {
+      result = FailureResult<List<AnimeCharacter>>(
+        animeFailureFromError(error),
+      );
+    }
     if (_disposed || _loadedId != id) return;
     result.fold(
       onSuccess: (characters) {

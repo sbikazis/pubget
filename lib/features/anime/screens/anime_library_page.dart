@@ -7,6 +7,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../l10n/anime_copy.dart';
+import '../l10n/anime_failure_copy.dart';
 import '../models/anime_list_models.dart';
 import '../providers/anime_library_provider.dart';
 import '../providers/anime_my_list_provider.dart';
@@ -14,6 +15,11 @@ import '../widgets/anime_hub_widgets.dart';
 import '../widgets/anime_list_status_sheet.dart';
 import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
+
+/// Fixed heights for the stacked AppBar header, so [PreferredSize] matches the
+/// search field, the chip row and the tab bar instead of clipping them.
+const double _searchBarHeight = 56;
+const double _chipRowHeight = 44;
 
 /// "My list": the five personal states, searchable, sortable and renderable
 /// either as a 3-column grid or as a network list.
@@ -145,37 +151,48 @@ class _AnimeLibraryPageState extends State<AnimeLibraryPage>
               ),
           ],
           bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(96),
+            // The header stacks a search field, the format chips and the status
+            // tabs. Its declared height has to cover all three: the old 96
+            // clipped the chips and tabs into a bottom overflow on short phones.
+            preferredSize: Size.fromHeight(
+              _searchBarHeight +
+                  (myList != null ? _chipRowHeight : 0) +
+                  kTextTabBarHeight,
+            ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.lg,
-                  ),
-                  child: TextField(
-                    key: const Key('anime-my-list-search'),
-                    controller: _search,
-                    onChanged: (value) => myList?.setQuery(value),
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: copy.searchInList,
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: _search.text.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.close_rounded),
-                              onPressed: () {
-                                _search.clear();
-                                myList?.setQuery('');
-                              },
-                            ),
+                SizedBox(
+                  height: _searchBarHeight,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                    ),
+                    child: TextField(
+                      key: const Key('anime-my-list-search'),
+                      controller: _search,
+                      onChanged: (value) => myList?.setQuery(value),
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: copy.searchInList,
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        suffixIcon: _search.text.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.close_rounded),
+                                onPressed: () {
+                                  _search.clear();
+                                  myList?.setQuery('');
+                                },
+                              ),
+                      ),
                     ),
                   ),
                 ),
                 if (myList != null)
                   SizedBox(
-                    height: 44,
+                    height: _chipRowHeight,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(
@@ -234,7 +251,9 @@ class _AnimeLibraryPageState extends State<AnimeLibraryPage>
     if (library.state == LoadingState.error && library.entries.isEmpty) {
       return PubgetErrorState(
         title: copy.unableToLoad,
-        message: library.failure?.message ?? copy.checkConnection,
+        // Localized by failure kind: the failure's own sentence is a
+        // locale-neutral developer string and would leak English into Arabic.
+        message: animeFailureMessage(copy, library.failure),
         onRetry: library.load,
       );
     }
