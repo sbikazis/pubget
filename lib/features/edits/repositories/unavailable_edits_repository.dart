@@ -122,6 +122,13 @@ final class UnavailableEditsRepository implements EditsRepository {
   }) async => _failure();
 
   @override
+  Future<Result<void>> reportEdit({
+    required String editId,
+    required String category,
+    String? detail,
+  }) async => _failure();
+
+  @override
   Future<Result<void>> muteReelCreator({
     required String creatorId,
     required bool mute,

@@ -278,4 +278,11 @@ final class _SlowUploadRepository implements EditsRepository {
     required String editId,
     required String type,
   }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> reportEdit({
+    required String editId,
+    required String category,
+    String? detail,
+  }) async => const Success<void>(null);
 }

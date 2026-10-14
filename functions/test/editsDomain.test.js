@@ -716,6 +716,7 @@ function reel(id, extra = {}) {
     id,
     creatorId: "creator",
     status: "published",
+    moderationStatus: "approved",
     score: 10,
     createdAt: new Date(Date.UTC(2026, 0, 10)),
     ...extra,
@@ -780,6 +781,43 @@ test("creator, anime, character and audio scopes each reach the query", async ()
     assert.deepEqual([clause.op, clause.value], [scope.op, scope.value]);
     assert.ok(page.items.every((item) => item.id === "match"));
   }
+});
+
+test("feeds never serve Reels that failed moderation", async () => {
+  // §15.18 — a reported/flagged Reel keeps `status: 'published'` so moderation
+  // can restore it later, but it must never be served. The server filtered on
+  // `status == 'published'` alone, so a report could not reduce reach; now only
+  // `moderationStatus == 'approved'` Reels can rank. A `legacy` Reel that predates
+  // the field (no `moderationStatus`) is treated as unapproved and also drops out.
+  const legacy = reel("legacy", { score: 5000 });
+  delete legacy.moderationStatus;
+  const db = createFeedDb([
+    reel("clean", { score: 40 }),
+    reel("flagged", { moderationStatus: "flagged", score: 5000 }),
+    reel("needs-review", { moderationStatus: "needs_review", score: 5000 }),
+    reel("removed", { moderationStatus: "removed", score: 5000 }),
+    legacy,
+  ]);
+
+  const page = await feedDomain(db).getEditFeed({ auth: { uid: "alice" }, data: {} });
+
+  assert.deepEqual(page.items.map((i) => i.id), ["clean"]);
+});
+
+test("scoped feeds apply the same moderation gate", async () => {
+  const db = createFeedDb([
+    reel("clean", { creatorId: "alice", animeId: "one_piece" }),
+    reel("flagged", {
+      creatorId: "alice",
+      animeId: "one_piece",
+      moderationStatus: "flagged",
+    }),
+  ]);
+  const page = await feedDomain(db).getEditFeed({
+    auth: { uid: "alice" },
+    data: { animeId: "one_piece" },
+  });
+  assert.deepEqual(page.items.map((i) => i.id), ["clean"]);
 });
 
 test("Following queries followed creators instead of filtering the global feed", async () => {

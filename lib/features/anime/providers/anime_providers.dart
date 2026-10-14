@@ -630,7 +630,7 @@ final class AnimeListProvider extends ChangeNotifier {
   }
 
   String _requestKey({required int page, required String searchQuery}) =>
-      '${_catalog?.name}|$_latest|$_genreId|$_studioId|$_year|${_season?.name}|${_filter.genreId}|${_filter.studioId}|${_filter.type?.name}|${_filter.season?.name}|${_filter.year}|${_filter.sort.name}|$searchQuery|$page';
+      '${_catalog?.name}|$_latest|$_genreId|$_studioId|$_year|${_season?.name}|${_filter.genreId}|${_filter.studioId}|${_filter.type?.name}|${_filter.season?.name}|${_filter.year}|${_filter.sort.name}|${_filter.minScore}|${_filter.maxScore}|$searchQuery|$page';
 
   List<Anime> _merge(List<Anime> current, List<Anime> incoming) {
     final seen = current.map((item) => item.id).toSet();
@@ -703,10 +703,13 @@ final class AnimeDetailsProvider extends ChangeNotifier {
 
   Anime? _anime;
   List<AnimeCharacter> _characters = const <AnimeCharacter>[];
+  List<AnimeStaff> _staff = const <AnimeStaff>[];
   LoadingState _state = LoadingState.initial;
   LoadingState _charactersState = LoadingState.initial;
+  LoadingState _staffState = LoadingState.initial;
   Failure? _failure;
   Failure? _charactersFailure;
+  Failure? _staffFailure;
   bool _fromCache = false;
   bool _disposed = false;
   String? _loadedId;
@@ -721,10 +724,13 @@ final class AnimeDetailsProvider extends ChangeNotifier {
 
   Anime? get anime => _anime;
   List<AnimeCharacter> get characters => _characters;
+  List<AnimeStaff> get staff => _staff;
   LoadingState get state => _state;
   LoadingState get charactersState => _charactersState;
+  LoadingState get staffState => _staffState;
   Failure? get failure => _failure;
   Failure? get charactersFailure => _charactersFailure;
+  Failure? get staffFailure => _staffFailure;
   bool get fromCache => _fromCache;
   bool get savingFavorite => _savingFavorite;
   bool get isFavorite {
@@ -757,16 +763,20 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     _loadedId = id;
     _state = LoadingState.loading;
     _charactersState = LoadingState.loading;
+    _staffState = LoadingState.loading;
     _failure = null;
     _charactersFailure = null;
+    _staffFailure = null;
     if (!refresh) {
       _anime = null;
       _characters = const <AnimeCharacter>[];
+      _staff = const <AnimeStaff>[];
       _characterProfiles.clear();
     }
     _safeNotify();
     _analytics?.logEvent('anime_open', parameters: {'animeId': id});
     unawaited(_loadCharacters(id));
+    unawaited(_loadStaff(id));
     Result<Anime> result;
     try {
       result = await _repository.getAnimeDetails(id);
@@ -801,6 +811,12 @@ final class AnimeDetailsProvider extends ChangeNotifier {
     final id = _loadedId;
     if (id == null) return Future<void>.value();
     return _loadCharacters(id);
+  }
+
+  Future<void> retryStaff() {
+    final id = _loadedId;
+    if (id == null) return Future<void>.value();
+    return _loadStaff(id);
   }
 
   Future<AnimeCharacter> characterProfile(AnimeCharacter preview) {
@@ -919,6 +935,29 @@ final class AnimeDetailsProvider extends ChangeNotifier {
           failure,
           hasContent: _characters.isNotEmpty,
         );
+      },
+    );
+    _safeNotify();
+  }
+
+  Future<void> _loadStaff(String id) async {
+    _staffState = LoadingState.loading;
+    Result<List<AnimeStaff>> result;
+    try {
+      result = await _repository.getStaff(id);
+    } on Object catch (error) {
+      result = FailureResult<List<AnimeStaff>>(animeFailureFromError(error));
+    }
+    if (_disposed || _loadedId != id) return;
+    result.fold(
+      onSuccess: (staff) {
+        _staff = staff;
+        _staffState = staff.isEmpty ? LoadingState.empty : LoadingState.loaded;
+        _staffFailure = null;
+      },
+      onFailure: (failure) {
+        _staffFailure = failure;
+        _staffState = animeFailureState(failure, hasContent: _staff.isNotEmpty);
       },
     );
     _safeNotify();

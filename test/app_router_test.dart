@@ -224,6 +224,37 @@ void main() {
     },
   );
 
+  test('Reel, audio, and hashtag share links parse as canonical routes', () async {
+    final parser = AppRouteInformationParser();
+
+    final reel = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/reel/e-1?ref=share')),
+    );
+    expect(reel, isA<ParameterizedRoute>());
+    expect((reel as ParameterizedRoute).path, '/reel');
+    expect(reel.parameters['reelId'], 'e-1');
+    expect(reel.parameters['ref'], 'share');
+
+    final audio = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/audio/a-1')),
+    );
+    expect(audio, isA<ParameterizedRoute>());
+    expect((audio as ParameterizedRoute).path, '/audio');
+    expect(audio.parameters['audioId'], 'a-1');
+
+    final hashtag = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/hashtag/onepiece')),
+    );
+    expect(hashtag, isA<ParameterizedRoute>());
+    expect((hashtag as ParameterizedRoute).path, '/hashtag');
+    expect(hashtag.parameters['tag'], 'onepiece');
+
+    final encoded = await parser.parseRouteInformation(
+      RouteInformation(uri: Uri.parse('/hashtag/one%20piece')),
+    );
+    expect((encoded as ParameterizedRoute).parameters['tag'], 'one piece');
+  });
+
   test('route parser maps /store/item query links', () async {
     final parser = AppRouteInformationParser();
     final route = await parser.parseRouteInformation(
@@ -310,6 +341,10 @@ void main() {
     expect(asRoute(AppRouter.routeFromString('/game/')).path, '/unknown');
     expect(asRoute(AppRouter.routeFromString('/mafia/')).path, '/unknown');
     expect(asRoute(AppRouter.routeFromString('/fan-work/')).path, '/unknown');
+    // Bare `/reel` and `/hashtag` have no id: they stay on the feed page rather
+    // than the unknown fallback, because the Reels tab is a public shell path.
+    expect(asRoute(AppRouter.routeFromString('/reel/')).path, '/reel');
+    expect(asRoute(AppRouter.routeFromString('/hashtag/')).path, '/hashtag');
     expect(asRoute(AppRouter.routeFromString('/store/item')).path, '/unknown');
     expect(asRoute(AppRouter.routeFromString('/not-a-real-route')).path, '/not-a-real-route');
     expect(asRoute(AppRouter.routeFromString(':')).path, '/unknown');

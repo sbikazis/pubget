@@ -445,6 +445,12 @@ AppRoute _routeFromUri(Uri uri) {
   if (segments.length == 2 && segments.first == 'audio') {
     return entity(path: '/audio', key: 'audioId', id: segments[1]);
   }
+  // §15.11 — canonical hashtag share links. Only the query form
+  // (`/hashtag?tag=…`) was parsed before, so a path link `/hashtag/onepiece`
+  // fell through to the unknown-link page even though the page accepted the id.
+  if (segments.length == 2 && segments.first == 'hashtag') {
+    return entity(path: '/hashtag', key: 'tag', id: segments[1]);
+  }
   if (segments.length == 2 && segments.first == 'group') {
     return entity(path: '/group', key: 'groupId', id: segments[1]);
   }

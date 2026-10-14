@@ -16,9 +16,9 @@ import '../providers/anime_providers.dart';
 import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
 
-/// Dedicated search surface for the anime hub: a name field, the shared
-/// filter chips, and an infinite grid of results. Pushed by the hub so the
-/// landing page stays a browse page instead of a search form.
+/// Dedicated search surface for the anime hub: a name field, a filter sheet,
+/// removable active-filter chips, and an infinite grid of results. Pushed by
+/// the hub so the landing page stays a browse page instead of a search form.
 class AnimeSearchPage extends StatefulWidget {
   const AnimeSearchPage({super.key});
 
@@ -51,23 +51,149 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
     final copy = AnimeCopy.of(context);
     final hub = context.watch<AnimeHubProvider>();
     final list = context.watch<AnimeListProvider>();
+    final activeCount = _activeFilterCount(list.filter);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
         centerTitle: true,
         title: Text(copy.openSearch),
+        actions: <Widget>[
+          IconButton(
+            key: const Key('anime-search-filter'),
+            tooltip: copy.filters,
+            onPressed: () => _openFilterSheet(hub, list),
+            icon: Badge.count(
+              count: activeCount,
+              isLabelVisible: activeCount > 0,
+              child: const Icon(Icons.tune_rounded),
+            ),
+          ),
+        ],
       ),
       drawer: AnimeHubDrawer(current: '/anime/search'),
       body: PubgetAtmosphere(
         child: Column(
           children: <Widget>[
             _searchField(list),
-            _filters(hub, list),
+            _activeFilterChips(list),
             Expanded(child: _searchResults(list)),
           ],
         ),
       ),
     );
+  }
+
+  /// Number of non-text constraints currently applied, surfaced on the filter
+  /// action so the user can see filters are active without opening the sheet.
+  static int _activeFilterCount(AnimeSearchFilter filter) {
+    var count = 0;
+    if (filter.type != null) count++;
+    if (filter.genreId != null && filter.genreId!.isNotEmpty) count++;
+    if (filter.studioId != null && filter.studioId!.isNotEmpty) count++;
+    if (filter.season != null && filter.year != null) count++;
+    if (filter.airing != null) count++;
+    if (filter.ageRating != null) count++;
+    if (filter.hasScoreRange) count++;
+    return count;
+  }
+
+  Future<void> _openFilterSheet(
+    AnimeHubProvider hub,
+    AnimeListProvider list,
+  ) async {
+    final result = await PubgetBottomSheet.show<AnimeSearchFilter>(
+      context,
+      isScrollControlled: true,
+      title: AnimeCopy.of(context).filters,
+      child: _SearchFilterSheet(initial: list.filter, hub: hub),
+    );
+    if (result == null || !mounted) return;
+    list.applyFilter(result);
+  }
+
+  /// Removable chips summarising the active constraints. Removing one re-runs
+  /// the search immediately, without a full page reload.
+  Widget _activeFilterChips(AnimeListProvider list) {
+    final filter = list.filter;
+    final copy = AnimeCopy.of(context);
+    final chips = <Widget>[
+      if (filter.type != null)
+        _activeChip(copy.typeFilter(filter.type!), () {
+          list.applyFilter(filter.copyWith(clearType: true));
+        }, 'type'),
+      if (filter.genreId != null && filter.genreId!.isNotEmpty)
+        _activeChip(_genreName(filter.genreId!), () {
+          list.applyFilter(filter.copyWith(clearGenre: true));
+        }, 'genre'),
+      if (filter.studioId != null && filter.studioId!.isNotEmpty)
+        _activeChip(_studioName(filter.studioId!), () {
+          list.applyFilter(filter.copyWith(clearStudio: true));
+        }, 'studio'),
+      if (filter.season != null && filter.year != null)
+        _activeChip('${copy.season(filter.season!)} ${filter.year}', () {
+          list.applyFilter(filter.copyWith(clearSeason: true, clearYear: true));
+        }, 'season'),
+      if (filter.airing != null)
+        _activeChip(copy.statusFilter(filter.airing!), () {
+          list.applyFilter(filter.copyWith(clearAiring: true));
+        }, 'status'),
+      if (filter.ageRating != null)
+        _activeChip(copy.ageFilter(filter.ageRating!), () {
+          list.applyFilter(filter.copyWith(clearAgeRating: true));
+        }, 'age'),
+      if (filter.hasScoreRange)
+        _activeChip(
+          copy.scoreRangeLabel(
+            filter.minScore?.toStringAsFixed(1) ?? '0',
+            filter.maxScore?.toStringAsFixed(1) ?? '10',
+          ),
+          () {
+            list.applyFilter(
+              filter.copyWith(clearMinScore: true, clearMaxScore: true),
+            );
+          },
+          'score',
+        ),
+    ];
+    if (chips.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        0,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
+      child: Wrap(
+        spacing: AppSpacing.sm,
+        runSpacing: AppSpacing.xs,
+        children: chips,
+      ),
+    );
+  }
+
+  Widget _activeChip(String label, VoidCallback onRemove, String dim) {
+    return InputChip(
+      key: Key('anime-active-filter-$dim'),
+      label: Text(label),
+      onDeleted: onRemove,
+      deleteIcon: const Icon(Icons.close, size: 16),
+    );
+  }
+
+  String _genreName(String id) {
+    final hub = context.read<AnimeHubProvider>();
+    for (final genre in hub.genres) {
+      if (genre.id == id) return AnimeCopy.of(context).genre(genre.name);
+    }
+    return id;
+  }
+
+  String _studioName(String id) {
+    final hub = context.read<AnimeHubProvider>();
+    for (final studio in hub.studios) {
+      if (studio.id == id) return studio.name;
+    }
+    return id;
   }
 
   Widget _searchField(AnimeListProvider list) {
@@ -99,176 +225,6 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
     );
   }
 
-  Widget _filters(AnimeHubProvider hub, AnimeListProvider list) {
-    final filter = list.filter;
-    final years = hub.seasons.take(8).map((item) => item.year).toList();
-    final seasonYear =
-        filter.year ?? hub.seasons.firstOrNull?.year ?? DateTime.now().year;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md,
-        0,
-        AppSpacing.md,
-        AppSpacing.sm,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          _chipRow(
-            label: AnimeCopy.of(context).filterType,
-            children: <Widget>[
-              for (final type in AnimeTypeFilter.values)
-                PubgetSelectionChip(
-                  key: Key('filter-type-${type.name}'),
-                  label: AnimeCopy.of(context).typeFilter(type),
-                  selected: filter.type == type,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(type: type, clearType: filter.type == type),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          _chipRow(
-            label: AnimeCopy.of(context).filterSeason,
-            children: <Widget>[
-              for (final season in AnimeSeason.values)
-                PubgetSelectionChip(
-                  key: Key('filter-season-${season.name}'),
-                  label: AnimeCopy.of(context).season(season),
-                  selected: filter.season == season,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(
-                      season: season,
-                      year: seasonYear,
-                      clearSeason: filter.season == season,
-                      clearYear: filter.season == season,
-                    ),
-                  ),
-                ),
-              for (final year in years)
-                PubgetSelectionChip(
-                  key: Key('filter-year-$year'),
-                  label: '$year',
-                  selected: filter.year == year,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(
-                      year: year,
-                      season:
-                          filter.season ?? AnimeSeason.fromDate(DateTime.now()),
-                      clearYear: filter.year == year,
-                      clearSeason: filter.year == year,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          if (hub.genres.isNotEmpty) ...<Widget>[
-            const SizedBox(height: AppSpacing.sm),
-            _chipRow(
-              label: AnimeCopy.of(context).filterGenre,
-              children: <Widget>[
-                for (final genre in hub.genres.take(16))
-                  PubgetSelectionChip(
-                    key: Key('filter-genre-${genre.id}'),
-                    label: AnimeCopy.of(context).genre(genre.name),
-                    selected: filter.genreId == genre.id,
-                    onSelected: (_) => list.applyFilter(
-                      filter.copyWith(
-                        genreId: genre.id,
-                        clearGenre: filter.genreId == genre.id,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-          if (hub.studios.isNotEmpty) ...<Widget>[
-            const SizedBox(height: AppSpacing.sm),
-            _chipRow(
-              label: AnimeCopy.of(context).filterStudio,
-              children: <Widget>[
-                for (final studio in hub.studios.take(16))
-                  PubgetSelectionChip(
-                    key: Key('filter-studio-${studio.id}'),
-                    label: studio.name,
-                    selected: filter.studioId == studio.id,
-                    onSelected: (_) => list.applyFilter(
-                      filter.copyWith(
-                        studioId: studio.id,
-                        clearStudio: filter.studioId == studio.id,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-          const SizedBox(height: AppSpacing.sm),
-          _chipRow(
-            label: AnimeCopy.of(context).filterStatus,
-            children: <Widget>[
-              for (final status in AnimeAiringFilter.values)
-                PubgetSelectionChip(
-                  key: Key('filter-status-${status.name}'),
-                  label: AnimeCopy.of(context).statusFilter(status),
-                  selected: filter.airing == status,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(
-                      airing: status,
-                      clearAiring: filter.airing == status,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          _chipRow(
-            label: AnimeCopy.of(context).filterAgeRating,
-            children: <Widget>[
-              for (final age in AnimeAgeFilter.values)
-                PubgetSelectionChip(
-                  key: Key('filter-age-${age.name}'),
-                  label: AnimeCopy.of(context).ageFilter(age),
-                  selected: filter.ageRating == age,
-                  onSelected: (_) => list.applyFilter(
-                    filter.copyWith(
-                      ageRating: age,
-                      clearAgeRating: filter.ageRating == age,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _chipRow({required String label, required List<Widget> children}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          label,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: AppColors.goldSheen,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 6),
-        SizedBox(
-          height: 40,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: children.length,
-            separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
-            itemBuilder: (_, index) => children[index],
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _searchResults(AnimeListProvider list) {
     if (!list.filter.hasNonTextConstraints &&
         _search.text.trim().length < list.minQueryLength) {
@@ -297,6 +253,7 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
       return PubgetOfflineState(
         message: AnimeCopy.of(context).checkConnection,
         onRetry: list.retrySearch,
+        retryLabel: AnimeCopy.of(context).retry,
       );
     }
     if (list.state == LoadingState.empty || list.items.isEmpty) {
@@ -309,6 +266,253 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
     return AnimePaginatedList(
       list: list,
       header: _AggregatedSearchStrip(query: _search.text),
+    );
+  }
+}
+
+/// Modal sheet holding every non-text constraint. It edits a *draft* copy of
+/// the filter so nothing is committed until the user taps Apply; Reset clears
+/// every constraint in place (keeping the typed query) before Apply.
+class _SearchFilterSheet extends StatefulWidget {
+  const _SearchFilterSheet({required this.initial, required this.hub});
+
+  final AnimeSearchFilter initial;
+  final AnimeHubProvider hub;
+
+  @override
+  State<_SearchFilterSheet> createState() => _SearchFilterSheetState();
+}
+
+class _SearchFilterSheetState extends State<_SearchFilterSheet> {
+  late AnimeSearchFilter _draft = widget.initial;
+
+  static const _labelColor = AppColors.goldSheen;
+
+  void _update(AnimeSearchFilter next) => setState(() => _draft = next);
+
+  AnimeSearchFilter get _cleared => _draft.copyWith(
+    clearType: true,
+    clearSeason: true,
+    clearYear: true,
+    clearGenre: true,
+    clearStudio: true,
+    clearAiring: true,
+    clearAgeRating: true,
+    clearMinScore: true,
+    clearMaxScore: true,
+  );
+
+  double get _minScore => _draft.minScore ?? 0;
+  double get _maxScore => _draft.maxScore ?? 10;
+
+  void _applyScoreRange(RangeValues values) {
+    final min = values.start;
+    final max = values.end;
+    _update(
+      _draft.copyWith(
+        minScore: min <= 0 ? null : min,
+        clearMinScore: min <= 0,
+        maxScore: max >= 10 ? null : max,
+        clearMaxScore: max >= 10,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
+    final hub = widget.hub;
+    final years = hub.seasons.take(8).map((item) => item.year).toList();
+    final seasonYear =
+        _draft.year ?? hub.seasons.firstOrNull?.year ?? DateTime.now().year;
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _section(copy.filterType, <Widget>[
+            for (final type in AnimeTypeFilter.values)
+              PubgetSelectionChip(
+                key: Key('filter-type-${type.name}'),
+                label: copy.typeFilter(type),
+                selected: _draft.type == type,
+                onSelected: (_) => _update(
+                  _draft.copyWith(type: type, clearType: _draft.type == type),
+                ),
+              ),
+          ]),
+          _section(copy.filterSeason, <Widget>[
+            for (final season in AnimeSeason.values)
+              PubgetSelectionChip(
+                key: Key('filter-season-${season.name}'),
+                label: copy.season(season),
+                selected: _draft.season == season,
+                onSelected: (_) => _update(
+                  _draft.copyWith(
+                    season: season,
+                    year: seasonYear,
+                    clearSeason: _draft.season == season,
+                    clearYear: _draft.season == season,
+                  ),
+                ),
+              ),
+            for (final year in years)
+              PubgetSelectionChip(
+                key: Key('filter-year-$year'),
+                label: '$year',
+                selected: _draft.year == year,
+                onSelected: (_) => _update(
+                  _draft.copyWith(
+                    year: year,
+                    season:
+                        _draft.season ?? AnimeSeason.fromDate(DateTime.now()),
+                    clearYear: _draft.year == year,
+                    clearSeason: _draft.year == year,
+                  ),
+                ),
+              ),
+          ]),
+          if (hub.genres.isNotEmpty)
+            _section(copy.filterGenre, <Widget>[
+              for (final genre in hub.genres.take(16))
+                PubgetSelectionChip(
+                  key: Key('filter-genre-${genre.id}'),
+                  label: copy.genre(genre.name),
+                  selected: _draft.genreId == genre.id,
+                  onSelected: (_) => _update(
+                    _draft.copyWith(
+                      genreId: genre.id,
+                      clearGenre: _draft.genreId == genre.id,
+                    ),
+                  ),
+                ),
+            ]),
+          if (hub.studios.isNotEmpty)
+            _section(copy.filterStudio, <Widget>[
+              for (final studio in hub.studios.take(16))
+                PubgetSelectionChip(
+                  key: Key('filter-studio-${studio.id}'),
+                  label: studio.name,
+                  selected: _draft.studioId == studio.id,
+                  onSelected: (_) => _update(
+                    _draft.copyWith(
+                      studioId: studio.id,
+                      clearStudio: _draft.studioId == studio.id,
+                    ),
+                  ),
+                ),
+            ]),
+          _section(copy.filterStatus, <Widget>[
+            for (final status in AnimeAiringFilter.values)
+              PubgetSelectionChip(
+                key: Key('filter-status-${status.name}'),
+                label: copy.statusFilter(status),
+                selected: _draft.airing == status,
+                onSelected: (_) => _update(
+                  _draft.copyWith(
+                    airing: status,
+                    clearAiring: _draft.airing == status,
+                  ),
+                ),
+              ),
+          ]),
+          _section(copy.filterAgeRating, <Widget>[
+            for (final age in AnimeAgeFilter.values)
+              PubgetSelectionChip(
+                key: Key('filter-age-${age.name}'),
+                label: copy.ageFilter(age),
+                selected: _draft.ageRating == age,
+                onSelected: (_) => _update(
+                  _draft.copyWith(
+                    ageRating: age,
+                    clearAgeRating: _draft.ageRating == age,
+                  ),
+                ),
+              ),
+          ]),
+          _scoreSection(copy),
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: OutlinedButton(
+                  key: const Key('filter-reset'),
+                  onPressed: () => _update(_cleared),
+                  child: Text(copy.resetFilters),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: FilledButton(
+                  key: const Key('filter-apply'),
+                  onPressed: () => Navigator.of(context).pop(_draft),
+                  child: Text(copy.applyFilters),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _scoreSection(AnimeCopy copy) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          copy.filterScore,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: _labelColor,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: <Widget>[
+            Text(copy.filterScoreMin),
+            Expanded(
+              child: RangeSlider(
+                key: const Key('filter-score-slider'),
+                min: 0,
+                max: 10,
+                divisions: 20,
+                values: RangeValues(_minScore, _maxScore),
+                labels: RangeLabels(
+                  _minScore.toStringAsFixed(1),
+                  _maxScore.toStringAsFixed(1),
+                ),
+                onChanged: _applyScoreRange,
+              ),
+            ),
+            Text(copy.filterScoreMax),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _section(String label, List<Widget> children) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: _labelColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.xs,
+            children: children,
+          ),
+        ],
+      ),
     );
   }
 }

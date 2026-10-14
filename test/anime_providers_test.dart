@@ -66,6 +66,44 @@ void main() {
     expect(details.state, LoadingState.empty);
   });
 
+  test('details loads characters and staff side by side', () async {
+    final repository = FakeAnimeRepository(
+      characters: const <AnimeCharacter>[
+        AnimeCharacter(id: '10', name: 'Frieren'),
+      ],
+      staff: const <AnimeStaff>[
+        AnimeStaff(
+          id: '100',
+          name: 'Kanehito Yamada',
+          roles: <String>['Director'],
+        ),
+      ],
+    );
+    final details = AnimeDetailsProvider(repository: repository);
+    addTearDown(details.dispose);
+    await details.load('52991');
+    await Future<void>.delayed(Duration.zero);
+    expect(details.charactersState, LoadingState.loaded);
+    expect(details.staffState, LoadingState.loaded);
+    expect(details.staff.single.name, 'Kanehito Yamada');
+  });
+
+  test('staff failure does not sink the characters strip', () async {
+    final repository = FakeAnimeRepository(
+      characters: const <AnimeCharacter>[
+        AnimeCharacter(id: '10', name: 'Frieren'),
+      ],
+      staffFailure: const NetworkError(),
+    );
+    final details = AnimeDetailsProvider(repository: repository);
+    addTearDown(details.dispose);
+    await details.load('52991');
+    await Future<void>.delayed(Duration.zero);
+    expect(details.charactersState, LoadingState.loaded);
+    expect(details.staffState, LoadingState.offline);
+    expect(details.staffFailure, isA<NetworkError>());
+  });
+
   test('toggle favorite persists only anime ids', () async {
     final profiles = FakeProfileRepository();
     final onboarding = OnboardingProvider(repository: FakeUserRepository());

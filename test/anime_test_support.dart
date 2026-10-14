@@ -190,12 +190,14 @@ final class FakeAnimeRepository implements AnimeRepository {
     this.page,
     this.details,
     this.characters = const <AnimeCharacter>[],
+    this.staff = const <AnimeStaff>[],
     this.genres = const <AnimeGenre>[],
     this.studios = const <AnimeStudio>[],
     this.seasons = const <AnimeSeasonYear>[],
     this.failure,
     this.detailsFailure,
     this.charactersFailure,
+    this.staffFailure,
     this.characterDetailsFailure,
     this.nextPageFailure,
     this.filterSearchByQuery = false,
@@ -204,6 +206,7 @@ final class FakeAnimeRepository implements AnimeRepository {
   AnimePage? page;
   Anime? details;
   List<AnimeCharacter> characters;
+  List<AnimeStaff> staff;
   List<AnimeGenre> genres;
   List<AnimeStudio> studios;
   List<AnimeSeasonYear> seasons;
@@ -211,6 +214,7 @@ final class FakeAnimeRepository implements AnimeRepository {
   Failure? failure;
   Failure? detailsFailure;
   Failure? charactersFailure;
+  Failure? staffFailure;
   Failure? characterDetailsFailure;
   Failure? nextPageFailure;
   bool filterSearchByQuery;
@@ -395,6 +399,14 @@ final class FakeAnimeRepository implements AnimeRepository {
       return FailureResult<List<AnimeCharacter>>(charactersFailure!);
     }
     return Success<List<AnimeCharacter>>(characters);
+  }
+
+  @override
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId) async {
+    if (staffFailure != null) {
+      return FailureResult<List<AnimeStaff>>(staffFailure!);
+    }
+    return Success<List<AnimeStaff>>(staff);
   }
 
   @override

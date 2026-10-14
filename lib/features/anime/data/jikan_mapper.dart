@@ -93,6 +93,41 @@ List<AnimeCharacter> mapJikanCharacters(Object? raw) {
   );
 }
 
+/// `GET /anime/{id}/staff` returns `[{person, positions}]`. A person can hold
+/// several credits on one title, so roles stay a list and the same person is
+/// collapsed into a single card by their MAL id.
+List<AnimeStaff> mapJikanStaff(Object? raw) {
+  if (raw is! List) return const <AnimeStaff>[];
+  final staff = <AnimeStaff>[];
+  final seen = <String>{};
+  for (final entry in raw) {
+    if (entry is! Map) continue;
+    final map = Map<String, dynamic>.from(entry);
+    final person = map['person'];
+    if (person is! Map) continue;
+    final id = _idOf(person['mal_id']);
+    final name = _string(person['name']);
+    if (id == null || name == null || name.isEmpty || !seen.add(id)) continue;
+    final positions = map['positions'];
+    final roles = <String>[
+      if (positions is List)
+        for (final position in positions)
+          if (position is String && position.trim().isNotEmpty)
+            position.trim(),
+    ];
+    final images = _images(person['images']);
+    staff.add(
+      AnimeStaff(
+        id: id,
+        name: name,
+        imageUrl: images.largeUrl ?? images.displayUrl,
+        roles: List<String>.unmodifiable(roles),
+      ),
+    );
+  }
+  return List<AnimeStaff>.unmodifiable(staff);
+}
+
 AnimeCharacter? mapJikanCharacterFull(Object? raw) {
   if (raw is! Map) return null;
   final map = Map<String, dynamic>.from(raw);
