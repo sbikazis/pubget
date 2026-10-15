@@ -626,8 +626,17 @@ Failure _fanWorkFailure(Object error) {
         error.message ?? "You don't have permission.",
       ),
       'not-found' => NotFoundError(error.message ?? 'Fan Work not found.'),
-      'unavailable' || 'resource-exhausted' || 'deadline-exceeded' =>
-        NetworkError(error.message ?? 'Check your connection and try again.'),
+      // A host that cannot be reached must not leak the raw platform text
+      // (e.g. the literal "UNAVAILABLE" the Functions SDK puts on the message);
+      // the copy below is the user-facing sentence.
+      'unavailable' || 'deadline-exceeded' => const NetworkError(
+        'Check your connection and try again.',
+      ),
+      // §15.2 daily upload quota and other rate limits: the server names the
+      // limit in its message, so surface that (with a safe fallback).
+      'resource-exhausted' => RateLimitedError(
+        error.message ?? 'Too many requests. Please wait a moment and try again.',
+      ),
       'already-exists' => ValidationError(
         error.message ?? 'That action was already completed.',
       ),

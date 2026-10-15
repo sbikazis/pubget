@@ -98,6 +98,7 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
     this.minInterval = const Duration(milliseconds: 450),
     this.maxRetries = 3,
     this.requestTimeout = const Duration(seconds: 10),
+    this.circuitCooldown = Duration.zero,
     Duration Function(int attempt)? backoff,
     Future<void> Function(Duration delay)? delay,
   }) : _inner = inner,
@@ -108,12 +109,28 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
   final Duration minInterval;
   final int maxRetries;
   final Duration requestTimeout;
+
+  /// How long to short-circuit further requests once a request fails to reach
+  /// the host at all (a connect/read timeout or a connection error).
+  ///
+  /// [Duration.zero] (the default) disables the breaker, which suits a client
+  /// whose provider has no fallback. It is meant for a *primary* provider that
+  /// is chained ahead of a backup: when the host is unreachable every queued
+  /// request would otherwise wait out the full timeout in turn, so a burst of
+  /// hub requests piled up into a minute-long "loading forever" stall. Opening
+  /// the breaker lets the queued requests fail immediately and fall through to
+  /// the backup provider, and it re-probes the host once the cooldown elapses.
+  final Duration circuitCooldown;
   final Duration Function(int attempt) _backoff;
   final Future<void> Function(Duration delay) _delay;
 
   final List<_QueuedAnimeRequest> _pending = <_QueuedAnimeRequest>[];
   var _running = false;
   DateTime _nextSlot = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime? _circuitOpenUntil;
+
+  bool get _circuitOpen =>
+      _circuitOpenUntil != null && DateTime.now().isBefore(_circuitOpenUntil!);
 
   static Duration _defaultBackoff(int attempt) =>
       Duration(milliseconds: 400 * (1 << (attempt - 1)));
@@ -177,6 +194,16 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
     _running = true;
     while (_pending.isNotEmpty) {
       final job = _pending.removeAt(0);
+      // The host is known unreachable: fail the queued job at once instead of
+      // paying the connect timeout (and the min-interval gate) for each one.
+      if (_circuitOpen) {
+        if (!job.completer.isCompleted) {
+          job.completer.completeError(
+            TimeoutException('Anime provider is unreachable', job.timeout),
+          );
+        }
+        continue;
+      }
       try {
         await _gated(
           () => job.isPost
@@ -214,6 +241,7 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
           await _delay(_retryDelay(attempt + 1, response.retryAfter));
           continue;
         }
+        _circuitOpenUntil = null;
         completer.complete(response);
         return;
       } on TimeoutException catch (error) {
@@ -231,9 +259,12 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
       }
     }
     if (!completer.isCompleted) {
-      completer.completeError(
-        lastError ?? TimeoutException('Anime request timed out', timeout),
-      );
+      final failure =
+          lastError ?? TimeoutException('Anime request timed out', timeout);
+      if (circuitCooldown > Duration.zero && _isReachabilityError(failure)) {
+        _circuitOpenUntil = DateTime.now().add(circuitCooldown);
+      }
+      completer.completeError(failure);
     }
   }
 
@@ -251,6 +282,7 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
           await _delay(_retryDelay(attempt + 1, response.retryAfter));
           continue;
         }
+        _circuitOpenUntil = null;
         completer.complete(response);
         return;
       } on TimeoutException catch (error) {
@@ -268,9 +300,12 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
       }
     }
     if (!completer.isCompleted) {
-      completer.completeError(
-        lastError ?? TimeoutException('Anime request timed out', timeout),
-      );
+      final failure =
+          lastError ?? TimeoutException('Anime request timed out', timeout);
+      if (circuitCooldown > Duration.zero && _isReachabilityError(failure)) {
+        _circuitOpenUntil = DateTime.now().add(circuitCooldown);
+      }
+      completer.completeError(failure);
     }
   }
 
@@ -281,6 +316,12 @@ final class ResilientAnimeHttpClient implements AnimeHttpClient {
       status == 502 ||
       status == 503 ||
       status == 504;
+
+  /// A failure that means the host could not be reached at all (a connect or
+  /// read timeout, or a connection error) as opposed to an HTTP status the host
+  /// actually answered with. Only the former should open the circuit.
+  static bool _isReachabilityError(Object? error) =>
+      error is TimeoutException || error is http.ClientException;
 
   Duration _retryDelay(int attempt, Duration? retryAfter) {
     final backoff = _backoff(attempt);
