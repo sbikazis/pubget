@@ -53,7 +53,16 @@ const { createAchievementsDomain } = require("./src/achievementsDomain");
 const { createHomeSections } = require("./src/homeSectionsDomain");
 const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
 
-initializeApp();
+// The project's Storage bucket is the modern `{project}.firebasestorage.app`
+// (a `{project}.appspot.com` bucket does not exist for it). Do not rely on the
+// Admin default, which resolves through FIREBASE_CONFIG and has been seen to
+// point at the legacy `appspot.com` name — every `getStorage().bucket()` call
+// below would then address a bucket that does not exist.
+const STORAGE_BUCKET =
+  process.env.STORAGE_BUCKET ||
+  `${process.env.GCLOUD_PROJECT || "pubget-aaf27"}.firebasestorage.app`;
+
+initializeApp({ storageBucket: STORAGE_BUCKET });
 
 // Load Mafia actions after Admin initialization because the action domain
 // obtains its Firestore handle at module load time.

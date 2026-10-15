@@ -268,14 +268,25 @@ class PubgetApp extends StatelessWidget {
             final network = context.read<NetworkService>();
             final chain = ProviderChainAnimeRepository(
               providers: <AnimeRepository>[
+                // Jikan (MyAnimeList) is the canonical source but is frequently
+                // unreachable. It is the primary provider, so it is the one the
+                // hub waits on before falling back: give it a single, short
+                // attempt and open its circuit on a connection failure so a
+                // burst of hub requests does not serialise into a minute of
+                // "loading" — AniList below carries the retries instead.
                 JikanAnimeRepository(
                   http: ResilientAnimeHttpClient(
                     inner: PackageAnimeHttpClient(),
+                    maxRetries: 0,
+                    requestTimeout: const Duration(seconds: 6),
+                    circuitCooldown: const Duration(seconds: 60),
                   ),
                 ),
                 AniListAnimeRepository(
                   http: ResilientAnimeHttpClient(
                     inner: PackageAnimeHttpClient(),
+                    maxRetries: 2,
+                    requestTimeout: const Duration(seconds: 10),
                   ),
                 ),
               ],
