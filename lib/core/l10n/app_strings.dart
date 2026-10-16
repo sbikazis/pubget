@@ -1645,13 +1645,103 @@ final class AppStrings {
     'لقد حمت هذا اللاعب الليلة الماضية.',
   );
   String get mafiaRoleUnknown => pick('Unknown', 'غير معروف');
+  String get mafiaPhaseUnknown => pick('Unknown', 'غير معروف');
 
-  String mafiaPhaseLabel(String phase) =>
-      pick(_mafiaPhasesEn[phase] ?? phase, _mafiaPhasesAr[phase] ?? phase);
-  String mafiaRoleLabel(String role) => pick(
-    _mafiaRolesEn[role] ?? (role.isEmpty ? 'Unknown' : role),
-    _mafiaRolesAr[role] ?? (role.isEmpty ? 'غير معروف' : role),
+  // Dynamic Mafia content (Master Spec 13.12 "عربي كامل"): the server ships
+  // structured log events, English verdict tokens, and English Failure
+  // messages. Every dynamic string the screen shows is resolved through the
+  // getters below, so no English sentence or raw wire token ever reaches the
+  // Arabic UI.
+  String get mafiaLogCreated =>
+      pick('A Mafia lobby is waiting for players.', 'غرفة مافيا بانتظار اللاعبين.');
+  String get mafiaLogStarting => pick(
+    'Mafia is starting. Roles will be assigned privately.',
+    'بدأت المافيا. ستُوزَّع الأدوار سراً.',
   );
+  String get mafiaLogRolesAssigned =>
+      pick('Roles have been assigned privately.', 'تم توزيع الأدوار سراً.');
+  String get mafiaLogStarted => pick('The game has started.', 'بدأت اللعبة.');
+  String mafiaLogPhaseChanged(String phase) =>
+      pick('Phase: $phase', 'الطور: $phase');
+  String mafiaLogNightKilled(String name, String role) => pick(
+    '$name was killed during the night ($role).',
+    'قُتل $name خلال الليل ($role).',
+  );
+  String mafiaLogNight(int night, bool death) => death
+      ? pick(
+          'Night $night: there was a death.',
+          'الليلة $night: كانت هناك وفاة.',
+        )
+      : pick(
+          'Night $night passed without a death.',
+          'مرّت الليلة $night دون وفيات.',
+        );
+  String mafiaLogEliminated(String name, String role) =>
+      pick('$name was eliminated ($role).', 'أُقصي $name ($role).');
+  String mafiaLogVoteResolved(int day) =>
+      pick('Day $day: the vote concluded.', 'اليوم $day: انتهى التصويت.');
+  String mafiaLogVoteTie(String names) => pick(
+    'The vote tied between $names. A re-vote is open.',
+    'تعادل التصويت بين $names. أُعيد التصويت.',
+  );
+  String mafiaLogExecuted(String name, String role) =>
+      pick('$name was voted out ($role).', 'أُخرج $name بالتصويت ($role).');
+  String mafiaLogFinished(String outcome) =>
+      pick('The game ended: $outcome', 'انتهت اللعبة: $outcome');
+  String get mafiaLogRewards =>
+      pick('Rewards were paid to the winners.', 'مُنحت المكافآت للفائزين.');
+
+  /// Detective/Don night verdicts (Master Spec 13.3). The server returns the
+  /// English tokens "Mafia"/"Not Mafia"/"Detective"/"Not Detective".
+  String mafiaVerdict(String verdict) => switch (verdict) {
+    'Mafia' => pick('Mafia', 'مافيا'),
+    'Not Mafia' => pick('Not Mafia', 'ليس مافيا'),
+    'Detective' => pick('Detective', 'المحقق'),
+    'Not Detective' => pick('Not Detective', 'ليس المحقق'),
+    _ => verdict,
+  };
+
+  /// Localized separator for joining names inside dynamic copy.
+  String get listSeparator => pick(', ', '، ');
+
+  // Mafia failure copy. Failures stay locale-neutral (spec §1.4); the screen
+  // renders these instead of the raw English `Failure.message`.
+  String get mafiaOffline => pick(
+    'You appear to be offline. Reconnecting…',
+    'يبدو أنك غير متصل. جارٍ إعادة الاتصال…',
+  );
+  String get mafiaNotPermitted => pick(
+    'You do not have permission to view this game.',
+    'ليس لديك صلاحية لعرض هذه اللعبة.',
+  );
+  String get mafiaGameGone => pick(
+    'This Mafia game no longer exists.',
+    'لم تعد لعبة المافيا هذه موجودة.',
+  );
+  String get mafiaRetryLater => pick(
+    'Too many requests. Please wait a moment and try again.',
+    'طلبات كثيرة. انتظر قليلاً ثم حاول مجدداً.',
+  );
+  String get mafiaActionRejected =>
+      pick('That action could not be completed.', 'تعذّر تنفيذ هذا الإجراء.');
+  String get mafiaErrorGeneric =>
+      pick('Something went wrong. Please try again.', 'حدث خطأ. حاول مجدداً.');
+
+  String mafiaPhaseLabel(String phase) {
+    final en = _mafiaPhasesEn[phase];
+    final ar = _mafiaPhasesAr[phase];
+    // An unrecognized phase falls back to a localized "Unknown" rather than the
+    // raw wire token, which would surface English in the Arabic UI.
+    if (en == null || ar == null) return mafiaPhaseUnknown;
+    return pick(en, ar);
+  }
+
+  String mafiaRoleLabel(String role) {
+    final en = _mafiaRolesEn[role];
+    final ar = _mafiaRolesAr[role];
+    if (en == null || ar == null) return mafiaRoleUnknown;
+    return pick(en, ar);
+  }
 
   String userNameWelcome(String name) =>
       pick('Welcome, $name', 'مرحباً، $name');
