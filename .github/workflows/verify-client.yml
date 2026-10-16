@@ -39,5 +39,9 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
+      # Goldens are rasterized per-platform: the committed PNGs were produced
+      # on macOS, so this Linux runner renders text differently and the
+      # comparison fails. Match ci.yml — exclude the `golden` tag here and
+      # run those locally on macOS.
       - name: Test
-        run: flutter test
+        run: flutter test --exclude-tags golden

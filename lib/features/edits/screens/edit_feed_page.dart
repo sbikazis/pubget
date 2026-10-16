@@ -10,6 +10,7 @@ import '../../../app/app_route.dart';
 import '../../../app/app_router.dart';
 import '../../../app/app_shell_scope.dart';
 import '../../../core/constants/limits.dart';
+import '../../../core/errors/failure.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
@@ -33,7 +34,23 @@ import '../widgets/edit_comments_sheet.dart';
 import '../../reels/reels_brand.dart';
 
 class EditFeedPage extends StatefulWidget {
-  const EditFeedPage({super.key});
+  const EditFeedPage({
+    super.key,
+    this.title,
+    this.leading,
+    this.embedded = false,
+  });
+
+  /// Axis 15 §15.16 — scoped entry points (hashtag, anime, character, creator,
+  /// audio) reuse this exact viewer and only override the chrome.
+  final String? title;
+  final Widget? leading;
+
+  /// Renders only the playback body, with no [Scaffold], [AppBar], feed
+  /// selector, or FAB. Used when a screen that already owns its chrome (the
+  /// audio detail page) hosts the feed. Without this the feed nested a second
+  /// Scaffold and a second AppBar inside the host.
+  final bool embedded;
 
   @override
   State<EditFeedPage> createState() => _EditFeedPageState();
@@ -97,13 +114,24 @@ class _EditFeedPageState extends State<EditFeedPage>
   }
 
   void _readRouteHighlight() {
-    final delegate = Router.of(context).routerDelegate;
+    // `Router.maybeOf`, not `Router.of`: this page is also embedded by the audio
+    // detail screen, and `Router.of` throws outright outside a Router — which
+    // made the `is! AppRouterDelegate` guard below unreachable.
+    final delegate = Router.maybeOf(context)?.routerDelegate;
     if (delegate is! AppRouterDelegate) return;
     final config = delegate.currentConfiguration;
     if (config is! ParameterizedRoute) return;
-    if (config.path != ReelsBrand.route && config.path != '/edits') return;
-    final highlight = config.parameters['highlight'];
-    if (highlight == null || highlight.isEmpty) return;
+    // `/reels?highlight=` and `/edits?highlight=` focus inside the main feed;
+    // `/reel/{reelId}` is the canonical single-Reel link.
+    final isFeedRoute =
+        config.path == ReelsBrand.route ||
+        config.path == ReelsBrand.legacyRoute ||
+        config.path == '/reel';
+    if (!isFeedRoute) return;
+    final highlight = config.path == '/reel'
+        ? (config.parameters['reelId'] ?? '')
+        : (config.parameters['highlight'] ?? '');
+    if (highlight.isEmpty) return;
     if (_pendingHighlight == highlight) return;
     _pendingHighlight = highlight;
     unawaited(_focusHighlight());
@@ -155,13 +183,28 @@ class _EditFeedPageState extends State<EditFeedPage>
   @override
   Widget build(BuildContext context) {
     final copy = EditCopy.of(context);
-    final provider = context.watch<EditsProvider>();
+    // Axis 15 §15 per-item rebuild scoping.
+    //
+    // This used to be `context.watch<EditsProvider>()`, which rebuilt the whole
+    // PageView — and therefore every mounted cell — on every like, save, skip or
+    // load. The per-cell `context.select` scoping below could not help, because
+    // the parent had already marked the subtree dirty.
+    //
+    // Selecting only the page-level values means a like on Reel 3 rebuilds Reel
+    // 3's action rail and nothing else. `items` has a cached identity in the
+    // provider, so this select genuinely reports "the feed changed" vs "an
+    // interaction changed".
+    final feedItems = context.select<EditsProvider, List<Edit>>((p) => p.items);
+    final feedState = context.select<EditsProvider, LoadingState>((p) => p.state);
+    final feedType = context.select<EditsProvider, FeedType>((p) => p.feedType);
+    final actionFailure =
+        context.select<EditsProvider, Failure?>((p) => p.lastActionFailure);
+    final provider = context.read<EditsProvider>();
     final offline = context.watch<NetworkService>().isOffline;
     final shell = AppShellScope.maybeOf(context);
     final feedVisible = (shell?.isEditsVisible ?? true) && _appResumed;
 
     // Soft error toast for optimistic rollback (like/save).
-    final actionFailure = provider.lastActionFailure;
     if (actionFailure != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -176,21 +219,87 @@ class _EditFeedPageState extends State<EditFeedPage>
       });
     }
 
+    final body = _body(copy, provider, offline, feedVisible, feedItems, feedState);
+
+    // The host owns the chrome, so hand back the bare playback body.
+    if (widget.embedded) return body;
+
     return Scaffold(
       backgroundColor: const Color(0xFF07060C),
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        leading: const AppShellMenuButton(),
-        title: Text(copy.feedTitle),
+        leading: widget.leading ?? const AppShellMenuButton(),
+        title: Text(widget.title ?? copy.feedTitle),
         backgroundColor: Colors.black.withValues(alpha: 0.35),
         foregroundColor: Colors.white,
         elevation: 0,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(52),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: SegmentedButton<FeedType>(
+              showSelectedIcon: false,
+              segments: [
+                ButtonSegment(
+                  value: FeedType.forYou,
+                  label: Text(copy.feedLabel(FeedType.forYou)),
+                  icon: const Icon(
+                    PhosphorIconsRegular.caretCircleRight,
+                    size: 18,
+                  ),
+                ),
+                ButtonSegment(
+                  value: FeedType.following,
+                  label: Text(copy.feedLabel(FeedType.following)),
+                  icon: const Icon(PhosphorIconsRegular.users, size: 18),
+                ),
+                ButtonSegment(
+                  value: FeedType.trending,
+                  label: Text(copy.feedLabel(FeedType.trending)),
+                  icon: const Icon(PhosphorIconsRegular.flame, size: 18),
+                ),
+              ],
+              selected: {feedType},
+              onSelectionChanged: (Set<FeedType> selection) {
+                if (selection.isEmpty) return;
+                _activeIndex = 0;
+                _page.jumpToPage(0);
+                provider.setFeedType(selection.first);
+              },
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return AppColors.royalPurple.withValues(alpha: 0.3);
+                  }
+                  return Colors.transparent;
+                }),
+                foregroundColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return AppColors.gold;
+                  }
+                  return Colors.white70;
+                }),
+                side: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return BorderSide.none;
+                  }
+                  return BorderSide(color: Colors.white.withValues(alpha: 0.2));
+                }),
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
-      body: _body(copy, provider, offline, feedVisible),
+      body: _body(copy, provider, offline, feedVisible, feedItems, feedState),
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.royalPurple,
         foregroundColor: Colors.white,
-        onPressed: () => AppNavigation.go(context, '/edits/upload'),
+        onPressed: () => AppNavigation.go(context, '/reels/upload'),
         child: const PhosphorIcon(PhosphorIconsRegular.plus, size: 26),
       ),
     );
@@ -201,30 +310,32 @@ class _EditFeedPageState extends State<EditFeedPage>
     EditsProvider provider,
     bool offline,
     bool feedVisible,
+    List<Edit> feedItems,
+    LoadingState feedState,
   ) {
-    if (provider.state == LoadingState.loading ||
-        provider.state == LoadingState.initial) {
+    if (feedState == LoadingState.loading ||
+        feedState == LoadingState.initial) {
       return const Center(child: PubgetSkeleton.card(width: 240, height: 320));
     }
-    if (provider.state == LoadingState.empty) {
+    if (feedState == LoadingState.empty) {
       return PubgetEmptyState(
         title: copy.noEdits,
         message: copy.noEditsMessage,
         icon: PhosphorIconsRegular.filmStrip,
         action: PubgetPrimaryButton(
-          onPressed: () => AppNavigation.go(context, '/edits/upload'),
+          onPressed: () => AppNavigation.go(context, '/reels/upload'),
           semanticLabel: copy.uploadTitle,
           child: Text(copy.uploadTitle),
         ),
       );
     }
-    if (provider.state == LoadingState.error && provider.items.isEmpty) {
+    if (feedState == LoadingState.error && feedItems.isEmpty) {
       return PubgetErrorState(
         message: provider.failure?.message ?? copy.failedLoad,
         onRetry: provider.load,
       );
     }
-    if (offline && provider.items.isEmpty) {
+    if (offline && feedItems.isEmpty) {
       return PubgetOfflineState(onRetry: () => provider.load(refresh: true));
     }
     return RefreshIndicator(
@@ -233,14 +344,14 @@ class _EditFeedPageState extends State<EditFeedPage>
       child: PageView.builder(
         controller: _page,
         scrollDirection: Axis.vertical,
-        itemCount: provider.items.length,
+        itemCount: feedItems.length,
         onPageChanged: (index) {
           setState(() => _activeIndex = index);
           provider.setActiveIndex(index);
-          if (index >= provider.items.length - 2) provider.loadMore();
+          if (index >= feedItems.length - 2) provider.loadMore();
         },
         itemBuilder: (context, index) {
-          final edit = provider.items[index];
+          final edit = feedItems[index];
           final prefetch = index == _activeIndex + Limits.editPrefetchCount;
           final active = feedVisible && index == _activeIndex;
           return EditFeedVideoItem(
@@ -292,10 +403,14 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
   var _userPaused = false;
   var _showPlayGlyph = false;
   Timer? _glyphTimer;
+  // Captured in initState so the final view flush in dispose does not read an
+  // ancestor Provider after the element is deactivated.
+  EditsProvider? _editsProvider;
 
   @override
   void initState() {
     super.initState();
+    _editsProvider = context.read<EditsProvider>();
     _loadProfiles();
     if (widget.active || widget.prefetch) {
       unawaited(_ensureController());
@@ -359,11 +474,22 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
       final controller = await createStorageVideoController(
         widget.edit.videoUrl,
       );
+      // A mid-initialize swipe can dispose this cell before initialization
+      // completes. The guard must run *after* each await.
+      if (!mounted || !widget.active && !widget.prefetch) {
+        await controller.dispose();
+        return;
+      }
       await controller.initialize();
+      if (!mounted || !widget.active && !widget.prefetch) {
+        await controller.dispose();
+        return;
+      }
       // TikTok / IG Reels style seamless loop while visible.
       await controller.setLooping(true);
       controller.addListener(_trackProgress);
-      if (!mounted) {
+      if (!mounted || !widget.active && !widget.prefetch) {
+        controller.removeListener(_trackProgress);
         await controller.dispose();
         return;
       }
@@ -433,13 +559,17 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
       _lastReportedSecond = second;
       _sendView();
     }
-    if (mounted) setState(() {});
+    // Do NOT rebuild the entire cell per frame. The scrubber reads the
+    // controller directly; rebuilding 7 animated buttons at video framerate was
+    // a self-inflicted performance bug.
   }
 
   void _sendView({bool force = false}) {
     if (_controller == null || _sessionId == null) return;
     if (_maxPercent < Limits.editQualifiedViewPercent && !force) return;
-    context.read<EditsProvider>().view(
+    // `_editsProvider` is null only if this ran before the first
+    // didChangeDependencies, which cannot happen for a mounted cell.
+    _editsProvider?.view(
       editId: widget.edit.id,
       sessionId: _sessionId!,
       percent: _maxPercent,
@@ -756,10 +886,17 @@ class _CreatorOverlay extends StatelessWidget {
               shadows: <Shadow>[Shadow(blurRadius: 6, color: Colors.black45)],
             ),
           ),
-        if (edit.animeTag.isNotEmpty)
-          Text(
-            '#${edit.animeTag}',
-            style: const TextStyle(color: AppColors.goldLight, fontSize: 13),
+        if (edit.hashtags.isNotEmpty || edit.animeTag.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: <Widget>[
+                for (final tag in edit.hashtags) _HashTagChip(tag: tag),
+                if (edit.animeTag.isNotEmpty) _HashTagChip(tag: edit.animeTag),
+              ],
+            ),
           ),
         const SizedBox(height: AppSpacing.xs),
         Text(
@@ -771,6 +908,41 @@ class _CreatorOverlay extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Axis 15 §15.7 — a tag chip navigates into the hashtag feed, so a tag on a
+/// Reel is a real entry point rather than decoration.
+class _HashTagChip extends StatelessWidget {
+  const _HashTagChip({required this.tag});
+
+  final String tag;
+
+  @override
+  Widget build(BuildContext context) {
+    final clean = tag.startsWith('#') ? tag.substring(1) : tag;
+    return GestureDetector(
+      onTap: () => AppNavigation.go(context, PubgetLinks.hashtagPath(clean)),
+      child: Container(
+        padding: const EdgeInsetsDirectional.symmetric(
+          horizontal: 8,
+          vertical: 3,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.royalDusk.withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+        ),
+        child: Text(
+          '#$clean',
+          style: const TextStyle(
+            color: AppColors.goldLight,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -867,13 +1039,15 @@ class _EditActionRail extends StatelessWidget {
   Future<void> _share(BuildContext context, EditsProvider provider) async {
     // Open the share sheet immediately (optimistic UX); signal in parallel.
     unawaited(provider.share(edit.id));
-    final url = PubgetLinks.canonical(ReelsBrand.route);
+    // §15.18 — share the specific Reel's canonical link. A generic `/reels`
+    // link dropped the viewer at the top of the feed instead of this Reel.
+    final url = PubgetLinks.reel(edit.id);
     final text = edit.caption.isEmpty
         ? url
         : '${edit.caption}\n$url';
     try {
       await SharePlus.instance.share(
-        ShareParams(text: text, title: 'Pubget Edit'),
+        ShareParams(text: text, title: EditCopy.of(context).feedTitle),
       );
     } catch (_) {
       if (!context.mounted) return;
@@ -913,7 +1087,7 @@ class _EditActionRail extends StatelessWidget {
     await PubgetBottomSheet.present<void>(
       context: context,
       backgroundColor: const Color(0xFF1A1228),
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
@@ -924,10 +1098,37 @@ class _EditActionRail extends StatelessWidget {
               ),
               title: Text(copy.report, style: const TextStyle(color: Colors.white)),
               onTap: () {
-                Navigator.pop(context);
-                provider.report(edit.id);
+                Navigator.pop(sheetContext);
+                unawaited(_reportReel(context, provider));
               },
             ),
+            if (viewerId != null && viewerId != edit.creatorId)
+              ListTile(
+                leading: const PhosphorIcon(
+                  PhosphorIconsRegular.thumbsDown,
+                  color: Colors.white70,
+                ),
+                title: Text(
+                  copy.notInterested,
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  unawaited(_notInterested(context, provider));
+                },
+              ),
+            if (viewerId != null && viewerId != edit.creatorId)
+              ListTile(
+                leading: const PhosphorIcon(
+                  PhosphorIconsRegular.eyeSlash,
+                  color: Colors.white70,
+                ),
+                title: Text(copy.mute, style: const TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  provider.muteCreator(edit.creatorId, mute: true);
+                },
+              ),
             if (viewerId != null && viewerId == edit.creatorId)
               ListTile(
                 leading: const PhosphorIcon(
@@ -939,7 +1140,7 @@ class _EditActionRail extends StatelessWidget {
                   style: const TextStyle(color: Colors.white),
                 ),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   context.read<EditsRepository>().deleteEdit(edit.id);
                 },
               ),
@@ -947,5 +1148,64 @@ class _EditActionRail extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Axis 15 §15.18 — a real, categorized moderation report. The previous flow
+  /// reused the negative taste signal, so no report ever reached the moderation
+  /// queue. Reports now go through the server-validated `reportEdit` callable,
+  /// which checks the category, dedupes per reporter, and rate limits.
+  Future<void> _reportReel(
+    BuildContext context,
+    EditsProvider provider,
+  ) async {
+    final copy = EditCopy.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final category = await PubgetBottomSheet.present<String>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1228),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Text(
+                copy.reportPrompt,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+            for (final id in editReportCategories)
+              ListTile(
+                title: Text(
+                  copy.reportCategory(id),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () => Navigator.pop(sheetContext, id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (category == null) return;
+    final result = await provider.report(edit.id, category: category);
+    final message = result.isSuccess ? copy.reportSubmitted : copy.reportFailed;
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Axis 15 §15.9 — a private negative signal. Distinct from a report: it
+  /// hides the Reel locally and softens future recommendations without opening
+  /// a moderation ticket.
+  Future<void> _notInterested(
+    BuildContext context,
+    EditsProvider provider,
+  ) async {
+    final copy = EditCopy.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    await provider.notInterested(edit.id);
+    messenger.showSnackBar(SnackBar(content: Text(copy.notInterestedDone)));
   }
 }

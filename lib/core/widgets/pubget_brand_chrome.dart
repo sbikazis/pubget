@@ -68,7 +68,113 @@ class PubgetLuxurySettingsButton extends StatelessWidget {
   }
 }
 
-/// Notifications control: one-off luxury gold faceted bell.
+/// Search control. Required in the Home top bar by Master Spec §4.1.
+class PubgetLuxurySearchButton extends StatelessWidget {
+  const PubgetLuxurySearchButton({
+    required this.tooltip,
+    required this.onPressed,
+    this.size = 42,
+    super.key,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return PubgetTooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        child: InkWell(
+          key: const Key('home-search'),
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: Ink(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: scheme.surfaceContainerHighest,
+              border: Border.all(color: scheme.outlineVariant),
+            ),
+            child: Icon(
+              Icons.search_rounded,
+              size: size * 0.5,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dragon Store control. Required in the Home top bar by Master Spec §4.1 and
+/// distinct from the coin chip, which only shows a balance.
+class PubgetLuxuryStoreButton extends StatelessWidget {
+  const PubgetLuxuryStoreButton({
+    required this.tooltip,
+    required this.onPressed,
+    this.size = 42,
+    super.key,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return PubgetTooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        child: InkWell(
+          key: const Key('home-store'),
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: Ink(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[
+                  AppColors.goldLight,
+                  AppColors.gold,
+                  AppColors.goldDark,
+                ],
+              ),
+              border: Border.all(color: const Color(0xFFFFF6C8)),
+            ),
+            child: Icon(
+              Icons.storefront_rounded,
+              size: size * 0.5,
+              color: AppColors.royalNight,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Notifications control.
+///
+/// Master Spec §4.1 calls for a unified icon set across the top bar plus
+/// "الإشعارات + دائرة حمراء بعداد" — a red circle **with a count**. The
+/// previous gold-gradient bell with an uncounted 8px dot satisfied neither:
+/// it was a second gold-filled button competing with the Dragon Store for the
+/// same attention, and a user with 40 unread saw the same dot as a user with
+/// one. The bell now matches the search control, and the red counter carries
+/// the emphasis the spec assigns it.
 class PubgetLuxuryNotifyButton extends StatelessWidget {
   const PubgetLuxuryNotifyButton({
     required this.tooltip,
@@ -85,6 +191,7 @@ class PubgetLuxuryNotifyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final glyph = size * 0.52;
     return PubgetTooltip(
       message: tooltip,
@@ -100,42 +207,48 @@ class PubgetLuxuryNotifyButton extends StatelessWidget {
             height: size,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: <Color>[
-                  Color(0xFFFFF1A8),
-                  AppColors.goldLight,
-                  AppColors.gold,
-                  AppColors.goldDark,
-                ],
-              ),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: AppColors.gold.withValues(alpha: 0.42),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-              border: Border.all(color: const Color(0xFFFFF6C8)),
+              color: scheme.surfaceContainerHighest,
+              border: Border.all(color: scheme.outlineVariant),
             ),
             child: Stack(
               alignment: Alignment.center,
+              clipBehavior: Clip.none,
               children: <Widget>[
                 CustomPaint(
                   size: Size(glyph, glyph),
-                  painter: const _LuxuryBellPainter(),
+                  painter: _LuxuryBellPainter(color: scheme.onSurfaceVariant),
                 ),
                 if (badge > 0)
                   PositionedDirectional(
-                    top: 4,
-                    end: 5,
+                    top: 1,
+                    end: 1,
                     child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFB42318),
-                        shape: BoxShape.circle,
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      padding: EdgeInsetsDirectional.only(
+                        start: badge > 9 ? 4 : 5,
+                        end: badge > 9 ? 4 : 5,
+                      ),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFB42318),
+                        borderRadius: BorderRadius.circular(99),
+                        border: Border.all(color: const Color(0xFF1A1028)),
+                      ),
+                      child: Text(
+                        badge > 99 ? '99+' : '$badge',
+                        textHeightBehavior: const TextHeightBehavior(
+                          applyHeightToFirstAscent: false,
+                          applyHeightToLastDescent: false,
+                        ),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          height: 1,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   ),
@@ -279,12 +392,16 @@ class PubgetKatanaCoinChip extends StatelessWidget {
 }
 
 class _LuxuryBellPainter extends CustomPainter {
-  const _LuxuryBellPainter();
+  const _LuxuryBellPainter({required this.color});
+
+  /// Stroke tint taken from the theme so the bell follows dark and light mode
+  /// instead of carrying the dark-brown stroke it needed on a gold fill.
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final stroke = Paint()
-      ..color = const Color(0xFF3A2300)
+    final ink = Paint()
+      ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2
       ..strokeJoin = StrokeJoin.round
@@ -299,7 +416,7 @@ class _LuxuryBellPainter extends CustomPainter {
       ..lineTo(w * 0.16, h * 0.72)
       ..quadraticBezierTo(w * 0.22, h * 0.62, w * 0.32, h * 0.38)
       ..close();
-    canvas.drawPath(bell, stroke);
+    canvas.drawPath(bell, ink);
     canvas.drawArc(
       Rect.fromCenter(
         center: Offset(w * 0.50, h * 0.72),
@@ -309,18 +426,19 @@ class _LuxuryBellPainter extends CustomPainter {
       0.15,
       2.84,
       false,
-      stroke,
+      ink,
     );
-    canvas.drawCircle(Offset(w * 0.50, h * 0.88), 1.15, stroke);
+    canvas.drawCircle(Offset(w * 0.50, h * 0.88), 1.15, ink);
     canvas.drawLine(
       Offset(w * 0.50, h * 0.10),
       Offset(w * 0.50, h * 0.16),
-      stroke,
+      ink,
     );
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _LuxuryBellPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class PubgetCoinPainter extends CustomPainter {
@@ -429,6 +547,69 @@ class PubgetCoinPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+/// Compact create action for a screen's app bar or corner.
+///
+/// Master Spec §4.2 keeps the bottom bar at five destinations with no centre
+/// create button, so creation is offered per-screen instead of globally.
+class PubgetCreateFab extends StatelessWidget {
+  const PubgetCreateFab({
+    required this.tooltip,
+    required this.onPressed,
+    this.size = 56,
+    this.icon = Icons.add_rounded,
+    this.gradient,
+    super.key,
+  });
+
+  final String tooltip;
+  final VoidCallback onPressed;
+  final double size;
+  final IconData icon;
+  final List<Color>? gradient;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          elevation: 8,
+          child: InkWell(
+            key: const Key('shell-create'),
+            onTap: onPressed,
+            customBorder: const CircleBorder(),
+            child: Ink(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors:
+                      gradient ??
+                      const <Color>[
+                        AppColors.goldPale,
+                        AppColors.gold,
+                        AppColors.royalPurple,
+                      ],
+                ),
+                border: Border.all(color: AppColors.goldPale, width: 2),
+              ),
+              child: SizedBox.square(
+                dimension: size,
+                child: Icon(icon, size: size * 0.5, color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class PubgetCenterCreateButton extends StatelessWidget {
   const PubgetCenterCreateButton({
     required this.tooltip,
@@ -445,7 +626,7 @@ class PubgetCenterCreateButton extends StatelessWidget {
       button: true,
       label: tooltip,
       child: GestureDetector(
-        key: const Key('shell-create'),
+        key: const Key('shell-create-center'),
         onTap: onPressed,
         child: Container(
           width: 62,

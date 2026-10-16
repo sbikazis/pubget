@@ -600,6 +600,16 @@ final class AppTranslationMapping {
     'You are offline. Showing cached data.',
     'أنت غير متصل. عرض بيانات محفوظة.',
   );
+  // Backend throttle and outage copy. Neither is a connectivity problem, so the
+  // member is never told to check a connection that is working.
+  String get tooManyRequests => pick(
+    'Too many requests. Please try again shortly.',
+    'طلبات كثيرة. حاول مرة أخرى بعد قليل.',
+  );
+  String get serviceUnavailable => pick(
+    'Anime is unavailable right now. Please try again.',
+    'الأنمي غير متاح الآن. حاول مرة أخرى.',
+  );
   String get genresTitle => pick('Browse by genre', 'تصفح حسب التصنيف');
   String get seasonsTitle => pick('Browse by season', 'تصفح حسب الموسم');
   String get charactersTitle => pick('Characters', 'الشخصيات');
@@ -635,6 +645,24 @@ final class AppTranslationMapping {
   String get shareAnime => pick('Share', 'مشاركة');
   String get reportLabel => pick('Report', 'إبلاغ');
   String get reportTitle => pick('Report this anime', 'الإبلاغ عن هذا الأنمي');
+  String get reportAnime => pick('Report anime', 'الإبلاغ عن الأنمي');
+  String get confirmReport => pick('Confirm report', 'تأكيد الإبلاغ');
+  String reportConfirmContent(String reason) => pick(
+    'Submit this anime report for “$reason”?',
+    'إرسال بلاغ عن هذا الأنمي بسبب «$reason»؟',
+  );
+  String reportReasonLabel(String key) => switch (key) {
+    'inappropriate' => pick('Inappropriate content', 'محتوى غير مناسب'),
+    'spam' => pick('Spam', 'سبام'),
+    'copyright' => pick('Copyright', 'حقوق الطبع'),
+    'harassment' => pick('Harassment', 'تحرّش أو إزعاج'),
+    'other' => pick('Other', 'أخرى'),
+    _ => key,
+  };
+  String get reportSubmitted => pick('Report submitted', 'تم الإبلاغ');
+  String get reportFailed => pick('Report failed.', 'فشل الإبلاغ.');
+  String get pubgetUser => pick('Pubget user', 'مستخدم Pubget');
+  String get copyLink => pick('Copy link', 'نسخ الرابط');
   String get sensitiveContent => pick(
     'This title contains sensitive content.',
     'هذا العنوان يحتوي على محتوى حساس.',
@@ -701,6 +729,7 @@ final class AppTranslationMapping {
       pick('What members rated', 'ما الذي يقيّمه الأعضاء');
   String get listBreakdown =>
       pick('How members track it', 'كيف يتابع الأعضاء هذا العمل');
+
   /// Shown when the server has not published an aggregate yet. The chart must
   /// say so rather than drawing a partial one built from the reviews this
   /// client happened to load.
@@ -843,6 +872,10 @@ final class AppTranslationMapping {
     'اضغط على القلب في أي شخصية للاحتفاظ بها هنا.',
   );
   String get viewAllCharacters => pick('View all', 'عرض الكل');
+  String get staffTitle => pick('Staff', 'طاقم العمل');
+  String get searchInCharacters =>
+      pick('Search this anime\'s characters', 'ابحث في شخصيات هذا الأنمي');
+  String get charactersSearchEmpty => noCharactersFound;
   String get noCharactersFound => pick('No characters found', 'لا توجد شخصيات');
   String get searchCharacters => pick('Search characters', 'ابحث في الشخصيات');
   String get roleplay => pick('Roleplay', 'ريولبلي');
@@ -885,6 +918,7 @@ final class AppTranslationMapping {
 
   String get malRankingTitle =>
       pick('Global MAL ranking', 'التقييم العالمي حسب MAL');
+  String get communityRatingTitle => pick("Community rating", "تقييم المجتمع");
   String get communityRankingTitle =>
       pick('Pubget community ranking', 'تقييم المجتمع حسب Pubget');
   String get myAnimeTitle => pick('My Anime', 'أنميّاتي');
@@ -933,6 +967,11 @@ final class AppTranslationMapping {
   String get filterSeason => pick('Season', 'الموسم');
   String get filterSort => pick('Sort', 'الترتيب');
   String get filterAll => pick('All', 'الكل');
+  String get filterScore => pick('Rating', 'التقييم');
+  String get filterScoreMin => pick('Min', 'الحد الأدنى');
+  String get filterScoreMax => pick('Max', 'الحد الأعلى');
+  String scoreRangeLabel(String min, String max) =>
+      pick('Rating $min – $max', 'التقييم $min – $max');
   String get sortMembers => pick('Popularity', 'الأكثر أعضاء');
   String get sortTitle => pick('Title', 'العنوان');
   String get sortNewest => pick('Newest', 'الأحدث');

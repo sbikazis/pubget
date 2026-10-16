@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
 import '../../authentication/models/pubget_user.dart';
 import '../models/public_profile.dart';
@@ -155,9 +156,9 @@ final class FirebaseProfileRepository implements ProfileRepository {
         'unavailable' || 'deadline-exceeded' => const NetworkError(
           'Check your connection and try again.',
         ),
-        _ => UnknownError(error.message ?? 'Profile update failed.'),
+        _ => mapFirebaseFailure(error, message: 'Profile update failed.'),
       };
     }
-    return const UnknownError('We could not update this profile.');
+    return mapFirebaseFailure(error, message: 'We could not update this profile.');
   }
 }

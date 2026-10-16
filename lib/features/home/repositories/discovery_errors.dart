@@ -2,28 +2,57 @@ import 'package:firebase_core/firebase_core.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/l10n/app_strings.dart';
 
 /// Honest mapping for Home/discovery failures.
 ///
 /// `permission-denied` is a rules/IAM/App Check denial — not an entitlement
 /// check. The live banner "Discovery is not available for this account" was
 /// a false mapping that hid real content.
+///
+/// Every message below is rendered through `discoveryFailureMessage`, so the
+/// failure itself stays locale-neutral and the Arabic UI never shows an
+/// English sentence (spec §1.4).
 Failure discoveryFailureFrom(Object error) {
   if (error is FirebaseException) {
     return discoveryFailureFromCode(error.code);
   }
-  return const UnknownError('Discovery could not load.');
+  return const UnknownError();
 }
 
+/// Resolve a discovery failure into user-facing copy for the active locale.
+String discoveryFailureMessage(AppStrings copy, Failure failure) {
+  if (failure is NetworkError) return copy.discoveryOffline;
+  if (failure is PermissionError) return copy.discoverySignInRequired;
+  if (failure is RateLimitedError) return copy.discoveryRateLimited;
+  return copy.discoveryUnavailable;
+}
+
+/// Maps a callable/discovery error code to the honest failure kind.
+///
+/// Only a genuine connectivity problem (`unavailable`/`deadline-exceeded`
+/// beyond the retry budget) becomes a [NetworkError] and earns the "check your
+/// connection" copy. A backend hiccup (`internal`, `aborted`, `data-loss`) is
+/// an [UnavailableError] and a throttle (`resource-exhausted`) a
+/// [RateLimitedError]: both are real, but neither is the member's connection,
+/// so telling them to check it was the false offline banner this fixes.
 Failure discoveryFailureFromCode(String code) {
   return switch (code) {
-    'unavailable' || 'deadline-exceeded' => const NetworkError(
-      'Check your connection and try again.',
-    ),
-    'unauthenticated' => const PermissionError('Sign in to load discovery.'),
-    'permission-denied' => const UnknownError('Discovery could not load.'),
-    'failed-precondition' => const UnknownError('Discovery could not load.'),
-    _ => const UnknownError('Discovery could not load.'),
+    'unavailable' || 'deadline-exceeded' => const NetworkError(),
+    'unauthenticated' => const PermissionError(),
+    // Backend hiccups are real and transient, but they are not the member's
+    // connection. They keep the generic copy instead of a false offline banner.
+    'internal' ||
+    'unknown' ||
+    'aborted' ||
+    'data-loss' => const UnavailableError(),
+    'resource-exhausted' ||
+    'quota-exceeded' ||
+    'too-many-requests' => const RateLimitedError(),
+    // A rules/IAM/App Check denial is not an entitlement check either; keep the
+    // generic copy rather than claiming the account lacks access.
+    'permission-denied' || 'failed-precondition' => const UnknownError(),
+    _ => const UnknownError(),
   };
 }
 

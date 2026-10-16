@@ -69,7 +69,7 @@ abstract final class AppShellDrawerDestinations {
       id: 'anime',
       label: 'Anime List',
       icon: Icons.auto_awesome_mosaic_outlined,
-      path: '/anime',
+      path: '/anime/updated',
     ),
     (
       id: 'store',
@@ -160,6 +160,22 @@ class AppShellDrawer extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                // The coin balance used to live in the Home top bar; it moved
+                // here so the bar stays uncrowded. It is only shown once a
+                // balance is actually known, so an unloaded economy never reads
+                // as a fake zero. Tapping it opens the store.
+                trailing: economy?.snapshot == null
+                    ? null
+                    : CoinBalanceChip(
+                        key: const Key('drawer-coins'),
+                        balance: economy!.coins,
+                        onPressed: () => _open(
+                          context,
+                          AppShellDrawerDestinations.items.firstWhere(
+                            (item) => item.id == 'store',
+                          ),
+                        ),
+                      ),
               ),
               const Divider(height: 1),
               for (final item in AppShellDrawerDestinations.items)

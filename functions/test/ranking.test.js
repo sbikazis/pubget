@@ -13,6 +13,7 @@ const {
   overlapScore,
   scoreAnime,
   editEngagement,
+  scoreReelTrending,
 } = require("../src/ranking");
 
 const now = new Date("2026-09-03T12:00:00Z");
@@ -157,4 +158,63 @@ test("anime recommendations prefer related taste over already-listed titles", ()
   const related = scoreAnime({ id: "wano", relatedIds: ["one_piece"], score: 8 }, profile);
   const already = scoreAnime({ id: "one_piece", relatedIds: ["one_piece"], score: 9 }, profile);
   assert.ok(related > already);
+});
+
+test("trending Reels rank by engagement velocity, not recency", () => {
+  const HOUR = 60 * 60 * 1000;
+  const nowTs = Date.UTC(2026, 0, 15);
+
+  const freshButQuiet = {
+    status: "published", moderationStatus: "approved",
+    createdAt: new Date(nowTs - 1 * HOUR),
+    qualifiedViewsCount: 20, likesCount: 1, commentsCount: 0,
+    savesCount: 0, sharesCount: 0, negativeFeedbackCount: 0,
+  };
+  const olderButHot = {
+    status: "published", moderationStatus: "approved",
+    createdAt: new Date(nowTs - 12 * HOUR),
+    qualifiedViewsCount: 4000, likesCount: 500, commentsCount: 80,
+    savesCount: 120, sharesCount: 60, negativeFeedbackCount: 0,
+  };
+  const sameAgeLukewarm = {
+    status: "published", moderationStatus: "approved",
+    createdAt: new Date(nowTs - 12 * HOUR),
+    qualifiedViewsCount: 30, likesCount: 2, commentsCount: 0,
+    savesCount: 0, sharesCount: 0, negativeFeedbackCount: 0,
+  };
+
+  const freshScore = scoreReelTrending(freshButQuiet, nowTs);
+  const hotScore = scoreReelTrending(olderButHot, nowTs);
+  const lukewarmScore = scoreReelTrending(sameAgeLukewarm, nowTs);
+
+  // Freshness alone must not win.
+  assert.ok(hotScore > freshScore, "a hot 12h Reel should outrank a quiet 1h Reel");
+  // Engagement, not age, separates two Reels published at the same moment.
+  assert.ok(hotScore > lukewarmScore);
+});
+
+test("trending Reels without any qualified views are not surfaced as trending", () => {
+  const nowTs = Date.UTC(2026, 0, 15);
+  const noViews = {
+    status: "published", moderationStatus: "approved",
+    createdAt: new Date(nowTs - 2 * 60 * 60 * 1000),
+    qualifiedViewsCount: 0, likesCount: 0, commentsCount: 0,
+    savesCount: 0, sharesCount: 0, negativeFeedbackCount: 0,
+  };
+  const withViews = { ...noViews, qualifiedViewsCount: 25 };
+  assert.ok(scoreReelTrending(noViews, nowTs) < 5);
+  assert.ok(scoreReelTrending(withViews, nowTs) > scoreReelTrending(noViews, nowTs));
+});
+
+test("trending penalises negative feedback", () => {
+  const nowTs = Date.UTC(2026, 0, 15);
+  const base = {
+    status: "published", moderationStatus: "approved",
+    createdAt: new Date(nowTs - 3 * 60 * 60 * 1000),
+    qualifiedViewsCount: 900, likesCount: 90, commentsCount: 10,
+    savesCount: 5, sharesCount: 2,
+  };
+  const clean = scoreReelTrending(base, nowTs);
+  const flagged = scoreReelTrending({ ...base, negativeFeedbackCount: 5 }, nowTs);
+  assert.ok(clean > flagged);
 });

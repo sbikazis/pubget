@@ -436,6 +436,21 @@ AppRoute _routeFromUri(Uri uri) {
   if (segments.length == 2 && segments.first == 'work') {
     return entity(path: '/fan-work', key: 'workId', id: segments[1]);
   }
+  // §15.18 — canonical single-Reel and single-audio share links. Without these
+  // branches `/reel/{id}` and `/audio/{id}` fell through to an unregistered
+  // path and opened the unknown-link page.
+  if (segments.length == 2 && segments.first == 'reel') {
+    return entity(path: '/reel', key: 'reelId', id: segments[1]);
+  }
+  if (segments.length == 2 && segments.first == 'audio') {
+    return entity(path: '/audio', key: 'audioId', id: segments[1]);
+  }
+  // §15.11 — canonical hashtag share links. Only the query form
+  // (`/hashtag?tag=…`) was parsed before, so a path link `/hashtag/onepiece`
+  // fell through to the unknown-link page even though the page accepted the id.
+  if (segments.length == 2 && segments.first == 'hashtag') {
+    return entity(path: '/hashtag', key: 'tag', id: segments[1]);
+  }
   if (segments.length == 2 && segments.first == 'group') {
     return entity(path: '/group', key: 'groupId', id: segments[1]);
   }
@@ -460,8 +475,6 @@ AppRoute _routeFromUri(Uri uri) {
 const _requiredEntityKeys = <String, String>{
   '/event': 'eventId',
   '/game': 'gameId',
-  '/games/waiting': 'gameId',
-  '/games/room': 'gameId',
   '/mafia': 'gameId',
   '/fan-work': 'workId',
   '/work': 'workId',

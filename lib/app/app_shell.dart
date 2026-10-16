@@ -18,12 +18,21 @@ import 'app_shell_drawer.dart';
 import 'app_shell_scope.dart';
 import 'app_shell_tab.dart';
 
-/// Persistent shell. Bottom destinations are Explore / Groups / + / Private /
-/// Clips. Joined stays reachable from the drawer and keeps its stack slot.
+/// Persistent shell.
+///
+/// The bottom bar has four destinations — Discover / Groups / Private / Reels
+/// (Edits). "Joined" is intentionally not a bottom-bar slot: the Groups screen
+/// already exposes Joined as an internal tab, and the drawer deep-links to
+/// `/joined`, so the standalone bar slot was a duplicate surface. The
+/// [AppShellTab.joined] enum value, its `/joined` route, and its page are kept
+/// so drawer navigation and deep links still resolve to the real screen.
+/// As before there is **no** centre create button: creation stays reachable
+/// from the FAB inside the screens that own it and from the drawer.
 class AppShell extends StatefulWidget {
   const AppShell({super.key, this.pages});
 
   /// Production pages when null. Tests may inject five lightweight children.
+  /// The order must match [AppShellTab].
   final List<Widget>? pages;
 
   @override
@@ -59,16 +68,23 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final path = switch (Router.of(context).routerDelegate) {
-      final AppRouterDelegate delegate => switch (delegate.currentConfiguration) {
-        ParameterizedRoute(:final path) => path,
-        FoundationRoute() => AppShellTab.discover.path,
-      },
+      final AppRouterDelegate delegate =>
+        switch (delegate.currentConfiguration) {
+          ParameterizedRoute(:final path) => path,
+          FoundationRoute() => AppShellTab.discover.path,
+        },
       _ => AppShellTab.discover.path,
     };
     final tab = AppShellTabX.fromPath(path);
+    // "Joined" no longer has its own bar slot; when it is open (via the drawer
+    // or a deep link) the Groups slot stays highlighted because Joined is a
+    // sub-surface of Groups.
+    final groupsSelected =
+        tab == AppShellTab.groups || tab == AppShellTab.joined;
     final unread = context.watch<UnreadEngine>();
     final copy = AppStrings.of(context);
-    final pages = widget.pages ??
+    final pages =
+        widget.pages ??
         const <Widget>[
           HomePage(),
           GroupsHomePage(),
@@ -84,6 +100,12 @@ class _AppShellState extends State<AppShell> {
         key: _scaffoldKey,
         drawer: const AppShellDrawer(),
         body: IndexedStack(index: tab.index, children: pages),
+        // Creation stays reachable without occupying a slot in the four-slot
+        // bar.
+        floatingActionButton: PubgetCreateFab(
+          tooltip: copy.createNew,
+          onPressed: () => AppShellCreateSheet.show(context),
+        ),
         bottomNavigationBar: Material(
           color: Theme.of(context).colorScheme.surface,
           elevation: 8,
@@ -102,20 +124,12 @@ class _AppShellState extends State<AppShell> {
                   ),
                   _TabButton(
                     tabKey: const Key('shell-tab-groups'),
-                    selected: tab == AppShellTab.groups,
+                    selected: groupsSelected,
                     icon: Icons.groups_outlined,
                     selectedIcon: Icons.groups,
                     label: copy.tabGroups,
                     badge: unread.groups,
                     onTap: () => _go(path, AppShellTab.groups),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: PubgetCenterCreateButton(
-                        tooltip: copy.createNew,
-                        onPressed: () => AppShellCreateSheet.show(context),
-                      ),
-                    ),
                   ),
                   _TabButton(
                     tabKey: const Key('shell-tab-private'),

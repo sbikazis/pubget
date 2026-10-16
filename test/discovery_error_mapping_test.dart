@@ -1,6 +1,8 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
+import 'package:pubget/core/l10n/app_strings.dart';
 import 'package:pubget/core/loading/loading_state.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/home/models/home_models.dart';
@@ -10,62 +12,138 @@ import 'package:pubget/features/home/repositories/home_repository.dart';
 import 'package:pubget/features/social/models/public_profile.dart';
 
 void main() {
+  // Failures themselves carry no user-facing sentence any more: the copy is
+  // resolved per-locale by discoveryFailureMessage so Arabic never sees an
+  // English error (spec §1.4). These tests therefore pin the failure *kind*
+  // and the localized copy, not an English string baked into the failure.
   test('permission-denied is not a fake entitlement error', () {
     final failure = discoveryFailureFromCode('permission-denied');
     expect(failure, isA<UnknownError>());
     expect(failure.message, isNot(contains('this account')));
-    expect(failure.message, 'Discovery could not load.');
+    expect(failure.message, isNot(contains('Sign in')));
   });
 
   test('unauthenticated discovery asks the user to sign in', () {
+    final failure = discoveryFailureFromCode('unauthenticated');
+    expect(failure, isA<PermissionError>());
     expect(
-      discoveryFailureFromCode('unauthenticated'),
-      isA<PermissionError>(),
-    );
-    expect(
-      discoveryFailureFromCode('unauthenticated').message,
+      _copy(failure),
       contains('Sign in'),
+      reason: 'the localized copy, not the failure, carries the guidance',
     );
+    expect(_arabicCopy(failure), contains('سجّل الدخول'));
   });
 
-  test('rankedOrFallback uses Firestore data when the callable fails', () async {
-    final result = await rankedOrFallback(
-      ranked: Future<Result<List<PublicProfile>>>.value(
-        const FailureResult(
-          PermissionError('Discovery is not available for this account.'),
+  test('unavailable maps to a network failure with offline copy', () {
+    final failure = discoveryFailureFromCode('unavailable');
+    expect(failure, isA<NetworkError>());
+    expect(_copy(failure), contains('connection'));
+    expect(_arabicCopy(failure), contains('اتصالك'));
+  });
+
+  test('backend hiccups are not dressed up as a connection problem', () {
+    for (final code in <String>[
+      'internal',
+      'aborted',
+      'data-loss',
+      'unknown',
+    ]) {
+      final failure = discoveryFailureFromCode(code);
+      expect(
+        failure,
+        isA<UnavailableError>(),
+        reason: '$code is a backend fault, not the member losing connectivity',
+      );
+      // The whole point of the fix: no false "check your connection" banner.
+      expect(_copy(failure), isNot(contains('connection')));
+      expect(_arabicCopy(failure), isNot(contains('اتصالك')));
+      expect(_copy(failure), isNotEmpty);
+    }
+  });
+
+  test('a throttle is a rate limit, not a connection problem', () {
+    final failure = discoveryFailureFromCode('resource-exhausted');
+    expect(failure, isA<RateLimitedError>());
+    expect(_copy(failure), contains('Too many requests'));
+    expect(_arabicCopy(failure), contains('طلبات كثيرة'));
+    expect(_copy(failure), isNot(contains('connection')));
+  });
+
+  test(
+    'an unmapped code still produces a localized, non-entitlement message',
+    () {
+      final failure = discoveryFailureFromCode('something-new');
+      expect(failure, isA<UnknownError>());
+      expect(_copy(failure), isNotEmpty);
+      expect(_arabicCopy(failure), isNotEmpty);
+      expect(_arabicCopy(failure), isNot(contains('Sign in')));
+    },
+  );
+
+  test('discovery failure copy is localized rather than hardcoded English', () {
+    // The same failure must produce different copy per locale.
+    final failure = const UnknownError();
+    expect(_copy(failure), isNot(_arabicCopy(failure)));
+  });
+
+  test(
+    'rankedOrFallback uses Firestore data when the callable fails',
+    () async {
+      final result = await rankedOrFallback(
+        ranked: Future<Result<List<PublicProfile>>>.value(
+          const FailureResult(
+            PermissionError('Discovery is not available for this account.'),
+          ),
         ),
-      ),
-      fallback: () async => const Success(<PublicProfile>[
-        PublicProfile(uid: 'noon', username: 'noon'),
-      ]),
-    );
-    expect(result.isSuccess, isTrue);
-    expect(result.valueOrNull, hasLength(1));
-    expect(result.valueOrNull!.single.username, 'noon');
-  });
+        fallback: () async => const Success(<PublicProfile>[
+          PublicProfile(uid: 'noon', username: 'noon'),
+        ]),
+      );
+      expect(result.isSuccess, isTrue);
+      expect(result.valueOrNull, hasLength(1));
+      expect(result.valueOrNull!.single.username, 'noon');
+    },
+  );
 
-  test('Home loads people when ranking fails but fallback content exists', () async {
-    final provider = HomeProvider(repository: _CallableDownFirestoreUpRepository());
-    addTearDown(provider.dispose);
-    provider.load('alice');
-    provider.ensureLoaded(HomeSectionKind.recommendedPeople);
-    await Future<void>.delayed(Duration.zero);
-    await Future<void>.delayed(Duration.zero);
+  test(
+    'Home loads people when ranking fails but fallback content exists',
+    () async {
+      final provider = HomeProvider(
+        repository: _CallableDownFirestoreUpRepository(),
+      );
+      addTearDown(provider.dispose);
+      provider.load('alice');
+      provider.ensureLoaded(HomeSectionKind.recommendedPeople);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
-    expect(
-      provider.section(HomeSectionKind.recommendedPeople).state,
-      LoadingState.loaded,
-    );
-    expect(
-      provider.section(HomeSectionKind.recommendedPeople).people.single.username,
-      'noon',
-    );
-    expect(
-      provider.section(HomeSectionKind.promotedGroups).groups.single.id,
-      'promo-1',
-    );
-  });
+      expect(
+        provider.section(HomeSectionKind.recommendedPeople).state,
+        LoadingState.loaded,
+      );
+      expect(
+        provider
+            .section(HomeSectionKind.recommendedPeople)
+            .people
+            .single
+            .username,
+        'noon',
+      );
+      expect(
+        provider.section(HomeSectionKind.promotedGroups).groups.single.id,
+        'promo-1',
+      );
+    },
+  );
 }
+
+/// English copy for a failure, as the UI would render it.
+String _copy(Failure failure) =>
+    discoveryFailureMessage(AppStrings.forLocale(const Locale('en')), failure);
+
+/// Arabic copy for the same failure.
+String _arabicCopy(Failure failure) =>
+    discoveryFailureMessage(AppStrings.forLocale(const Locale('ar')), failure);
 
 Group _group(String id) => Group(
   id: id,
@@ -132,6 +210,12 @@ final class _CallableDownFirestoreUpRepository implements HomeRepository {
   @override
   Future<Result<DiscoverySearchResults>> search(String query) async =>
       const Success(DiscoverySearchResults());
+
+  @override
+  Future<Result<Map<String, DiscoverySectionPage>>> getHomeSections({
+    String? section,
+    int limit = 8,
+  }) async => const Success(<String, DiscoverySectionPage>{});
 
   @override
   Future<Result<DiscoveryFeed>> getDiscoveryFeed({

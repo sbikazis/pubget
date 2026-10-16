@@ -10,6 +10,9 @@ abstract interface class EditsRepository {
     required String contentType,
     required String caption,
     required String animeTag,
+    String? hashtags,
+    String? characterTags,
+    String? audioId,
     String? fileName,
     int? sizeBytes,
     String? idempotencyKey,
@@ -25,7 +28,20 @@ abstract interface class EditsRepository {
   Future<Result<void>> cancelUpload();
   Stream<Result<Edit>> watchEdit(String editId);
   Future<Result<void>> retryProcessing(String editId);
-  Future<Result<EditPage>> getFeed({Edit? after, int limit = 5});
+
+  /// Axis 15 §15.16 — one entry point for every reel surface. Passing a
+  /// scope narrows the feed to one context; [feedType] selects the ranking
+  /// strategy. The server owns both; the client never ranks locally.
+  Future<Result<EditPage>> getFeed({
+    Edit? after,
+    int limit = 5,
+    String? audioId,
+    String? animeId,
+    String? characterId,
+    String? hashtag,
+    String? creatorId,
+    FeedType feedType = FeedType.forYou,
+  });
   Future<Result<List<Edit>>> getCreatorEdits(
     String creatorId, {
     int limit = 12,
@@ -68,6 +84,44 @@ abstract interface class EditsRepository {
     required String editId,
     required String type,
   });
+
+  /// Axis 15 §15.18 — send a categorized moderation report for a Reel.
+  ///
+  /// Server-authoritative: the category is validated against
+  /// `editReportCategories`, one report per reporter is kept, and the call is
+  /// rate limited. The client never writes the report document directly.
+  Future<Result<void>> reportEdit({
+    required String editId,
+    required String category,
+    String? detail,
+  });
+
+  /// Hide or unhide every Reel by [creatorId] from the viewer's feed.
+  ///
+  /// Server-side truth: the mute row lives in `reelMutes/{viewerId}/creators`
+  /// and the feed filters on it. A local-only flag would look applied and then
+  /// vanish on the next load.
+  Future<Result<void>> muteReelCreator({
+    required String creatorId,
+    required bool mute,
+  });
+
+  /// One page of the viewer's saved Reels, newest first.
+  ///
+  /// [afterId] is the id of the last item already shown; pass `null` for the
+  /// first page.
+  Future<Result<SavedReelsPage>> listSavedReels({
+    String? afterId,
+    int limit = 30,
+  });
+}
+
+/// One page of saved Reels, mirroring the server page shape.
+final class SavedReelsPage {
+  const SavedReelsPage(this.items, {required this.hasMore});
+
+  final List<Edit> items;
+  final bool hasMore;
 }
 
 /// Optional capability for repositories that can surface published Edits

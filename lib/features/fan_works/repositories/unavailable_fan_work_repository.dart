@@ -27,6 +27,7 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
     required String workId,
     required FanWorkMediaRole role,
     required String contentType,
+    String characterId = '',
   }) async => _fail();
 
   @override

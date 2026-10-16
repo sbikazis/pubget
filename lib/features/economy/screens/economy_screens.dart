@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/errors/failure.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/economy_models.dart';
@@ -24,7 +26,7 @@ class _StorePageState extends State<StorePage>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 5, vsync: this);
+    _tabs = TabController(length: 6, vsync: this);
     final economy = context.read<EconomyProvider>();
     economy.openStore();
     Future<void>.microtask(economy.load);
@@ -60,7 +62,8 @@ class _StorePageState extends State<StorePage>
           isScrollable: true,
           tabs: const <Widget>[
             Tab(text: EconomyStrings.featured),
-            Tab(text: EconomyStrings.categories),
+            Tab(text: EconomyStrings.dragonStoreCosmetics),
+            Tab(text: EconomyStrings.dragonStoreExpansions),
             Tab(text: EconomyStrings.items),
             Tab(text: EconomyStrings.owned),
             Tab(text: EconomyStrings.premium),
@@ -87,7 +90,16 @@ class _StorePageState extends State<StorePage>
                   .where((item) => item.featured && item.isActive)
                   .toList(),
             ),
-            const _CategoryList(),
+            _ItemGrid(
+              items: (economy.snapshot?.catalog ?? const <StoreItem>[])
+                  .where((item) => item.isActive && item.section == StoreItemSection.cosmetic)
+                  .toList(),
+            ),
+            _ItemGrid(
+              items: (economy.snapshot?.catalog ?? const <StoreItem>[])
+                  .where((item) => item.isActive && item.isExpansion)
+                  .toList(),
+            ),
             _ItemGrid(items: economy.snapshot?.catalog ?? const <StoreItem>[]),
             _ItemGrid(
               items: (economy.snapshot?.catalog ?? const <StoreItem>[])
@@ -103,32 +115,6 @@ class _StorePageState extends State<StorePage>
           ],
         ),
       ),
-    );
-  }
-}
-
-class _CategoryList extends StatelessWidget {
-  const _CategoryList();
-
-  @override
-  Widget build(BuildContext context) {
-    final economy = context.watch<EconomyProvider>();
-    final catalog = economy.snapshot?.catalog ?? const <StoreItem>[];
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      children: <Widget>[
-        for (final type in StoreItemType.values)
-          PubgetCard(
-            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-            onTap: () => AppNavigation.go(
-              context,
-              '/store?type=${type.name}',
-            ),
-            child: Text(
-              '${type.name} (${catalog.where((item) => item.type == type).length})',
-            ),
-          ),
-      ],
     );
   }
 }
@@ -383,12 +369,21 @@ class PremiumPage extends StatefulWidget {
 }
 
 class _PremiumPageState extends State<PremiumPage> {
+  final _codeController = TextEditingController();
+  bool _redeeming = false;
+
   @override
   void initState() {
     super.initState();
     final economy = context.read<EconomyProvider>();
     economy.viewPremium();
     Future<void>.microtask(economy.load);
+  }
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
   }
 
   @override
@@ -431,6 +426,66 @@ class _PremiumPageState extends State<PremiumPage> {
             Text(
               EconomyStrings.restoreDeferred,
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              AppStrings.of(context).dragonStorePremiumCode,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextField(
+              controller: _codeController,
+              decoration: InputDecoration(
+                hintText: AppStrings.of(context).dragonStoreCodeHint,
+                border: const OutlineInputBorder(),
+              ),
+              textCapitalization: TextCapitalization.characters,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            PubgetPrimaryButton(
+              semanticLabel: AppStrings.of(context).dragonStoreRedeemCode,
+              onPressed: _redeeming
+                  ? null
+                  : () async {
+                      final code = _codeController.text.trim();
+                      if (code.isEmpty) return;
+                      final appStr = AppStrings.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
+                      final economy = context.read<EconomyProvider>();
+                      setState(() => _redeeming = true);
+                      final result = await economy.redeemPremiumCode(code);
+                      if (!mounted) return;
+                      setState(() => _redeeming = false);
+                      if (result.isSuccess) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(appStr.dragonStoreCodeRedeemed),
+                          ),
+                        );
+                        _codeController.clear();
+                      } else {
+                        // §1.4 — `Failure.message` is developer copy in
+                        // English, so it is never rendered. The user gets the
+                        // localized answer for the failure they caused, or
+                        // localized generic copy for anything else.
+                        final failure = result.failureOrNull;
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(switch (failure) {
+                              NetworkError() => appStr.discoveryOffline,
+                              ValidationError() ||
+                              NotFoundError() ||
+                              UnknownError() ||
+                              null => appStr.dragonStoreCodeInvalid,
+                              _ => appStr.tryAgainShort,
+                            }),
+                          ),
+                        );
+                      }
+                    },
+              child: Text(_redeeming
+                  ? '...'
+                  : AppStrings.of(context).dragonStoreRedeemCode),
             ),
           ],
         ),

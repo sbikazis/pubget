@@ -814,37 +814,14 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     // The provider is resolved synchronously so the microtask below never has
     // to reach for a [BuildContext] after an await.
     final editor = context.read<FanWorkEditorProvider>();
-    Future<void>.microtask(() => editor.start(workId: widget.workId));
-  }
-
-  /// Opens the PDF picker and hands the bytes to the provider.
-  ///
-  /// `pageCount` is deliberately left null here: the server derives it when the
-  /// upload is confirmed, and a client-supplied count would be an unverified
-  /// claim about the file's contents.
-  Future<void> _pickDocument() async {
-    XFile? file;
-    try {
-      file = await openFile(
-        acceptedTypeGroups: <XTypeGroup>[
-          XTypeGroup(
-            label: 'PDF',
-            extensions: <String>['pdf'],
-            mimeTypes: <String>['application/pdf'],
-          ),
-        ],
-      );
-    } on Exception {
-      if (!mounted) return;
-      _report();
-      return;
-    }
-    if (file == null || !mounted) return;
-    await _upload(
-      read: file.readAsBytes,
-      contentType: 'application/pdf',
-      role: FanWorkMediaRole.document,
-    );
+    Future<void>.microtask(() async {
+      if (widget.workId == null || widget.workId!.isEmpty) {
+        editor.reset();
+        await editor.start(workId: widget.workId);
+      } else {
+        await editor.start(workId: widget.workId);
+      }
+    });
   }
 
   /// Opens the gallery for the single artwork of a drawing, or for a
@@ -877,9 +854,10 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     Uint8List bytes;
     try {
       bytes = await read();
-    } on Exception catch (error) {
+    } on Exception catch (error, stack) {
+      debugPrint('Fan work media read failed: $error\n$stack');
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+      messenger.showSnackBar(SnackBar(content: Text(copy.uploadFailed)));
       return;
     }
     if (!mounted) return;
@@ -901,6 +879,31 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
 
   /// Surfaces a picker-level failure (no file chooser available, permission
   /// denied) using the same wording as an upload failure.
+
+  Future<void> _pickDocument() async {
+    XFile? file;
+    try {
+      file = await openFile(
+        acceptedTypeGroups: <XTypeGroup>[
+          XTypeGroup(
+            label: 'PDF',
+            extensions: <String>['pdf'],
+            mimeTypes: <String>['application/pdf'],
+          ),
+        ],
+      );
+    } on Exception {
+      if (!mounted) return;
+      _report();
+      return;
+    }
+    if (file == null || !mounted) return;
+    await _upload(
+      read: file.readAsBytes,
+      contentType: 'application/pdf',
+      role: FanWorkMediaRole.document,
+    );
+  }
   void _report() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(FanWorkCopy.of(context).uploadFailed)),
@@ -918,10 +921,27 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
       isScrollControlled: true,
       builder: (context) => _CastSheet(
         entry: entry,
-        onPickPortrait: () => _pickImage(
-          role: FanWorkMediaRole.characterPortrait,
-          characterId: entry.id,
-        ),
+        onPickPortrait: (name, bio) async {
+          // The sheet's text lives in its own controllers and has not reached
+          // the draft yet, while the server matches the incoming portrait to a
+          // cast member by id. Folding it in first is what makes the ticket
+          // legal for a member added in this session.
+          editor.updateDraft(
+            editor.draft.copyWith(
+              characters: <FanWorkCharacter>[
+                for (final item in editor.draft.characters)
+                  if (item.id == entry.id)
+                    item.copyWith(name: name, bio: bio)
+                  else
+                    item,
+              ],
+            ),
+          );
+          await _pickImage(
+            role: FanWorkMediaRole.characterPortrait,
+            characterId: entry.id,
+          );
+        },
       ),
     );
     if (!mounted) return;
@@ -1164,7 +1184,12 @@ class _CastSheet extends StatefulWidget {
   /// as bytes, because a cast portrait is bound to a `characterId` and a
   /// `characterPortrait` role: the server mints the ticket against that slot, so
   /// the picker cannot be a plain `onPick` callback that returns a file.
-  final Future<void> Function() onPickPortrait;
+  ///
+  /// The sheet's unsaved name and bio travel with it so the caller can put
+  /// them in the draft first — the server drops a cast member with no name, so
+  /// a portrait picked before the first save would otherwise have nothing to
+  /// attach to.
+  final Future<void> Function(String name, String bio) onPickPortrait;
 
   @override
   State<_CastSheet> createState() => _CastSheetState();
@@ -1260,9 +1285,16 @@ class _CastSheetState extends State<_CastSheet> {
                   Expanded(
                     child: PubgetSecondaryButton(
                       key: const Key('fan-work-cast-portrait'),
-                      onPressed: editor.uploading
+                      // The server drops a cast member with no name, so a
+                      // portrait could not be attached to this entry yet.
+                      // Same gate the Save button uses.
+                      onPressed:
+                          editor.uploading || _name.text.trim().isEmpty
                           ? null
-                          : widget.onPickPortrait,
+                          : () => widget.onPickPortrait(
+                              _name.text.trim(),
+                              _bio.text.trim(),
+                            ),
                       semanticLabel: copy.characterPortrait,
                       child: Text(copy.characterPortrait),
                     ),

@@ -2,7 +2,7 @@ enum StoreItemType { frame, badge, nameplate, theme }
 
 enum StoreItemAvailability { active, inactive }
 
-enum StoreItemRarity { common, rare, epic }
+enum StoreItemRarity { common, rare, epic, legendary, mythic }
 
 enum StoreCurrency { coins }
 
@@ -32,6 +32,8 @@ enum AdMobFormat { banner, interstitial, native, rewarded }
 
 abstract final class EconomyStrings {
   static const storeTitle = 'Store';
+  static const dragonStoreCosmetics = 'Cosmetics';
+  static const dragonStoreExpansions = 'Expansions';
   static const featured = 'Featured';
   static const categories = 'Categories';
   static const items = 'Items';
@@ -85,9 +87,12 @@ StoreItemAvailability storeAvailabilityFrom(Object? value) {
 }
 
 StoreItemRarity storeRarityFrom(Object? value) {
-  return switch (value) {
+  final s = (value ?? '').toString().toLowerCase();
+  return switch (s) {
     'rare' => StoreItemRarity.rare,
     'epic' => StoreItemRarity.epic,
+    'legendary' || 'legend' => StoreItemRarity.legendary,
+    'mythic' || 'mythical' => StoreItemRarity.mythic,
     _ => StoreItemRarity.common,
   };
 }

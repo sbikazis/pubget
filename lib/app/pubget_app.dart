@@ -60,6 +60,11 @@ import '../features/edits/repositories/edits_repository.dart';
 import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
 import '../features/edits/screens/edit_upload_page.dart';
+import '../features/reels/providers/audio_provider.dart';
+import '../features/reels/repositories/audio_repository.dart';
+import '../features/reels/repositories/firebase_audio_repository.dart';
+import '../features/reels/screens/audio_page.dart';
+import '../features/reels/screens/reels_feed_page.dart';
 import '../features/notifications/widgets/notification_deep_link_binder.dart';
 import '../features/edits/l10n/edit_copy.dart';
 import '../features/edits/widgets/global_edit_upload_bar.dart';
@@ -75,10 +80,10 @@ import '../features/anime/repositories/provider_chain_anime_repository.dart';
 import '../features/anime/theme/anime_hub_colors.dart';
 import '../features/anime/providers/anime_character_provider.dart';
 import '../features/anime/screens/anime_browse_page.dart';
+import '../features/anime/screens/anime_cast_page.dart';
 import '../features/anime/screens/anime_character_page.dart';
 import '../features/anime/screens/anime_details_page.dart';
 import '../features/anime/screens/anime_favorite_characters_page.dart';
-import '../features/anime/screens/anime_hub_page.dart';
 import '../features/anime/screens/anime_library_page.dart';
 import '../features/anime/screens/anime_my_page.dart';
 import '../features/anime/screens/anime_popular_characters_page.dart';
@@ -238,6 +243,24 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<NotificationRepository>.value(value: repositories.$9),
         provider.Provider<HomeRepository>.value(value: repositories.$10),
         provider.Provider<EditsRepository>.value(value: repositories.$11),
+        // Axis 15 §15.8 — audio has its own repository so the 17-slot
+        // positional repository record above stays untouched.
+        provider.Provider<AudioRepository>(
+          create: (context) => firebaseState.isReady
+              ? FirebaseAudioRepository(
+                  functions: FirebaseFunctions.instanceFor(
+                    region: 'us-central1',
+                  ),
+                )
+              : UnavailableAudioRepository(
+                  firebaseState.message ??
+                      'Firebase is unavailable in this build.',
+                ),
+        ),
+        provider.ChangeNotifierProvider<AudioProvider>(
+          create: (context) =>
+              AudioProvider(repository: context.read<AudioRepository>()),
+        ),
         provider.Provider<PrivateChatRepository>.value(value: repositories.$12),
         provider.Provider<EventRepository>.value(value: repositories.$13),
         provider.Provider<AnimeRepository>(
@@ -245,14 +268,25 @@ class PubgetApp extends StatelessWidget {
             final network = context.read<NetworkService>();
             final chain = ProviderChainAnimeRepository(
               providers: <AnimeRepository>[
+                // Jikan (MyAnimeList) is the canonical source but is frequently
+                // unreachable. It is the primary provider, so it is the one the
+                // hub waits on before falling back: give it a single, short
+                // attempt and open its circuit on a connection failure so a
+                // burst of hub requests does not serialise into a minute of
+                // "loading" — AniList below carries the retries instead.
                 JikanAnimeRepository(
                   http: ResilientAnimeHttpClient(
                     inner: PackageAnimeHttpClient(),
+                    maxRetries: 0,
+                    requestTimeout: const Duration(seconds: 6),
+                    circuitCooldown: const Duration(seconds: 60),
                   ),
                 ),
                 AniListAnimeRepository(
                   http: ResilientAnimeHttpClient(
                     inner: PackageAnimeHttpClient(),
+                    maxRetries: 2,
+                    requestTimeout: const Duration(seconds: 10),
                   ),
                 ),
               ],
@@ -966,10 +1000,14 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/notifications': const NotificationInboxPage(),
         '/edits': const AppShell(),
         '/edits/upload': const EditUploadPage(),
+        // Axis 15 §15.18 — canonical Reels paths. `/edits*` stay registered as
+        // legacy aliases so older share links keep resolving.
+        '/reels': const AppShell(),
+        '/reels/upload': const EditUploadPage(),
         '/groups': const AppShell(),
         '/joined': const AppShell(),
         '/private': const AppShell(),
-        '/anime': const AnimeHubPage(),
+        '/anime': const AnimeBrowsePage(latest: true),
         '/anime/search': const AnimeSearchPage(),
         '/anime/updated': const AnimeBrowsePage(latest: true),
         '/anime/library': const AnimeLibraryPage(),
@@ -989,6 +1027,32 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
       },
       parameterizedPages: <String, ParameterizedPageBuilder>{
         '/profile': (parameters) => ProfilePage(userId: parameters['uid']),
+        // One Reel, focused. The id is part of the link so a share is specific.
+        '/reel': (parameters) => const ReelsFeedPage(),
+        // `/audio` is the library; `/audio/{audioId}` is one audio's page.
+        '/audio': (parameters) {
+          final audioId = (parameters['audioId'] ?? '').trim();
+          if (audioId.isEmpty) return const AudioLibraryPage();
+          return AudioDetailPage(audioId: audioId);
+        },
+        '/hashtag': (parameters) {
+          final tag = parameters['tag'] ?? '';
+          return ReelsFeedPage(
+            hashtag: tag,
+            title: tag.trim().isEmpty ? null : '#${tag.trim()}',
+          );
+        },
+        '/reels/anime': (parameters) => ReelsFeedPage(
+          animeId: parameters['animeId'] ?? '',
+          title: '#${(parameters['animeId'] ?? '').trim()}',
+        ),
+        '/reels/character': (parameters) => ReelsFeedPage(
+          characterId: parameters['characterId'] ?? '',
+          title: '#${(parameters['characterId'] ?? '').trim()}',
+        ),
+        '/reels/creator': (parameters) => ReelsFeedPage(
+          creatorId: parameters['creatorId'] ?? '',
+        ),
         '/groups/create': (parameters) {
           final raw = parameters['type'];
           final type = GroupType.values.cast<GroupType?>().firstWhere(
@@ -1031,11 +1095,13 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         },
         '/events/create': (parameters) {
           final groupId = parameters['groupId'];
-          if (groupId == null || groupId.isEmpty) {
+          final hasGroup = groupId != null && groupId.isNotEmpty;
+          // No explicit audience yet -> let the creator pick one first.
+          if (!hasGroup && parameters['scope'] == null) {
             return CreateEventEntryPage(templateId: parameters['templateId']);
           }
           return EventBuilderPage(
-            groupId: groupId,
+            groupId: hasGroup ? groupId : null,
             templateId: parameters['templateId'],
           );
         },
@@ -1072,6 +1138,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             const AnimeFavoriteCharactersPage(),
         '/anime/character': (parameters) =>
             AnimeCharacterPage(characterId: parameters['characterId'] ?? ''),
+        '/anime/cast': (parameters) =>
+            AnimeCastPage(animeId: parameters['animeId'] ?? ''),
         '/anime/me': (parameters) => AnimeMyPage(userId: parameters['uid']),
         '/game': (parameters) =>
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),

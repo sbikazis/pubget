@@ -11,6 +11,7 @@ final class EditValidation {
     required String contentType,
     required int sizeBytes,
     Duration? duration,
+    int minDurationSeconds = Limits.editMinDurationSeconds,
     int maxDurationSeconds = Limits.editMaxDurationSeconds,
   }) {
     final type = contentType.trim().toLowerCase();
@@ -29,10 +30,20 @@ final class EditValidation {
         'This video is too large. Choose a file under 100 MB.',
       );
     }
-    if (duration != null && duration.inSeconds > maxDurationSeconds) {
-      return const ValidationError(
-        'Reels can be up to 60 seconds long.',
-      );
+    if (duration != null) {
+      // §15.2 is 3–60s. The lower bound used to be missing here as well as on
+      // the server, so a 1-second clip was accepted everywhere.
+      final seconds = duration.inSeconds;
+      if (seconds < minDurationSeconds) {
+        return ValidationError(
+          'Reels must be at least $minDurationSeconds seconds long.',
+        );
+      }
+      if (seconds > maxDurationSeconds) {
+        return const ValidationError(
+          'Reels can be up to 60 seconds long.',
+        );
+      }
     }
     return null;
   }

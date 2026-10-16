@@ -54,6 +54,12 @@ abstract final class AnimeLinks {
   static void openCharacter(BuildContext context, String characterId) =>
       AppNavigation.go(context, characterPath(characterId));
 
+  static String castPath(String animeId) =>
+      '/anime/cast?animeId=${Uri.encodeComponent(animeId)}';
+
+  static void openCast(BuildContext context, String animeId) =>
+      AppNavigation.go(context, castPath(animeId));
+
   static void openCatalog(BuildContext context, AnimeCatalogKind kind) =>
       AppNavigation.go(context, catalogPath(kind));
 
@@ -250,11 +256,15 @@ class AnimeResultTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (grid) {
+      final social = maybeAnimeHubSocial(context);
+      final stats = social?.statsFor(anime.id);
+      final copy = AnimeCopy.of(context);
       return AnimeHubPosterCard(
         title: anime.title,
         imageUrl: anime.images.thumbnailUrl ?? anime.images.largeUrl ?? '',
         year: anime.year,
-        subtitle: anime.score?.toStringAsFixed(1),
+        subtitle: copy.meta(anime),
+        rating: stats != null && stats.averageScore > 0 ? (stats.averageScore * 10).round() : null,
         heroTag: animePosterHeroTag(anime.id),
         onTap: () => AnimeLinks.openDetails(context, anime.id),
       );
@@ -541,14 +551,39 @@ class _AnimePaginatedListState extends State<AnimePaginatedList> {
   void initState() {
     super.initState();
     _controller.addListener(_maybeAutoFill);
+    widget.list.addListener(_refreshCommunityStats);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshCommunityStats());
   }
 
   @override
   void dispose() {
+    widget.list.removeListener(_refreshCommunityStats);
     _controller
       ..removeListener(_maybeAutoFill)
       ..dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(AnimePaginatedList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.list != widget.list) {
+      oldWidget.list.removeListener(_refreshCommunityStats);
+      widget.list.addListener(_refreshCommunityStats);
+    }
+  }
+
+  /// Keeps the poster wall's score badges honest: when a page of titles lands,
+  /// ask the social provider for their real community aggregates in one batch.
+  /// The provider de-dupes, so this is cheap to fire on every list update.
+  void _refreshCommunityStats() {
+    if (!mounted) return;
+    if (list.state != LoadingState.loaded || list.items.isEmpty) return;
+    final ids = <String>[for (final anime in list.items) anime.id];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      maybeAnimeHubSocial(context, listen: false)?.loadStatsFor(ids);
+    });
   }
 
   /// Keeps pulling pages until the grid is taller than the viewport.

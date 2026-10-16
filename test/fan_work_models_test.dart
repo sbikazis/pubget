@@ -196,4 +196,27 @@ void main() {
     expect(preview.creatorName, 'Alice');
     expect(preview.coverPath, 'fan_works/alice/w1/c.jpg');
   });
+
+  test('a ticket says which upload protocol its URL speaks', () {
+    FanWorkUploadTicket ticket(FanWorkMediaRole role) => FanWorkUploadTicket(
+      workId: 'w1',
+      mediaId: 'm1',
+      path: 'fan_works/alice/w1/m1.jpg',
+      contentType: 'image/jpeg',
+      role: role,
+      uploadUrl: 'https://storage.test/upload/session/1',
+      maxBytes: 12 * 1024 * 1024,
+      expiresAt: DateTime.utc(2026, 9, 1, 12, 15),
+    );
+
+    // Only a PDF is opened as a resumable session; every image URL is a
+    // one-shot signed PUT that fails unless the request matches its signature.
+    expect(ticket(FanWorkMediaRole.document).isResumableSession, isTrue);
+    expect(ticket(FanWorkMediaRole.artwork).isResumableSession, isFalse);
+    expect(
+      ticket(FanWorkMediaRole.characterPortrait).isResumableSession,
+      isFalse,
+    );
+    expect(ticket(FanWorkMediaRole.cover).isResumableSession, isFalse);
+  });
 }

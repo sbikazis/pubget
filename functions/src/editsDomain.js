@@ -1,8 +1,24 @@
 "use strict";
 
 const { moderateEditCopy } = require("./contentFilter");
-const { scoreEdit } = require("./ranking");
-const { EDITS_CONFIG } = require("./editsConfig");
+const {
+  scoreEdit,
+  scoreReelTrending,
+  applyFeedDiversity,
+  mixExploration,
+} = require("./ranking");
+const { EDITS_CONFIG, TAG_LIMITS, EDIT_UPLOAD_QUOTA } = require("./editsConfig");
+const {
+  utcDayKey,
+  quotaDocId,
+  quotaVerdict,
+  quotaExceededMessage,
+} = require("./editUploadQuota");
+const {
+  buildHiddenCreatorSet,
+  applyVisibility,
+} = require("./reelVisibility");
+const { setMediaVisible } = require("./reelMediaAccess");
 
 function string(value, max) {
   return typeof value === "string" && value.trim().length <= max
@@ -10,12 +26,120 @@ function string(value, max) {
     : null;
 }
 
+/** §15.18 — the report categories the UI offers, in both locales. */
+const REPORT_CATEGORIES = new Set([
+  "spam",
+  "harassment",
+  "hate",
+  "sexual",
+  "violence",
+  "copyright",
+  "self_harm",
+  "misleading",
+  "other",
+]);
+
 function boundedList(value, maxItems, maxItemLength) {
   if (value == null) return [];
   if (!Array.isArray(value) || value.length > maxItems) return null;
   const normalized = value.map((item) => string(item, maxItemLength));
   return normalized.every(Boolean) ? normalized : null;
 }
+
+/** §15.16 — client sends one of three strategies; unknown values are For You. */
+function normalizeFeedType(raw) {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (value === "following" || value === "trending" || value === "foryou") {
+    return value;
+  }
+  return "forYou";
+}
+
+/** §15.16 — a scope is one of audio / anime / character / hashtag / creator. */
+function normalizeFeedScope(data) {
+  return {
+    audioId: string(data?.audioId || "", 128),
+    animeId: string(data?.animeId || "", 128),
+    characterId: string(data?.characterId || "", 128),
+    hashtag: (string(data?.hashtag || "", TAG_LIMITS.hashtagMaxLength) || "")
+      .replace(/^#+/, "")
+      .toLowerCase() || null,
+    creatorId: string(data?.creatorId || "", 128),
+  };
+}
+
+  function matchesScope(edit, scope) {
+    if (scope.audioId && String(edit.audioId || "") !== scope.audioId) return false;
+    if (scope.animeId && String(edit.animeId || "") !== scope.animeId) return false;
+    if (scope.creatorId && String(edit.creatorId || "") !== scope.creatorId) return false;
+    if (scope.characterId) {
+      const ids = Array.isArray(edit.characterIds) ? edit.characterIds : [];
+      if (!ids.includes(scope.characterId)) return false;
+    }
+    if (scope.hashtag) {
+      const tags = Array.isArray(edit.hashtags) ? edit.hashtags : [];
+      if (!tags.includes(scope.hashtag)) return false;
+    }
+    return true;
+  }
+
+// Firestore caps `in` at 30 values.
+const MAX_IN_VALUES = 30;
+
+/**
+ * Builds the candidate pool for a feed.
+ *
+ * The scope and the followed-creator set are applied *in the query*, not by
+ * filtering a global top-200 afterwards. Fetching the global top-200 and then
+ * filtering starved scoped and following feeds: a hashtag carried by 400 Reels
+ * returns empty whenever those Reels rank below position 200, and the viewer
+ * is shown "no results" for content that exists. §15.16 wants an empty
+ * Following feed only when the viewer genuinely follows nobody.
+ */
+async function loadFeedCandidates({ db, collectionName, feedType, scope, creatorIds }) {
+  let query = db.collection(collectionName).where("status", "==", "published");
+
+  if (scope.audioId) query = query.where("audioId", "==", scope.audioId);
+  if (scope.animeId) query = query.where("animeId", "==", scope.animeId);
+  if (scope.creatorId) query = query.where("creatorId", "==", scope.creatorId);
+  if (scope.hashtag) query = query.where("hashtags", "array-contains", scope.hashtag);
+  if (scope.characterId) query = query.where("characterIds", "array-contains", scope.characterId);
+
+  if (feedType === "following" && creatorIds.size > 0 && !scope.creatorId) {
+    // Query in chunks so a viewer who follows more than 30 creators still
+    // gets their full feed instead of a silent truncation.
+    const chunks = [];
+    const ids = [...creatorIds];
+    for (let i = 0; i < ids.length; i += MAX_IN_VALUES) {
+      chunks.push(ids.slice(i, i + MAX_IN_VALUES));
+    }
+    const snapshots = await Promise.all(
+      chunks.map((chunk) =>
+        applyFeedOrder(query.where("creatorId", "in", chunk), feedType).limit(200).get(),
+      ),
+    );
+    return { docs: snapshots.flatMap((snap) => snap.docs || []) };
+  }
+
+  return applyFeedOrder(query, feedType).limit(200).get();
+}
+
+/**
+ * Applies the ordering the ranking layer expects.
+ *
+ * For You and Following consume the stored `score`, so they read the
+ * highest-scored slice. Trending is re-scored by velocity in memory, so
+ * reading only the top-scored slice would pin trending to whatever For You
+ * happens to favour; it reads the newest published slice instead.
+ */
+function applyFeedOrder(query, feedType) {
+  const ordered =
+    feedType === "trending"
+      ? query.orderBy("createdAt", "desc")
+      : query.orderBy("score", "desc").orderBy("createdAt", "desc");
+  return ordered;
+}
+
 
 function emptyCounters() {
   return {
@@ -59,7 +183,12 @@ function createEditsDomain({
   bucket,
   collectionName = "edits",
   uploadKeyCollection = "editUploadKeys",
+  quotaCollectionName = "editUploadQuota",
+  muteCollectionName = "reelMutes",
+  savedCollectionName = "savedReels",
+  audioCollectionName = "reelAudios",
   storagePrefix = "edits",
+  processedPrefix = "edits-processed",
   config = EDITS_CONFIG,
 }) {
   function uid(request) {
@@ -76,12 +205,76 @@ function createEditsDomain({
     changes[`counters.${nestedKey}`] = FieldValue.increment(amount);
   }
 
+  /**
+   * §15.2 quota reservation.
+   *
+   * Read-and-increment inside a transaction so two simultaneous uploads cannot
+   * both read `used === limit - 1` and both be admitted. The client pre-flight
+   * is advisory; this is the enforcement point.
+   *
+   * The verdict is returned rather than stashed on the domain instance: one
+   * domain object serves every request, so shared state would let concurrent
+   * uploads report each other's remaining count.
+   */
+  function quotaRef(creatorId, now = new Date()) {
+    return db
+      .collection(quotaCollectionName)
+      .doc(quotaDocId(creatorId, utcDayKey(now)));
+  }
+
+  async function reserveQuota(creatorId, now = new Date()) {
+    const ref = quotaRef(creatorId, now);
+    const verdict = await db.runTransaction(async (txn) => {
+      const snap = await txn.get(ref);
+      const current = quotaVerdict(snap.data()?.count ?? 0);
+      if (!current.allowed) return current;
+      txn.set(ref, {
+        creatorId,
+        day: utcDayKey(now),
+        count: current.used + 1,
+        limit: current.limit,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return { ...current, used: current.used + 1, remaining: current.remaining - 1 };
+    });
+    if (!verdict.allowed) {
+      throw new HttpsError("resource-exhausted", quotaExceededMessage(verdict.limit));
+    }
+    return verdict;
+  }
+
+  async function releaseQuota(creatorId, now = new Date()) {
+    const ref = quotaRef(creatorId, now);
+    await db.runTransaction(async (txn) => {
+      const snap = await txn.get(ref);
+      const count = snap.data()?.count ?? 0;
+      // Never go negative: a double release must not hand out free slots.
+      txn.set(ref, {
+        count: Math.max(0, count - 1),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }).catch((error) => {
+      console.error("Upload quota release failed", {
+        creatorId,
+        error: error && error.message ? error.message : String(error),
+      });
+    });
+  }
+
   async function startUpload(request) {
     const creatorId = uid(request);
     const caption = string(request.data?.caption || "", config.captionMax);
     const animeTag = string(request.data?.animeTag || "", 128);
-    const hashtags = boundedList(request.data?.hashtags, 12, 64);
-    const characterIds = boundedList(request.data?.characterIds, 8, 128);
+    const hashtags = boundedList(
+      request.data?.hashtags,
+      TAG_LIMITS.hashtagsMax,
+      TAG_LIMITS.hashtagMaxLength,
+    );
+    const characterIds = boundedList(
+      request.data?.characterIds,
+      TAG_LIMITS.characterIdsMax,
+      TAG_LIMITS.characterIdMaxLength,
+    );
     const mentions = boundedList(request.data?.mentions, config.mentionMax, 128);
     const groupIds = boundedList(request.data?.groupIds, 8, 128);
     const animeId = string(request.data?.animeId || "", 128);
@@ -99,6 +292,24 @@ function createEditsDomain({
         groupIds === null || !Number.isInteger(coverFrameMs) ||
         coverFrameMs < 0 || coverFrameMs > 60000) {
       throw new HttpsError("invalid-argument", "Caption or anime tag is invalid.");
+    }
+    // An Edit must never point at an audio that does not exist or is not
+    // playable. Checking here — before any byte is uploaded — turns a silent
+    // dead-video bug into a fast, actionable failure.
+    if (audioId) {
+      const audioSnap = await db.collection(audioCollectionName).doc(audioId).get();
+      if (!audioSnap.exists) {
+        throw new HttpsError(
+          "failed-precondition",
+          "That sound track no longer exists.",
+        );
+      }
+      if (audioSnap.data()?.status !== "ready") {
+        throw new HttpsError(
+          "failed-precondition",
+          "That sound track is still processing. Try again shortly.",
+        );
+      }
     }
     const idempotencyKey = string(request.data?.idempotencyKey || "", 128);
     if (idempotencyKey) {
@@ -165,8 +376,16 @@ function createEditsDomain({
         creatorId, editId, createdAt: FieldValue.serverTimestamp(),
       }));
     }
-    await Promise.all(writes);
-    return { editId, videoPath };
+    // Quota is reserved only once the request is known to be valid, and released
+    // if the create itself fails so a rejected upload cannot silently burn a slot.
+    const reservation = await reserveQuota(creatorId);
+    try {
+      await Promise.all(writes);
+    } catch (error) {
+      await releaseQuota(creatorId);
+      throw error;
+    }
+    return { editId, videoPath, quotaRemaining: reservation.remaining };
   }
 
   async function repost(request) {
@@ -193,6 +412,34 @@ function createEditsDomain({
     }
     if (source.creatorId === creatorId) {
       throw new HttpsError("failed-precondition", "You cannot repost your own Edit.");
+    }
+    // §15.13 — a repost is a publication. It used to take no quota reservation,
+    // no idempotency key, and no moderation pass over the new row beyond the
+    // copy filter, so the daily cap was bypassable and a double tap produced
+    // two identical published Reels.
+    // The key is namespaced by creator (matching `startUpload`) so one account
+    // cannot collide with another's key and receive their editId. The lookup
+    // also runs before the quota reservation: a retry of a repost that already
+    // succeeded must be a no-op, not a second draw against the daily cap.
+    const idempotencyKey = string(request.data?.idempotencyKey || "", 128);
+    const keyDoc = idempotencyKey
+      ? db.collection(uploadKeyCollection).doc(`${creatorId}_${idempotencyKey}`)
+      : null;
+    if (keyDoc) {
+      const existingKey = await keyDoc.get();
+      if (existingKey.exists && existingKey.data()?.editId) {
+        return {
+          editId: existingKey.data().editId,
+          quotaRemaining: null,
+          reused: true,
+        };
+      }
+    }
+    if (EDIT_UPLOAD_QUOTA.repostDrawsQuota) {
+      const reservation = await reserveQuota(creatorId);
+      if (!reservation.allowed) {
+        throw new HttpsError("resource-exhausted", quotaExceededMessage(reservation));
+      }
     }
     const originalCreatorId = source.originalCreatorId || source.creatorId;
     const ref = db.collection(collectionName).doc();
@@ -232,6 +479,12 @@ function createEditsDomain({
         metadata: { editId: ref.id, originalEditId },
       });
     }
+    if (keyDoc) {
+      await keyDoc.set(
+        { creatorId, editId: ref.id, kind: "repost", createdAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+    }
     return { editId: ref.id };
   }
 
@@ -242,14 +495,113 @@ function createEditsDomain({
     const ref = editRef(id);
     const snap = await ref.get();
     if (!snap.exists) return { ok: true };
-    if (snap.data()?.creatorId !== creatorId) {
+    const data = snap.data() || {};
+    if (data.creatorId !== creatorId) {
       throw new HttpsError("permission-denied", "Only the creator can delete this edit.");
     }
+    if (data.status === "deleted") return { ok: true, alreadyDeleted: true };
+
+    const deletedAt = new Date();
     await ref.update({
       status: "deleted",
-      deletedAt: FieldValue.serverTimestamp(),
+      moderationStatus: "removed",
+      moderationReason: "creator_deleted",
+      deletedAt,
+      // §15.18 — the links must not keep resolving to a playable Reel.
+      videoUrl: null,
+      processedStoragePath: null,
+      originalStoragePath: null,
+      thumbnailUrl: null,
+      thumbnailStoragePath: null,
+      renditions: null,
     });
+
+    // §15.18 — revoke the bytes. Flipping `status` alone left the raw upload
+    // and every transcoded rung readable to any signed-in account forever,
+    // because the Storage rules only checked for a caller.
+    await setMediaVisible({
+      db,
+      bucket,
+      creatorId,
+      editId: id,
+      visible: false,
+      storagePrefix,
+      processedPrefix,
+      collectionName,
+      FieldValue,
+    });
+
+    // Saved-Reel snapshots are denormalized copies that kept the old
+    // `videoUrl`, so a deleted Reel stayed playable from someone else's saved
+    // list. The viewer owns their own copy, so they are only dropped.
+    const savedSnapshot = await db.collection(savedCollectionName)
+      .where("editId", "==", id)
+      .limit(500)
+      .get()
+      .catch(() => null);
+    if (savedSnapshot && !savedSnapshot.empty) {
+      const batch = db.batch();
+      for (const doc of savedSnapshot.docs) {
+        batch.delete(doc.ref);
+      }
+      await batch.commit();
+    }
+
+    // Keep the audio page honest: a deleted Reel must not keep counting as a
+    // use of somebody's Original Audio.
+    await db.collection(audioCollectionName)
+      .where("reelId", "==", id)
+      .limit(50)
+      .get()
+      .then((snap) => {
+        if (snap.empty) return null;
+        const batch = db.batch();
+        for (const doc of snap.docs) batch.delete(doc.ref);
+        return batch.commit();
+      })
+      .catch(() => null);
+
+    // §15.18 — audit data is retained, not erased: this is what lets a takedown
+    // be reviewed and a repeat infringer be identified later.
+    await ref.collection("audit").add({
+      action: "creator_deleted",
+      actorId: creatorId,
+      targetId: id,
+      at: FieldValue.serverTimestamp(),
+      previousStatus: data.status || null,
+      previousModerationStatus: data.moderationStatus || null,
+    });
+
     return { ok: true };
+  }
+
+  /**
+   * §15.12 — a thin per-actor rate limit for the interaction endpoints.
+   *
+   * Likes, comments and signals are already idempotent per user, which stops
+   * double counting but not a scripted client: one account could like 10,000
+   * Reels a minute and inflate every ranking signal at once. The window is
+   * generous on purpose — this exists to make automation expensive, not to
+   * make a fast viewer feel throttled.
+   */
+  async function enforceInteractionRateLimit(actor, action, { windowMs = 60 * 1000, max = 60 } = {}) {
+    const doc = db.collection("editRateLimits").doc(`${action}_${actor}`);
+    const now = Date.now();
+    return db.runTransaction(async (tx) => {
+      const snap = await tx.get(doc);
+      const startedAt = Number(snap.data()?.startedAt) || 0;
+      const count = Number(snap.data()?.count) || 0;
+      const elapsed = now - startedAt;
+      if (startedAt && elapsed < windowMs && count >= max) {
+        return { allowed: false };
+      }
+      tx.set(
+        doc,
+        startedAt && elapsed < windowMs ? { startedAt, count: count + 1 } : { startedAt: now, count: 1 },
+        { merge: true },
+      );
+      return { allowed: true };
+    });
   }
 
   async function like(request) {
@@ -257,12 +609,23 @@ function createEditsDomain({
     const id = string(request.data?.editId, 128);
     const shouldLike = request.data?.like !== false;
     if (!id) throw new HttpsError("invalid-argument", "editId is required.");
+    if (shouldLike) {
+      const gate = await enforceInteractionRateLimit(actor, "like");
+      if (!gate.allowed) {
+        throw new HttpsError("resource-exhausted", "Slow down for a moment.");
+      }
+    }
     await db.runTransaction(async (tx) => {
       const ref = editRef(id);
       const likeRef = ref.collection("likes").doc(actor);
       const [edit, existing] = await Promise.all([tx.get(ref), tx.get(likeRef)]);
       if (!edit.exists || edit.data()?.status !== "published") {
         throw new HttpsError("not-found", "Edit not found.");
+      }
+      // §15.12 — a creator liking their own Reel is a free way to inflate both
+      // the like count and the ranking score. It was never blocked.
+      if (shouldLike && edit.data()?.creatorId === actor) {
+        throw new HttpsError("failed-precondition", "You cannot like your own Edit.");
       }
       if (shouldLike && !existing.exists) {
         tx.create(likeRef, { userId: actor, createdAt: FieldValue.serverTimestamp() });
@@ -282,6 +645,13 @@ function createEditsDomain({
   async function comment(request) {
     const authorId = uid(request);
     const editId = string(request.data?.editId, 128);
+    const commentGate = await enforceInteractionRateLimit(authorId, "comment", {
+      windowMs: 60 * 1000,
+      max: 12,
+    });
+    if (!commentGate.allowed) {
+      throw new HttpsError("resource-exhausted", "You are commenting too quickly.");
+    }
     const kind = request.data?.kind === "sticker" ? "sticker" : "text";
     const max = kind === "sticker" ? config.stickerMax : config.commentMax;
     const text = string(request.data?.text, max);
@@ -397,6 +767,15 @@ function createEditsDomain({
         return;
       }
       if (eventType === "view" && sessionData.viewCounted !== true && !isSelf) {
+        // A View used to be credited the instant the client sent the event,
+        // which the client does on page change — so opening the feed and
+        // swiping past produced a free view for every Reel. Require a second of
+        // verified watch before the counter moves.
+        const watched = Number(sessionData.creditedSeconds) || 0;
+        if (watched < config.viewSeconds) {
+          tx.update(sessionRef, { lastHeartbeatAt: FieldValue.serverTimestamp() });
+          return;
+        }
         const changes = {};
         bump(changes, "viewsCount", "views", 1);
         tx.update(ref, changes);
@@ -407,13 +786,24 @@ function createEditsDomain({
         return;
       }
       if (eventType === "replay") {
-        if (sessionData.replayCounted !== true && !isSelf) {
-          const changes = {};
-          bump(changes, "replaysCount", "replays", 1);
-          tx.update(ref, changes);
+        // §15.12 — "watched 95% then watched again" is a strong positive signal.
+        // The client could claim a replay at any point, so the server now
+        // requires the session to have actually reached the threshold first.
+        const watched = Number(sessionData.creditedSeconds) || 0;
+        const duration = Math.max(1, Number(edit.data()?.durationSeconds) || 180);
+        const reached = watched / duration * 100;
+        if (reached >= config.replayPercent) {
+          if (sessionData.replayCounted !== true && !isSelf) {
+            const changes = {};
+            bump(changes, "replaysCount", "replays", 1);
+            // §15.9 — rewatch is one of the strongest recommendation signals
+            // the spec names, so it has to reach the score, not just a counter.
+            changes.score = FieldValue.increment(6);
+            tx.update(ref, changes);
+          }
         }
         tx.update(sessionRef, {
-          replayCounted: true,
+          replayCounted: sessionData.replayCounted === true || reached >= config.replayPercent,
           lastHeartbeatAt: FieldValue.serverTimestamp(),
         });
         return;
@@ -428,19 +818,24 @@ function createEditsDomain({
       const verifiedPercent = Math.min(percent, verifiedSeconds / duration * 100);
       const previous = viewer.data() || {};
       const last = previous.lastQualifiedAt?.toDate?.()?.getTime?.() || 0;
+      // §15.12 — qualified is three real seconds, not a share of the runtime.
       const qualified = !isSelf &&
+        verifiedSeconds >= config.qualifiedViewSeconds &&
         verifiedPercent >= config.qualifiedViewPercent &&
         Date.now() - last >= 24 * 60 * 60 * 1000;
       const completed = !isSelf &&
         verifiedPercent >= config.completionPercent &&
         previous.completed !== true;
-      const creditedBefore = Number(previous.creditedWatchSeconds) || 0;
-      const watchCredit = increment;
+      // A creator watching their own Reel used to add to `totalWatchSeconds`,
+      // which feeds the quality score the For You feed ranks on. Self-watching
+      // therefore improved your own placement.
+      const watchCredit = isSelf ? 0 : increment;
       tx.set(viewerRef, {
+        viewerId,
         lastPercent: Math.max(previous.lastPercent || 0, verifiedPercent),
         lastQualifiedAt: qualified ? FieldValue.serverTimestamp() : previous.lastQualifiedAt || null,
         completed: previous.completed === true || completed,
-        creditedWatchSeconds: creditedBefore + watchCredit,
+        creditedWatchSeconds: (Number(previous.creditedWatchSeconds) || 0) + watchCredit,
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
       tx.update(sessionRef, {
@@ -448,8 +843,7 @@ function createEditsDomain({
         lastHeartbeatAt: FieldValue.serverTimestamp(),
         consumed: verifiedPercent >= config.completionPercent,
       });
-      const changes = { totalWatchSeconds: FieldValue.increment(watchCredit) };
-      if (qualified) {
+      const changes = { totalWatchSeconds: FieldValue.increment(watchCredit) };      if (qualified) {
         bump(changes, "qualifiedViewsCount", "qualifiedViews", 1);
         changes.score = FieldValue.increment(Math.min(5, 2 + watchCredit * 0.05));
       }
@@ -494,6 +888,63 @@ function createEditsDomain({
     return { sessionId: session.id };
   }
 
+  /**
+   * §15 saved Reels.
+   *
+   * `save` used to be only a per-edit signal row that `unsave` DELETED, so the
+   * save state was unrecoverable by design: there was no list, no callable, no
+   * rule, no index, and no screen. A user's saved Reels evaporated on restart.
+   * The signal row still drives ranking; this is the retrievable record.
+   */
+  function savedItemRef(viewerId, editId) {
+    return db
+      .collection(savedCollectionName)
+      .doc(viewerId)
+      .collection("items")
+      .doc(editId);
+  }
+
+  /** Only what the saved list needs to render a row without a second fetch. */
+  function savedItemSnapshot(editData) {
+    return {
+      editId: editData.editId || "",
+      creatorId: editData.creatorId || "",
+      videoUrl: editData.videoUrl || "",
+      thumbnailUrl: editData.thumbnailUrl || "",
+      caption: editData.caption || "",
+      durationSeconds: Number(editData.durationSeconds) || 0,
+      likesCount: Number(editData.likesCount) || 0,
+    };
+  }
+
+  async function listSavedReels(request) {
+    const viewerId = uid(request);
+    const limit = Math.max(1, Math.min(50, Number(request.data?.limit) || 30));
+    const afterId = string(request.data?.afterId || "", 128);
+    const savedItems = db
+      .collection(savedCollectionName)
+      .doc(viewerId)
+      .collection("items");
+
+    // Paging happens in the query, not after it. Filtering the fetched page for
+    // the cursor only works while the cursor happens to be inside that page, so
+    // the second page request replayed the first page forever.
+    let query = savedItems.orderBy("savedAt", "desc").limit(limit + 1);
+    if (afterId) {
+      const cursorSnap = await savedItems.doc(afterId).get();
+      if (cursorSnap.exists) query = query.startAfter(cursorSnap);
+    }
+    const snapshot = await query.get();
+
+    let docs = snapshot.docs || [];
+    const hasMore = docs.length > limit;
+    if (hasMore) docs = docs.slice(0, limit);
+    return {
+      items: docs.map((doc) => ({ id: doc.id, ...(doc.data() || {}) })),
+      hasMore,
+    };
+  }
+
   async function signal(request) {
     const actor = uid(request);
     const editId = string(request.data?.editId, 128);
@@ -502,14 +953,22 @@ function createEditsDomain({
     if (!editId || !Object.hasOwn(weights, type)) {
       throw new HttpsError("invalid-argument", "Signal is invalid.");
     }
+    const gate = await enforceInteractionRateLimit(actor, "signal");
+    if (!gate.allowed) {
+      throw new HttpsError("resource-exhausted", "Slow down for a moment.");
+    }
     const ref = editRef(editId);
     const signalRef = ref.collection("signals").doc(`${actor}_${type === "unsave" ? "save" : type}`);
+    const savedRef = type === "save" || type === "unsave"
+      ? savedItemRef(actor, editId)
+      : null;
     await db.runTransaction(async (tx) => {
       const [edit, existing] = await Promise.all([tx.get(ref), tx.get(signalRef)]);
       if (!edit.exists) return;
       if (type === "unsave") {
         if (!existing.exists) return;
         tx.delete(signalRef);
+        if (savedRef) tx.delete(savedRef);
         const changes = { score: FieldValue.increment(-5) };
         bump(changes, "savesCount", "saves", -1);
         tx.update(ref, changes);
@@ -517,6 +976,14 @@ function createEditsDomain({
       }
       if (existing.exists) return;
       tx.create(signalRef, { actor, type, createdAt: FieldValue.serverTimestamp() });
+      if (type === "save" && savedRef) {
+        // The retrievable save record. Kept in the same transaction as the
+        // signal so a save can never be half-applied.
+        tx.set(savedRef, {
+          ...savedItemSnapshot({ ...(edit.data() || {}), editId }),
+          savedAt: FieldValue.serverTimestamp(),
+        });
+      }
       const changes = { score: FieldValue.increment(weights[type]) };
       if (type === "share") bump(changes, "sharesCount", "shares", 1);
       if (type === "save") bump(changes, "savesCount", "saves", 1);
@@ -526,6 +993,106 @@ function createEditsDomain({
       tx.update(ref, changes);
     });
     return { ok: true };
+  }
+
+  /**
+   * §15.18 — a real report, with a real category and a real audit trail.
+   *
+   * "Report" used to be wired to `signal('negative')`, which is a ranking
+   * penalty: nothing was recorded, nothing was queued, and nobody could act on
+   * it. A reporter therefore had no way to know whether a harmful Reel had been
+   * seen by anyone. Reports now land in `edits/{id}/reports/{uid}`, are
+   * idempotent per reporter, and are rate limited so the queue cannot be
+   * flooded with noise.
+   */
+  async function reportEdit(request) {
+    const actor = uid(request);
+    const editId = string(request.data?.editId, 128);
+    const category = string(request.data?.category || "", 32);
+    const detail = string(request.data?.detail || "", 500);
+    if (!editId) throw new HttpsError("invalid-argument", "editId is required.");
+    if (!REPORT_CATEGORIES.has(category)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Report category is invalid.",
+      );
+    }
+    const ref = editRef(editId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "Edit not found.");
+
+    const reportRef = ref.collection("reports").doc(actor);
+    const prior = await reportRef.get();
+    if (prior.exists) {
+      // One report per reporter per Reel. Re-reporting updates the category
+      // rather than creating a second queue entry, so a user cannot inflate the
+      // queue by tapping repeatedly.
+      await reportRef.set(
+        {
+          category,
+          detail: detail || prior.data()?.detail || null,
+          updatedAt: FieldValue.serverTimestamp(),
+          repeatCount: FieldValue.increment(1),
+        },
+        { merge: true },
+      );
+      return { ok: true, alreadyReported: true };
+    }
+
+    const gate = await enforceReportRateLimit(actor);
+    if (!gate.allowed) {
+      throw new HttpsError("resource-exhausted", gate.message);
+    }
+
+    await reportRef.set({
+      category,
+      detail: detail || null,
+      actorId: actor,
+      targetId: editId,
+      creatorId: snap.data()?.creatorId || null,
+      status: "open",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    // A report still nudges ranking down — that part was real — but it now
+    // carries a category so triage can tell abuse from taste.
+    await ref.update({
+      negativeFeedbackCount: FieldValue.increment(1),
+      moderationStatus: "flagged",
+    });
+
+    return { ok: true };
+  }
+
+  /**
+   * §15.18 — thin abuse gate on the report queue itself.
+   *
+   * Deliberately generous: the cost of a false positive is a rejected report,
+   * while the cost of no limit is a queue nobody can triage.
+   */
+  async function enforceReportRateLimit(actor, now = Date.now()) {
+    const doc = db.collection("editReportRate").doc(actor);
+    const windowMs = 60 * 60 * 1000;
+    const maxPerWindow = 10;
+    return db.runTransaction(async (tx) => {
+      const snap = await tx.get(doc);
+      const startedAt = Number(snap.data()?.startedAt) || 0;
+      const count = Number(snap.data()?.count) || 0;
+      const elapsed = now - startedAt;
+      if (startedAt && elapsed < windowMs && count >= maxPerWindow) {
+        return {
+          allowed: false,
+          message: "You have sent a few reports already. Try again later.",
+        };
+      }
+      if (startedAt && elapsed >= windowMs) {
+        tx.set(doc, { startedAt: now, count: 1 });
+        return { allowed: true };
+      }
+      tx.set(doc, { startedAt: startedAt || now, count: count + 1 });
+      return { allowed: true };
+    });
   }
 
   async function commentAction(request) {
@@ -571,20 +1138,114 @@ function createEditsDomain({
     return { ok: true };
   }
 
+  /**
+   * §15.16 — one feed entry point for every Reels surface.
+   *
+   * Scope (audio / anime / character / hashtag / creator) narrows the
+   * candidate set; `feedType` picks the ranking strategy. Both are decided
+   * here, never on the client.
+   */
+  /**
+   * §15 mute a Reels creator.
+   *
+   * Mute is one-directional and consequence-free: it hides their content from
+   * this viewer's feed and nothing else. Block (see socialGraph) is the
+   * two-sided action.
+   */
+  async function muteReelCreator(request) {
+    const viewerId = uid(request);
+    const creatorId = string(request.data?.creatorId || "", 128);
+    const muted = request.data?.muted !== false;
+    if (!creatorId) {
+      throw new HttpsError("invalid-argument", "creatorId is required.");
+    }
+    if (creatorId === viewerId) {
+      throw new HttpsError("failed-precondition", "You cannot mute yourself.");
+    }
+    const creator = await db.collection("users").doc(creatorId).get();
+    if (!creator.exists) {
+      throw new HttpsError("not-found", "That creator no longer exists.");
+    }
+    const ref = db
+      .collection(muteCollectionName)
+      .doc(viewerId)
+      .collection("creators")
+      .doc(creatorId);
+    if (muted) {
+      await ref.set({
+        creatorId,
+        viewerId,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      return { muted: true, creatorId };
+    }
+    await ref.delete().catch(() => {});
+    return { muted: false, creatorId };
+  }
+
+  /** Creators whose Reels this viewer must not see: blocked (both ways) + muted. */
+  async function loadHiddenCreatorIds(viewerId) {
+    // Deliberately no `.catch()` on these two reads.
+    //
+    // They are the privacy boundary: a block is the one signal a user has to
+    // stop seeing someone, and a mute is an explicit request to hide them.
+    // Reading them as "no blocks, no mutes" when the read fails fails open, and
+    // would republish exactly the content the viewer asked not to see. An
+    // unavailable feed is the correct outcome instead.
+    const [blockSnap, muteSnap] = await Promise.all([
+      db.collection("friendships")
+        .where("userIds", "array-contains", viewerId)
+        .get(),
+      db.collection(muteCollectionName)
+        .doc(viewerId)
+        .collection("creators")
+        .get(),
+    ]);
+    return buildHiddenCreatorSet({
+      blockDocs: blockSnap.docs || [],
+      muteDocs: (muteSnap.docs || []).map((doc) => doc.id),
+      viewerId,
+    });
+  }
+
+  /**
+   * §15.9 — which Reels this viewer has already been served.
+   *
+   * Reads the server-owned `viewers` subcollection rather than anything the
+   * client sends, so a viewer cannot clear their own history to farm repeats,
+   * and cannot invent history to suppress content.
+   *
+   * Bounded on purpose: this runs on every feed request, and an unbounded read
+   * would make the feed cost grow without limit for heavy viewers. Anything past
+   * the cap simply stops contributing a repetition penalty.
+   */
+  async function loadSeenEditIds(viewerId, cap = config.seenHistoryLimit) {
+    const snapshot = await db
+      .collectionGroup("viewers")
+      .where("viewerId", "==", viewerId)
+      .limit(cap)
+      .get()
+      .catch(() => ({ docs: [] }));
+    const ids = new Set();
+    (snapshot.docs || []).forEach((doc) => {
+      // The doc id is the viewer; the *parent* is the Reel that was watched.
+      const editId = doc.ref.parent.parent && doc.ref.parent.parent.id;
+      if (editId) ids.add(editId);
+    });
+    return ids;
+  }
+
   async function getEditFeed(request) {
     const viewerId = uid(request);
     const limit = Math.max(1, Math.min(12, Number(request.data?.limit) || config.feedPageSize));
     const afterId = string(request.data?.afterId || "", 128);
-    const [userSnap, respectsSnap, listsSnap, published] = await Promise.all([
+    const feedType = normalizeFeedType(request.data?.feedType);
+    const scope = normalizeFeedScope(request.data);
+    const [userSnap, respectsSnap, listsSnap, hiddenCreatorIds] = await Promise.all([
       db.collection("users").doc(viewerId).get(),
       db.collection("respects").where("fromUserId", "==", viewerId).get().catch(() => ({ docs: [] })),
       db.collection("users").doc(viewerId).collection("animeList").get().catch(() => ({ docs: [] })),
-      db.collection(collectionName)
-        .where("status", "==", "published")
-        .orderBy("score", "desc")
-        .orderBy("createdAt", "desc")
-        .limit(80)
-        .get(),
+      loadHiddenCreatorIds(viewerId),
     ]);
     const user = userSnap.data() || {};
     const creatorIds = new Set();
@@ -593,28 +1254,91 @@ function createEditsDomain({
       const toUserId = doc.data()?.toUserId;
       if (toUserId && value >= config.fanThreshold) creatorIds.add(toUserId);
     });
+    // A blocked/muted creator must not stay in the Following set either, or the
+    // `following` branch below would re-admit what the visibility filter removed.
+    hiddenCreatorIds.forEach((hiddenId) => creatorIds.delete(hiddenId));
     const animeIds = [
       ...((user.favoriteAnimeIds || []).filter(Boolean)),
       ...((listsSnap.docs || []).map((doc) => doc.id)),
     ];
+    // §15.9 already-watched Reels. `scoreEdit` penalises a repeat, but the
+    // profile handed an empty set, so that penalty could never fire and the
+    // viewer was re-served the same Reels. Read server-owned watch history:
+    // `edits/{id}/viewers/{viewerId}` already exists from `recordView`.
+    const seenIds = await loadSeenEditIds(viewerId);
     const profile = {
       userId: viewerId,
       animeIds,
       creatorIds,
-      seenIds: new Set(),
+      seenIds,
       creatorQuality: 0,
     };
     const now = new Date();
-    const ranked = (published.docs || [])
-      .map((doc) => {
-        const data = doc.data() || {};
-        return {
-          id: doc.id,
-          data,
-          rank: scoreEdit({ id: doc.id, ...data }, profile, now),
-        };
-      })
-      .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
+    const published = await loadFeedCandidates({
+      db,
+      collectionName,
+      feedType,
+      scope,
+      creatorIds,
+    });
+    // Defense in depth: the query already applied scope, but re-checking here
+    // keeps the guarantee that a scoped feed never leaks another context's rows
+    // even if a query clause is later dropped.
+    const candidates = (published.docs || [])
+      .map((doc) => ({ id: doc.id, data: doc.data() || {} }))
+      .filter((item) => matchesScope(item.data, scope))
+      // §15.18 — a reported/flagged Reel keeps `status: 'published'` so the
+      // takedown path can still restore it, but it must never be served. The
+      // candidate query cannot carry `moderationStatus` without a composite
+      // index per scope, so the gate is applied here, before ranking, for every
+      // feed type. Only `approved` is eligible; `flagged`, `needs_review`, and
+      // `removed` all drop out.
+      .filter((item) => (item.data.moderationStatus || "") === "approved");
+    // A creator you blocked or muted must not appear in any feed scope. This is
+    // applied after ranking scope so it cannot be bypassed by choosing a scope.
+    const visible = applyVisibility(candidates, hiddenCreatorIds, viewerId);
+    let ranked;
+    if (feedType === "following") {
+      // §15.16 — Following is creators the viewer actually follows. When the
+      // viewer follows nobody the honest answer is an empty feed, not a
+      // silent fallback to For You.
+      ranked = visible
+        .filter((item) => creatorIds.has(item.data.creatorId))
+        .map((item) => ({
+          id: item.id,
+          data: item.data,
+          rank: scoreEdit({ id: item.id, ...item.data }, profile, now),
+        }))
+        .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
+    } else if (feedType === "trending") {
+      // §15.16 — Trending is engagement velocity, independent of the viewer.
+      ranked = visible
+        .map((item) => ({
+          id: item.id,
+          data: item.data,
+          rank: scoreReelTrending({ id: item.id, ...item.data }, now),
+        }))
+        .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
+      // §15.10 lists creator diversity ("تنوع الصنّاع") as part of Trending, so a
+      // single loud creator cannot own the "what's happening now" page. The caps
+      // depend only on the ranked order, never on the viewer, so two people
+      // opening Trending still see the same page.
+      ranked = applyFeedDiversity(ranked);
+    } else {
+      ranked = visible
+        .map((item) => ({
+          id: item.id,
+          data: item.data,
+          rank: scoreEdit({ id: item.id, ...item.data }, profile, now),
+        }))
+        .sort((a, b) => b.rank - a.rank || String(b.id).localeCompare(String(a.id)));
+      // §15.9 controlled diversity. The ranked order used to go straight out, so
+      // one hot creator could own the entire page.
+      ranked = applyFeedDiversity(ranked);
+      // §15.9 exploitation 70–90% / exploration 10–30%. Without this the tail was
+      // unreachable: every slot went to the top-ranked Reel.
+      ranked = mixExploration(ranked, config.explorationShare);
+    }
     let start = 0;
     if (afterId) {
       const index = ranked.findIndex((item) => item.id === afterId);
@@ -752,8 +1476,9 @@ function createEditsDomain({
 
   return {
     startUpload, repost, deleteEdit, like, comment, startPlayback, recordView, signal,
-    commentAction, getEditFeed, retryProcessing, finalizeUpload,
+    commentAction, getEditFeed, retryProcessing, finalizeUpload, muteReelCreator,
+    listSavedReels, reportEdit,
   };
 }
 
-module.exports = { createEditsDomain };
+module.exports = { createEditsDomain, REPORT_CATEGORIES };

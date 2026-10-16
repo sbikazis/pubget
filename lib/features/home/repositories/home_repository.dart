@@ -24,5 +24,16 @@ abstract interface class HomeRepository {
     String? cursor,
     int limit = 8,
   });
+
+  /// Signal-backed Home sections (anime of the week, popular characters,
+  /// rising creators, friends' activity, freshest content).
+  ///
+  /// Returns every section when [section] is null, or just that one section.
+  /// A section with no real signal comes back empty rather than filled.
+  Future<Result<Map<String, DiscoverySectionPage>>> getHomeSections({
+    String? section,
+    int limit = 8,
+  });
+
   Future<Result<DiscoverySearchResults>> search(String query);
 }

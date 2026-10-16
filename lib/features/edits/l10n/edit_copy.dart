@@ -10,7 +10,8 @@ final class EditCopy {
 
   static EditCopy of(BuildContext context) => EditCopy(AppStrings.of(context));
 
-  String get feedTitle => _s.pick('Reels', 'ريلز');
+  /// Axis 15 §15.18 — the product name lives in exactly one place.
+  String get feedTitle => _s.productReelsName;
   String get uploadTitle => _s.pick('Create Reel', 'إنشاء ريل');
   String get chooseVideo => _s.pick('Choose video', 'اختيار فيديو');
   String get recordVideo => _s.pick('Camera', 'الكاميرا');
@@ -102,6 +103,7 @@ final class EditCopy {
   );
   String get fan => _s.pick('Fan', 'مشجع');
   String get like => _s.pick('Like', 'إعجاب');
+  String get unlike => _s.pick('Remove like', 'إلغاء الإعجاب');
   String get comment => _s.pick('Comment', 'تعليق');
   String get share => _s.pick('Share', 'مشاركة');
   String get save => _s.pick('Save', 'حفظ');
@@ -114,6 +116,36 @@ final class EditCopy {
   String get newest => _s.pick('Newest', 'الأحدث');
   String get top => _s.pick('Top', 'الأكثر إعجابًا');
   String get report => _s.pick('Report', 'إبلاغ');
+  // Axis 15 §15.18 — moderated report flow. The ids must stay in sync with the
+  // server's REPORT_CATEGORIES set; only the labels are localized.
+  String get reportPrompt => _s.pick(
+        'Why are you reporting this Reel?',
+        'لماذا تبلّغ عن هذا الريل؟',
+      );
+  String get reportSubmitted => _s.pick(
+        'Thanks — your report was sent to the moderation queue.',
+        'شكرًا — أُرسل بلاغك إلى قائمة المراجعة.',
+      );
+  String get reportFailed => _s.pick(
+        'Could not send the report. Please retry.',
+        'تعذّر إرسال البلاغ. أعد المحاولة.',
+      );
+  String reportCategory(String id) => switch (id) {
+        'spam' => _s.pick('Spam or scam', 'محتوى مزعج أو احتيالي'),
+        'harassment' => _s.pick('Harassment or bullying', 'تحرّش أو تنمّر'),
+        'hate' => _s.pick('Hate speech', 'خطاب كراهية'),
+        'sexual' => _s.pick('Sexual content', 'محتوى جنسي'),
+        'violence' => _s.pick('Violence', 'عنف'),
+        'copyright' => _s.pick('Copyright violation', 'انتهاك حقوق النشر'),
+        'self_harm' => _s.pick('Self-harm', 'إيذاء النفس'),
+        'misleading' => _s.pick('Misinformation', 'معلومات مضللة'),
+        _ => _s.pick('Something else', 'سبب آخر'),
+      };
+  String get notInterested => _s.pick('Not interested', 'غير مهتم');
+  String get notInterestedDone => _s.pick(
+        'We will show fewer Reels like this.',
+        'سنعرض ريلز أقل مشابهة لهذا.',
+      );
   String get delete => _s.pick('Delete', 'حذف');
   String get mention => _s.pick('Mention', 'إشارة');
   String get sticker => _s.pick('Sticker', 'ملصق');
@@ -122,6 +154,50 @@ final class EditCopy {
   String get play => _s.pick('Play', 'تشغيل');
   String get pause => _s.pick('Pause', 'إيقاف');
   String views(int count) => _s.pick('$count views', '$count مشاهدة');
+  String likes(int count) => _s.pick('$count likes', '$count إعجاب');
+  String get reply => _s.pick('Reply', 'رد');
+  String get cancelReply => _s.pick('Cancel reply', 'إلغاء الرد');
+  String replyingTo(String text) =>
+      _s.pick('Replying to $text', 'ردًا على $text');
+  String get noCommentsMessage => _s.pick(
+        'Be the first to reply to this Edit.',
+        'كن أول من يرد على هذا المقطع.',
+      );
+  String get loadingMore => _s.pick('Loading…', 'جارٍ التحميل…');
+  String get loadMore => _s.pick('Load more', 'عرض المزيد');
+  String get loadMoreFailed => _s.pick(
+        'Could not load more comments.',
+        'تعذّر تحميل المزيد من التعليقات.',
+      );
+
+  // Axis 15 §15.16 — feed strategy labels.
+  String feedLabel(FeedType type) => switch (type) {
+        FeedType.forYou => _s.feedForYou,
+        FeedType.following => _s.feedFollowing,
+        FeedType.trending => _s.feedTrending,
+      };
+
+  // Axis 15 §15.7 — tag inputs.
+  String get hashtags => _s.pick('Hashtags (optional)', 'الوسوم (اختياري)');
+  String get hashtagsHint => _s.pick(
+        'Add up to 12 tags, separated by spaces or commas',
+        'أضف حتى 12 وسمًا، مفصولة بمسافات أو فواصل',
+      );
+  String get characterTags =>
+      _s.pick('Characters (optional)', 'الشخصيات (اختياري)');
+  String get characterTagsHint => _s.pick(
+        'Tag up to 8 characters so fans can find this Reel',
+        'وسم حتى 8 شخصيات ليجدها المعجبون',
+      );
+  String get audio => _s.pick('Sound track (optional)', 'الصوت (اختياري)');
+  String get audioHint =>
+      _s.pick('Pick audio from the library', 'اختر صوتًا من المكتبة');
+  String get audioNone => _s.pick('None selected', 'لم يتم الاختيار');
+  String get audioClear => _s.pick('Remove sound track', 'إزالة الصوت');
+  String get audioOffline => _s.pick(
+        'Reconnect to pick a sound track',
+        'أعد الاتصال لاختيار صوت',
+      );
 
   String primaryActionLabel({
     required bool hasVideo,
@@ -159,8 +235,8 @@ final class EditCopy {
           'هذا الفيديو ليس MP4 مدعومًا، أو حجمه كبير جدًا.',
         ),
       'duration' => _s.pick(
-          'Videos can be up to 3 minutes long.',
-          'مدة الفيديو يمكن أن تصل إلى 3 دقائق.',
+          'Reels can be up to 60 seconds long.',
+          'يمكن أن يصل طول الريل إلى 60 ثانية.',
         ),
       'aspect-unrecoverable' => _s.pick(
           'We could not prepare this video for full-screen display. Delete the draft or try another file.',

@@ -96,6 +96,12 @@ final class _FailingDiscoveryRepository implements HomeRepository {
       const FailureResult(NetworkError());
 
   @override
+  Future<Result<Map<String, DiscoverySectionPage>>> getHomeSections({
+    String? section,
+    int limit = 8,
+  }) async => const Success(<String, DiscoverySectionPage>{});
+
+  @override
   Future<Result<DiscoveryFeed>> getDiscoveryFeed({
     String? section,
     String? cursor,
@@ -143,6 +149,12 @@ final class _FlakyDiscoveryRepository implements HomeRepository {
   @override
   Future<Result<DiscoverySearchResults>> search(String query) async =>
       _result(const DiscoverySearchResults());
+
+  @override
+  Future<Result<Map<String, DiscoverySectionPage>>> getHomeSections({
+    String? section,
+    int limit = 8,
+  }) async => const Success(<String, DiscoverySectionPage>{});
 
   @override
   Future<Result<DiscoveryFeed>> getDiscoveryFeed({

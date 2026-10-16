@@ -41,6 +41,7 @@ const { createRecommendationEngine } = require("./src/recommendationEngine");
 const { createAnimeListsDomain } = require("./src/animeListsDomain");
 const { createAnimeHubDomain } = require("./src/animeHubDomain");
 const { createEditsDomain } = require("./src/editsDomain");
+const { createAudioDomain } = require("./src/audioDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
@@ -49,9 +50,19 @@ const { createFanWorksDomain } = require("./src/fanWorksDomain");
 const { createFanWorksSigner } = require("./src/fanWorksStorage");
 const { createEconomyDomain } = require("./src/economyDomain");
 const { createAchievementsDomain } = require("./src/achievementsDomain");
+const { createHomeSections } = require("./src/homeSectionsDomain");
 const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
 
-initializeApp();
+// The project's Storage bucket is the modern `{project}.firebasestorage.app`
+// (a `{project}.appspot.com` bucket does not exist for it). Do not rely on the
+// Admin default, which resolves through FIREBASE_CONFIG and has been seen to
+// point at the legacy `appspot.com` name — every `getStorage().bucket()` call
+// below would then address a bucket that does not exist.
+const STORAGE_BUCKET =
+  process.env.STORAGE_BUCKET ||
+  `${process.env.GCLOUD_PROJECT || "pubget-aaf27"}.firebasestorage.app`;
+
+initializeApp({ storageBucket: STORAGE_BUCKET });
 
 // Lazy admin clients (see src/lazyAdmin.js): the Functions deploy
 // discovery process loads this module and gives it a 10s window to
@@ -248,6 +259,7 @@ const processEditVideo = createEditPipeline({
   economy: economyDomain,
   achievements: achievementsDomain,
   notifications: notificationBuilder,
+  FieldValue,
 });
 const editsDomain = createEditsDomain({
   db: lazyFirestore,
@@ -265,6 +277,18 @@ exports.refreshGroupActivityScores = onSchedule(
 exports.getDiscoveryFeed = onCall(
   { region: "us-central1" },
   recommendationEngine.getDiscoveryFeed,
+);
+// Home sections that Master Spec 5.3 requires but that getDiscoveryFeed could
+// not honestly serve (anime of the week, popular characters, friends' activity,
+// rising creators, freshest content). Each returns only real signals: an empty
+// list is the correct answer when there is no signal, never filler.
+const homeSectionsDomain = createHomeSections({
+  db: lazyFirestore,
+  HttpsError,
+});
+exports.getHomeSections = onCall(
+  { region: "us-central1" },
+  homeSectionsDomain.getHomeSections,
 );
 exports.setAnimeListEntry = onCall(
   { region: "us-central1" },
@@ -330,6 +354,14 @@ exports.reportAnimeReview = onCall(
   { region: "us-central1" },
   animeHubDomain.reportAnimeReview,
 );
+exports.reportAnime = onCall(
+  { region: "us-central1" },
+  animeHubDomain.reportAnime,
+);
+exports.getAnimeCommunityStats = onCall(
+  { region: "us-central1" },
+  animeHubDomain.getAnimeCommunityStats,
+);
 exports.postCharacterDiscussion = onCall(
   { region: "us-central1" },
   animeHubDomain.postCharacterDiscussion,
@@ -374,18 +406,52 @@ exports.editCommentAction = onCall(
   { region: "us-central1" },
   editsDomain.commentAction,
 );
+exports.reportEdit = onCall(
+  { region: "us-central1" },
+  editsDomain.reportEdit,
+);
+exports.muteReelCreator = onCall(
+  { region: "us-central1" },
+  editsDomain.muteReelCreator,
+);
+exports.listSavedReels = onCall(
+  { region: "us-central1" },
+  editsDomain.listSavedReels,
+);
 exports.getEditFeed = onCall(
   { region: "us-central1" },
   editsDomain.getEditFeed,
 );
+// The retry path runs the *same* ffmpeg work as the finalize trigger: it
+// downloads the full source and walks the rendition ladder. It therefore needs
+// the trigger's budget. It used to run on the v2 defaults (256 MiB / 60 s),
+// so retrying a large Reel — precisely the case a retry exists for — OOM'd or
+// timed out on 1/4 the memory and 1/5 the timeout. The region stays
+// us-central1 because the client invokes this callable without an override.
 exports.retryEditProcessing = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
   editsDomain.retryProcessing,
 );
 exports.finalizeEditUpload = onCall(
   { region: "us-central1", timeoutSeconds: 60, memory: "512MiB" },
   editsDomain.finalizeUpload,
 );
+
+// Axis 15 §15.8 — audio is reachable from the client, not just defined.
+// The domain is built on the same collection the Edit domain uses, so audio
+// attaches to real Reels instead of an empty parallel `reels` collection.
+const audioDomain = createAudioDomain({
+  db: lazyFirestore,
+  bucket: lazyStorageBucket,
+  FieldValue,
+  HttpsError,
+  reelCollection: "edits",
+});
+exports.listReelAudios = onCall({ region: "us-central1" }, audioDomain.listAudios);
+exports.getReelAudio = onCall({ region: "us-central1" }, audioDomain.getAudio);
+exports.useReelAudio = onCall({ region: "us-central1" }, audioDomain.useAudio);
+exports.removeReelAudio = onCall({ region: "us-central1" }, audioDomain.removeAudio);
+exports.searchReelAudios = onCall({ region: "us-central1" }, audioDomain.searchAudios);
 // Storage bucket pubget-aaf27.firebasestorage.app lives in europe-west3;
 // Gen2 object-finalize triggers must be in the same region as the bucket.
 exports.processEditVideo = onObjectFinalized(
@@ -574,6 +640,18 @@ exports.addEventComment = onCall(
 exports.reactToEvent = onCall(
   { region: "us-central1" },
   eventsDomain.reactToEvent,
+);
+exports.crosspostEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.crosspostEvent,
+);
+exports.getEventCreationQuota = onCall(
+  { region: "us-central1" },
+  eventsDomain.getEventCreationQuota,
+);
+exports.reportEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.reportEvent,
 );
 exports.createGame = onCall(
   { region: "us-central1" },
@@ -774,6 +852,14 @@ exports.equipCosmetic = onCall(
 exports.unequipCosmetic = onCall(
   { region: "us-central1" },
   economyDomain.unequipCosmetic,
+);
+exports.redeemPremiumCode = onCall(
+  { region: "us-central1" },
+  economyDomain.redeemPremiumCode,
+);
+exports.adminGeneratePremiumCode = onCall(
+  { region: "us-central1" },
+  economyDomain.adminGeneratePremiumCode,
 );
 exports.processEventLifecycle = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },

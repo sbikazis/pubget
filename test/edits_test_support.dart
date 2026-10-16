@@ -55,6 +55,16 @@ final class FakeEditsRepository implements EditsRepository {
   Failure? uploadFailure;
   Failure? likeFailure;
   Failure? signalFailure;
+  Failure? commentActionFailure;
+  Failure? muteFailure;
+  Failure? savedReelsFailure;
+  Failure? reportFailure;
+  List<Edit> savedReels = <Edit>[];
+  bool savedReelsHasMore = false;
+  final List<Map<String, dynamic>> muteCalls = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> reportCalls = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> savedPagesCalls = <Map<String, dynamic>>[];
+  final List<Map<String, String>> commentActionCalls = <Map<String, String>>[];
   Future<Result<void>> Function(bool like)? likeHandler;
   var likeCalls = 0;
   var commentCalls = 0;
@@ -62,6 +72,7 @@ final class FakeEditsRepository implements EditsRepository {
   var lastLike = true;
   String? lastUploadStatus;
   String? lastIdempotencyKey;
+  String? lastUploadAudioId;
   final _editController = StreamController<Result<Edit>>.broadcast();
 
   @override
@@ -70,6 +81,9 @@ final class FakeEditsRepository implements EditsRepository {
     required String contentType,
     required String caption,
     required String animeTag,
+    String? hashtags,
+    String? characterTags,
+    String? audioId,
     String? fileName,
     int? sizeBytes,
     String? idempotencyKey,
@@ -80,6 +94,7 @@ final class FakeEditsRepository implements EditsRepository {
   }) async {
     uploadCalls += 1;
     lastIdempotencyKey = idempotencyKey;
+    lastUploadAudioId = audioId;
     onStarted?.call(resumeEditId ?? 'draft-1', resumeVideoPath ?? 'edits/u/draft-1.mp4');
     onProgress?.call(1);
     if (uploadFailure != null) return FailureResult(uploadFailure!);
@@ -104,8 +119,16 @@ final class FakeEditsRepository implements EditsRepository {
       Success(testEdit(id: editId, status: 'processing'));
 
   @override
-  Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) async =>
-      Success(EditPage(feed, hasMore: false));
+  Future<Result<EditPage>> getFeed({
+    Edit? after,
+    int limit = 5,
+    String? audioId,
+    String? animeId,
+    String? characterId,
+    String? hashtag,
+    String? creatorId,
+    FeedType feedType = FeedType.forYou,
+  }) async => Success(EditPage(feed, hasMore: false));
 
   @override
   Future<Result<List<Edit>>> getCreatorEdits(
@@ -179,11 +202,39 @@ final class FakeEditsRepository implements EditsRepository {
   }) async => Success(comments);
 
   @override
+  @override
+  Future<Result<void>> muteReelCreator({
+    required String creatorId,
+    required bool mute,
+  }) async {
+    muteCalls.add(<String, dynamic>{'creatorId': creatorId, 'mute': mute});
+    if (muteFailure != null) return FailureResult(muteFailure!);
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<SavedReelsPage>> listSavedReels({
+    String? afterId,
+    int limit = 30,
+  }) async {
+    savedPagesCalls.add(<String, dynamic>{
+      'afterId': afterId,
+      'limit': limit,
+    });
+    if (savedReelsFailure != null) return FailureResult(savedReelsFailure!);
+    return Success(SavedReelsPage(savedReels, hasMore: savedReelsHasMore));
+  }
+
+  @override
   Future<Result<void>> commentAction({
     required String editId,
     required String commentId,
     required String action,
-  }) async => const Success<void>(null);
+  }) async {
+    commentActionCalls.add(<String, String>{'commentId': commentId, 'action': action});
+    if (commentActionFailure != null) return FailureResult(commentActionFailure!);
+    return const Success<void>(null);
+  }
 
   @override
   Future<Result<void>> recordSignal({
@@ -191,6 +242,21 @@ final class FakeEditsRepository implements EditsRepository {
     required String type,
   }) async {
     if (signalFailure != null) return FailureResult(signalFailure!);
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<void>> reportEdit({
+    required String editId,
+    required String category,
+    String? detail,
+  }) async {
+    reportCalls.add(<String, dynamic>{
+      'editId': editId,
+      'category': category,
+      'detail': detail,
+    });
+    if (reportFailure != null) return FailureResult(reportFailure!);
     return const Success<void>(null);
   }
 

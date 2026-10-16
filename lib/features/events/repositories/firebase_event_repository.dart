@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/event_models.dart';
 import 'event_repository.dart';
 
@@ -153,7 +155,12 @@ final class FirebaseEventRepository implements EventRepository {
     int limit = 20,
   }) => _query(
     _events
-        .where('groupId', isEqualTo: groupId)
+        .where(
+          Filter.or(
+            Filter('groupId', isEqualTo: groupId),
+            Filter('groupIds', arrayContains: groupId),
+          ),
+        )
         .where('status', whereIn: <String>['ACTIVE', 'ENDED'])
         .orderBy('startAt', descending: true)
         .limit(limit),
@@ -223,6 +230,42 @@ final class FirebaseEventRepository implements EventRepository {
   });
 
   @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) => _guard(() async {
+    final snapshot = await _events
+        .doc(eventId)
+        .collection('reactions')
+        .doc(userId)
+        .get();
+    if (!snapshot.exists) return null;
+    final reaction = snapshot.data()?['reaction'];
+    return reaction is String ? reaction : null;
+  });
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() => _guard(() async {
+    final result = await _functions
+        .httpsCallable('getEventCreationQuota')
+        .call(<String, dynamic>{});
+    return EventCreationQuota.fromMap(
+      Map<String, dynamic>.from(result.data as Map),
+    );
+  });
+
+  @override
+  Future<Result<void>> crosspost({
+    required String eventId,
+    List<String> groupIds = const <String>[],
+    bool toGlobal = false,
+  }) => _call('crosspostEvent', {
+    'eventId': eventId,
+    if (toGlobal) 'toGlobal': true,
+    if (groupIds.isNotEmpty) 'groupIds': groupIds,
+  });
+
+  @override
   Future<Result<EventPreview>> preview({required String eventId}) =>
       _guard(() async {
         final result = await _functions
@@ -232,6 +275,17 @@ final class FirebaseEventRepository implements EventRepository {
           Map<String, dynamic>.from(result.data as Map),
         );
       });
+
+  @override
+  Future<Result<void>> reportEvent({
+    required String eventId,
+    required String category,
+    String detail = '',
+  }) => _call('reportEvent', {
+    'eventId': eventId,
+    'category': category,
+    if (detail.trim().isNotEmpty) 'detail': detail.trim(),
+  });
 
   @override
   Future<Result<EventResult>> resolve({
@@ -330,7 +384,9 @@ final class FirebaseEventRepository implements EventRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(
+        await runWithRetry(action, mapError: _eventFailure),
+      );
     } on Object catch (error) {
       return FailureResult<T>(_eventFailure(error));
     }
@@ -344,18 +400,16 @@ Failure _eventFailure(Object error) {
         error.message ?? "You don't have permission.",
       ),
       'not-found' => NotFoundError(error.message ?? 'Event not found.'),
-      'unavailable' || 'resource-exhausted' => NetworkError(
+      'unavailable' ||
+      'resource-exhausted' ||
+      'deadline-exceeded' => NetworkError(
         error.message ?? 'Check your connection and try again.',
       ),
       'already-exists' => ValidationError(
         error.message ?? 'You already submitted a response.',
       ),
-      _ => ValidationError(error.message ?? 'This event action failed.'),
+      _ => mapFirebaseFailure(error, message: 'This event action failed.'),
     };
   }
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError('Check your connection and try again.');
-  }
-  return UnknownError(error.toString());
+  return mapFirebaseFailure(error);
 }

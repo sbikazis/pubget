@@ -23,6 +23,7 @@ import '../models/edit_models.dart';
 import '../providers/edit_upload_manager.dart';
 import '../repositories/edits_repository.dart';
 import '../../reels/reels_brand.dart';
+import '../../reels/screens/audio_picker_sheet.dart';
 
 enum _UploadPhase {
   idle,
@@ -49,6 +50,12 @@ class _EditUploadPageState extends State<EditUploadPage>
     with WidgetsBindingObserver {
   final _caption = TextEditingController();
   final _anime = TextEditingController();
+  final _hashtags = TextEditingController();
+  final _characterTags = TextEditingController();
+  // The sound track is bound at publish time: the Edit records which audio it
+  // used so the audio library and the audio-filtered feed can find it later.
+  String? _audioId;
+  String? _audioLabel;
   late final EditDraftStore _drafts = widget.draftStore ?? EditDraftStore();
   StreamSubscription<Result<Edit>>? _watch;
   VideoPlayerController? _preview;
@@ -71,6 +78,8 @@ class _EditUploadPageState extends State<EditUploadPage>
     WidgetsBinding.instance.addObserver(this);
     _caption.addListener(_persistDraft);
     _anime.addListener(_persistDraft);
+    _hashtags.addListener(_persistDraft);
+    _characterTags.addListener(_persistDraft);
     Future<void>.microtask(_restoreAndReconcile);
   }
 
@@ -81,6 +90,8 @@ class _EditUploadPageState extends State<EditUploadPage>
     _preview?.dispose();
     _caption.dispose();
     _anime.dispose();
+    _hashtags.dispose();
+    _characterTags.dispose();
     super.dispose();
   }
 
@@ -97,6 +108,10 @@ class _EditUploadPageState extends State<EditUploadPage>
     if (draft != null) {
       _caption.text = draft['caption'] as String? ?? '';
       _anime.text = draft['animeTag'] as String? ?? '';
+      _hashtags.text = draft['hashtags'] as String? ?? '';
+      _characterTags.text = draft['characterTags'] as String? ?? '';
+      _audioId = draft['audioId'] as String?;
+      _audioLabel = draft['audioLabel'] as String?;
       _editId = draft['editId'] as String?;
       _videoPath = draft['videoPath'] as String?;
       _idempotencyKey = draft['idempotencyKey'] as String?;
@@ -170,6 +185,10 @@ class _EditUploadPageState extends State<EditUploadPage>
     await _drafts.save(<String, dynamic>{
       'caption': _caption.text,
       'animeTag': _anime.text,
+      'hashtags': _hashtags.text,
+      'characterTags': _characterTags.text,
+      'audioId': _audioId,
+      'audioLabel': _audioLabel,
       'editId': _editId,
       'videoPath': _videoPath,
       'idempotencyKey': _idempotencyKey,
@@ -300,6 +319,38 @@ class _EditUploadPageState extends State<EditUploadPage>
               prefixIcon: Icon(Icons.tag, color: scheme.secondary),
             ),
           ),
+          const SizedBox(height: AppSpacing.md),
+          TextField(
+            controller: _hashtags,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: copy.hashtags,
+              hintText: copy.hashtagsHint,
+              filled: true,
+              fillColor: Colors.white.withValues(alpha: 0.04),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+              ),
+              prefixIcon: Icon(Icons.label, color: scheme.secondary),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TextField(
+            controller: _characterTags,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: copy.characterTags,
+              hintText: copy.characterTagsHint,
+              filled: true,
+              fillColor: Colors.white.withValues(alpha: 0.04),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+              ),
+              prefixIcon: Icon(Icons.people, color: scheme.secondary),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _audioField(context, copy, scheme, offline),
           const SizedBox(height: AppSpacing.xl),
           ..._actions(copy, offline),
         ],
@@ -311,6 +362,89 @@ class _EditUploadPageState extends State<EditUploadPage>
       _submitting ||
       _phase == _UploadPhase.uploading ||
       _phase == _UploadPhase.processing;
+
+  Future<void> _pickAudio(BuildContext context) async {
+    final picked = await AudioPickerSheet.show(context);
+    if (picked == null || !mounted) return;
+    // The id is what the server stores; the label is display-only and is kept
+    // in the draft so the chip survives a restart without a second fetch.
+    setState(() {
+      _audioId = picked.audioId;
+      _audioLabel = picked.displayName.isEmpty ? picked.name : picked.displayName;
+    });
+    unawaited(_persistDraft());
+  }
+
+  void _clearAudio() {
+    setState(() {
+      _audioId = null;
+      _audioLabel = null;
+    });
+    unawaited(_persistDraft());
+  }
+
+  Widget _audioField(
+    BuildContext context,
+    EditCopy copy,
+    ColorScheme scheme,
+    bool offline,
+  ) {
+    final label = _audioLabel;
+    // Offline, the audio library is unreachable, so offering a picker that
+    // cannot load would be a dead control. Say so instead.
+    if (offline) {
+      return _notice(context, copy.audioOffline, Icons.cloud_off);
+    }
+    return InkWell(
+      onTap: () => _pickAudio(context),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: copy.audio,
+          hintText: copy.audioHint,
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: 0.04),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          prefixIcon: Icon(Icons.graphic_eq, color: scheme.secondary),
+          suffixIcon: label == null
+              ? const Icon(Icons.chevron_right)
+              : IconButton(
+                  tooltip: copy.audioClear,
+                  icon: const Icon(Icons.close),
+                  onPressed: _clearAudio,
+                ),
+        ),
+        child: Text(
+          label ?? copy.audioNone,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: label == null ? scheme.onSurfaceVariant : Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _notice(BuildContext context, String message, IconData icon) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: scheme.secondary),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(child: Text(message, style: const TextStyle(color: Colors.white))),
+        ],
+      ),
+    );
+  }
 
   List<Widget> _actions(EditCopy copy, bool offline) {
     if (_phase == _UploadPhase.published) {
@@ -451,6 +585,9 @@ class _EditUploadPageState extends State<EditUploadPage>
     await manager.enqueue(
       caption: _caption.text,
       animeTag: _anime.text,
+      hashtags: _hashtags.text,
+      characterTags: _characterTags.text,
+      audioId: _audioId,
       contentType: 'video/mp4',
       fileName: video.name,
       localPath: localPath,

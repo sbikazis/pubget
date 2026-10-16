@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pubget/features/anime/data/anilist_mapper.dart';
 import 'package:pubget/features/anime/data/jikan_mapper.dart';
 import 'package:pubget/features/anime/models/anime_models.dart';
 
@@ -195,5 +196,65 @@ void main() {
     expect(studios.first.name, 'Madhouse');
     expect(studios.first.count, 340);
     expect(studios[1].name, 'Ufotable');
+  });
+
+  test('maps Jikan staff, collapsing repeat people and joining roles', () {
+    final staff = mapJikanStaff(<Object?>[
+      <String, Object?>{
+        'person': <String, Object?>{
+          'mal_id': 100,
+          'name': 'Kanehito Yamada',
+          'images': <String, Object?>{
+            'jpg': <String, Object?>{'image_url': 'https://example.test/p1.jpg'},
+          },
+        },
+        'positions': <Object?>['Series Composition', 'Script'],
+      },
+      <String, Object?>{
+        'person': <String, Object?>{'mal_id': 100, 'name': 'Kanehito Yamada'},
+        'positions': <Object?>['Script'],
+      },
+      <String, Object?>{
+        'person': <String, Object?>{'name': 'Missing id'},
+        'positions': <Object?>['Director'],
+      },
+      'not a map',
+    ]);
+    expect(staff, hasLength(1));
+    expect(staff.single.id, '100');
+    expect(staff.single.roles, <String>['Series Composition', 'Script']);
+    expect(staff.single.rolesLabel, 'Series Composition · Script');
+    expect(staff.single.imageUrl, 'https://example.test/p1.jpg');
+    expect(mapJikanStaff(null), isEmpty);
+  });
+
+  test('maps AniList staff edges, honouring the full name and role', () {
+    final staff = mapAniListStaff(<Object?>[
+      <String, Object?>{
+        'role': 'Director',
+        'node': <String, Object?>{
+          'id': 500,
+          'name': <String, Object?>{
+            'full': 'Keiichiro Saito',
+            'native': '斎藤圭一郎',
+          },
+          'image': <String, Object?>{
+            'large': 'https://example.test/a.jpg',
+          },
+        },
+      },
+      <String, Object?>{
+        'role': 'Music',
+        'node': <String, Object?>{
+          'name': <String, Object?>{'full': 'Evan Call'},
+        },
+      },
+      <String, Object?>{'role': 'Director', 'node': <String, Object?>{}},
+    ]);
+    expect(staff, hasLength(1));
+    expect(staff.single.id, '500');
+    expect(staff.single.name, 'Keiichiro Saito');
+    expect(staff.single.roles, <String>['Director']);
+    expect(staff.single.imageUrl, 'https://example.test/a.jpg');
   });
 }

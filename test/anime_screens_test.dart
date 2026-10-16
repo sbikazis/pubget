@@ -19,6 +19,8 @@ import 'package:pubget/features/anime/models/anime_rating_models.dart';
 import 'package:pubget/features/anime/providers/anime_character_provider.dart';
 import 'package:pubget/features/anime/providers/anime_hub_social_provider.dart';
 import 'package:pubget/features/anime/providers/anime_providers.dart';
+import 'package:pubget/features/anime/repositories/anime_repository.dart';
+import 'package:pubget/features/anime/screens/anime_cast_page.dart';
 import 'package:pubget/features/anime/screens/anime_search_page.dart';
 import 'package:pubget/features/anime/widgets/anime_hub_widgets.dart';
 import 'package:pubget/features/anime/widgets/anime_ranked_cards.dart';
@@ -417,13 +419,28 @@ void main() {
     expect(find.byKey(const Key('filter-season-fall')), findsNothing);
     await tester.tap(find.byKey(const Key('hub-open-search')));
     await tester.pumpAndSettle();
+
+    // Type and season now live inside the filter sheet, so open it, pick the
+    // chip, and apply.
+    await tester.tap(find.byKey(const Key('anime-search-filter')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('filter-type-tv')));
     await tester.tap(find.byKey(const Key('filter-type-tv')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('filter-apply')));
+    await tester.tap(find.byKey(const Key('filter-apply')));
     await tester.pumpAndSettle();
     expect(repository.searchCalls, greaterThan(0));
     expect(repository.lastFilter?.type, AnimeTypeFilter.tv);
     expect(find.text('Frieren'), findsWidgets);
 
+    await tester.tap(find.byKey(const Key('anime-search-filter')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('filter-season-fall')));
     await tester.tap(find.byKey(const Key('filter-season-fall')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('filter-apply')));
+    await tester.tap(find.byKey(const Key('filter-apply')));
     await tester.pumpAndSettle();
     expect(repository.lastFilter?.season, AnimeSeason.fall);
     expect(repository.lastFilter?.year, isNotNull);
@@ -444,6 +461,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Frieren'), findsWidgets);
     expect(find.text(AnimeStrings.rateAnime), findsWidgets);
+  });
+
+  testWidgets('an adult rating surfaces the sensitive content notice', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(
+          details: sampleAnime(rating: 'R - 17+ (violence & profanity)'),
+        ),
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final copy = AnimeCopy.forLocale(const Locale('en'));
+    // The notice sits below the facts card, under the fold.
+    await tester.dragUntilVisible(
+      find.text(copy.sensitiveContent),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    expect(find.text(copy.sensitiveContent), findsWidgets);
+    expect(find.text(copy.sensitiveContentBody), findsWidgets);
+  });
+
+  testWidgets('a general audience rating hides the sensitive notice', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(
+          details: sampleAnime(rating: 'G - All Ages'),
+        ),
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final copy = AnimeCopy.forLocale(const Locale('en'));
+    expect(find.text(copy.sensitiveContent), findsNothing);
   });
 
   testWidgets('details names every title it shows', (tester) async {
@@ -549,6 +605,61 @@ void main() {
     expect(find.text(AnimeStrings.characterAbout), findsWidgets);
     expect(find.text(AnimeStrings.characterAnime), findsWidgets);
     expect(find.textContaining(AnimeStrings.malFavorites), findsWidgets);
+  });
+
+  testWidgets('the cast tab renders staff cards and links to the full cast', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(
+          characters: const <AnimeCharacter>[
+            AnimeCharacter(id: '10', name: 'Frieren', role: 'Main'),
+          ],
+          staff: const <AnimeStaff>[
+            AnimeStaff(
+              id: '100',
+              name: 'Kanehito Yamada',
+              roles: <String>['Series Composition'],
+            ),
+          ],
+        ),
+        child: const AnimeDetailsPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AnimeStrings.tabCharactersCast));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('staff-100')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('staff-100')), findsOneWidget);
+    expect(find.text('Kanehito Yamada'), findsOneWidget);
+    expect(find.text('Series Composition'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('anime-see-all-cast')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('anime-see-all-cast')), findsOneWidget);
+  });
+
+  testWidgets('cast page lists the cast and filters by search', (tester) async {
+    await tester.pumpWidget(
+      _harness(
+        repository: FakeAnimeRepository(
+          characters: const <AnimeCharacter>[
+            AnimeCharacter(id: '10', name: 'Frieren', role: 'Main'),
+            AnimeCharacter(id: '11', name: 'Fern', role: 'Main'),
+          ],
+        ),
+        child: const AnimeCastPage(animeId: '52991'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cast-10')), findsOneWidget);
+    expect(find.byKey(const Key('cast-11')), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('anime-cast-search')), 'fern');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cast-11')), findsOneWidget);
+    expect(find.byKey(const Key('cast-10')), findsNothing);
   });
 
   testWidgets('details missing anime', (tester) async {
@@ -946,6 +1057,11 @@ final class _FakeCharacterSocialRepository implements AnimeHubSocialRepository {
   ) async => const Success(<AnimeCustomList>[]);
 
   @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) async => const Success(<AnimeCommunityStats>[]);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -1055,6 +1171,7 @@ Widget _harness({
   return MultiProvider(
     providers: [
       ChangeNotifierProvider<NetworkService>.value(value: network),
+      Provider<AnimeRepository>.value(value: repository),
       ChangeNotifierProvider<AnimeHubProvider>.value(value: hub),
       ChangeNotifierProvider<AnimeHubCatalogProvider>.value(value: hubCatalogs),
       ChangeNotifierProvider<AnimeListProvider>.value(value: list),
@@ -1144,6 +1261,12 @@ final class _FakeHomeRepository implements HomeRepository {
       ],
     ),
   );
+
+  @override
+  Future<Result<Map<String, DiscoverySectionPage>>> getHomeSections({
+    String? section,
+    int limit = 8,
+  }) async => const Success(<String, DiscoverySectionPage>{});
 
   @override
   Future<Result<DiscoveryFeed>> getDiscoveryFeed({
@@ -1242,6 +1365,11 @@ final class _FakeStatsSocialRepository implements AnimeHubSocialRepository {
   ]);
 
   @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) async => const Success(<AnimeCommunityStats>[]);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -1283,6 +1411,11 @@ final class _FakeRankingSocialRepository implements AnimeHubSocialRepository {
       favoritesCount: 800,
     ),
   ]);
+
+  @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) async => const Success(<AnimeCommunityStats>[]);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

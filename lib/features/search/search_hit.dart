@@ -56,7 +56,9 @@ final class SearchHit {
             id: group.id,
             title: group.name,
             subtitle: 'Group',
-            imageUrl: group.imageUrl ?? group.chatBackgroundUrl,
+            imageUrl: (group.imageUrl?.trim().isNotEmpty ?? false)
+                ? group.imageUrl
+                : null,
             route: PubgetLinks.groupPath(group.id),
             canonicalUrl: PubgetLinks.group(group.id),
           ),

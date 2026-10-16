@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +9,7 @@ import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/game_copy.dart';
 import '../models/game_models.dart';
 import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
@@ -21,7 +24,7 @@ abstract final class GameLinks {
         context,
         canonical(gameId),
         type: 'game',
-        message: GameStrings.copied,
+        message: GameCopy.of(context).copied,
       );
 
   static Future<void> share(
@@ -31,7 +34,7 @@ abstract final class GameLinks {
   }) => PubgetLinks.share(
     context,
     url: canonical(gameId),
-    title: title ?? GameStrings.share,
+    title: title ?? GameCopy.of(context).share,
     type: 'game',
   );
 
@@ -43,14 +46,13 @@ abstract final class GameLinks {
     AppNavigation.go(context, PubgetLinks.mafiaPath(gameId));
   }
 
-  static void openCreate(
-    BuildContext context, {
-    String? groupId,
-    bool fromChat = false,
-  }) {
+  static void openCreate(BuildContext context, {String? groupId}) {
+    final hasGroup = groupId != null && groupId.isNotEmpty;
     final query = <String, String>{
-      if (groupId != null && groupId.isNotEmpty) 'groupId': groupId,
-      if (fromChat) 'source': 'group_chat',
+      if (hasGroup) 'groupId': groupId,
+      // gamesDomain.createGame rejects anything that does not carry this
+      // marker, so every group-scoped create button sends it (Spec 12.1).
+      if (hasGroup) 'source': 'group_chat',
     };
     final suffix = query.isEmpty ? '' : '?${Uri(queryParameters: query).query}';
     AppNavigation.go(context, '/games/create$suffix');
@@ -67,6 +69,56 @@ abstract final class GameLinks {
   }
 }
 
+/// A live "waiting room closes in m:ss" line driven by the server's
+/// `waitingDeadlineAt` (gamesDomain writes WAITING_ROOM_TIMEOUT_SECONDS when
+/// a game enters WAITING, Spec 12.1).
+class WaitingRoomCountdown extends StatefulWidget {
+  const WaitingRoomCountdown({required this.deadline, super.key});
+
+  final DateTime deadline;
+
+  @override
+  State<WaitingRoomCountdown> createState() => _WaitingRoomCountdownState();
+}
+
+class _WaitingRoomCountdownState extends State<WaitingRoomCountdown> {
+  Timer? _timer;
+  late DateTime _now;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _now = DateTime.now());
+      if (widget.deadline.difference(_now).isNegative) _timer?.cancel();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var remaining = widget.deadline.difference(_now);
+    if (remaining.isNegative) remaining = Duration.zero;
+    final minutes = remaining.inMinutes;
+    final seconds = remaining.inSeconds
+        .remainder(60)
+        .toString()
+        .padLeft(2, '0');
+    final copy = GameCopy.of(context);
+    return Text(
+      '${copy.waitingRoomClosesIn} $minutes:$seconds',
+      style: Theme.of(context).textTheme.bodySmall,
+    );
+  }
+}
+
 class GameStatusBadge extends StatelessWidget {
   const GameStatusBadge({required this.status, super.key});
 
@@ -74,7 +126,7 @@ class GameStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PubgetBadge(label: status.name);
+    return PubgetBadge(label: GameCopy.of(context).statusLabel(status));
   }
 }
 
@@ -93,7 +145,9 @@ class GameCard extends StatelessWidget {
         contentPadding: EdgeInsets.zero,
         leading: Icon(spec.icon),
         title: Text(game.title),
-        subtitle: Text('${spec.name} · ${game.participantsCount} players'),
+        subtitle: Text(
+          '${spec.name} · ${GameCopy.of(context).playerCount(game.participantsCount)}',
+        ),
         trailing: GameStatusBadge(status: game.status),
       ),
     );
@@ -144,18 +198,19 @@ class ParticipantList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = GameCopy.of(context);
     final active = participants.where((item) => item.isActive).toList();
     if (active.isEmpty) {
-      return const PubgetEmptyState(
-        title: 'No players yet',
-        message: 'Join to be the first.',
+      return PubgetEmptyState(
+        title: copy.noPlayersYet,
+        message: copy.joinFirst,
       );
     }
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Players', style: Theme.of(context).textTheme.titleMedium),
+          Text(copy.playersTitle, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
           for (final person in active)
             ListTile(
@@ -170,7 +225,7 @@ class ParticipantList extends StatelessWidget {
               ),
               trailing: person.isAlive
                   ? (person.score == null ? null : Text('${person.score}'))
-                  : const PubgetBadge(label: GameStrings.eliminated),
+                  : PubgetBadge(label: copy.eliminated),
             ),
         ],
       ),
@@ -185,6 +240,7 @@ class GameResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = GameCopy.of(context);
     final result = game.result;
     if (result == null || !game.isHistorical) {
       return const SizedBox.shrink();
@@ -194,13 +250,12 @@ class GameResultCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            GameStrings.resultTitle,
+            copy.resultTitle,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(game.status == GameStatus.cancelled ? 'Cancelled' : 'Completed'),
-          if (result.winnerIds.isNotEmpty)
-            Text('Winners: ${result.winnerIds.join(', ')}'),
+          Text(copy.statusLabel(game.status)),
+          if (result.winnerIds.isNotEmpty) Text(copy.winners(result.winnerIds)),
         ],
       ),
     );
@@ -235,15 +290,20 @@ class GameLoadingState extends StatelessWidget {
 }
 
 class GameEmptyState extends StatelessWidget {
-  const GameEmptyState({this.action, super.key});
+  const GameEmptyState({this.action, this.message, super.key});
 
   final Widget? action;
 
+  /// Section-specific empty copy: the Active, Waiting, Recent, and History
+  /// tabs must not all claim "start a game" when they mean different things.
+  final String? message;
+
   @override
   Widget build(BuildContext context) {
+    final copy = GameCopy.of(context);
     return PubgetEmptyState(
-      title: GameStrings.noGamesTitle,
-      message: GameStrings.noGamesMessage,
+      title: copy.noGamesTitle,
+      message: message ?? copy.noGamesMessage,
       icon: Icons.sports_esports_outlined,
       action: action,
     );
@@ -259,7 +319,7 @@ class GameErrorState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PubgetErrorState(
-      message: message ?? 'Games could not load.',
+      message: message ?? GameCopy.of(context).gamesCouldNotLoad,
       onRetry: onRetry,
     );
   }
@@ -282,7 +342,7 @@ class GameHomeStrip extends StatelessWidget {
         children: <Widget>[
           PubgetSectionHeader(
             title: AppStrings.of(context).sectionGames,
-            actionLabel: GameStrings.seeAll,
+            actionLabel: GameCopy.of(context).seeAll,
             onAction: () => AppNavigation.go(context, '/games'),
           ),
           const SizedBox(height: AppSpacing.sm),

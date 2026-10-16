@@ -25,6 +25,25 @@ enum EditStatus {
   }
 }
 
+/// Axis 15 §15.16 — the three reel feeds. The server owns the ranking for
+/// each strategy; the client only declares which one it is asking for.
+enum FeedType { forYou, following, trending }
+
+/// Axis 15 §15.18 — report categories. These ids are the contract with the
+/// server's `REPORT_CATEGORIES` set; the server rejects anything else, so the
+/// client never sends a free-form reason. Labels live in [EditCopy].
+const List<String> editReportCategories = <String>[
+  'spam',
+  'harassment',
+  'hate',
+  'sexual',
+  'violence',
+  'copyright',
+  'self_harm',
+  'misleading',
+  'other',
+];
+
 final class EditCounters {
   const EditCounters({
     this.likes = 0,
@@ -381,3 +400,30 @@ final class EditUploadSource {
 }
 
 enum EditCommentSort { newest, top }
+
+/// Builds the `startAfter` cursor values for a comment list page.
+///
+/// The sort key on its own is not a complete cursor. Firestore appends
+/// `__name__` as an implicit final tiebreaker to every `orderBy`, so a cursor
+/// carrying only `likesCount` (or only `createdAt`) resolves to "resume after
+/// every comment that ties with this one". Two comments with the same score, or
+/// written in the same millisecond, would then silently disappear from the list
+/// and paging would skip rows.
+///
+/// Supplying the document id as the final value completes the cursor and keeps
+/// tied rows visible and reachable.
+///
+/// Returns `null` when the comment cannot anchor a cursor for [sort] — for
+/// example a `top` page whose sort key is missing, or a `newest` page for a
+/// comment with no timestamp. Callers must then omit `startAfter` rather than
+/// guess, which restarts the list instead of silently dropping rows.
+List<Object>? editCommentCursor(EditComment comment, EditCommentSort sort) {
+  switch (sort) {
+    case EditCommentSort.top:
+      return <Object>[comment.likesCount, comment.id];
+    case EditCommentSort.newest:
+      final createdAt = comment.createdAt;
+      if (createdAt == null) return null;
+      return <Object>[Timestamp.fromDate(createdAt.toUtc()), comment.id];
+  }
+}

@@ -10,4 +10,5 @@ abstract interface class EconomyRepository {
   Future<Result<void>> equipItem(String itemId);
   Future<Result<void>> unequipSlot(String slot);
   Future<Result<void>> claimReferral();
+  Future<Result<PremiumEntitlement>> redeemPremiumCode(String code);
 }

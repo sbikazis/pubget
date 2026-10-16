@@ -33,17 +33,15 @@ jobs:
       # Verification gate: syntax-check every function source and run the
       # full unit suite before anything reaches production. A deploy that
       # bypasses this is a deploy that can break the live app.
-      - name: Verify functions (check + tests)
-        run: |
-          set -euo pipefail
-          cd functions
-          npm run check
-          npm test
+      - name: Syntax check
+        run: cd functions && npm run check
+
+      - name: Unit tests
+        run: cd functions && npm test
 
       # Cloud Functions list/deploy occasionally returns HTTP 503 UNAVAILABLE.
       # Retry with backoff so a transient Google outage does not leave main
       # without the latest functions (e.g. after a rank-system merge).
-      # Deploy to Firebase
       # GOOGLE_CLOUD_PROJECT / GCLOUD_PROJECT / FIREBASE_PROJECT are set
       # explicitly so the firebase-functions SDK resolves the project from
       # the environment instead of querying the GCE metadata server

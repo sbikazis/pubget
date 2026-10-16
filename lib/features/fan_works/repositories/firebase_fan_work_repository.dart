@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/fan_work_lifecycle.dart';
 import '../models/fan_work_models.dart';
 import '../services/fan_work_upload_client.dart';
@@ -67,6 +69,7 @@ final class FirebaseFanWorkRepository
     required String workId,
     required FanWorkMediaRole role,
     required String contentType,
+    String characterId = '',
   }) => _guard(() async {
     final result = await _functions
         .httpsCallable('startFanWorkMediaUpload')
@@ -74,6 +77,9 @@ final class FirebaseFanWorkRepository
           'workId': workId,
           'role': role.name,
           'contentType': contentType,
+          // A cast portrait is bound to one member of the draft's cast list,
+          // and the server requires the id before it will mint anything.
+          if (characterId.isNotEmpty) 'characterId': characterId,
         });
     final data = result.data;
     return FanWorkUploadTicket(
@@ -114,11 +120,20 @@ final class FirebaseFanWorkRepository
             : 'Images must be 12 MB or smaller.',
       );
     }
-    // The bytes go through the signed resumable session the server opened, not
-    // through the storage SDK. That is the point of the session: it cannot mint
-    // a permanent `downloadToken`, so the object stays private and readable
-    // only via a short-lived signed grant. A `putData` call would write the
-    // object without ever using the ticket the server validated.
+    // The bytes go through the signed session the server opened, not through
+    // the storage SDK. That is the point of the grant: it cannot mint a
+    // permanent `downloadToken`, so the object stays private and readable only
+    // via a short-lived signed grant. A `putData` call would write the object
+    // without ever using the ticket the server validated.
+    //
+    // Two URL shapes share this path. A document gets a resumable session URI
+    // and has to be cut into `Content-Range` slices; an image gets a one-shot
+    // signed `PUT` whose signature covers its headers, so it must be sent as
+    // one ranged-free request. Sending the wrong shape to the wrong URL is
+    // refused every time.
+    final mime = ticket.contentType.isNotEmpty
+        ? ticket.contentType
+        : contentType;
     _activeUploadClient?.cancel();
     final client = FanWorkUploadClient();
     _activeUploadClient = client;
@@ -126,8 +141,12 @@ final class FirebaseFanWorkRepository
       final result = await client.upload(
         sessionUrl: ticket.uploadUrl,
         bytes: bytes,
-        contentType: contentType,
+        contentType: mime,
         onProgress: onProgress,
+        protocol: ticket.isResumableSession
+            ? FanWorkUploadProtocol.resumableSession
+            : FanWorkUploadProtocol.signedPut,
+        maxBytes: limit,
       );
       final failure = result.failureOrNull;
       if (failure != null) throw failure;
@@ -576,7 +595,7 @@ final class FirebaseFanWorkRepository
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: _fanWorkFailure));
     } on Object catch (error) {
       return FailureResult<T>(_fanWorkFailure(error));
     }
@@ -607,15 +626,24 @@ Failure _fanWorkFailure(Object error) {
         error.message ?? "You don't have permission.",
       ),
       'not-found' => NotFoundError(error.message ?? 'Fan Work not found.'),
-      'unavailable' || 'resource-exhausted' || 'deadline-exceeded' =>
-        NetworkError(error.message ?? 'Check your connection and try again.'),
+      // A host that cannot be reached must not leak the raw platform text
+      // (e.g. the literal "UNAVAILABLE" the Functions SDK puts on the message);
+      // the copy below is the user-facing sentence.
+      'unavailable' || 'deadline-exceeded' => const NetworkError(
+        'Check your connection and try again.',
+      ),
+      // §15.2 daily upload quota and other rate limits: the server names the
+      // limit in its message, so surface that (with a safe fallback).
+      'resource-exhausted' => RateLimitedError(
+        error.message ?? 'Too many requests. Please wait a moment and try again.',
+      ),
       'already-exists' => ValidationError(
         error.message ?? 'That action was already completed.',
       ),
       'failed-precondition' => ValidationError(
         error.message ?? 'This Fan Work cannot be published yet.',
       ),
-      _ => ValidationError(error.message ?? 'This Fan Work action failed.'),
+      _ => mapFirebaseFailure(error, message: 'This Fan Work action failed.'),
     };
   }
   if (error is FirebaseException &&
@@ -634,5 +662,5 @@ Failure _fanWorkFailure(Object error) {
   if (error is FirebaseException && error.code == 'not-found') {
     return const NotFoundError('Fan Work not found.');
   }
-  return UnknownError('Something went wrong. Try again.');
+  return mapFirebaseFailure(error);
 }

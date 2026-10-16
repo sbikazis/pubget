@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_strings.dart';
 import '../loading/loading_state.dart';
 import '../theme/app_spacing.dart';
 import 'pubget_buttons.dart';
@@ -37,31 +38,35 @@ class PubgetEmptyState extends StatelessWidget {
 
 class PubgetErrorState extends StatelessWidget {
   const PubgetErrorState({
-    this.title = "Couldn't load this",
-    this.message = 'Please try again.',
+    this.title,
+    this.message,
     this.onRetry,
-    this.retryLabel = 'Try again',
+    this.retryLabel,
     super.key,
   });
 
-  final String title;
-  final String message;
+  /// All copy resolves from [AppStrings] so an Arabic screen never renders an
+  /// English default (spec §1.4). Callers may still override any field.
+  final String? title;
+  final String? message;
   final VoidCallback? onRetry;
-  final String retryLabel;
+  final String? retryLabel;
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final retry = retryLabel ?? copy.tryAgain;
     return _StateLayout(
       icon: Icons.error_outline,
-      title: title,
-      message: message,
+      title: title ?? copy.couldNotLoad,
+      message: message ?? copy.tryAgainShort,
       iconColor: Theme.of(context).colorScheme.error,
       action: onRetry == null
           ? null
           : PubgetSecondaryButton(
               onPressed: onRetry,
-              semanticLabel: retryLabel,
-              child: Text(retryLabel),
+              semanticLabel: retry,
+              child: Text(retry),
             ),
     );
   }
@@ -69,32 +74,99 @@ class PubgetErrorState extends StatelessWidget {
 
 class PubgetOfflineState extends StatelessWidget {
   const PubgetOfflineState({
-    this.title = 'You are offline',
-    this.message = 'Check your connection and try again.',
+    this.title,
+    this.message,
     this.onRetry,
-    this.retryLabel = 'Retry',
+    this.retryLabel,
     super.key,
   });
 
-  final String title;
-  final String message;
+  final String? title;
+  final String? message;
   final VoidCallback? onRetry;
-  final String retryLabel;
+  final String? retryLabel;
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final retry = retryLabel ?? copy.retry;
     return _StateLayout(
       icon: Icons.cloud_off_outlined,
-      title: title,
-      message: message,
+      title: title ?? copy.offlineShowingSaved,
+      message: message ?? copy.discoveryOffline,
       iconColor: Theme.of(context).colorScheme.secondary,
       action: onRetry == null
           ? null
           : PubgetSecondaryButton(
               onPressed: onRetry,
-              semanticLabel: retryLabel,
-              child: Text(retryLabel),
+              semanticLabel: retry,
+              child: Text(retry),
             ),
+    );
+  }
+}
+
+/// Inline banner for content that is cached and still readable while the ranked
+/// signal cannot be refreshed. Home uses this instead of replacing a whole
+/// section with an error, which would hide real content the user can act on.
+class PubgetStaleBanner extends StatelessWidget {
+  const PubgetStaleBanner({
+    this.message,
+    this.onRetry,
+    this.icon = Icons.cloud_off_outlined,
+    super.key,
+  });
+
+  final String? message;
+  final VoidCallback? onRetry;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final copy = AppStrings.of(context);
+    final scheme = theme.colorScheme;
+    return Semantics(
+      liveRegion: true,
+      label: message ?? copy.offlineShowingSaved,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(AppSpacing.md),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Row(
+          children: <Widget>[
+            Icon(icon, size: 16, color: scheme.onSurfaceVariant),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                message ?? copy.offlineShowingSaved,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (onRetry != null) ...<Widget>[
+              const SizedBox(width: AppSpacing.sm),
+              TextButton(
+                onPressed: onRetry,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: scheme.primary,
+                ),
+                child: Text(copy.retry),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -129,8 +201,8 @@ class PubgetLoadingStateView extends StatelessWidget {
       LoadingState.empty =>
         empty ??
             PubgetEmptyState(
-              title: 'Nothing here yet',
-              message: 'New content will appear here when it is available.',
+              title: AppStrings.of(context).nothingHereYet,
+              message: AppStrings.of(context).newContentAppearsLater,
             ),
       LoadingState.error => error ?? PubgetErrorState(onRetry: onRetry),
       LoadingState.offline => offline ?? PubgetOfflineState(onRetry: onRetry),

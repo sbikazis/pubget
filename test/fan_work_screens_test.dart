@@ -550,6 +550,7 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String workId,
     required FanWorkMediaRole role,
     required String contentType,
+    String characterId = '',
   }) async => Success(
     FanWorkUploadTicket(
       workId: workId,

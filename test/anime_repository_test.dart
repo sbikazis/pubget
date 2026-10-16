@@ -200,6 +200,25 @@ void main() {
     expect(query['sfw'], 'true');
   });
 
+  test('search applies score bounds to the Jikan query', () async {
+    final result = await repository.searchAnime(
+      'frieren',
+      filter: const AnimeSearchFilter(minScore: 7, maxScore: 9.5),
+    );
+    expect(result.isSuccess, isTrue);
+    final query = http.calls.single.queryParameters;
+    expect(query['min_score'], '7');
+    expect(query['max_score'], '9.5');
+  });
+
+  test('score bounds are omitted when unset', () async {
+    final result = await repository.searchAnime('frieren');
+    expect(result.isSuccess, isTrue);
+    final query = http.calls.single.queryParameters;
+    expect(query.containsKey('min_score'), isFalse);
+    expect(query.containsKey('max_score'), isFalse);
+  });
+
   test('season-only search uses the seasons endpoint', () async {
     final result = await repository.searchAnime(
       '',

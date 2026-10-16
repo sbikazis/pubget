@@ -31,10 +31,16 @@ abstract interface class FanWorkRepository {
 
   /// The role travels with the request so the server can reject a PDF offered
   /// as an artwork slot (and the reverse) before it mints a session.
+  ///
+  /// [characterId] is set only for [FanWorkMediaRole.characterPortrait]: the
+  /// server refuses to mint a ticket for a cast portrait that does not name a
+  /// member, because the bytes would land in the bucket with nothing pointing
+  /// at them.
   Future<Result<FanWorkUploadTicket>> startMediaUpload({
     required String workId,
     required FanWorkMediaRole role,
     required String contentType,
+    String characterId = '',
   });
 
   Future<Result<void>> uploadMediaBytes({

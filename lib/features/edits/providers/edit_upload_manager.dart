@@ -25,6 +25,9 @@ final class EditUploadJob {
     required this.localId,
     required this.caption,
     required this.animeTag,
+    this.hashtags = '',
+    this.characterTags = '',
+    this.audioId,
     required this.contentType,
     required this.fileName,
     this.localPath,
@@ -42,6 +45,9 @@ final class EditUploadJob {
   final String localId;
   String caption;
   String animeTag;
+  String hashtags;
+  String characterTags;
+  String? audioId;
   String contentType;
   String fileName;
   String? localPath;
@@ -72,6 +78,9 @@ final class EditUploadJob {
     'localId': localId,
     'caption': caption,
     'animeTag': animeTag,
+    'hashtags': hashtags,
+    'characterTags': characterTags,
+    'audioId': audioId,
     'contentType': contentType,
     'fileName': fileName,
     'localPath': localPath,
@@ -90,6 +99,9 @@ final class EditUploadJob {
       localId: json['localId'] as String? ?? '',
       caption: json['caption'] as String? ?? '',
       animeTag: json['animeTag'] as String? ?? '',
+      hashtags: json['hashtags'] as String? ?? '',
+      characterTags: json['characterTags'] as String? ?? '',
+      audioId: json['audioId'] as String?,
       contentType: json['contentType'] as String? ?? 'video/mp4',
       fileName: json['fileName'] as String? ?? 'edit.mp4',
       localPath: json['localPath'] as String?,
@@ -293,6 +305,9 @@ final class EditUploadManager extends ChangeNotifier
   Future<EditUploadJob> enqueue({
     required String caption,
     required String animeTag,
+    String hashtags = '',
+    String characterTags = '',
+    String? audioId,
     required String contentType,
     required String fileName,
     String? localPath,
@@ -307,6 +322,9 @@ final class EditUploadManager extends ChangeNotifier
       localId: 'local-${DateTime.now().microsecondsSinceEpoch}',
       caption: caption,
       animeTag: animeTag,
+      hashtags: hashtags,
+      characterTags: characterTags,
+      audioId: audioId,
       contentType: contentType,
       fileName: fileName,
       localPath: localPath,
@@ -450,6 +468,9 @@ final class EditUploadManager extends ChangeNotifier
       contentType: job.contentType,
       caption: job.caption,
       animeTag: job.animeTag,
+      hashtags: job.hashtags,
+      characterTags: job.characterTags,
+      audioId: job.audioId,
       fileName: job.fileName,
       sizeBytes: job.sizeBytes,
       idempotencyKey: job.idempotencyKey,

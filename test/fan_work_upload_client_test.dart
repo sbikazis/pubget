@@ -16,9 +16,13 @@ final class _RecordingTransport implements FanWorkUploadTransport {
   final FanWorkChunkAck Function(int index)? ackFor;
 
   final List<FanWorkUploadChunk> sent = <FanWorkUploadChunk>[];
+  final List<FanWorkUploadObject> objects = <FanWorkUploadObject>[];
 
   /// Runs before each acknowledgement, so a test can cancel mid-upload.
   void Function(int index)? onChunk;
+
+  /// Runs for each whole-object `PUT`, so a test can cancel or fail it.
+  void Function(int index)? onObject;
 
   @override
   Future<FanWorkChunkAck> sendChunk(
@@ -33,6 +37,16 @@ final class _RecordingTransport implements FanWorkUploadTransport {
     // Mirror the GCS protocol: 308 Resume Incomplete until the final chunk.
     final isLast = chunk.end >= chunk.total - 1;
     return FanWorkChunkAck(lastByteReceived: chunk.end + 1, complete: isLast);
+  }
+
+  @override
+  Future<void> sendObject(
+    FanWorkUploadObject object, {
+    Object? cancelKey,
+  }) async {
+    final index = objects.length;
+    objects.add(object);
+    onObject?.call(index);
   }
 
   List<String> get ranges =>
@@ -362,6 +376,94 @@ void main() {
       expect((await pending).isSuccess, isTrue);
     },
   );
+
+  // A one-shot signed URL, which is what the server hands back for every image
+  // role. It has no session, so the whole object travels in a single request
+  // that carries the headers the signature was computed over.
+  const signedPut =
+      'https://storage.test/upload/bucket/object.jpg'
+      '?X-Goog-Signature=deadbeef';
+
+  test('an image is sent as one PUT with the signed length header', () async {
+    final transport = _RecordingTransport();
+    final client = FanWorkUploadClient(transport: transport, chunkSize: 1024);
+    final progress = <double>[];
+
+    final result = await client.upload(
+      sessionUrl: signedPut,
+      bytes: <int>[1, 2, 3],
+      contentType: 'image/jpeg',
+      protocol: FanWorkUploadProtocol.signedPut,
+      maxBytes: 12 * 1024 * 1024,
+      onProgress: progress.add,
+    );
+
+    expect(result.isSuccess, isTrue);
+    expect(result.valueOrNull, 3);
+    // No session means nothing to slice: exactly one request, no chunk.
+    expect(transport.sent, isEmpty);
+    final object = transport.objects.single;
+    expect(object.url, signedPut);
+    expect(object.contentLengthRange, '1,${12 * 1024 * 1024}');
+    expect(object.contentType, 'image/jpeg');
+    expect(object.bytes, <int>[1, 2, 3]);
+    expect(progress, <double>[0, 1]);
+  });
+
+  test('a signed PUT with no ceiling still sends the object', () async {
+    final transport = _RecordingTransport();
+    final client = FanWorkUploadClient(transport: transport);
+
+    final result = await client.upload(
+      sessionUrl: signedPut,
+      bytes: <int>[7, 7],
+      contentType: 'image/png',
+      protocol: FanWorkUploadProtocol.signedPut,
+    );
+
+    expect(result.isSuccess, isTrue);
+    expect(transport.objects.single.contentLengthRange, isNull);
+  });
+
+  test('a rejected signed PUT surfaces the transport failure unchanged', () {
+    final transport = _RecordingTransport();
+    final client = FanWorkUploadClient(transport: transport);
+    transport.onObject = (index) {
+      throw const PermissionError('This upload is no longer authorized.');
+    };
+
+    final result = client.upload(
+      sessionUrl: signedPut,
+      bytes: const <int>[1],
+      contentType: 'image/jpeg',
+      protocol: FanWorkUploadProtocol.signedPut,
+      maxBytes: 12 * 1024 * 1024,
+    );
+
+    expect(
+      result.then((value) => value.failureOrNull),
+      completion(isA<PermissionError>()),
+    );
+  });
+
+  test('cancelling during a signed PUT reports the cancel, not a success', () {
+    final transport = _RecordingTransport();
+    final client = FanWorkUploadClient(transport: transport);
+    transport.onObject = (index) => client.cancel();
+
+    final result = client.upload(
+      sessionUrl: signedPut,
+      bytes: const <int>[1, 2],
+      contentType: 'image/jpeg',
+      protocol: FanWorkUploadProtocol.signedPut,
+    );
+
+    expect(
+      result.then((value) => value.failureOrNull),
+      completion(isA<CancelledError>()),
+    );
+    expect(transport.objects, hasLength(1));
+  });
 }
 
 final class _AwaitingTransport implements FanWorkUploadTransport {
@@ -374,4 +476,12 @@ final class _AwaitingTransport implements FanWorkUploadTransport {
     FanWorkUploadChunk chunk, {
     Object? cancelKey,
   }) => completer.future;
+
+  @override
+  Future<void> sendObject(
+    FanWorkUploadObject object, {
+    Object? cancelKey,
+  }) async {
+    await completer.future;
+  }
 }

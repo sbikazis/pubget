@@ -149,43 +149,12 @@ abstract final class EventTypeRegistry {
     'guessCharacter': 'Guess the Character',
   };
 
-  static EventTypeSpec of(EventType type) => specs[type]!;
-}
+  /// The only types offered in the event creation flow (owner's master scope:
+  /// Poll + Theory; all other types keep their existing rendering).
+  static const creatableTypes = <EventType>{
+    EventType.poll,
+    EventType.theory,
+  };
 
-abstract final class EventStrings {
-  static const noEventsTitle = 'No active events yet';
-  static const noEventsMessage = 'Discover groups or create an event.';
-  static const noParticipation = 'Join this event to take part.';
-  static const ended = 'This event has ended.';
-  static const deleted = 'This event is no longer available.';
-  static const archived = 'This event is archived.';
-  static const permission = "You don't have permission to manage events.";
-  static const missing = 'This event no longer exists.';
-  static const submitFailed = 'Submission failed. Try again.';
-  static const offline = 'You are offline. The action was not saved.';
-  static const create = 'Create event';
-  static const publish = 'Publish';
-  static const schedule = 'Schedule';
-  static const join = 'Join event';
-  static const leave = 'Leave event';
-  static const submit = 'Submit';
-  static const retry = 'Try again';
-  static const share = 'Share event';
-  static const copyLink = 'Copy link';
-  static const copied = 'Event link copied';
-  static const saveDraft = 'Save draft';
-  static const addQuestion = 'Add question';
-  static const removeQuestion = 'Remove question';
-  static const addAnswer = 'Add answer';
-  static const correctAnswer = 'Correct answer';
-  static const seeAll = 'See all events';
-  static const groupEvents = 'Group events';
-  static const endEvent = 'End event';
-  static const cancelEvent = 'Cancel';
-  static const archiveEvent = 'Archive';
-  static const alreadyParticipated = 'You already participated';
-  static const resultTitle = 'Final result';
-  static const quizLeaderboard = 'Leaderboard';
-  static const quizPoints = 'pts';
-  static const questionTimer = 'Time limit per question';
+  static EventTypeSpec of(EventType type) => specs[type]!;
 }

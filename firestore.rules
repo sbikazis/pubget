@@ -638,6 +638,16 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if false;
     }
+    // Anime reports: one document per reporter per anime, written only by the
+    // server-side callable; clients may read their own reports.
+    match /anime_reports/{animeId}/reports/{reporterId} {
+      allow read: if isAdmin() || self(reporterId);
+      allow write: if false;
+    }
+    match /animeReportRate/{actor} {
+      allow read: if self(actor);
+      allow write: if false;
+    }
     // Achievements: server-authored badges and progress are readable (profile
     // strips show unlocked badges to any signed-in visitor) but never
     // client-writable.
@@ -1010,14 +1020,66 @@ service cloud.firestore {
     }
 
     match /edits/{editId} {
-      allow read: if signedIn();
+      // §15.18 — a takedown must actually revoke access. `allow read: if
+      // signedIn()` let any account keep reading an unpublished, flagged, or
+      // deleted Reel document (and its comments/likes) forever, because the
+      // server only ever flips `status`; nothing was ever removed.
+      // The creator still reads their own row so the upload manager can show a
+      // real failure/review reason, and staff keeps its moderation surface.
+      function editReadable(uid) {
+        return signedIn() && (
+          isAdmin() ||
+          resource.data.creatorId == uid ||
+          (resource.data.status == 'published' &&
+            resource.data.moderationStatus == 'approved')
+        );
+      }
+      allow get: if editReadable(request.auth.uid);
+      // §15.18 — a reported/flagged Reel keeps `status: 'published'` so the
+      // takedown path can restore it, which is why the list rule must also
+      // require `moderationStatus == 'approved'`. Without it any signed-in
+      // client could query flagged, needs_review, or removed Reels directly.
+      // A collection query must carry both `where status == 'published'` and
+      // `where moderationStatus == 'approved'`; Firestore rejects a query that
+      // could return anything else.
+      allow list: if signedIn() &&
+        resource.data.status == 'published' &&
+        resource.data.moderationStatus == 'approved';
       // Edit documents and all aggregate counters are server-authoritative.
       allow create, update, delete: if false;
+      // §15.18 audit trail — written only by the server takedown path.
+      match /audit/{entryId} {
+        allow read: if signedIn() && (isAdmin() || resource.data.actorId == request.auth.uid);
+        allow write: if false;
+      }
+      // §15.18 §15.3 — real moderation reports, one document per reporter.
+      // Written only by the `reportEdit` callable, which validates the category
+      // and enforces a per-user rate limit. A client-side `create` bypassed both
+      // (any signed-in user could write an arbitrary category and flood the
+      // queue), so the reporter keeps read access but no write access.
+      match /reports/{uid} {
+        allow read: if isAdmin() || self(uid);
+        allow write: if false;
+      }
       match /comments/{commentId} {
-        allow read: if signedIn();
+        // Subcollection reads are not implicitly covered by the parent rule, so
+        // a takedown would otherwise still expose the whole thread to anyone
+        // who kept the old document id.
+        function parentReadable() {
+          return firestore.exists(/databases/(default)/documents/edits/$(editId)) &&
+            (isAdmin() ||
+              get(/databases/(default)/documents/edits/$(editId)).data.creatorId == request.auth.uid ||
+              (get(/databases/(default)/documents/edits/$(editId)).data.status == 'published' &&
+               get(/databases/(default)/documents/edits/$(editId)).data.moderationStatus == 'approved'));
+        }
+        allow read: if parentReadable();
         allow create, update, delete: if false;
         match /likes/{uid} { allow read: if self(uid); allow write: if false; }
-        match /reports/{uid} { allow read: if self(uid); allow write: if false; }
+        // Comment reports are written only by the `editCommentAction` callable.
+        match /reports/{uid} {
+          allow read: if isAdmin() || self(uid);
+          allow write: if false;
+        }
       }
       match /likes/{uid} { allow read: if self(uid); allow write: if false; }
       // Aggregate viewers/watch data is server-owned; clients must not inflate it.
@@ -1030,9 +1092,49 @@ service cloud.firestore {
       match /impressions/{uid} { allow read: if self(uid); allow write: if false; }
     }
 
+    // §15 viewer mute list. The viewer's own rows only; the server writes the
+    // authoritative feed filter, so clients cannot mute on someone else's behalf
+    // nor read who else muted whom.
+    match /reelMutes/{uid} {
+      allow read: if self(uid);
+      allow write: if false;
+      match /creators/{creatorId} {
+        allow read: if self(uid);
+        allow write: if false;
+      }
+    }
+
+    // §15 saved Reels. Server-written from the save signal so the list cannot be
+    // forged; a viewer may read only their own, and nobody else's saves are
+    // visible even to signed-in users.
+    match /savedReels/{uid} {
+      allow read: if self(uid);
+      allow write: if false;
+      match /items/{editId} {
+        allow read: if self(uid);
+        allow write: if false;
+      }
+    }
+
     match /editUploadKeys/{keyId} {
       allow read: if signedIn() && resource.data.creatorId == request.auth.uid;
       allow create, update, delete: if false;
+    }
+
+    // Axis 15 §15.8 — the audio library. Without these rules the client
+    // repository could not read a single audio document, which is why the
+    // whole audio surface looked dead.
+    match /reelAudios/{audioId} {
+      // Only server-processed audio is publicly listable; drafts and failed
+      // extractions stay invisible.
+      allow read: if signedIn() &&
+        resource.data.status == 'ready';
+      // Audio documents, usage counters, and ownership are server-owned.
+      allow create, update, delete: if false;
+      match /reelAudioUsage/{reelId} {
+        allow read: if signedIn();
+        allow create, update, delete: if false;
+      }
     }
 
     match /fanWorks/{workId} {

@@ -33,6 +33,30 @@ void main() {
     expect(failure, isA<PermissionError>());
   });
 
+  // §15.2 daily upload quota. Before this, resource-exhausted fell through to
+  // UnknownError, so a user who hit the cap was told "something went wrong".
+  test('mapEditException surfaces the daily upload quota message', () {
+    final failure = mapEditException(
+      FirebaseException(
+        plugin: 'firebase_functions',
+        code: 'resource-exhausted',
+        message: 'You have reached your daily upload limit (20). '
+            'Try again tomorrow.',
+      ),
+    );
+    expect(failure, isA<RateLimitedError>());
+    expect(failure.message, contains('daily upload limit'));
+    expect(failure.message, contains('20'));
+  });
+
+  test('mapEditException still has copy when the quota message is missing', () {
+    final failure = mapEditException(
+      FirebaseException(plugin: 'firebase_functions', code: 'resource-exhausted'),
+    );
+    expect(failure, isA<RateLimitedError>());
+    expect(failure.message.toLowerCase(), contains('daily upload limit'));
+  });
+
   test('EditDraftStore round-trips local path for resume', () async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final store = EditDraftStore();

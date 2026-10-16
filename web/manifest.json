@@ -1,11 +1,11 @@
 {
-    "name": "pubget",
-    "short_name": "pubget",
+    "name": "Pubget",
+    "short_name": "Pubget",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#140C22",
+    "theme_color": "#6C3FC5",
+    "description": "A bilingual anime community: groups, chat, games, edits, events, and fan works.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

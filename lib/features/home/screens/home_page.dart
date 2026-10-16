@@ -6,16 +6,16 @@ import '../../../app/app_shell_scope.dart';
 import '../../../core/branding/pubget_logo.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../achievements/widgets/home_achievements_strip.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
 import '../../anime/l10n/anime_copy.dart';
 import '../../anime/models/anime_models.dart';
 import '../../anime/providers/anime_providers.dart';
 import '../../anime/widgets/anime_widgets.dart';
-import '../../edits/models/edit_models.dart';
 import '../../edits/providers/edits_provider.dart';
 import '../../economy/models/economy_types.dart';
 import '../../economy/providers/economy_provider.dart';
@@ -26,9 +26,13 @@ import '../../events/widgets/home_event_card.dart';
 import '../../fan_works/providers/fan_work_providers.dart';
 import '../../fan_works/widgets/home_fan_work_card.dart';
 import '../../notifications/providers/unread_engine.dart';
+import '../discovery_module.dart';
 import '../models/home_models.dart';
 import '../providers/home_provider.dart';
+import '../section_rotation.dart';
+import '../repositories/discovery_errors.dart';
 import '../widgets/home_luxury_tiles.dart';
+import '../widgets/home_ranked_section.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -69,39 +73,24 @@ class _HomePageState extends State<HomePage> {
         name: name,
         avatarUrl: profile?.avatarUrl ?? auth.currentUser?.avatarUrl,
         frameId: economy?.equipped.frameId,
-        coins: economy?.coins,
         notifyCount: unread.notifications,
       ),
       body: PubgetAtmosphere(
         child: RefreshIndicator(
           onRefresh: home.refresh,
           child: CustomScrollView(
+            // §5.2 fixes promoted groups first, personalized edits second, and
+            // a people strip third; everything after that rotates between
+            // visits so the same discovery surfaces do not own the same screen
+            // twice. The order and membership live in
+            // [DiscoveryModuleRegistry], not in this widget.
             slivers: <Widget>[
-              _groupSliver(
-                key: const Key('home-promoted'),
-                title: copy.sectionPromoted,
-                kind: HomeSectionKind.promotedGroups,
-                finish: HomeGroupFinish.gold,
-              ),
-              const SliverToBoxAdapter(child: _EditsSection()),
-              _peopleSliver(),
-              if (economy != null)
-                const SliverToBoxAdapter(child: _HomeAdSlot()),
-              const SliverToBoxAdapter(child: _EventsSection()),
-              _groupSliver(
-                key: const Key('home-suggested'),
-                title: copy.sectionRecommended,
-                kind: HomeSectionKind.recommendedGroups,
-                finish: HomeGroupFinish.silver,
-              ),
-              _groupSliver(
-                key: const Key('home-rising'),
-                title: copy.sectionRising,
-                kind: HomeSectionKind.risingGroups,
-                finish: HomeGroupFinish.rising,
-              ),
-              const SliverToBoxAdapter(child: _FanWorksSection()),
-              const SliverToBoxAdapter(child: _AnimeSection()),
+              for (final module in DiscoveryModuleRegistry.pinned)
+                _moduleSliver(context, copy, module),
+              ...<Widget>[
+                for (final module in DiscoveryModuleRegistry.rotating)
+                  _moduleSliver(context, copy, module),
+              ].rotate(home.rotationSeed),
               const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
             ],
           ),
@@ -110,20 +99,86 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _groupSliver({
-    required Key key,
-    required String title,
-    required HomeSectionKind kind,
-    required HomeGroupFinish finish,
-  }) {
-    return SliverToBoxAdapter(
-      child: _GroupSection(key: key, title: title, kind: kind, finish: finish),
-    );
+  /// A single registry entry as a sliver. Every module renders through
+  /// [_moduleWidget], which is the one place that maps a
+  /// [DiscoveryModuleType] to a concrete section widget.
+  Widget _moduleSliver(
+    BuildContext context,
+    AppStrings copy,
+    DiscoveryModule module,
+  ) {
+    return SliverToBoxAdapter(child: _moduleWidget(context, copy, module));
   }
 
-  Widget _peopleSliver() {
-    return const SliverToBoxAdapter(child: _PeopleSection());
+  Widget _moduleWidget(
+    BuildContext context,
+    AppStrings copy,
+    DiscoveryModule module,
+  ) {
+    switch (module.type) {
+      case DiscoveryModuleType.groupStrip:
+        final groupKind = module.kind!;
+        return _GroupSection(
+          key: Key('home-${module.id}'),
+          title: _groupTitle(copy, groupKind),
+          kind: groupKind,
+          finish: _groupFinish(groupKind),
+        );
+      case DiscoveryModuleType.peopleStrip:
+        return const _PeopleSection();
+      case DiscoveryModuleType.edits:
+        return const _EditsSection();
+      case DiscoveryModuleType.adSlot:
+        return const _HomeAdSlot();
+      case DiscoveryModuleType.events:
+        return const _EventsSection();
+      case DiscoveryModuleType.rankedRow:
+        final rankedKind = module.kind!;
+        return HomeRankedSection(
+          key: Key('home-${module.id}'),
+          kind: rankedKind,
+          title: _rankedTitle(copy, rankedKind),
+          seeMorePath: module.seeMorePath,
+        );
+      case DiscoveryModuleType.achievements:
+        return Padding(
+          padding: const EdgeInsets.only(top: AppSpacing.md),
+          child: _SectionFrame(
+            title: copy.sectionAchievements,
+            child: HomeAchievementsStrip(
+              onSeeAll: () => AppNavigation.go(
+                context,
+                '/profile/${context.read<AuthProvider>().currentUser?.id ?? ''}',
+              ),
+            ),
+          ),
+        );
+      case DiscoveryModuleType.fanWorks:
+        return const _FanWorksSection();
+      case DiscoveryModuleType.animeCatalog:
+        return const _AnimeSection();
+    }
   }
+
+  String _groupTitle(AppStrings copy, HomeSectionKind kind) => switch (kind) {
+    HomeSectionKind.promotedGroups => copy.sectionPromoted,
+    HomeSectionKind.risingGroups => copy.sectionRising,
+    _ => copy.sectionRecommended,
+  };
+
+  HomeGroupFinish _groupFinish(HomeSectionKind kind) => switch (kind) {
+    HomeSectionKind.promotedGroups => HomeGroupFinish.gold,
+    HomeSectionKind.risingGroups => HomeGroupFinish.rising,
+    _ => HomeGroupFinish.silver,
+  };
+
+  String _rankedTitle(AppStrings copy, HomeSectionKind kind) => switch (kind) {
+    HomeSectionKind.animeOfTheWeek => copy.sectionAnimeOfTheWeek,
+    HomeSectionKind.popularCharacters => copy.sectionPopularCharacters,
+    HomeSectionKind.risingCreators => copy.sectionRisingCreators,
+    HomeSectionKind.friendsActivity => copy.sectionFriendsActivity,
+    _ => copy.sectionFreshestContent,
+  };
 }
 
 class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
@@ -131,7 +186,6 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
     required this.name,
     required this.avatarUrl,
     required this.frameId,
-    required this.coins,
     required this.notifyCount,
     super.key,
   });
@@ -139,21 +193,25 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
   final String? name;
   final String? avatarUrl;
   final String? frameId;
-  final int? coins;
   final int notifyCount;
 
   static const barHeight = 56.0;
   static const iconSize = 36.0;
   static const logoSize = 54.0;
-  static const coinStripHeight = 36.0;
   static const itemGap = 8.0;
   static const edgePad = 8.0;
 
-  bool get _showCoins => coins != null;
+  /// Narrow-phone metrics. The logo stays 1.5x the icons.
+  static const iconSizeCompact = 32.0;
+  static const logoSizeCompact = 48.0;
+  static const itemGapCompact = 4.0;
+  static const edgePadCompact = 6.0;
+
+  /// Below this width the controls stop fitting at full size.
+  static const _compactBreakpoint = 380.0;
 
   @override
-  Size get preferredSize =>
-      Size.fromHeight(barHeight + (_showCoins ? coinStripHeight : 0));
+  Size get preferredSize => const Size.fromHeight(barHeight);
 
   @override
   Widget build(BuildContext context) {
@@ -163,124 +221,86 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
       toolbarHeight: barHeight,
       titleSpacing: 0,
       clipBehavior: Clip.none,
-      title: SizedBox(
-        height: barHeight,
-        width: double.infinity,
-        child: Directionality(
-          textDirection: TextDirection.ltr,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: edgePad),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        _BarIconBox(
-                          child: GestureDetector(
+      // Revised §4.1 layout: the drawer affordance leads, the Pubget brand is
+      // visually centred on the bar, and the discovery/act controls trail
+      // (search, notifications, profile). Store and the coin balance moved into
+      // the navigation drawer, so the bar is no longer crowded by seven
+      // controls. The row is directional, so it mirrors correctly for Arabic.
+      title: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < _compactBreakpoint;
+          final icon = compact ? iconSizeCompact : iconSize;
+          final logo = compact ? logoSizeCompact : logoSize;
+          final gap = compact ? itemGapCompact : itemGap;
+          final pad = compact ? edgePadCompact : edgePad;
+          return SizedBox(
+            height: barHeight,
+            width: double.infinity,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: pad),
+              child: Stack(
+                alignment: Alignment.center,
+                children: <Widget>[
+                  // Centred brand mark, independent of how wide the leading and
+                  // trailing clusters are.
+                  PubgetLogoMark(key: const Key('home-logo'), size: logo),
+                  Row(
+                    children: <Widget>[
+                      SizedBox.square(
+                        dimension: icon,
+                        child: AppShellMenuButton(size: icon),
+                      ),
+                      const Spacer(),
+                      SizedBox.square(
+                        dimension: icon,
+                        child: PubgetLuxurySearchButton(
+                          tooltip: copy.search,
+                          size: icon,
+                          onPressed: () => AppNavigation.go(context, '/search'),
+                        ),
+                      ),
+                      SizedBox(width: gap),
+                      SizedBox.square(
+                        dimension: icon,
+                        child: PubgetLuxuryNotifyButton(
+                          tooltip: copy.notifications,
+                          badge: notifyCount,
+                          size: icon,
+                          onPressed: () =>
+                              AppNavigation.go(context, '/notifications'),
+                        ),
+                      ),
+                      SizedBox(width: gap),
+                      SizedBox.square(
+                        dimension: icon,
+                        child: Semantics(
+                          button: true,
+                          label: name ?? copy.profile,
+                          child: InkWell(
                             key: const Key('home-avatar'),
                             onTap: () => AppNavigation.go(context, '/profile'),
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
                             child: FittedBox(
                               child: EquippedAvatar(
                                 imageUrl: avatarUrl,
                                 name: name,
                                 frameId: frameId,
-                                size: PubgetAvatarSize.nav,
+                                size: compact
+                                    ? PubgetAvatarSize.small
+                                    : PubgetAvatarSize.nav,
                                 compactFrame: true,
                               ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: itemGap),
-                        _BarIconBox(
-                          child: PubgetLuxuryNotifyButton(
-                            tooltip: copy.notifications,
-                            badge: notifyCount,
-                            size: iconSize,
-                            onPressed: () =>
-                                AppNavigation.go(context, '/notifications'),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ),
-                const PubgetLogoMark(key: Key('home-logo'), size: logoSize),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        _BarIconBox(
-                          child: PubgetLuxurySettingsButton(
-                            tooltip: copy.settings,
-                            size: iconSize,
-                            onPressed: () =>
-                                AppNavigation.go(context, '/settings'),
-                          ),
-                        ),
-                        const SizedBox(width: itemGap),
-                        const _BarIconBox(
-                          child: AppShellMenuButton(size: iconSize),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ),
-      ),
-      bottom: _showCoins
-          ? PreferredSize(
-              preferredSize: const Size.fromHeight(coinStripHeight),
-              child: _HomeCoinStrip(balance: coins!, tooltip: copy.store),
-            )
-          : null,
-    );
-  }
-}
-
-class _BarIconBox extends StatelessWidget {
-  const _BarIconBox({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox.square(dimension: HomeTopBar.iconSize, child: child);
-  }
-}
-
-class _HomeCoinStrip extends StatelessWidget {
-  const _HomeCoinStrip({required this.balance, required this.tooltip});
-
-  final int balance;
-  final String tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.royalNight.withValues(alpha: 0.38),
-      child: SizedBox(
-        height: HomeTopBar.coinStripHeight,
-        width: double.infinity,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: PubgetKatanaCoinChip(
-              balance: balance,
-              tooltip: tooltip,
-              compact: true,
-              onPressed: () => AppNavigation.go(context, '/store'),
-            ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -307,6 +327,9 @@ class _GroupSection extends StatelessWidget {
     }
     return _SectionFrame(
       title: title,
+      // Every group section lands on the real groups discovery surface; there
+      // is no separate promoted/recommended listing page to deep-link to.
+      onSeeAll: () => AppNavigation.go(context, '/groups'),
       child: _stateChild(
         context,
         state: state,
@@ -347,6 +370,7 @@ class _PeopleSection extends StatelessWidget {
     return _SectionFrame(
       key: const Key('home-people'),
       title: copy.sectionPeople,
+      onSeeAll: () => AppNavigation.go(context, '/search'),
       child: _stateChild(
         context,
         state: state,
@@ -374,21 +398,18 @@ class _EditsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final home = context.watch<HomeProvider>();
     final edits = context.watch<EditsProvider>();
     if (edits.state == LoadingState.initial) {
       Future<void>.microtask(() => edits.load(limit: 8));
     }
     final copy = AppStrings.of(context);
-    final items = _editsForHome(home, edits);
+    // §5.2.2 puts personalized edits second on Home. `EditsProvider` defaults
+    // to FeedType.forYou, which is the server-ranked per-user feed, so these are
+    // real edits chosen for this viewer.
+    final items = edits.items.take(8).toList(growable: false);
     Widget child;
     if (items.isNotEmpty) {
-      child = HomeHorizontalStrip(
-        height: 228,
-        itemCount: items.length,
-        itemBuilder: (context, index) =>
-            HomeEditPreviewCard(edit: items[index]),
-      );
+      child = HomePreviewStrip(height: 228, items: items);
     } else if (edits.state == LoadingState.loading ||
         edits.state == LoadingState.initial ||
         edits.state == LoadingState.refreshing) {
@@ -396,7 +417,9 @@ class _EditsSection extends StatelessWidget {
     } else if (edits.state == LoadingState.error) {
       child = PubgetErrorState(
         title: copy.sectionFailed,
-        message: edits.failure?.message ?? copy.tryAgainShort,
+        message: edits.failure == null
+            ? copy.discoveryUnavailable
+            : discoveryFailureMessage(copy, edits.failure!),
         onRetry: () => edits.load(refresh: true, limit: 8),
       );
     } else {
@@ -405,34 +428,9 @@ class _EditsSection extends StatelessWidget {
     return _SectionFrame(
       key: const Key('home-edits'),
       title: copy.sectionEdits,
+      onSeeAll: () => AppNavigation.go(context, '/reels'),
       child: child,
     );
-  }
-
-  List<Edit> _editsForHome(HomeProvider home, EditsProvider edits) {
-    if (edits.items.isNotEmpty) return edits.items.take(8).toList();
-    return home.feed
-        .section('recommendedEdits')
-        .items
-        .map((item) {
-          final meta = item.metadata;
-          return Edit(
-            id: item.targetId.isEmpty ? item.id : item.targetId,
-            creatorId: meta['creatorId'] as String? ?? '',
-            videoUrl: meta['videoUrl'] as String? ?? '',
-            thumbnailUrl: meta['thumbnailUrl'] as String? ?? '',
-            caption:
-                meta['title'] as String? ?? meta['caption'] as String? ?? '',
-            animeTag: meta['animeTag'] as String? ?? '',
-            likesCount: (meta['likesCount'] as num?)?.toInt() ?? 0,
-            commentsCount: 0,
-            viewsCount: 0,
-            score: item.score,
-            createdAt: item.createdAt,
-            status: 'published',
-          );
-        })
-        .toList(growable: false);
   }
 }
 
@@ -547,7 +545,9 @@ class _AnimeSection extends StatelessWidget {
       subtitle: AnimeCopy.of(context).thisSeasonSubtitle,
       items: snapshot.items,
       state: snapshot.state,
-      failure: snapshot.failure?.message,
+      failure: snapshot.failure == null
+          ? null
+          : discoveryFailureMessage(AppStrings.of(context), snapshot.failure!),
       posterWidth: 168,
       highlightFirst: true,
       onSeeAll: () => AnimeLinks.openCatalog(context, kind),
@@ -557,19 +557,34 @@ class _AnimeSection extends StatelessWidget {
 }
 
 class _SectionFrame extends StatelessWidget {
-  const _SectionFrame({required this.title, required this.child, super.key});
+  const _SectionFrame({
+    required this.title,
+    required this.child,
+    this.onSeeAll,
+    super.key,
+  });
 
   final String title;
   final Widget child;
 
+  /// Master Spec §5.3 requires a "See all" in every section that has a
+  /// standalone section page. Null deliberately omits the action: a section
+  /// without a real listing page must not link somewhere unrelated.
+  final VoidCallback? onSeeAll;
+
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          PubgetSectionHeader(title: title),
+          PubgetSectionHeader(
+            title: title,
+            actionLabel: onSeeAll == null ? null : copy.seeAll,
+            onAction: onSeeAll,
+          ),
           child,
         ],
       ),
@@ -588,10 +603,26 @@ Widget _stateChild(
   if (state.state == LoadingState.loading && !state.hasContent) {
     return const _SkeletonSection();
   }
-  if (state.state == LoadingState.error && !state.hasContent) {
+  // §2.1 lists Offline as its own mandatory state, separate from Error and
+  // from Empty. Offline with cached rows keeps the strip and adds a retry
+  // banner, so a failed refresh never silently claims everything is fine.
+  if (state.state == LoadingState.offline && state.hasContent) {
+    return _staleColumn(home, kind, loaded);
+  }
+  // Offline or failed with nothing cached has to say the section could not be
+  // fetched. Falling through to `loaded` rendered a blank rail that read as a
+  // broken screen; falling through to the empty state told the user there is
+  // nothing when the truth is that nothing could be fetched.
+  if ((state.state == LoadingState.error ||
+          state.state == LoadingState.offline) &&
+      !state.hasContent) {
     return PubgetErrorState(
       title: copy.sectionFailed,
-      message: state.failure?.message ?? copy.tryAgainShort,
+      message: state.state == LoadingState.offline
+          ? copy.discoveryOffline
+          : state.failure == null
+          ? copy.discoveryUnavailable
+          : discoveryFailureMessage(copy, state.failure!),
       onRetry: () => home.retrySection(kind),
     );
   }
@@ -619,6 +650,26 @@ Widget _stateChild(
     );
   }
   return loaded;
+}
+
+/// §2.1 — a refresh that failed keeps the rows the user can already act on, so
+/// the section is marked stale instead of being replaced by an error.
+Widget _staleColumn(HomeProvider home, HomeSectionKind kind, Widget loaded) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: <Widget>[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          0,
+          AppSpacing.md,
+          AppSpacing.sm,
+        ),
+        child: PubgetStaleBanner(onRetry: () => home.retrySection(kind)),
+      ),
+      loaded,
+    ],
+  );
 }
 
 class _MoreCell extends StatelessWidget {

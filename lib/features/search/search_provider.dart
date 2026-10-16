@@ -129,6 +129,8 @@ final class SearchProvider extends ChangeNotifier {
           events: results.events,
           anime: anime,
           fanWorks: results.fanWorks,
+          characters: results.characters,
+          reels: results.reels,
         );
         _hits = SearchHit.fromDiscovery(
           _results,

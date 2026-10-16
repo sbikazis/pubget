@@ -2,7 +2,9 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_core/firebase_core.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/economy_models.dart';
 import 'economy_repository.dart';
 
@@ -71,6 +73,15 @@ final class FirebaseEconomyRepository implements EconomyRepository {
   Future<Result<void>> claimReferral() =>
       _call('claimEconomyReward', {'source': 'referral'});
 
+  @override
+  Future<Result<PremiumEntitlement>> redeemPremiumCode(String code) =>
+      _guard(() async {
+        final result = await _functions
+            .httpsCallable('redeemPremiumCode')
+            .call({'code': code});
+        return PremiumEntitlement.fromMap(_map(result.data));
+      });
+
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
       _guard(() async {
         await _functions.httpsCallable(name).call(data);
@@ -78,7 +89,9 @@ final class FirebaseEconomyRepository implements EconomyRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(
+        await runWithRetry(action, mapError: _economyFailure),
+      );
     } on Object catch (error) {
       return FailureResult<T>(_economyFailure(error));
     }
@@ -144,14 +157,14 @@ Failure _economyFailure(Object error) {
         error.message ?? 'Check your connection and try again.',
       ),
       'not-found' => NotFoundError(error.message ?? 'Not found.'),
-      _ => ValidationError(error.message ?? 'That economy action failed.'),
+      _ => mapFirebaseFailure(error, message: 'That economy action failed.'),
     };
   }
   if (error is FirebaseException &&
       (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
     return const NetworkError('Check your connection and try again.');
   }
-  return const UnknownError('Something went wrong. Try again.');
+  return mapFirebaseFailure(error);
 }
 
 String? _detailsCode(Object? details) {

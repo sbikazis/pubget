@@ -6,7 +6,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
-import '../../games/models/game_type_registry.dart';
+import '../../games/l10n/game_copy.dart';
 import '../../games/widgets/game_play_panels.dart';
 import '../../games/widgets/game_widgets.dart';
 import '../models/mafia_leave_copy.dart';
@@ -99,8 +99,8 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
                 userId: uid,
               ),
         empty: PubgetEmptyState(
-          title: GameStrings.missing,
-          message: GameStrings.missing,
+          title: GameCopy.of(context).missing,
+          message: GameCopy.of(context).missing,
         ),
         error: PubgetErrorState(
           title: copy.mafiaCouldNotLoad,
@@ -556,7 +556,7 @@ class _Result extends StatelessWidget {
             onPressed: game.groupId.isEmpty
                 ? null
                 : () => GameLinks.openCreate(context, groupId: game.groupId),
-            semanticLabel: GameStrings.playAgain,
+            semanticLabel: GameCopy.of(context).playAgain,
             child: Text(copy.mafiaPlayAgain),
           ),
         ],

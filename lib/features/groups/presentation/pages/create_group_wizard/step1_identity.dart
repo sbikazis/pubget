@@ -243,6 +243,7 @@ class _Step1IdentityState extends State<Step1Identity> {
   }
 
   Future<void> _pickImage({required bool isCover}) async {
+    final copy = GroupCopy.of(context);
     try {
       final cropped = await pickAndCropImage(
         context,
@@ -265,7 +266,7 @@ class _Step1IdentityState extends State<Step1Identity> {
       debugPrint('Group image pick/crop failed: $error\n$stack');
       if (mounted) {
         setState(() {
-          _uploadError = error.toString();
+          _uploadError = copy.imageUploadFailed;
           _lastUploadWasCover = isCover;
         });
       }

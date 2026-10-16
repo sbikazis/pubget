@@ -6,7 +6,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/app_notification.dart';
 import '../models/unread_counts.dart';
 import 'notification_repository.dart';
@@ -145,9 +147,9 @@ final class FirebaseNotificationRepository implements NotificationRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success(await action());
+      return Success<T>(await runWithRetry(action, mapError: _failure));
     } on Object catch (error) {
-      return FailureResult(_failure(error));
+      return FailureResult<T>(_failure(error));
     }
   }
 }
@@ -156,17 +158,11 @@ int _count(DocumentSnapshot<Map<String, dynamic>> snapshot, String field) =>
     ((snapshot.data()?[field] as num?)?.toInt() ?? 0).clamp(0, 9999);
 
 Failure _failure(Object error) {
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError('Check your connection and try again.');
+  if (error is FirebaseFunctionsException &&
+      (error.code == 'permission-denied' || error.code == 'unauthenticated')) {
+    return PermissionError(
+      error.message ?? 'This notification action is not allowed.',
+    );
   }
-  if (error is FirebaseFunctionsException) {
-    return switch (error.code) {
-      'permission-denied' || 'unauthenticated' => PermissionError(
-        error.message ?? 'This notification action is not allowed.',
-      ),
-      _ => ValidationError(error.message ?? 'Notification action failed.'),
-    };
-  }
-  return UnknownError(error.toString());
+  return mapFirebaseFailure(error, message: 'Notification action failed.');
 }

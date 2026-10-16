@@ -45,6 +45,66 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
   String? _error;
   EditComment? _replyTo;
 
+  /// Comment ids the viewer has reacted to, plus the optimistic likesCount
+  /// override while the write is in flight.
+  ///
+  /// The list query returns comments but not the viewer's own reactions, so
+  /// without this the heart was a dead control: it always rendered unliked, it
+  /// could only ever send `like`, and neither the icon nor the count moved.
+  final Set<String> _liked = <String>{};
+  final Map<String, int> _likesDelta = <String, int>{};
+
+  /// Comment ids with a like/unlike write currently in flight. Tapping twice
+  /// before the first response would otherwise send `like` then `unlike` and
+  /// leave the server count disagreeing with the optimistic one.
+  final Set<String> _likeBusy = <String>{};
+
+  bool _isLiked(String commentId) => _liked.contains(commentId);
+
+  int _likesOf(EditComment comment) {
+    return comment.likesCount + (_likesDelta[comment.id] ?? 0);
+  }
+
+  /// Optimistic like/unlike with rollback, matching the Edit-level pattern.
+  Future<void> _toggleCommentLike(EditComment comment) async {
+    if (_likeBusy.contains(comment.id)) return;
+    _likeBusy.add(comment.id);
+    final wasLiked = _liked.contains(comment.id);
+    final previousDelta = _likesDelta[comment.id] ?? 0;
+    setState(() {
+      if (wasLiked) {
+        _liked.remove(comment.id);
+      } else {
+        _liked.add(comment.id);
+      }
+      _likesDelta[comment.id] = previousDelta + (wasLiked ? -1 : 1);
+    });
+
+    try {
+      final result = await context.read<EditsRepository>().commentAction(
+        editId: widget.edit.id,
+        commentId: comment.id,
+        action: wasLiked ? 'unlike' : 'like',
+      );
+      if (!mounted) return;
+      if (!result.isSuccess) {
+        // Assigning `_error` outside `setState` would leave the sheet showing the
+        // rolled-back state with no explanation.
+        setState(() {
+          if (wasLiked) {
+            _liked.add(comment.id);
+          } else {
+            _liked.remove(comment.id);
+          }
+          _likesDelta[comment.id] = previousDelta;
+          _error = result.failureOrNull?.message;
+        });
+      }
+    } finally {
+      _likeBusy.remove(comment.id);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -95,6 +155,13 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
           _loadingMore = false;
           _error = failure.message;
         });
+        // A failed "load more" must not blank the comments already on screen;
+        // surface it as a transient message instead.
+        if (more && mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(content: Text(EditCopy.of(context).loadMoreFailed)),
+          );
+        }
       },
     );
   }
@@ -157,13 +224,13 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
                     children: <Widget>[
                       Expanded(
                         child: Text(
-                          'Replying to ${_replyTo!.text}',
+                          copy.replyingTo(_replyTo!.text),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       IconButton(
-                        tooltip: 'Cancel reply',
+                        tooltip: copy.cancelReply,
                         onPressed: () => setState(() => _replyTo = null),
                         icon: const Icon(Icons.close),
                       ),
@@ -221,7 +288,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
         compact: true,
         icon: Icons.chat_bubble_outline,
         title: copy.comments,
-        message: 'Be the first to reply to this Edit.',
+        message: copy.noCommentsMessage,
       );
     }
     final viewerId = context.watch<AuthProvider>().currentUser?.id;
@@ -231,7 +298,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
         if (index == _comments.length) {
           return TextButton(
             onPressed: _loadingMore ? null : () => _load(more: true),
-            child: Text(_loadingMore ? 'Loading…' : 'Load more'),
+            child: Text(_loadingMore ? copy.loadingMore : copy.loadMore),
           );
         }
         final comment = _comments[index];
@@ -241,28 +308,26 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
           subtitle: Text(
             [
               if (comment.kind == 'sticker') copy.sticker,
-              if (comment.replyToCommentId != null) 'Reply',
+              if (comment.replyToCommentId != null) copy.reply,
               if (comment.mentions.isNotEmpty)
                 comment.mentions.map((item) => '@$item').join(' '),
-              '${comment.likesCount} likes',
+              copy.likes(_likesOf(comment)),
             ].join(' · '),
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               IconButton(
-                tooltip: 'Reply',
+                tooltip: copy.reply,
                 onPressed: () => setState(() => _replyTo = comment),
                 icon: const Icon(Icons.reply),
               ),
               IconButton(
-                tooltip: copy.like,
+                tooltip: _isLiked(comment.id) ? copy.unlike : copy.like,
+                isSelected: _isLiked(comment.id),
                 icon: const Icon(Icons.favorite_border),
-                onPressed: () => context.read<EditsRepository>().commentAction(
-                  editId: widget.edit.id,
-                  commentId: comment.id,
-                  action: 'like',
-                ),
+                selectedIcon: const Icon(Icons.favorite),
+                onPressed: () => _toggleCommentLike(comment),
               ),
               if (viewerId != null && viewerId == comment.authorId)
                 IconButton(

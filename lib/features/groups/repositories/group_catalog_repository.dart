@@ -4,6 +4,7 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/group_catalog_models.dart';
 
 /// Master Spec 7.3 / 11: the anime a roleplay group is bound to, and the cast
@@ -179,7 +180,7 @@ final class FirebaseGroupCatalogRepository implements GroupCatalogRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: catalogFailure));
     } on Object catch (error) {
       return FailureResult<T>(catalogFailure(error));
     }
@@ -200,7 +201,7 @@ Failure catalogFailure(Object error) {
       'resource-exhausted' => RateLimitedError(
         error.message ?? 'Too many requests. Please wait a moment.',
       ),
-      _ => UnavailableError(error.message ?? 'The catalog could not be read.'),
+      _ => const UnavailableError('The catalog could not be read.'),
     };
   }
   if (error is FormatException) {
@@ -209,7 +210,7 @@ Failure catalogFailure(Object error) {
   if (error is TimeoutException) {
     return const TimeoutError();
   }
-  return UnavailableError(error.toString());
+  return const UnavailableError('The catalog could not be read.');
 }
 
 /// Read-only stand-in used when the platform has no callable backend (tests,

@@ -1,5 +1,5 @@
 name: pubget
-description: "A new Flutter project."
+description: "Pubget — a bilingual (Arabic/English) anime community app built on Firebase."
 publish_to: 'none'
 
 version: 1.0.2+18
@@ -48,6 +48,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/pubget_torii.png
+    - assets/branding/pubget_torii_mark.png
     - assets/branding/pubget_settings.png
     - assets/branding/pubget_coin.png
     - assets/chat/pubget_default_wallpaper.png

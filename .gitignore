@@ -23,8 +23,9 @@ migrate_working_dir/
 # is commented out by default.
 #.vscode/
 
-# Node (root security-rule tests and Cloud Functions)
-node_modules/
+# Node (root security-rule tests and Cloud Functions). Matched without the
+# trailing slash so a symlinked node_modules is ignored too.
+node_modules
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -49,3 +50,10 @@ app.*.map.json
 
 # Signing material must stay out of source control
 *.jks
+
+# Local toolchain (portable JDK for the rules emulator)
+.tooling/
+
+# Kotlin compiler session artifacts (generated per machine, never source)
+android/.kotlin/
+*.salive
