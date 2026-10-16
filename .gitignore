@@ -53,3 +53,7 @@ app.*.map.json
 
 # Local toolchain (portable JDK for the rules emulator)
 .tooling/
+
+# Kotlin compiler session artifacts (generated per machine, never source)
+android/.kotlin/
+*.salive

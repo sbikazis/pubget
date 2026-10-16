@@ -4,7 +4,7 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const { assignRoles } = require("./roleAssigner");
 
-const db = admin.firestore();
+const db = require("../lazyAdmin").firestore;
 
 const STATUS = {
   WAITING: "WAITING",

@@ -9,7 +9,7 @@ const { checkWinCondition } = require("./winConditionChecker");
 const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
 
-const db = admin.firestore();
+const db = require("../lazyAdmin").firestore;
 
 const ACTIVE_LOOP_STATUSES = [
   "ROLE_REVEAL", "NIGHT", "DAY", "DISCUSSION", "VOTING", "RESOLUTION",

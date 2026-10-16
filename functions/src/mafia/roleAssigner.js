@@ -5,7 +5,7 @@ const { ALL_ABILITIES } = require("./abilities");
 const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
 
-const db = admin.firestore();
+const db = require("../lazyAdmin").firestore;
 
 const FIRST_NIGHT_DURATION_SECONDS = 8;
 // Master Spec 13.2: a Mafia game holds 7-15 players. Start is refused below

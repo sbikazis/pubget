@@ -34,6 +34,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The rules suites live under functions/test and resolve their own
+      # dependency tree from functions/node_modules first.
+      - name: Install functions dependencies
+        run: cd functions && npm ci
+
       # Downloading the emulator jars can exceed the emulator startup budget
       # inside emulators:exec, which fails with "Port 8080 ... was not active
       # within 60000ms". Warm the cache first so the exec only starts them.
@@ -47,6 +52,8 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
+      # Rules reach production on every push to main: prove them against
+      # the emulators (positive AND negative cases) before they ship.
       - name: Rules tests
         run: npm test
 

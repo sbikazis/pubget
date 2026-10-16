@@ -2,7 +2,7 @@
 
 const admin = require("firebase-admin");
 
-const db = admin.firestore();
+const db = require("../lazyAdmin").firestore;
 
 const { roleLabel } = require("./roleLabels");
 
