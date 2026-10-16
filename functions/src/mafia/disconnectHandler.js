@@ -4,7 +4,7 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const { checkWinCondition } = require("./winConditionChecker");
 
-const db = admin.firestore();
+const db = require("../lazyAdmin").firestore;
 
 const DISCONNECT_THRESHOLD_SECONDS = 90;
 const RECONNECT_WINDOW_SECONDS = 60;

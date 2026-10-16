@@ -5,7 +5,7 @@ const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
 const { roleLabel } = require("./roleLabels");
 
-const db = admin.firestore();
+const db = require("../lazyAdmin").firestore;
 
 function pickMajorityTarget(mafiaActions) {
   if (!mafiaActions || mafiaActions.length === 0) return null;

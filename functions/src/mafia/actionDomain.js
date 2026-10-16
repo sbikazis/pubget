@@ -4,7 +4,7 @@ const admin = require("firebase-admin");
 const { HttpsError } = require("firebase-functions/v2/https");
 const { checkWinCondition } = require("./winConditionChecker");
 
-const db = admin.firestore();
+const db = require("../lazyAdmin").firestore;
 const NIGHT_ROLES = new Set(["mafia", "don", "doctor", "detective"]);
 const MAFIA_ROLES = new Set(["mafia", "don"]);
 
