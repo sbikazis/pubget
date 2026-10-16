@@ -73,6 +73,7 @@ class _HomePageState extends State<HomePage> {
         name: name,
         avatarUrl: profile?.avatarUrl ?? auth.currentUser?.avatarUrl,
         frameId: economy?.equipped.frameId,
+        coins: economy?.coins,
         notifyCount: unread.notifications,
       ),
       body: PubgetAtmosphere(
@@ -186,6 +187,7 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
     required this.name,
     required this.avatarUrl,
     required this.frameId,
+    required this.coins,
     required this.notifyCount,
     super.key,
   });
@@ -193,6 +195,11 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
   final String? name;
   final String? avatarUrl;
   final String? frameId;
+
+  /// Live wallet balance. `null` means the balance is not known yet, so the
+  /// chip is hidden rather than shown as a fake zero (§0.4).
+  final int? coins;
+
   final int notifyCount;
 
   static const barHeight = 56.0;
@@ -221,13 +228,18 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
       toolbarHeight: barHeight,
       titleSpacing: 0,
       clipBehavior: Clip.none,
-      // Revised §4.1 layout: the drawer affordance leads, the Pubget brand is
-      // visually centred on the bar, and the discovery/act controls trail
-      // (search, notifications, profile). Store and the coin balance moved into
-      // the navigation drawer, so the bar is no longer crowded by seven
-      // controls. The row is directional, so it mirrors correctly for Arabic.
+      // Master Spec §4.1 fixes this order:
+      //   logo ← coins (+) ← dragon store ← search ← notifications ← profile ← ☰
+      // The row is directional, so declaring the children in that order
+      // produces that reading order in Arabic and mirrors it in English.
+      // There is no forced `TextDirection.ltr` anywhere — that is what used to
+      // place the avatar on the wrong side of the bar in the Arabic UI.
       title: LayoutBuilder(
         builder: (context, constraints) {
+          // Seven controls at full size do not fit a narrow phone, so the bar
+          // scales its metrics down together rather than clipping or dropping
+          // a control. The 1.5x logo ratio from §4.1 is preserved at every
+          // size, and the bar height never changes.
           final compact = constraints.maxWidth < _compactBreakpoint;
           final icon = compact ? iconSizeCompact : iconSize;
           final logo = compact ? logoSizeCompact : logoSize;
@@ -238,63 +250,81 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
             width: double.infinity,
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: pad),
-              child: Stack(
-                alignment: Alignment.center,
+              child: Row(
                 children: <Widget>[
-                  // Centred brand mark, independent of how wide the leading and
-                  // trailing clusters are.
                   PubgetLogoMark(key: const Key('home-logo'), size: logo),
-                  Row(
-                    children: <Widget>[
-                      SizedBox.square(
-                        dimension: icon,
-                        child: AppShellMenuButton(size: icon),
+                  SizedBox(width: gap),
+                  // The coin chip is the only variable-width control. It is
+                  // allowed to shrink (never to push the row over) so a very
+                  // large balance can never overflow the bar.
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.centerStart,
+                      child: _CoinChipSlot(
+                        balance: coins,
+                        tooltip: copy.store,
+                        compact: compact,
                       ),
-                      const Spacer(),
-                      SizedBox.square(
-                        dimension: icon,
-                        child: PubgetLuxurySearchButton(
-                          tooltip: copy.search,
-                          size: icon,
-                          onPressed: () => AppNavigation.go(context, '/search'),
-                        ),
-                      ),
-                      SizedBox(width: gap),
-                      SizedBox.square(
-                        dimension: icon,
-                        child: PubgetLuxuryNotifyButton(
-                          tooltip: copy.notifications,
-                          badge: notifyCount,
-                          size: icon,
-                          onPressed: () =>
-                              AppNavigation.go(context, '/notifications'),
-                        ),
-                      ),
-                      SizedBox(width: gap),
-                      SizedBox.square(
-                        dimension: icon,
-                        child: Semantics(
-                          button: true,
-                          label: name ?? copy.profile,
-                          child: InkWell(
-                            key: const Key('home-avatar'),
-                            onTap: () => AppNavigation.go(context, '/profile'),
-                            borderRadius: BorderRadius.circular(AppRadius.pill),
-                            child: FittedBox(
-                              child: EquippedAvatar(
-                                imageUrl: avatarUrl,
-                                name: name,
-                                frameId: frameId,
-                                size: compact
-                                    ? PubgetAvatarSize.small
-                                    : PubgetAvatarSize.nav,
-                                compactFrame: true,
-                              ),
-                            ),
+                    ),
+                  ),
+                  SizedBox(width: gap),
+                  SizedBox.square(
+                    dimension: icon,
+                    child: PubgetLuxuryStoreButton(
+                      tooltip: copy.store,
+                      size: icon,
+                      onPressed: () => AppNavigation.go(context, '/store'),
+                    ),
+                  ),
+                  SizedBox(width: gap),
+                  SizedBox.square(
+                    dimension: icon,
+                    child: PubgetLuxurySearchButton(
+                      tooltip: copy.search,
+                      size: icon,
+                      onPressed: () => AppNavigation.go(context, '/search'),
+                    ),
+                  ),
+                  SizedBox(width: gap),
+                  SizedBox.square(
+                    dimension: icon,
+                    child: PubgetLuxuryNotifyButton(
+                      tooltip: copy.notifications,
+                      badge: notifyCount,
+                      size: icon,
+                      onPressed: () =>
+                          AppNavigation.go(context, '/notifications'),
+                    ),
+                  ),
+                  SizedBox(width: gap),
+                  SizedBox.square(
+                    dimension: icon,
+                    child: Semantics(
+                      button: true,
+                      label: name ?? copy.profile,
+                      child: InkWell(
+                        key: const Key('home-avatar'),
+                        onTap: () => AppNavigation.go(context, '/profile'),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                        child: FittedBox(
+                          child: EquippedAvatar(
+                            imageUrl: avatarUrl,
+                            name: name,
+                            frameId: frameId,
+                            size: compact
+                                ? PubgetAvatarSize.small
+                                : PubgetAvatarSize.nav,
+                            compactFrame: true,
                           ),
                         ),
                       ),
-                    ],
+                    ),
+                  ),
+                  SizedBox(width: gap),
+                  SizedBox.square(
+                    dimension: icon,
+                    child: AppShellMenuButton(size: icon),
                   ),
                 ],
               ),
@@ -302,6 +332,38 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
           );
         },
       ),
+    );
+  }
+}
+
+/// Inline coins, as required by §4.1 ("عداد العملات (+)"). The previous layout
+/// parked coins in a second strip under the bar; the spec puts them in the bar
+/// itself. When the balance is unknown the slot collapses to nothing so the UI
+/// never advertises a fake zero.
+class _CoinChipSlot extends StatelessWidget {
+  const _CoinChipSlot({
+    required this.balance,
+    required this.tooltip,
+    this.compact = false,
+  });
+
+  final int? balance;
+  final String tooltip;
+
+  /// True on narrow phones, where the chip gives up its horizontal padding
+  /// before any control is dropped.
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    if (balance == null) return const SizedBox.shrink();
+    // The chip owns its own tap target and semantics, so it is used directly
+    // rather than being nested in another InkWell.
+    return PubgetKatanaCoinChip(
+      balance: balance!,
+      tooltip: tooltip,
+      compact: compact,
+      onPressed: () => AppNavigation.go(context, '/store'),
     );
   }
 }
