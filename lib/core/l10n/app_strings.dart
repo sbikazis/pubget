@@ -917,6 +917,12 @@ final class AppStrings {
   String get eventTabMine => pick('Mine', 'مالي');
   String get eventLoadFailed =>
       pick('Events could not load.', 'تعذّر تحميل الفعاليات.');
+  String get eventPermissionDenied =>
+      pick('You do not have permission to do that.', 'ليس لديك صلاحية لفعل ذلك.');
+  String get eventRateLimited => pick(
+    'Too many requests. Please wait a moment and try again.',
+    'طلبات كثيرة. انتظر قليلاً ثم حاول مجدداً.',
+  );
   String get eventSearchHint => pick('Search events', 'ابحث في الفعاليات');
   String get eventFilterType => pick('Type', 'النوع');
   String get eventFilterAll => pick('All', 'الكل');

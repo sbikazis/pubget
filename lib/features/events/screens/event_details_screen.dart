@@ -12,6 +12,7 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../groups/providers/group_provider.dart';
 import '../../groups/widgets/chat_action_sheets.dart';
+import '../models/event_errors.dart';
 import '../models/event_models.dart';
 import '../models/event_type_registry.dart';
 import '../providers/event_providers.dart';
@@ -1189,6 +1190,33 @@ class _QuizQuestionTileState extends State<_QuizQuestionTile> {
 
 // ---------------------------------------------------------------- results --
 
+class _ResultLockBadge extends StatelessWidget {
+  const _ResultLockBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.xs, bottom: AppSpacing.xs),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.lock_outline, size: 16, color: scheme.outline),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              copy.eventResultLocked,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.outline),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ResultCard extends StatelessWidget {
   const _ResultCard({required this.event});
 
@@ -1213,6 +1241,7 @@ class _ResultCard extends StatelessWidget {
               copy.eventResultTitle,
               style: Theme.of(context).textTheme.titleMedium,
             ),
+            const _ResultLockBadge(),
             Text('${copy.eventAgree}: $agree'),
             Text('${copy.eventDisagree}: $disagree'),
           ],
@@ -1227,6 +1256,10 @@ class _ResultCard extends StatelessWidget {
             copy.eventResultTitle,
             style: Theme.of(context).textTheme.titleMedium,
           ),
+          // Master Spec 14.3: once the event ends, the result is Locked and
+          // immutable; the badge makes that explicit instead of only hiding
+          // the resolve action.
+          const _ResultLockBadge(),
           Text('${copy.eventSubmissions}: ${result.submissions}'),
           if (event.type == EventType.quiz &&
               result.leaderboard.isNotEmpty) ...[
@@ -1768,13 +1801,8 @@ Map<String, int> _percentages(Map<String, int> counts) {
   return floors;
 }
 
-String _failureText(AppStrings copy, Failure? failure) {
-  if (failure == null) return '';
-  if (failure is ValidationError) {
-    return copy.eventValidationMessage(failure.message);
-  }
-  return failure.message;
-}
+String _failureText(AppStrings copy, Failure? failure) =>
+    eventFailureMessage(copy, failure);
 
 Future<void> _run(
   BuildContext context,
