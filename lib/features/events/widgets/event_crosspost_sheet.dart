@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/errors/failure.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../groups/providers/group_provider.dart';
+import '../models/event_errors.dart';
 import '../models/event_models.dart';
 import '../repositories/event_repository.dart';
 
@@ -135,10 +135,6 @@ Future<bool> offerEventCrosspost(
     return true;
   }
   final failure = result.failureOrNull;
-  onMessage?.call(
-    failure is ValidationError
-        ? copy.eventValidationMessage(failure.message)
-        : failure?.message ?? '',
-  );
+  onMessage?.call(eventFailureMessage(copy, failure));
   return false;
 }

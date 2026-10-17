@@ -14,6 +14,7 @@ import '../../authentication/providers/auth_provider.dart';
 import '../../groups/providers/group_provider.dart';
 import '../../groups/screens/group_anime_picker_page.dart';
 import '../data/event_image_uploader.dart';
+import '../models/event_errors.dart';
 import '../models/event_lifecycle.dart';
 import '../models/event_models.dart';
 import '../models/event_type_registry.dart';
@@ -1214,13 +1215,8 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
     return '${two(local.day)}/${two(local.month)} ${two(local.hour)}:${two(local.minute)}';
   }
 
-  String _failureText(AppStrings copy, Failure? failure) {
-    if (failure == null) return '';
-    if (failure is ValidationError) {
-      return copy.eventValidationMessage(failure.message);
-    }
-    return failure.message;
-  }
+  String _failureText(AppStrings copy, Failure? failure) =>
+      eventFailureMessage(copy, failure);
 
   void _showMessage(String message) {
     if (message.isEmpty || !mounted) return;
