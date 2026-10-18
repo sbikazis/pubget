@@ -408,5 +408,54 @@ service firebase.storage {
           firestore.exists(/databases/(default)/documents/fanWorks/$(workId)) &&
           fanWorkDocument(workId).data.creatorId == request.auth.uid;
     }
+
+    // ---- Unified media layer (lib/core/media) ---------------------------
+    // Keys are `{folder}/{uid}/{uuid}.{ext}`, one folder per kind. The folder
+    // is pinned to the kind so a video cannot be uploaded under images/ to
+    // dodge the tighter Reels ceiling, and the owner segment must equal the
+    // caller. Metadata `uploadedBy` binds an object to its first uploader on
+    // both create and the resumable UPDATE pass (see isExistingUploader).
+    function isMediaAudio() {
+      return request.resource.contentType.matches('audio/(mpeg|aac|ogg|mp4)');
+    }
+    function isMediaVideo() {
+      return request.resource.contentType.matches('video/(mp4|webm|quicktime)');
+    }
+
+    match /images/{userId}/{fileName} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == userId &&
+          isImage() && request.resource.size <= 10 * 1024 * 1024 &&
+          request.resource.metadata.uploadedBy == request.auth.uid;
+      allow update: if signedIn() && request.auth.uid == userId &&
+          isImage() && request.resource.size <= 10 * 1024 * 1024 &&
+          isExistingUploader() && isNewUploader();
+      allow delete: if signedIn() && request.auth.uid == userId &&
+          isExistingUploader();
+    }
+
+    match /reels/{userId}/{fileName} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == userId &&
+          isMediaVideo() && request.resource.size <= 5 * 1024 * 1024 &&
+          request.resource.metadata.uploadedBy == request.auth.uid;
+      allow update: if signedIn() && request.auth.uid == userId &&
+          isMediaVideo() && request.resource.size <= 5 * 1024 * 1024 &&
+          isExistingUploader() && isNewUploader();
+      allow delete: if signedIn() && request.auth.uid == userId &&
+          isExistingUploader();
+    }
+
+    match /audio/{userId}/{fileName} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == userId &&
+          isMediaAudio() && request.resource.size <= 50 * 1024 * 1024 &&
+          request.resource.metadata.uploadedBy == request.auth.uid;
+      allow update: if signedIn() && request.auth.uid == userId &&
+          isMediaAudio() && request.resource.size <= 50 * 1024 * 1024 &&
+          isExistingUploader() && isNewUploader();
+      allow delete: if signedIn() && request.auth.uid == userId &&
+          isExistingUploader();
+    }
   }
 }

@@ -9,6 +9,11 @@ service cloud.firestore {
     function changedOnly(keys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
+    // Unified media layer (lib/core/media): the only statuses a client may
+    // write on a `media` record.
+    function validMediaStatus(value) {
+      return value in ['pending', 'uploaded', 'failed', 'deleting', 'deleted'];
+    }
     function activePremium(uid) {
       let user = get(/databases/$(database)/documents/users/$(uid)).data;
       return user.get('subscriptionType', 'free') == 'premium' &&
@@ -1297,6 +1302,38 @@ service cloud.firestore {
     match /game_history/{gameId} {
       allow read: if signedIn() && request.auth.uid in resource.data.participants;
       allow write: if false;
+    }
+
+    // Unified media metadata (`lib/core/media`). Metadata only — bytes live
+    // in the storage backend. Contract: a signed-in user may read media
+    // records, but may only create their own (with a key that really belongs
+    // to them), may only move the transient `status`/`updatedAt` fields, and
+    // may only delete their own. The server never writes here, so no
+    // server-only branch is needed.
+    match /media/{mediaId} {
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+          request.resource.data.ownerUid == request.auth.uid &&
+          request.resource.data.mediaId == mediaId &&
+          request.resource.data.storageKey is string &&
+          request.resource.data.storageKey.matches(
+              '^(images|reels|audio)/' + request.auth.uid +
+              '/[A-Za-z0-9_-]+[.][A-Za-z0-9]+$') &&
+          request.resource.data.kind in ['image', 'reels', 'audio'] &&
+          request.resource.data.backend in ['firebase', 'r2'] &&
+          validMediaStatus(request.resource.data.status) &&
+          request.resource.data.sizeBytes is int &&
+          request.resource.data.sizeBytes > 0 &&
+          request.resource.data.sizeBytes <= 100 * 1024 * 1024;
+      allow update: if signedIn() &&
+          resource.data.ownerUid == request.auth.uid &&
+          request.resource.data.ownerUid == resource.data.ownerUid &&
+          request.resource.data.mediaId == resource.data.mediaId &&
+          request.resource.data.storageKey == resource.data.storageKey &&
+          validMediaStatus(request.resource.data.status) &&
+          changedOnly(['status', 'updatedAt']);
+      allow delete: if signedIn() &&
+          resource.data.ownerUid == request.auth.uid;
     }
 
     // Joined tab: collection-group *list* of `members` is own-uid only.

@@ -1,0 +1,50 @@
+# Cloudflare Worker for the pubget-media R2 bucket.
+#
+# Deployment is intentionally NOT part of the app build: running
+# `npx wrangler deploy` here changes production, so it is a manual, reviewed
+# step. See README.md for the full checklist and the values you must fill in.
+name = "pubget-media"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# The bucket binding is all most operations need (proxied upload, read,
+# delete, list). No credentials are stored for it.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "pubget-media"
+
+[vars]
+# Firebase project whose ID tokens are accepted (not a secret).
+FIREBASE_PROJECT_ID = "pubget-aaf27"
+
+# Public base URL for `GET /media/:key` redirects. Replace the placeholder with
+# your custom domain, or leave empty to stream objects from the binding
+# instead (works without a public bucket or domain).
+# e.g. "https://media.mydomain.com"
+PUBLIC_BASE_URL = ""
+
+# Comma-separated browser origins allowed by CORS. CORS is NOT authentication;
+# it only limits which web pages may call this worker from a browser.
+ALLOWED_ORIGINS = "https://pubget-aaf27.web.app,https://pubget-aaf27.firebaseapp.com"
+
+# R2 S3 account id, used to build presigned PUT URLs. Not a secret (it is part
+# of the S3 endpoint URL). Set it to your account id.
+R2_ACCOUNT_ID = ""
+
+# Size ceilings, in bytes. Keep in sync with lib/core/media/media_limits.dart
+# and storage.rules.
+IMAGES_MAX_BYTES = "10485760"   # 10 MB
+REELS_MAX_BYTES = "5242880"     # 5 MB
+AUDIO_MAX_BYTES = "52428800"    # 50 MB
+
+# Rate limits.
+PRESIGN_PER_MINUTE = "10"
+UPLOADS_PER_HOUR = "20"
+LIST_PER_MINUTE = "60"
+
+# ---------------------------------------------------------------------------
+# Secrets — set with `npx wrangler secret put <NAME>`, never in this file:
+#   R2_ACCESS_KEY_ID      R2 API token access key id (for presigned PUTs)
+#   R2_SECRET_ACCESS_KEY  R2 API token secret access key
+# Without them, /presign answers 501 and only proxied uploads work.
+# ---------------------------------------------------------------------------

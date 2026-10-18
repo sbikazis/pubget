@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/media/media_url_uploader.dart';
 import '../../authentication/models/pubget_user.dart';
 import '../models/public_profile.dart';
 import 'profile_repository.dart';
@@ -16,14 +17,20 @@ final class FirebaseProfileRepository implements ProfileRepository {
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
     FirebaseFunctions? functions,
+    MediaUrlUploader? mediaUploader,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _storage = storage ?? FirebaseStorage.instance,
        _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
+       _mediaUploader = mediaUploader;
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
+
+  /// When set, avatar/cover bytes go through the shared media stack instead of
+  /// the legacy direct-storage path. Null preserves the previous behaviour.
+  final MediaUrlUploader? _mediaUploader;
 
   @override
   Future<Result<PublicProfile>> getPublicProfile(String userId) async {
@@ -88,15 +95,38 @@ final class FirebaseProfileRepository implements ProfileRepository {
     required Uint8List bytes,
     required String contentType,
   }) async {
-    // avatarUrl is in the users/{uid} update allow-list, so a direct write is
-    // correct here.
-    return _uploadImage(
-      userId: userId,
+    final uploader = _mediaUploader;
+    if (uploader == null) {
+      // avatarUrl is in the users/{uid} update allow-list, so a direct write is
+      // correct here.
+      return _uploadImage(
+        userId: userId,
+        bytes: bytes,
+        contentType: contentType,
+        path: 'users/$userId/avatar.jpg',
+        field: 'avatarUrl',
+      );
+    }
+    final uploaded = await uploader.uploadImage(
+      ownerUid: userId,
       bytes: bytes,
-      contentType: contentType,
-      path: 'users/$userId/avatar.jpg',
-      field: 'avatarUrl',
+      claimedContentType: contentType,
+      fileName: 'avatar.jpg',
     );
+    final url = uploaded.valueOrNull;
+    if (url == null) {
+      return FailureResult<String>(
+        uploaded.failureOrNull ?? const UnknownError('Avatar upload failed.'),
+      );
+    }
+    try {
+      await _firestore.collection('users').doc(userId).update(<String, dynamic>{
+        'avatarUrl': url,
+      });
+      return Success<String>(url);
+    } on Object catch (error) {
+      return FailureResult<String>(_mapFailure(error));
+    }
   }
 
   @override
@@ -105,13 +135,34 @@ final class FirebaseProfileRepository implements ProfileRepository {
     required Uint8List bytes,
     required String contentType,
   }) async {
-    try {
-      final ref = _storage.ref('users/$userId/cover.jpg');
-      final snapshot = await ref.putData(
-        bytes,
-        SettableMetadata(contentType: contentType),
+    final uploader = _mediaUploader;
+    final Result<String> uploaded;
+    if (uploader == null) {
+      try {
+        final ref = _storage.ref('users/$userId/cover.jpg');
+        final snapshot = await ref.putData(
+          bytes,
+          SettableMetadata(contentType: contentType),
+        );
+        uploaded = Success<String>(await snapshot.ref.getDownloadURL());
+      } on Object catch (error) {
+        return FailureResult<String>(_mapFailure(error));
+      }
+    } else {
+      uploaded = await uploader.uploadImage(
+        ownerUid: userId,
+        bytes: bytes,
+        claimedContentType: contentType,
+        fileName: 'cover.jpg',
       );
-      final url = await snapshot.ref.getDownloadURL();
+    }
+    final url = uploaded.valueOrNull;
+    if (url == null) {
+      return FailureResult<String>(
+        uploaded.failureOrNull ?? const UnknownError('Cover upload failed.'),
+      );
+    }
+    try {
       // coverUrl is NOT in the users/{uid} update allow-list, so writing it
       // directly failed with permission-denied after the upload had already
       // succeeded. updateSocialProfile is the server-authorized path: it
