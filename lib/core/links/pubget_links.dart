@@ -38,7 +38,9 @@ abstract final class PubgetLinks {
 
   static String fanWork(String workId) => canonical(fanWorkPath(workId));
 
-  /// Deep link into the Edits feed focused on a specific clip.
+  /// Legacy feed-highlight deep link (`/edits?highlight=…`). Kept so stored
+  /// links and callers keep resolving: the router maps this form onto the
+  /// canonical `/reel/{reelId}` entity route. New links should use [reelPath].
   static String editHighlightPath(String editId) {
     final trimmed = editId.trim();
     if (trimmed.isEmpty) return '/edits';
@@ -48,6 +50,8 @@ abstract final class PubgetLinks {
   static String editHighlight(String editId) =>
       canonical(editHighlightPath(editId));
 
+  /// Legacy feed-era alias of [editHighlightPath] (`/reels?highlight=…`).
+  /// Also resolved by the router onto `/reel/{reelId}`.
   static String reelHighlightPath(String reelId) {
     final trimmed = reelId.trim();
     if (trimmed.isEmpty) return '/reels';
@@ -64,10 +68,12 @@ abstract final class PubgetLinks {
 
   static String reel(String reelId) => canonical(reelPath(reelId));
 
+  /// Kirari phase 2 — canonical hashtag entity link (`/hashtag/{tag}`). The
+  /// router also accepts the legacy query form (`/hashtag?tag=…`).
   static String hashtagPath(String tag) {
     final trimmed = tag.trim().replaceAll('#', '');
     if (trimmed.isEmpty) return '/reels';
-    return '/hashtag?tag=${Uri.encodeQueryComponent(trimmed.toLowerCase())}';
+    return _encodedPath('/hashtag', trimmed.toLowerCase()) ?? '/reels';
   }
 
   static String hashtag(String tag) => canonical(hashtagPath(tag));

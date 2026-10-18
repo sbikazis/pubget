@@ -378,6 +378,18 @@ AppRoute _routeFromUri(Uri uri) {
     );
   }
 
+  // Kirari phase 2 — legacy feed-highlight deep links resolve to the
+  // canonical single-Reel entity route. Stored notification destinations
+  // (`/edits?highlight=…`, `/reels?highlight=…`) keep opening the right Reel
+  // without any server-side or Firestore migration.
+  if (segments.length == 1 &&
+      (segments.first == 'edits' || segments.first == 'reels')) {
+    final highlight = query['highlight']?.trim() ?? '';
+    if (highlight.isNotEmpty) {
+      return entity(path: '/reel', key: 'reelId', id: highlight);
+    }
+  }
+
   if (segments.length == 2 && segments.first == 'event') {
     return entity(path: '/event', key: 'eventId', id: segments[1]);
   }

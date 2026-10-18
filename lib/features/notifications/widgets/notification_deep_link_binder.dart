@@ -7,7 +7,15 @@ import 'package:provider/provider.dart';
 import '../../../app/app_router.dart';
 import '../../edits/providers/edit_upload_manager.dart';
 
-/// Routes FCM notification taps into in-app destinations (Edits deep links).
+/// Routes FCM notification taps into in-app destinations.
+///
+/// Destinations arrive in either format: canonical entity routes
+/// (`/reel/{id}`, `/audio/{id}`, …) and legacy feed-highlight links
+/// (`/edits?highlight={id}`). Both resolve through [AppNavigation.go] — the
+/// router maps the legacy highlight form onto `/reel/{id}` — so notification
+/// records stored before the entity-routing migration keep opening the right
+/// Reel. The legacy `?highlight=` extraction below still primes the feed
+/// highlight for any flow that lands on the Reels feed.
 class NotificationDeepLinkBinder extends StatefulWidget {
   const NotificationDeepLinkBinder({
     required this.child,

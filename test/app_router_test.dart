@@ -255,6 +255,47 @@ void main() {
     expect((encoded as ParameterizedRoute).parameters['tag'], 'one piece');
   });
 
+  test('legacy feed-highlight links resolve to the canonical reel route', () {
+    ParameterizedRoute asRoute(AppRoute route) => route as ParameterizedRoute;
+
+    final edits = asRoute(AppRouter.routeFromString('/edits?highlight=abc123'));
+    expect(edits.path, '/reel');
+    expect(edits.parameters['reelId'], 'abc123');
+
+    final reels = asRoute(AppRouter.routeFromString('/reels?highlight=abc123'));
+    expect(reels.path, '/reel');
+    expect(reels.parameters['reelId'], 'abc123');
+
+    // Extra query params survive the resolution.
+    final push = asRoute(
+      AppRouter.routeFromString('/edits?highlight=abc123&ref=push'),
+    );
+    expect(push.path, '/reel');
+    expect(push.parameters['reelId'], 'abc123');
+    expect(push.parameters['ref'], 'push');
+
+    // Encoded ids resolve to their decoded form.
+    final encoded = asRoute(
+      AppRouter.routeFromString(
+        '/edits?highlight=${Uri.encodeComponent('e 1')}',
+      ),
+    );
+    expect(encoded.parameters['reelId'], 'e 1');
+
+    // Plain feed links (no highlight) stay on the feed.
+    expect(asRoute(AppRouter.routeFromString('/edits')).path, '/edits');
+    expect(asRoute(AppRouter.routeFromString('/reels')).path, '/reels');
+    expect(
+      asRoute(AppRouter.routeFromString('/edits?highlight=')).path,
+      '/edits',
+    );
+    // Upload paths are not converted even with a highlight param.
+    expect(
+      asRoute(AppRouter.routeFromString('/edits/upload?highlight=x')).path,
+      '/edits/upload',
+    );
+  });
+
   test('route parser maps /store/item query links', () async {
     final parser = AppRouteInformationParser();
     final route = await parser.parseRouteInformation(

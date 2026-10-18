@@ -64,6 +64,7 @@ import '../features/reels/providers/audio_provider.dart';
 import '../features/reels/repositories/audio_repository.dart';
 import '../features/reels/repositories/firebase_audio_repository.dart';
 import '../features/reels/screens/audio_page.dart';
+import '../features/reels/screens/reel_details_page.dart';
 import '../features/reels/screens/reels_feed_page.dart';
 import '../features/notifications/widgets/notification_deep_link_binder.dart';
 import '../features/edits/l10n/edit_copy.dart';
@@ -873,7 +874,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
                 unawaited(
                   AppNavigation.go(
                     context,
-                    PubgetLinks.editHighlightPath(editId),
+                    PubgetLinks.reelPath(editId),
                   ),
                 );
               },
@@ -883,7 +884,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         return;
       }
       unawaited(
-        AppNavigation.go(context, PubgetLinks.editHighlightPath(editId)),
+        AppNavigation.go(context, PubgetLinks.reelPath(editId)),
       );
     };
 
@@ -901,7 +902,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             label: copy.openEdit,
             onPressed: () => AppNavigation.go(
               context,
-              PubgetLinks.editHighlightPath(editId),
+              PubgetLinks.reelPath(editId),
             ),
           ),
         ),
@@ -920,7 +921,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             label: copy.openEdit,
             onPressed: () => AppNavigation.go(
               context,
-              PubgetLinks.editHighlightPath(editId),
+              PubgetLinks.reelPath(editId),
             ),
           ),
         ),
@@ -1027,8 +1028,13 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
       },
       parameterizedPages: <String, ParameterizedPageBuilder>{
         '/profile': (parameters) => ProfilePage(userId: parameters['uid']),
-        // One Reel, focused. The id is part of the link so a share is specific.
-        '/reel': (parameters) => const ReelsFeedPage(),
+        // Kirari phase 2 — `/reel/{reelId}` is the canonical entity route and
+        // opens [ReelDetailsPage]. Bare `/reel` (no id) keeps the Reels tab.
+        '/reel': (parameters) {
+          final reelId = (parameters['reelId'] ?? '').trim();
+          if (reelId.isEmpty) return const ReelsFeedPage();
+          return ReelDetailsPage(reelId: reelId);
+        },
         // `/audio` is the library; `/audio/{audioId}` is one audio's page.
         '/audio': (parameters) {
           final audioId = (parameters['audioId'] ?? '').trim();
