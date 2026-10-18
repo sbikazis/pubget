@@ -63,11 +63,11 @@ final class EditCopy {
   );
   String get failedNotificationBody => _s.pick(
     'Reel processing failed. Open the app to retry or delete the draft.',
-    'فشلت معالجة المقطع. افتح التطبيق لإعادة المحاولة أو حذف المسودة.',
+    'فشلت معالجة الريل. افتح التطبيق لإعادة المحاولة أو حذف المسودة.',
   );
   String get videoReadyOffer => _s.pick(
     'Your Reel is ready — watch it now?',
-    'مقطعك جاهز — شاهده الآن؟',
+    'ريلك جاهز — شاهده الآن؟',
   );
   String get watchNow => _s.pick('Watch now', 'شاهده الآن');
   String get openEdit =>
@@ -83,14 +83,14 @@ final class EditCopy {
   String get syncing => _s.pick('Syncing with server…', 'مزامنة مع الخادم…');
   String get noEdits => _s.pick('No Reels yet', 'لا ريلز بعد');
   String get noEditsMessage => _s.pick(
-    'Be the first creator to share a video.',
-    'كن أول مبدع يشارك فيديو.',
+    'Be the first creator to share a Reel.',
+    'كن أول مبدع يشارك ريلاً.',
   );
   String get failedLoad =>
       _s.pick('Reels could not load.', 'تعذّر تحميل الريلز.');
   String get brokenClip => _s.pick(
-    'This clip could not be played.',
-    'تعذّر تشغيل هذا المقطع.',
+    'This Reel could not be played.',
+    'تعذّر تشغيل هذا الريل.',
   );
   String get offlineClip => _s.pick(
     'Offline — retry when you are connected.',
@@ -160,8 +160,8 @@ final class EditCopy {
   String replyingTo(String text) =>
       _s.pick('Replying to $text', 'ردًا على $text');
   String get noCommentsMessage => _s.pick(
-        'Be the first to reply to this Edit.',
-        'كن أول من يرد على هذا المقطع.',
+        'Be the first to reply to this Reel.',
+        'كن أول من يرد على هذا الريل.',
       );
   String get loadingMore => _s.pick('Loading…', 'جارٍ التحميل…');
   String get loadMore => _s.pick('Load more', 'عرض المزيد');
@@ -189,13 +189,13 @@ final class EditCopy {
         'Tag up to 8 characters so fans can find this Reel',
         'وسم حتى 8 شخصيات ليجدها المعجبون',
       );
-  String get audio => _s.pick('Sound track (optional)', 'الصوت (اختياري)');
+  String get audio => _s.pick('Audio (optional)', 'الصوت (اختياري)');
   String get audioHint =>
       _s.pick('Pick audio from the library', 'اختر صوتًا من المكتبة');
   String get audioNone => _s.pick('None selected', 'لم يتم الاختيار');
-  String get audioClear => _s.pick('Remove sound track', 'إزالة الصوت');
+  String get audioClear => _s.pick('Remove audio', 'إزالة الصوت');
   String get audioOffline => _s.pick(
-        'Reconnect to pick a sound track',
+        'Reconnect to pick audio',
         'أعد الاتصال لاختيار صوت',
       );
 
@@ -217,16 +217,16 @@ final class EditCopy {
         edit.moderationStatus == 'needs_review') {
       return edit.moderationReason ??
           _s.pick(
-            'This Edit is held for review (possible third-party watermark).',
-            'هذا المقطع قيد المراجعة (احتمال وجود علامة مائية لمنصة أخرى).',
+            'This Reel is held for review (possible third-party watermark).',
+            'هذا الريل قيد المراجعة (احتمال وجود علامة مائية لمنصة أخرى).',
           );
     }
     if (edit.moderationStatus == 'flagged' ||
         edit.statusEnum == EditStatus.rejected) {
       return edit.moderationReason ??
           _s.pick(
-            'This Edit was flagged and was not published.',
-            'تم وسم هذا المقطع ولم يُنشر.',
+            'This Reel was flagged and was not published.',
+            'تم وسم هذا الريل ولم يُنشر.',
           );
     }
     return switch (edit.failureReason) {

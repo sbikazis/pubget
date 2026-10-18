@@ -372,8 +372,8 @@ function createEditPipeline({
           targetId: editId,
           action: "published",
           destination,
-          title: "Edit published",
-          body: "Your Edit is live. Tap to watch it.",
+          title: "Reel published",
+          body: "Your Reel is live. Tap to watch it.",
           pushWorthy: true,
           metadata: { editId },
         });
@@ -388,8 +388,8 @@ function createEditPipeline({
           targetId: editId,
           action: "needs_review",
           destination,
-          title: "Edit held for review",
-          body: reason || "Your Edit is waiting for moderation review.",
+          title: "Reel held for review",
+          body: reason || "Your Reel is waiting for moderation review.",
           pushWorthy: true,
           metadata: { editId, reason: reason || null },
         });
@@ -403,8 +403,8 @@ function createEditPipeline({
         targetId: editId,
         action: "failed",
         destination,
-        title: "Edit processing failed",
-        body: reason || "We could not finish processing your Edit. Open the app to retry.",
+        title: "Reel processing failed",
+        body: reason || "We could not finish processing your Reel. Open the app to retry.",
         pushWorthy: true,
         metadata: { editId, reason: reason || null },
       });
@@ -657,7 +657,7 @@ function createEditPipeline({
         creatorId,
         editId,
         kind: "failed",
-        reason: "We could not finish processing your Edit. Open the app to retry.",
+        reason: "We could not finish processing your Reel. Open the app to retry.",
       });
     } finally {
       await fsp.rm(dir, { recursive: true, force: true });
