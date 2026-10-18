@@ -9,6 +9,11 @@ abstract interface class ChatRepository {
     int limit = 40,
   });
 
+  Future<Result<List<ChatMessage>>> getRecentMessages({
+    required String groupId,
+    int limit = 40,
+  });
+
   Future<Result<List<ChatMessage>>> getOlderMessages({
     required String groupId,
     required ChatMessage before,

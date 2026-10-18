@@ -1331,6 +1331,88 @@ final class AppStrings {
   String get pause => pick('Pause', 'إيقاف مؤقت');
   String get preview => pick('Preview', 'معاينة');
 
+  // —— Group game-lobby / special chat cards ——
+  String get chatGameGenericTitle => pick('Game', 'لعبة');
+  String get chatGameStatusWaiting => pick('Waiting room', 'قاعة الانتظار');
+  String get chatGameStatusLive => pick('Live now', 'مباشر الآن');
+  String get chatGameStatusFull => pick('Full', 'اكتمل العدد');
+  String get chatGameStatusClosed => pick('Closed', 'أُغلقت');
+  String get chatGameCtaJoin => pick('Join game', 'انضمام للعبة');
+  String get chatGameCtaView => pick('View game', 'عرض اللعبة');
+  String get chatGameCtaDetails => pick('View details', 'عرض التفاصيل');
+  String chatGameHostStarted(String host) =>
+      pick('$host started a new game room', 'بدأ $host غرفة لعب جديدة');
+  String chatGameStartsAt(int players) =>
+      pick('Starts at $players players', 'يبدأ عند $players لاعبين');
+
+  String get chatWelcomeBadge =>
+      pick('Welcome the new member!', 'رحّبوا بالعضو الجديد!');
+  String get chatWelcomeNewMember => pick('New member', 'عضو جديد');
+  String get chatWelcomeAction => pick('👋 Welcome', '👋 ترحيب');
+  String get chatChatAction => pick('💬 Chat', '💬 دردشة');
+  String chatAgeYears(int years) => pick('$years yrs', '$years سنة');
+
+  String get chatEventFallbackTitle => pick('Event', 'فعالية');
+  String get chatEventRsvpGoing => pick('Going ✅', 'سأحضر ✅');
+  String get chatEventRsvpMaybe => pick('Maybe ❓', 'ربما ❓');
+  String get chatEventRsvpDeclined => pick("Can't go ❌", 'لن أحضر ❌');
+
+  String get chatDebateAgree => pick('Agree', 'موافق');
+  String get chatDebateDisagree => pick('Disagree', 'غير موافق');
+  String get chatDebateAddArgument =>
+      pick('Add your argument / opinion', 'أضف حجتك / رأيك');
+
+  String get chatDayToday => pick('Today', 'اليوم');
+  String get chatDayYesterday => pick('Yesterday', 'أمس');
+  String chatMonthLabel(int month) => pick(
+    const <String>[
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ][month - 1],
+    const <String>[
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر',
+    ][month - 1],
+  );
+
+  // —— Group media library ——
+  String get chatMediaSearchHint => pick('Search media', 'ابحث في الوسائط');
+  String get chatMediaEmptyTitle => pick('No shared media', 'لا وسائط مشتركة');
+  String get chatMediaEmptyMessage => pick(
+    'Images, videos, stickers, and voice notes shared in this chat will appear here.',
+    'ستظهر هنا الصور والفيديوهات والملصقات والرسائل الصوتية المشاركة في هذه المحادثة.',
+  );
+  String get chatMediaLoadFailed =>
+      pick('Media could not load.', 'تعذّر تحميل الوسائط.');
+  String get chatMediaNoMore => pick('No more media', 'لا مزيد من الوسائط');
+  String get chatMediaLoadMore => pick('Load more', 'تحميل المزيد');
+  String get chatMediaFilterAll => pick('All', 'الكل');
+  String get chatMediaFilterImages => pick('Images', 'صور');
+  String get chatMediaFilterVideos => pick('Videos', 'فيديو');
+  String get chatMediaFilterGifs => pick('GIFs', 'GIF');
+  String get chatMediaFilterStickers => pick('Stickers', 'ملصقات');
+  String get chatMediaFilterAudio => pick('Audio', 'صوتيات');
+
   // ---- Phase 02: username + availability (spec §3.2) ----
   String get username => pick('Username', 'اسم المستخدم');
   String get usernameHint => pick('pubget_fan', 'pubget_fan');

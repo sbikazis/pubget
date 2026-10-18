@@ -642,6 +642,8 @@ class _MessageList extends StatefulWidget {
 class _MessageListState extends State<_MessageList> {
   List<_PrivateRow>? _cachedRows;
   DateTime? _cachedDay;
+  // Day dividers are localized; expire the cache when the language flips.
+  bool? _cachedArabic;
   // See the group list: `chat.messages` returns a new unmodifiable wrapper on
   // every call, so the cache is keyed on revision plus list bounds.
   int _cachedRevision = -1;
@@ -666,6 +668,7 @@ class _MessageListState extends State<_MessageList> {
   }
 
   List<_PrivateRow> _rowsFor() {
+    final copy = AppStrings.of(context);
     final messages = widget.chat.messages;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -677,7 +680,8 @@ class _MessageListState extends State<_MessageList> {
         _cachedCount == count &&
         _cachedFirstId == firstId &&
         _cachedLastId == lastId &&
-        _cachedDay == today) {
+        _cachedDay == today &&
+        _cachedArabic == copy.isArabic) {
       return _cachedRows!;
     }
     final rows = <_PrivateRow>[];
@@ -691,7 +695,7 @@ class _MessageListState extends State<_MessageList> {
           ? null
           : DateTime(createdAt.year, createdAt.month, createdAt.day);
       if (day != null && (lastDay == null || day != lastDay)) {
-        rows.add(_PrivateRow.date(chatDayLabel(createdAt, now: now)));
+        rows.add(_PrivateRow.date(chatDayLabel(createdAt, now: now, copy: copy)));
         lastDay = day;
       }
       indexById[message.id] = rows.length;
@@ -703,6 +707,7 @@ class _MessageListState extends State<_MessageList> {
     }
     _cachedRows = rows;
     _cachedDay = today;
+    _cachedArabic = copy.isArabic;
     _cachedRevision = widget.chat.contentRevision;
     _cachedCount = count;
     _cachedFirstId = firstId;

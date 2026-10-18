@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/result.dart';
+import 'package:pubget/core/l10n/app_strings.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/groups/data/sticker_catalog.dart';
 import 'package:pubget/features/groups/data/sticker_store.dart';
+import 'package:pubget/features/groups/l10n/chat_copy.dart';
 import 'package:pubget/features/groups/models/chat_models.dart';
 import 'package:pubget/features/groups/providers/chat_provider.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
@@ -37,7 +39,23 @@ void main() {
     }, id: 'card-1');
     expect(message.gameActivity?.isCreated, isTrue);
     expect(message.gameActivity?.isMafia, isTrue);
-    expect(message.gameActivity?.actionLabel, 'Join');
+    // The lobby labels are localized (no hardcoded English on the model).
+    expect(
+      chatGameActionLabel(message.gameActivity, AppStrings.english),
+      'Join game',
+    );
+    expect(
+      chatGameActionLabel(message.gameActivity, AppStrings.arabic),
+      'انضمام للعبة',
+    );
+    expect(
+      chatGameStatusLabel(message.gameActivity, AppStrings.english),
+      'Waiting room',
+    );
+    expect(
+      chatGameStatusLabel(message.gameActivity, AppStrings.arabic),
+      'قاعة الانتظار',
+    );
   });
 
   test('chatMediaTypeFor classifies gif, audio, video, and images', () {
