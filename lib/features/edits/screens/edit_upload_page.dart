@@ -664,7 +664,7 @@ class _EditUploadPageState extends State<EditUploadPage>
       _error = copy.friendlyFailure(
         result.failureOrNull ??
             const UnknownError(
-              'Something went wrong while preparing your Edit. Please try again.',
+              'Something went wrong while preparing your Reel. Please try again.',
             ),
       );
     });

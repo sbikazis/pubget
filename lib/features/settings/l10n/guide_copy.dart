@@ -145,13 +145,13 @@ final class GuideTopic {
       route: '/events',
     ),
     GuideTopic(
-      titleEn: 'Edits',
-      titleAr: 'المونتاجات',
+      titleEn: 'Reels',
+      titleAr: 'الريلز',
       bodyEn:
-          'Edits are short videos, not a photo gallery. Views count only after '
+          'Reels are short videos, not a photo gallery. Views count only after '
           'real watch time — opening a page is not a view.',
       bodyAr:
-          'المونتاجات مقاطع فيديو قصيرة وليست معرض صور. تُحتسب المشاهدات بعد '
+          'الريلز مقاطع فيديو قصيرة وليست معرض صور. تُحتسب المشاهدات بعد '
           'وقت مشاهدة حقيقي — مجرد فتح الصفحة ليس مشاهدة.',
       route: '/edits',
     ),

@@ -19,8 +19,8 @@ abstract final class AchievementCatalog {
       conditions: <AchievementConditionProgress>[
         AchievementConditionProgress(
           id: 'first_action',
-          labelEn: 'First join / first message / first Edit',
-          labelAr: 'أول انضمام أو رسالة أو Edit',
+          labelEn: 'First join / first message / first Reel',
+          labelAr: 'أول انضمام أو رسالة أو ريل',
           current: 0,
           target: 1,
           met: false,
@@ -143,8 +143,8 @@ abstract final class AchievementCatalog {
       conditions: <AchievementConditionProgress>[
         AchievementConditionProgress(
           id: 'works_10',
-          labelEn: '10 published Edits + Fan Works',
-          labelAr: '10 أعمال منشورة (Edits + Fan Works)',
+          labelEn: '10 published Reels + Fan Works',
+          labelAr: '10 أعمال منشورة (ريلز + أعمال المعجبين)',
           current: 0,
           target: 10,
           met: false,

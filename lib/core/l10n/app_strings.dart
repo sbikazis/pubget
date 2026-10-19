@@ -287,11 +287,11 @@ final class AppStrings {
     'game_started' => pick('Game starting', 'اللعبة تبدأ قريبًا'),
     'game_completed' => pick('Game result', 'نتيجة اللعبة'),
     'achievement_unlocked' => pick('Achievement unlocked', 'إنجاز جديد'),
-    'edit_published' => pick('Edit published', 'تم نشر المونتاج'),
-    'edit_failed' => pick('Edit processing failed', 'فشلت معالجة المونتاج'),
+    'edit_published' => pick('Reel published', 'تم نشر الريل'),
+    'edit_failed' => pick('Reel processing failed', 'فشلت معالجة الريل'),
     'edit_needs_review' => pick(
-      'Edit held for review',
-      'المونتاج بانتظار المراجعة',
+      'Reel held for review',
+      'الريل بانتظار المراجعة',
     ),
     'rank_promoted' => pick('Rank promoted', 'ترقية في الرتبة'),
     'rank_demoted' => pick('Rank demoted', 'خفض في الرتبة'),
@@ -380,8 +380,8 @@ final class AppStrings {
   String get homeWhatNow =>
       pick('What should I do right now?', 'ماذا أفعل الآن؟');
   String get homeHeroSubtitle => pick(
-    'Discover people, groups, edits, and games in one place.',
-    'اكتشف الأشخاص والمجموعات والمقاطع والألعاب من مكان واحد.',
+    'Discover people, groups, Reels, and games in one place.',
+    'اكتشف الأشخاص والمجموعات والريلز والألعاب من مكان واحد.',
   );
   String get nowJoinGroup => pick('Join a group', 'انضم لمجموعة');
   String get nowWatchEdits => pick('Watch Reels', 'شاهد الريلز');
@@ -586,8 +586,8 @@ final class AppStrings {
   String get seeMore => pick('See more', 'مشاهدة المزيد');
   String get createNew => pick('Create', 'إنشاء');
   String get createGroupAction => pick('Create a group', 'إنشاء مجموعة');
-  String get createVideoClip => pick('Create video clip', 'إنشاء مقطع فيديو');
-  String get uploadClip => pick('Upload a clip', 'رفع مقطع');
+  String get createVideoClip => pick('Create Reel', 'إنشاء ريل');
+  String get uploadClip => pick('Upload Reel', 'رفع الريل');
   String get createFanWork => pick('Create a fan work', 'إنشاء عمل معجبين');
   String get browseEvents => pick('Browse events', 'تصفح الفعاليات');
   String get pickHostGroup =>
@@ -1331,6 +1331,88 @@ final class AppStrings {
   String get pause => pick('Pause', 'إيقاف مؤقت');
   String get preview => pick('Preview', 'معاينة');
 
+  // —— Group game-lobby / special chat cards ——
+  String get chatGameGenericTitle => pick('Game', 'لعبة');
+  String get chatGameStatusWaiting => pick('Waiting room', 'قاعة الانتظار');
+  String get chatGameStatusLive => pick('Live now', 'مباشر الآن');
+  String get chatGameStatusFull => pick('Full', 'اكتمل العدد');
+  String get chatGameStatusClosed => pick('Closed', 'أُغلقت');
+  String get chatGameCtaJoin => pick('Join game', 'انضمام للعبة');
+  String get chatGameCtaView => pick('View game', 'عرض اللعبة');
+  String get chatGameCtaDetails => pick('View details', 'عرض التفاصيل');
+  String chatGameHostStarted(String host) =>
+      pick('$host started a new game room', 'بدأ $host غرفة لعب جديدة');
+  String chatGameStartsAt(int players) =>
+      pick('Starts at $players players', 'يبدأ عند $players لاعبين');
+
+  String get chatWelcomeBadge =>
+      pick('Welcome the new member!', 'رحّبوا بالعضو الجديد!');
+  String get chatWelcomeNewMember => pick('New member', 'عضو جديد');
+  String get chatWelcomeAction => pick('👋 Welcome', '👋 ترحيب');
+  String get chatChatAction => pick('💬 Chat', '💬 دردشة');
+  String chatAgeYears(int years) => pick('$years yrs', '$years سنة');
+
+  String get chatEventFallbackTitle => pick('Event', 'فعالية');
+  String get chatEventRsvpGoing => pick('Going ✅', 'سأحضر ✅');
+  String get chatEventRsvpMaybe => pick('Maybe ❓', 'ربما ❓');
+  String get chatEventRsvpDeclined => pick("Can't go ❌", 'لن أحضر ❌');
+
+  String get chatDebateAgree => pick('Agree', 'موافق');
+  String get chatDebateDisagree => pick('Disagree', 'غير موافق');
+  String get chatDebateAddArgument =>
+      pick('Add your argument / opinion', 'أضف حجتك / رأيك');
+
+  String get chatDayToday => pick('Today', 'اليوم');
+  String get chatDayYesterday => pick('Yesterday', 'أمس');
+  String chatMonthLabel(int month) => pick(
+    const <String>[
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ][month - 1],
+    const <String>[
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر',
+    ][month - 1],
+  );
+
+  // —— Group media library ——
+  String get chatMediaSearchHint => pick('Search media', 'ابحث في الوسائط');
+  String get chatMediaEmptyTitle => pick('No shared media', 'لا وسائط مشتركة');
+  String get chatMediaEmptyMessage => pick(
+    'Images, videos, stickers, and voice notes shared in this chat will appear here.',
+    'ستظهر هنا الصور والفيديوهات والملصقات والرسائل الصوتية المشاركة في هذه المحادثة.',
+  );
+  String get chatMediaLoadFailed =>
+      pick('Media could not load.', 'تعذّر تحميل الوسائط.');
+  String get chatMediaNoMore => pick('No more media', 'لا مزيد من الوسائط');
+  String get chatMediaLoadMore => pick('Load more', 'تحميل المزيد');
+  String get chatMediaFilterAll => pick('All', 'الكل');
+  String get chatMediaFilterImages => pick('Images', 'صور');
+  String get chatMediaFilterVideos => pick('Videos', 'فيديو');
+  String get chatMediaFilterGifs => pick('GIFs', 'GIF');
+  String get chatMediaFilterStickers => pick('Stickers', 'ملصقات');
+  String get chatMediaFilterAudio => pick('Audio', 'صوتيات');
+
   // ---- Phase 02: username + availability (spec §3.2) ----
   String get username => pick('Username', 'اسم المستخدم');
   String get usernameHint => pick('pubget_fan', 'pubget_fan');
@@ -1479,21 +1561,21 @@ final class AppStrings {
   String get addFriend => pick('Add friend', 'إضافة صديق');
   String get removeFriend => pick('Remove friend', 'إزالة الصديق');
   String get couldNotLoadEdits =>
-      pick('Could not load edits.', 'تعذّر تحميل الإيديتات.');
-  String get edits => pick('Edits', 'الإيديتات');
+      pick('Could not load Reels.', 'تعذّر تحميل الريلز.');
+  String get edits => pick('Reels', 'ريلز');
   String get noEditsYet =>
-      pick('No edits published yet', 'لا توجد إيديتات منشورة بعد');
-  String get noEditsToShow => pick('No edits to show', 'لا توجد إيديتات للعرض');
+      pick('No Reels published yet', 'لا توجد ريلز منشورة بعد');
+  String get noEditsToShow => pick('No Reels to show', 'لا توجد ريلز للعرض');
   String get cutSceneCta => pick(
-    'Cut a scene and publish your first edit.',
-    'قصّ مشهداً وانشر أول إيديت لك.',
+    'Cut a scene and publish your first Reel.',
+    'قصّ مشهداً وانشر أول ريل لك.',
   );
   String get creatorNoEdits => pick(
-    'This creator has not shared edits yet.',
-    'لم يشارك هذا المبدع إيديتات بعد.',
+    'This creator has not shared Reels yet.',
+    'لم يشارك هذا المبدع ريلز بعد.',
   );
-  String get openEdits => pick('Open edits', 'فتح الإيديتات');
-  String get createAnEdit => pick('Create an edit', 'أنشئ إيديتاً');
+  String get openEdits => pick('Open Reels', 'فتح الريلز');
+  String get createAnEdit => pick('Create a Reel', 'أنشئ ريلاً');
   String get favoriteAnime => pick('Favorite anime', 'الأنمي المفضل');
   String get giveRespectSemantic =>
       pick('Give selected Respect', 'منح الاحترام المختار');
@@ -1560,8 +1642,8 @@ final class AppStrings {
   String get showFriends => pick('Show friends', 'إظهار الأصدقاء');
   String get showFans => pick('Show fans', 'إظهار المعجبين');
   String get showWorks => pick(
-    'Show works (Edits / Fan Works)',
-    'إظهار الأعمال (الإيديتات / أعمال المعجبين)',
+    'Show works (Reels / Fan Works)',
+    'إظهار الأعمال (الريلز / أعمال المعجبين)',
   );
   String get showGroups => pick('Show groups', 'إظهار المجموعات');
   String get showRatings => pick('Show ratings', 'إظهار التقييمات');

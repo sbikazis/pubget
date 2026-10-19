@@ -111,6 +111,12 @@ final class FakeChatRepository implements ChatRepository {
   }
 
   @override
+  Future<Result<List<ChatMessage>>> getRecentMessages({
+    required String groupId,
+    int limit = 40,
+  }) async => const Success(<ChatMessage>[]);
+
+  @override
   Future<Result<List<ChatMessage>>> getOlderMessages({
     required String groupId,
     required ChatMessage before,

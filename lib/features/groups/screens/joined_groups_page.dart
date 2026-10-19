@@ -83,7 +83,7 @@ class _JoinedGroupsPageState extends State<JoinedGroupsPage> {
               itemCount: groups.length,
               separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
               itemBuilder: (context, index) =>
-                  GroupListCard(group: groups[index]),
+                  GroupListCard(group: groups[index], showUnread: true),
             ),
           ),
         ),

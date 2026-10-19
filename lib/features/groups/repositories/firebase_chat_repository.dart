@@ -52,6 +52,21 @@ final class FirebaseChatRepository implements ChatRepository {
   }
 
   @override
+  Future<Result<List<ChatMessage>>> getRecentMessages({
+    required String groupId,
+    int limit = 40,
+  }) => _guard(() async {
+    final snapshot = await _messages(groupId)
+        .orderBy('createdAt', descending: true)
+        .orderBy(FieldPath.documentId, descending: true)
+        .limit(limit)
+        .get();
+    return snapshot.docs
+        .map((doc) => ChatMessage.fromMap(doc.data(), id: doc.id))
+        .toList(growable: false);
+  });
+
+  @override
   Future<Result<List<ChatMessage>>> getOlderMessages({
     required String groupId,
     required ChatMessage before,

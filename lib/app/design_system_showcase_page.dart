@@ -217,7 +217,7 @@ class _DesignSystemShowcasePageState extends State<DesignSystemShowcasePage> {
                       children: <Widget>[
                         const PubgetHeroBanner(
                           title: 'Your anime world',
-                          subtitle: 'Discover people, groups, edits, and games.',
+                          subtitle: 'Discover people, groups, Reels, and games.',
                         ),
                         const SizedBox(height: AppSpacing.md),
                         PubgetNowActions(
@@ -230,7 +230,7 @@ class _DesignSystemShowcasePageState extends State<DesignSystemShowcasePage> {
                             ),
                             PubgetNowActionData(
                               id: 'edits',
-                              label: 'Watch Edits',
+                              label: 'Watch Reels',
                               icon: Icons.movie_filter_outlined,
                               onPressed: () {},
                             ),

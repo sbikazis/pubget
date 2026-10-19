@@ -1025,6 +1025,9 @@ class _MessageListState extends State<_MessageList> {
   /// you scroll" behaviour.
   List<_ChatListRow>? _cachedRows;
   DateTime? _cachedDay;
+  // Day dividers are localized, so the cache also has to expire when the UI
+  // language flips; otherwise a locale switch would keep serving the old copy.
+  bool? _cachedArabic;
   // Fingerprint of the row inputs. `chat.messages` hands out a fresh
   // unmodifiable wrapper on every call and the backing list is mutated in
   // place, so identity and length alone both miss changes: the provider's
@@ -1067,6 +1070,7 @@ class _MessageListState extends State<_MessageList> {
   /// list changes. Walking every message (and allocating a [DateTime] per row)
   /// on every chrome update was the "chat gets heavier the more you scroll" part.
   List<_ChatListRow> _rowsFor() {
+    final copy = AppStrings.of(context);
     final messages = widget.chat.messages;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -1080,7 +1084,8 @@ class _MessageListState extends State<_MessageList> {
         _cachedCount == count &&
         _cachedFirstId == firstId &&
         _cachedLastId == lastId &&
-        _cachedDay == today) {
+        _cachedDay == today &&
+        _cachedArabic == copy.isArabic) {
       return _cachedRows!;
     }
     final chat = widget.chat;
@@ -1097,7 +1102,7 @@ class _MessageListState extends State<_MessageList> {
           ? null
           : DateTime(createdAt.year, createdAt.month, createdAt.day);
       if (day != null && (lastDay == null || day != lastDay)) {
-        rows.add(_ChatListRow.date(chatDayLabel(createdAt, now: now)));
+        rows.add(_ChatListRow.date(chatDayLabel(createdAt, now: now, copy: copy)));
         lastDay = day;
       }
       final prev = i > 0 ? messages[i - 1] : null;
@@ -1125,6 +1130,7 @@ class _MessageListState extends State<_MessageList> {
     }
     _cachedRows = rows;
     _cachedDay = today;
+    _cachedArabic = copy.isArabic;
     _cachedRevision = widget.chat.contentRevision;
     _cachedCount = count;
     _cachedFirstId = firstId;

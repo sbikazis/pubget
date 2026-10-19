@@ -7,9 +7,10 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../models/group_models.dart';
 
 class GroupListCard extends StatelessWidget {
-  const GroupListCard({required this.group, super.key});
+  const GroupListCard({required this.group, this.showUnread = false, super.key});
 
   final Group group;
+  final bool showUnread;
 
   @override
   Widget build(BuildContext context) {
@@ -35,9 +36,27 @@ class GroupListCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(
-                    group.name,
-                    style: Theme.of(context).textTheme.titleMedium,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      Flexible(
+                        child: Text(
+                          group.name,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      if (showUnread && group.hasUnread)
+                        const Padding(
+                          padding: EdgeInsetsDirectional.only(start: 8),
+                          child: Icon(
+                            Icons.circle,
+                            size: 8,
+                            color: Color(0xFF6C3FC5),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
