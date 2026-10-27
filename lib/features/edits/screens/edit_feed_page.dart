@@ -1039,7 +1039,7 @@ class _EditActionRail extends StatelessWidget {
         : '${edit.caption}\n$url';
     try {
       await SharePlus.instance.share(
-        ShareParams(text: text, title: 'Pubget Edit'),
+        ShareParams(text: text, title: 'Pubget Reel'),
       );
     } catch (_) {
       if (!context.mounted) return;

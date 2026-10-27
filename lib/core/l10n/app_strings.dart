@@ -298,8 +298,8 @@ final class AppStrings {
   String get homeWhatNow =>
       pick('What should I do right now?', 'ماذا أفعل الآن؟');
   String get homeHeroSubtitle => pick(
-    'Discover people, groups, edits, and games in one place.',
-    'اكتشف الأشخاص والمجموعات والمقاطع والألعاب من مكان واحد.',
+    'Discover people, groups, Reels, and games in one place.',
+    'اكتشف الأشخاص والمجموعات والريلز والألعاب من مكان واحد.',
   );
   String get nowJoinGroup => pick('Join a group', 'انضم لمجموعة');
   String get nowWatchEdits => pick('Watch Reels', 'شاهد الريلز');
@@ -500,8 +500,8 @@ final class AppStrings {
   String get seeMore => pick('See more', 'مشاهدة المزيد');
   String get createNew => pick('Create', 'إنشاء');
   String get createGroupAction => pick('Create a group', 'إنشاء مجموعة');
-  String get createVideoClip => pick('Create video clip', 'إنشاء مقطع فيديو');
-  String get uploadClip => pick('Upload a clip', 'رفع مقطع');
+  String get createVideoClip => pick('Create Reel', 'إنشاء ريل');
+  String get uploadClip => pick('Upload a Reel', 'رفع ريل');
   String get createFanWork => pick('Create a fan work', 'إنشاء عمل معجبين');
   String get browseEvents => pick('Browse events', 'تصفح الفعاليات');
   String get pickHostGroup =>
@@ -1004,21 +1004,21 @@ final class AppStrings {
   String get addFriend => pick('Add friend', 'إضافة صديق');
   String get removeFriend => pick('Remove friend', 'إزالة الصديق');
   String get couldNotLoadEdits =>
-      pick('Could not load edits.', 'تعذّر تحميل الإيديتات.');
-  String get edits => pick('Edits', 'الإيديتات');
+      pick('Could not load Reels.', 'تعذّر تحميل الريلز.');
+  String get edits => pick('Reels', 'ريلز');
   String get noEditsYet =>
-      pick('No edits published yet', 'لا توجد إيديتات منشورة بعد');
-  String get noEditsToShow => pick('No edits to show', 'لا توجد إيديتات للعرض');
+      pick('No Reels published yet', 'لا توجد ريلز منشورة بعد');
+  String get noEditsToShow => pick('No Reels to show', 'لا توجد ريلز للعرض');
   String get cutSceneCta => pick(
-    'Cut a scene and publish your first edit.',
-    'قصّ مشهداً وانشر أول إيديت لك.',
+    'Cut a scene and publish your first Reel.',
+    'قصّ مشهداً وانشر أول ريل لك.',
   );
   String get creatorNoEdits => pick(
-    'This creator has not shared edits yet.',
-    'لم يشارك هذا المبدع إيديتات بعد.',
+    'This creator has not shared Reels yet.',
+    'لم يشارك هذا المبدع ريلز بعد.',
   );
-  String get openEdits => pick('Open edits', 'فتح الإيديتات');
-  String get createAnEdit => pick('Create an edit', 'أنشئ إيديتاً');
+  String get openEdits => pick('Open Reels', 'فتح الريلز');
+  String get createAnEdit => pick('Create a Reel', 'أنشئ ريلاً');
   String get favoriteAnime => pick('Favorite anime', 'الأنمي المفضل');
   String get giveRespectSemantic =>
       pick('Give selected Respect', 'منح الاحترام المختار');
@@ -1085,8 +1085,8 @@ final class AppStrings {
   String get showFriends => pick('Show friends', 'إظهار الأصدقاء');
   String get showFans => pick('Show fans', 'إظهار المعجبين');
   String get showWorks => pick(
-    'Show works (Edits / Fan Works)',
-    'إظهار الأعمال (الإيديتات / أعمال المعجبين)',
+    'Show works (Reels / Fan Works)',
+    'إظهار الأعمال (الريلز / أعمال المعجبين)',
   );
   String get showGroups => pick('Show groups', 'إظهار المجموعات');
   String get showRatings => pick('Show ratings', 'إظهار التقييمات');

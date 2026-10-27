@@ -159,11 +159,11 @@ final class GuideTopic {
       route: '/events',
     ),
     GuideTopic(
-      title: 'Edits',
+      title: 'Reels',
       body:
-          'Edits are short videos, not a photo gallery. Views count only after '
+          'Reels are short videos, not a photo gallery. Views count only after '
           'real watch time — opening a page is not a view.',
-      route: '/edits',
+      route: '/reels',
     ),
     GuideTopic(
       title: 'Respect and Fans',

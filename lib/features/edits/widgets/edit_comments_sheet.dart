@@ -270,7 +270,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
         compact: true,
         icon: Icons.chat_bubble_outline,
         title: copy.comments,
-        message: 'Be the first to reply to this Edit.',
+        message: 'Be the first to reply to this Reel.',
       );
     }
     final viewerId = context.watch<AuthProvider>().currentUser?.id;

@@ -23,7 +23,7 @@ Failure mapEditException(Object error) {
     );
   }
   return const UnknownError(
-    'Something went wrong while preparing your Edit. Please try again.',
+    'Something went wrong while preparing your Reel. Please try again.',
   );
 }
 
@@ -63,17 +63,17 @@ Failure _mapCode(String code, String? message) {
   if (normalized == 'failed-precondition') {
     return ValidationError(
       message ??
-          'This Edit cannot continue yet. Try again or replace the video.',
+          'This Reel cannot continue yet. Try again or replace the video.',
     );
   }
   if (normalized == 'not-found') {
-    return const NotFoundError('Edit not found.');
+    return const NotFoundError('Reel not found.');
   }
   if (normalized == 'invalid-argument') {
-    return ValidationError(message ?? 'That Edit request was invalid.');
+    return ValidationError(message ?? 'That Reel request was invalid.');
   }
   return const UnknownError(
-    'Something went wrong while preparing your Edit. Please try again.',
+    'Something went wrong while preparing your Reel. Please try again.',
   );
 }
 
@@ -293,7 +293,7 @@ class FirebaseEditsRepository
       snap,
     ) {
       if (!snap.exists || snap.data() == null) {
-        return const FailureResult<Edit>(NotFoundError('Edit not found.'));
+        return const FailureResult<Edit>(NotFoundError('Reel not found.'));
       }
       return Success(Edit.fromMap(snap.data()!, id: snap.id));
     });
@@ -502,7 +502,7 @@ class FirebaseEditsRepository
   Future<Result<Edit>> getEdit(String editId) => _guard(() async {
     final doc = await _firestore.collection(_collection).doc(editId).get();
     if (!doc.exists || doc.data() == null) {
-      throw const NotFoundError('Edit not found.');
+      throw const NotFoundError('Reel not found.');
     }
     return Edit.fromMap(doc.data()!, id: doc.id);
   });

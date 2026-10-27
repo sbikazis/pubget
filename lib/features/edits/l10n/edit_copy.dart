@@ -63,11 +63,11 @@ final class EditCopy {
   );
   String get failedNotificationBody => _s.pick(
     'Reel processing failed. Open the app to retry or delete the draft.',
-    'فشلت معالجة المقطع. افتح التطبيق لإعادة المحاولة أو حذف المسودة.',
+    'فشلت معالجة الريل. افتح التطبيق لإعادة المحاولة أو حذف المسودة.',
   );
   String get videoReadyOffer => _s.pick(
     'Your Reel is ready — watch it now?',
-    'مقطعك جاهز — شاهده الآن؟',
+    'الريل جاهز — شاهده الآن؟',
   );
   String get watchNow => _s.pick('Watch now', 'شاهده الآن');
   String get openEdit =>
@@ -89,8 +89,8 @@ final class EditCopy {
   String get failedLoad =>
       _s.pick('Reels could not load.', 'تعذّر تحميل الريلز.');
   String get brokenClip => _s.pick(
-    'This clip could not be played.',
-    'تعذّر تشغيل هذا المقطع.',
+    'This Reel could not be played.',
+    'تعذّر تشغيل هذا الريل.',
   );
   String get offlineClip => _s.pick(
     'Offline — retry when you are connected.',
@@ -172,16 +172,16 @@ final class EditCopy {
         edit.moderationStatus == 'needs_review') {
       return edit.moderationReason ??
           _s.pick(
-            'This Edit is held for review (possible third-party watermark).',
-            'هذا المقطع قيد المراجعة (احتمال وجود علامة مائية لمنصة أخرى).',
+            'This Reel is held for review (possible third-party watermark).',
+            'هذا الريل قيد المراجعة (احتمال وجود علامة مائية لمنصة أخرى).',
           );
     }
     if (edit.moderationStatus == 'flagged' ||
         edit.statusEnum == EditStatus.rejected) {
       return edit.moderationReason ??
           _s.pick(
-            'This Edit was flagged and was not published.',
-            'تم وسم هذا المقطع ولم يُنشر.',
+            'This Reel was flagged and was not published.',
+            'تم وسم هذا الريل ولم يُنشر.',
           );
     }
     return switch (edit.failureReason) {

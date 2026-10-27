@@ -292,7 +292,7 @@ function createEditsDomain({
         coverFrameMs < 0 || coverFrameMs > 60000) {
       throw new HttpsError("invalid-argument", "Caption or anime tag is invalid.");
     }
-    // An Edit must never point at an audio that does not exist or is not
+    // An Reel must never point at an audio that does not exist or is not
     // playable. Checking here — before any byte is uploaded — turns a silent
     // dead-video bug into a fast, actionable failure.
     if (audioId) {
@@ -393,7 +393,7 @@ function createEditsDomain({
     if (!originalEditId) throw new HttpsError("invalid-argument", "editId is required.");
     const original = await editRef(originalEditId).get();
     if (!original.exists || original.data()?.status !== "published") {
-      throw new HttpsError("not-found", "Edit not found.");
+      throw new HttpsError("not-found", "Reel not found.");
     }
     const source = original.data();
     const decision = moderateEditCopy({
@@ -402,7 +402,7 @@ function createEditsDomain({
     if (decision.flagged) {
       throw new HttpsError(
         "failed-precondition",
-        decision.reason || "This Edit cannot be reposted.",
+        decision.reason || "This Reel cannot be reposted.",
       );
     }
     const originMs = millis(source.publishedAt) || millis(source.createdAt);
@@ -410,7 +410,7 @@ function createEditsDomain({
       throw new HttpsError("failed-precondition", "Reposts are available for 30 days.");
     }
     if (source.creatorId === creatorId) {
-      throw new HttpsError("failed-precondition", "You cannot repost your own Edit.");
+      throw new HttpsError("failed-precondition", "You cannot repost your own Reel.");
     }
     // §15.13 — a repost is a publication. It used to take no quota reservation,
     // no idempotency key, and no moderation pass over the new row beyond the
@@ -490,7 +490,7 @@ function createEditsDomain({
     if (!snap.exists) return { ok: true };
     const data = snap.data() || {};
     if (data.creatorId !== creatorId) {
-      throw new HttpsError("permission-denied", "Only the creator can delete this edit.");
+      throw new HttpsError("permission-denied", "Only the creator can delete this Reel.");
     }
     if (data.status === "deleted") return { ok: true, alreadyDeleted: true };
 
@@ -613,12 +613,12 @@ function createEditsDomain({
       const likeRef = ref.collection("likes").doc(actor);
       const [edit, existing] = await Promise.all([tx.get(ref), tx.get(likeRef)]);
       if (!edit.exists || edit.data()?.status !== "published") {
-        throw new HttpsError("not-found", "Edit not found.");
+        throw new HttpsError("not-found", "Reel not found.");
       }
       // §15.12 — a creator liking their own Reel is a free way to inflate both
       // the like count and the ranking score. It was never blocked.
       if (shouldLike && edit.data()?.creatorId === actor) {
-        throw new HttpsError("failed-precondition", "You cannot like your own Edit.");
+        throw new HttpsError("failed-precondition", "You cannot like your own Reel.");
       }
       if (shouldLike && !existing.exists) {
         tx.create(likeRef, { userId: actor, createdAt: FieldValue.serverTimestamp() });
@@ -667,7 +667,7 @@ function createEditsDomain({
     const ref = editRef(editId);
     const edit = await ref.get();
     if (!edit.exists || edit.data()?.status !== "published") {
-      throw new HttpsError("not-found", "Edit not found.");
+      throw new HttpsError("not-found", "Reel not found.");
     }
     const commentRef = ref.collection("comments").doc();
     await db.runTransaction(async (tx) => {
@@ -728,7 +728,7 @@ function createEditsDomain({
       await db.runTransaction(async (tx) => {
         const edit = await tx.get(ref);
         if (!edit.exists || edit.data()?.status !== "published") {
-          throw new HttpsError("not-found", "Edit not found.");
+          throw new HttpsError("not-found", "Reel not found.");
         }
         await recordImpressionOnly(tx, ref, viewerId, edit);
       });
@@ -744,7 +744,7 @@ function createEditsDomain({
         tx.get(ref), tx.get(viewerRef), tx.get(sessionRef),
       ]);
       if (!edit.exists || edit.data()?.status !== "published") {
-        throw new HttpsError("not-found", "Edit not found.");
+        throw new HttpsError("not-found", "Reel not found.");
       }
       const isSelf = edit.data()?.creatorId === viewerId;
       const sessionData = session.data() || {};
@@ -856,7 +856,7 @@ function createEditsDomain({
     const ref = editRef(editId);
     const edit = await ref.get();
     if (!edit.exists || edit.data()?.status !== "published") {
-      throw new HttpsError("not-found", "Edit not found.");
+      throw new HttpsError("not-found", "Reel not found.");
     }
     const session = ref.collection("playbackSessions").doc(viewerId);
     const previous = await session.get();
@@ -1012,7 +1012,7 @@ function createEditsDomain({
     }
     const ref = editRef(editId);
     const snap = await ref.get();
-    if (!snap.exists) throw new HttpsError("not-found", "Edit not found.");
+    if (!snap.exists) throw new HttpsError("not-found", "Reel not found.");
 
     const reportRef = ref.collection("reports").doc(actor);
     const prior = await reportRef.get();
@@ -1414,10 +1414,10 @@ function createEditsDomain({
     if (!editId) throw new HttpsError("invalid-argument", "editId is required.");
     const ref = editRef(editId);
     const snap = await ref.get();
-    if (!snap.exists) throw new HttpsError("not-found", "Edit not found.");
+    if (!snap.exists) throw new HttpsError("not-found", "Reel not found.");
     const data = snap.data() || {};
     if (data.creatorId !== creatorId) {
-      throw new HttpsError("permission-denied", "Only the creator can finalize this Edit.");
+      throw new HttpsError("permission-denied", "Only the creator can finalize this Reel.");
     }
     if (data.status === "published") {
       return { ok: true, status: "published", videoPath: data.processedStoragePath || null };
@@ -1426,7 +1426,7 @@ function createEditsDomain({
       return { ok: true, status: "rejected", reason: data.moderationReason || null };
     }
     if (!["uploading", "processing", "failed"].includes(data.status)) {
-      throw new HttpsError("failed-precondition", "This Edit cannot be finalized.");
+      throw new HttpsError("failed-precondition", "This Reel cannot be finalized.");
     }
     const videoPath = data.originalStoragePath || data.videoPath;
     if (!videoPath) {
@@ -1441,14 +1441,14 @@ function createEditsDomain({
     if (!editId) throw new HttpsError("invalid-argument", "editId is required.");
     const ref = editRef(editId);
     const snap = await ref.get();
-    if (!snap.exists) throw new HttpsError("not-found", "Edit not found.");
+    if (!snap.exists) throw new HttpsError("not-found", "Reel not found.");
     const data = snap.data() || {};
     if (data.creatorId !== creatorId) {
-      throw new HttpsError("permission-denied", "Only the creator can retry this Edit.");
+      throw new HttpsError("permission-denied", "Only the creator can retry this Reel.");
     }
-    // Allow stuck "processing" retries — never leave an Edit permanently dead.
+    // Allow stuck "processing" retries — never leave a Reel permanently dead.
     if (!["failed", "rejected", "uploading", "processing", "needs_review"].includes(data.status)) {
-      throw new HttpsError("failed-precondition", "This Edit is not waiting for a retry.");
+      throw new HttpsError("failed-precondition", "This Reel is not waiting for a retry.");
     }
     if (data.status === "published") {
       return { ok: true, videoPath: data.processedStoragePath || null, status: "published" };

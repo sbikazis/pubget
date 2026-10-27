@@ -181,11 +181,11 @@ final class Edit {
     if (statusEnum == EditStatus.needsReview ||
         moderationStatus == 'needs_review') {
       return moderationReason ??
-          'This Edit is held for review (possible third-party watermark).';
+          'This Reel is held for review (possible third-party watermark).';
     }
     if (moderationStatus == 'flagged' || statusEnum == EditStatus.rejected) {
       return moderationReason ??
-          'This Edit was flagged and was not published.';
+          'This Reel was flagged and was not published.';
     }
     return switch (failureReason) {
       'invalid-video' =>
@@ -291,7 +291,7 @@ final class Edit {
     if (status == 'published') return null;
     if (status == 'rejected') {
       return ValidationError(
-        moderationReason ?? 'This Edit was flagged and was not published.',
+        moderationReason ?? 'This Reel was flagged and was not published.',
       );
     }
     if (status == 'failed' || status == 'uploading' || status == 'processing') {

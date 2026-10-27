@@ -23,8 +23,8 @@ const CATALOG = Object.freeze([
     conditions: [
       {
         id: "first_action",
-        labelEn: "First join / first message / first Edit",
-        labelAr: "أول انضمام أو رسالة أو Edit",
+        labelEn: "First join / first message / first Reel",
+        labelAr: "أول انضمام أو رسالة أو ريل",
         target: 1,
       },
     ],
@@ -131,8 +131,8 @@ const CATALOG = Object.freeze([
     conditions: [
       {
         id: "works_10",
-        labelEn: "10 published Edits + Fan Works",
-        labelAr: "10 أعمال منشورة (Edits + Fan Works)",
+        labelEn: "10 published Reels + Fan Works",
+        labelAr: "10 أعمال منشورة (الريلز + أعمال المعجبين)",
         target: 10,
       },
       {
