@@ -195,10 +195,13 @@ class _EditFeedPageState extends State<EditFeedPage>
     // provider, so this select genuinely reports "the feed changed" vs "an
     // interaction changed".
     final feedItems = context.select<EditsProvider, List<Edit>>((p) => p.items);
-    final feedState = context.select<EditsProvider, LoadingState>((p) => p.state);
+    final feedState = context.select<EditsProvider, LoadingState>(
+      (p) => p.state,
+    );
     final feedType = context.select<EditsProvider, FeedType>((p) => p.feedType);
-    final actionFailure =
-        context.select<EditsProvider, Failure?>((p) => p.lastActionFailure);
+    final actionFailure = context.select<EditsProvider, Failure?>(
+      (p) => p.lastActionFailure,
+    );
     final provider = context.read<EditsProvider>();
     final offline = context.watch<NetworkService>().isOffline;
     final shell = AppShellScope.maybeOf(context);
@@ -219,7 +222,14 @@ class _EditFeedPageState extends State<EditFeedPage>
       });
     }
 
-    final body = _body(copy, provider, offline, feedVisible, feedItems, feedState);
+    final body = _body(
+      copy,
+      provider,
+      offline,
+      feedVisible,
+      feedItems,
+      feedState,
+    );
 
     // The host owns the chrome, so hand back the bare playback body.
     if (widget.embedded) return body;
@@ -449,8 +459,9 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
       PublicProfile? original;
       if (widget.edit.isRepost &&
           widget.edit.creatorId != widget.edit.displayCreatorId) {
-        original = (await repo.getPublicProfile(widget.edit.creatorId))
-            .valueOrNull;
+        original = (await repo.getPublicProfile(
+          widget.edit.creatorId,
+        )).valueOrNull;
       }
       if (!mounted) return;
       setState(() {
@@ -621,10 +632,7 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
       children: <Widget>[
         // Thumbnail always underneath so there is never a black void.
         if (widget.edit.hasThumbnail)
-          AppImageLoader(
-            imageUrl: widget.edit.thumbnailUrl,
-            fit: BoxFit.cover,
-          )
+          AppImageLoader(imageUrl: widget.edit.thumbnailUrl, fit: BoxFit.cover)
         else
           const ColoredBox(color: Color(0xFF140C22)),
         if (ready)
@@ -643,7 +651,8 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
               ),
             ),
           )
-        else if (_loadingVideo || (!_loadFailed && widget.edit.hasPlayableVideo))
+        else if (_loadingVideo ||
+            (!_loadFailed && widget.edit.hasPlayableVideo))
           const Center(
             child: SizedBox(
               width: 36,
@@ -735,10 +744,7 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
             left: 0,
             right: 0,
             bottom: 0,
-            child: _Scrubber(
-              controller: controller,
-              onSeek: _seekFraction,
-            ),
+            child: _Scrubber(controller: controller, onSeek: _seekFraction),
           ),
       ],
     );
@@ -769,10 +775,7 @@ class _Scrubber extends StatelessWidget {
           inactiveTrackColor: Colors.white24,
           thumbColor: AppColors.gold,
         ),
-        child: Slider(
-          value: position,
-          onChanged: onSeek,
-        ),
+        child: Slider(value: position, onChanged: onSeek),
       ),
     );
   }
@@ -801,7 +804,8 @@ class _CreatorOverlay extends StatelessWidget {
       return matches.first.value;
     });
     final isFan = given >= SocialSnapshot.fanThreshold;
-    final name = profile?.primaryName(fallback: edit.displayCreatorId) ??
+    final name =
+        profile?.primaryName(fallback: edit.displayCreatorId) ??
         edit.displayCreatorId;
 
     return Column(
@@ -1042,9 +1046,7 @@ class _EditActionRail extends StatelessWidget {
     // §15.18 — share the specific Reel's canonical link. A generic `/reels`
     // link dropped the viewer at the top of the feed instead of this Reel.
     final url = PubgetLinks.reel(edit.id);
-    final text = edit.caption.isEmpty
-        ? url
-        : '${edit.caption}\n$url';
+    final text = PubgetLinks.editShareText(caption: edit.caption, url: url);
     try {
       await SharePlus.instance.share(
         ShareParams(text: text, title: EditCopy.of(context).feedTitle),
@@ -1056,11 +1058,9 @@ class _EditActionRail extends StatelessWidget {
   }
 
   Future<void> _respect(BuildContext context) async {
-    final given = context
-        .read<SocialProvider>()
-        .snapshot
-        .givenRespect
-        .where((item) => item.toUserId == edit.displayCreatorId);
+    final given = context.read<SocialProvider>().snapshot.givenRespect.where(
+      (item) => item.toUserId == edit.displayCreatorId,
+    );
     final becameFan = await showGiveRespectSheet(
       context,
       toUserId: edit.displayCreatorId,
@@ -1096,7 +1096,10 @@ class _EditActionRail extends StatelessWidget {
                 PhosphorIconsRegular.flag,
                 color: Colors.white70,
               ),
-              title: Text(copy.report, style: const TextStyle(color: Colors.white)),
+              title: Text(
+                copy.report,
+                style: const TextStyle(color: Colors.white),
+              ),
               onTap: () {
                 Navigator.pop(sheetContext);
                 unawaited(_reportReel(context, provider));
@@ -1123,7 +1126,10 @@ class _EditActionRail extends StatelessWidget {
                   PhosphorIconsRegular.eyeSlash,
                   color: Colors.white70,
                 ),
-                title: Text(copy.mute, style: const TextStyle(color: Colors.white)),
+                title: Text(
+                  copy.mute,
+                  style: const TextStyle(color: Colors.white),
+                ),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   provider.muteCreator(edit.creatorId, mute: true);
@@ -1154,10 +1160,7 @@ class _EditActionRail extends StatelessWidget {
   /// reused the negative taste signal, so no report ever reached the moderation
   /// queue. Reports now go through the server-validated `reportEdit` callable,
   /// which checks the category, dedupes per reporter, and rate limits.
-  Future<void> _reportReel(
-    BuildContext context,
-    EditsProvider provider,
-  ) async {
+  Future<void> _reportReel(BuildContext context, EditsProvider provider) async {
     final copy = EditCopy.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final category = await PubgetBottomSheet.present<String>(

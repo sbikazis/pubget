@@ -15,7 +15,8 @@ final class SearchCopy {
 
   final AppStrings _s;
 
-  static SearchCopy of(BuildContext context) => SearchCopy(AppStrings.of(context));
+  static SearchCopy of(BuildContext context) =>
+      SearchCopy(AppStrings.of(context));
 
   static SearchCopy forLocale(Locale? locale) =>
       SearchCopy(AppStrings.forLocale(locale));
@@ -38,4 +39,22 @@ final class SearchCopy {
   );
 
   String get unknownUser => _s.pubgetUser;
+
+  /// Recent-search list chrome (spec §6).
+  String get historyTitle => _s.pick('Recent searches', 'عمليات البحث الأخيرة');
+  String get clearHistory => _s.pick('Clear', 'مسح');
+  String removeHistoryEntry(String term) => _s.pick(
+    'Remove $term from recent searches',
+    'إزالة $term من البحث الأخير',
+  );
+  String get allFilter => _s.pick('All', 'الكل');
+
+  /// Shown when an entity filter is the only reason the list is empty, so the
+  /// screen does not claim nothing was found.
+  String get filterEmptyTitle =>
+      _s.pick('No results of this type', 'لا نتائج من هذا النوع');
+  String get filterEmptyMessage => _s.pick(
+    'Other results matched your search. Choose “All” to see them.',
+    'هناك نتائج أخرى طابقت بحثك. اختر «الكل» لعرضها.',
+  );
 }

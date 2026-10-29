@@ -449,6 +449,8 @@ class PubgetApp extends StatelessWidget {
           create: (context) => SearchProvider(
             homeRepository: context.read<HomeRepository>(),
             animeRepository: context.read<AnimeRepository>(),
+            // Spec §6 — audio is a searchable entity, not only a picker.
+            audioRepository: context.read<AudioRepository>(),
             analytics: context.read<Analytics>(),
           ),
           update: (_, auth, social, search) {
@@ -1138,9 +1140,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           characterId: parameters['characterId'] ?? '',
           title: '#${(parameters['characterId'] ?? '').trim()}',
         ),
-        '/reels/creator': (parameters) => ReelsFeedPage(
-          creatorId: parameters['creatorId'] ?? '',
-        ),
+        '/reels/creator': (parameters) =>
+            ReelsFeedPage(creatorId: parameters['creatorId'] ?? ''),
         '/groups/create': (parameters) {
           final raw = parameters['type'];
           final type = GroupType.values.cast<GroupType?>().firstWhere(

@@ -23,6 +23,31 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <!--
+    Spec §2.3 — short invite links. Firebase Hosting rewrites /g/<id> to this
+    document, so without this shim the app would boot on "/g/<id>" and land on
+    the unknown-route page.
+
+    The rewrite happens with replaceState *before* flutter_bootstrap.js runs, so
+    Flutter reads the canonical /group/<id> path and there is exactly one route
+    the app has to understand. It is deliberately synchronous and wrapped in
+    try/catch: a failure here must never stop the app from booting.
+  -->
+  <script>
+    (function () {
+      try {
+        var match = window.location.pathname.match(/^\/(?:g|group)\/([^/]+)\/?$/);
+        if (!match) return;
+        var id = decodeURIComponent(match[1]);
+        if (!id) return;
+        var canonical =
+          '/group/' + encodeURIComponent(id) + window.location.search;
+        window.history.replaceState(null, document.title, canonical);
+      } catch (error) {
+        // Never block startup because of a malformed deep link.
+      }
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

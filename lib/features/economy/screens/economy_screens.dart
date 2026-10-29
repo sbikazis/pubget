@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/links/pubget_links.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -92,7 +93,11 @@ class _StorePageState extends State<StorePage>
             ),
             _ItemGrid(
               items: (economy.snapshot?.catalog ?? const <StoreItem>[])
-                  .where((item) => item.isActive && item.section == StoreItemSection.cosmetic)
+                  .where(
+                    (item) =>
+                        item.isActive &&
+                        item.section == StoreItemSection.cosmetic,
+                  )
                   .toList(),
             ),
             _ItemGrid(
@@ -145,7 +150,8 @@ class _ItemGrid extends StatelessWidget {
             item: item,
             owned: economy.snapshot?.owns(item.id) == true,
             equipped: economy.equipped.idFor(item.type) == item.id,
-            onTap: () => AppNavigation.go(context, '/store/item?itemId=${item.id}'),
+            onTap: () =>
+                AppNavigation.go(context, '/store/item?itemId=${item.id}'),
           ),
         );
       },
@@ -175,6 +181,20 @@ class _StoreItemDetailsPageState extends State<StoreItemDetailsPage> {
     });
   }
 
+  /// Spec §6 — a Store item is shareable. The share text names the Store so a
+  /// cosmetics link does not read as a payment request out of context.
+  Future<void> _share(BuildContext context, StoreItem item) async {
+    final url = PubgetLinks.storeItem(item.id);
+    if (url.isEmpty) return;
+    await PubgetLinks.share(
+      context,
+      url: url,
+      title: item.title,
+      text: PubgetLinks.storeShareText(name: item.title, url: url),
+      type: 'store',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final economy = context.watch<EconomyProvider>();
@@ -182,7 +202,16 @@ class _StoreItemDetailsPageState extends State<StoreItemDetailsPage> {
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(item?.title ?? EconomyStrings.storeTitle)),
+        title: Text(item?.title ?? EconomyStrings.storeTitle),
+        actions: <Widget>[
+          if (item != null)
+            IconButton(
+              tooltip: AppStrings.of(context).pick('Share', 'مشاركة'),
+              icon: const Icon(Icons.ios_share),
+              onPressed: () => _share(context, item),
+            ),
+        ],
+      ),
       body: PubgetLoadingStateView(
         state: economy.state,
         onRetry: economy.load,
@@ -319,7 +348,8 @@ class _InventoryPageState extends State<InventoryPage> {
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text(EconomyStrings.inventory)),
+        title: const Text(EconomyStrings.inventory),
+      ),
       body: PubgetLoadingStateView(
         state: economy.state,
         onRetry: economy.load,
@@ -398,7 +428,8 @@ class _PremiumPageState extends State<PremiumPage> {
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text(EconomyStrings.premiumTitle)),
+        title: const Text(EconomyStrings.premiumTitle),
+      ),
       body: PubgetLoadingStateView(
         state: economy.state,
         onRetry: economy.load,
@@ -483,9 +514,11 @@ class _PremiumPageState extends State<PremiumPage> {
                         );
                       }
                     },
-              child: Text(_redeeming
-                  ? '...'
-                  : AppStrings.of(context).dragonStoreRedeemCode),
+              child: Text(
+                _redeeming
+                    ? '...'
+                    : AppStrings.of(context).dragonStoreRedeemCode,
+              ),
             ),
           ],
         ),
@@ -521,7 +554,10 @@ class _EconomyHistoryPageState extends State<EconomyHistoryPage> {
         leading: AppBackButton.maybeOf(context),
         title: const Text(EconomyStrings.history),
         actions: <Widget>[
-          CoinBalanceChip(balance: economy.coins, cached: economy.offlineCached),
+          CoinBalanceChip(
+            balance: economy.coins,
+            cached: economy.offlineCached,
+          ),
         ],
       ),
       body: PubgetLoadingStateView(

@@ -454,6 +454,21 @@ AppRoute _routeFromUri(Uri uri) {
   if (segments.length == 2 && segments.first == 'group') {
     return entity(path: '/group', key: 'groupId', id: segments[1]);
   }
+  // §2.3 — short invite form. The web entry rewrites `/g/{id}` to `/group/{id}`
+  // before Flutter boots, but that shim only covers browsers: in-app navigation
+  // and any platform handing the raw URL to the engine bypass it, so the router
+  // has to understand the short form on its own.
+  if (segments.length == 2 && segments.first == 'g') {
+    return entity(path: '/group', key: 'groupId', id: segments[1]);
+  }
+  // Store share links (`/store/{id}`) resolve to the item screen, which is
+  // registered as `/store/item` with an `itemId`. `/store/item` itself is a
+  // real route, not an id, so it must fall through to the generic path branch.
+  if (segments.length == 2 &&
+      segments.first == 'store' &&
+      segments[1] != 'item') {
+    return entity(path: '/store/item', key: 'itemId', id: segments[1]);
+  }
   if (segments.length == 2 &&
       segments.first == 'profile' &&
       segments[1] == 'edit') {

@@ -81,7 +81,8 @@ abstract final class PubgetLinks {
   static String animeReelsPath(String animeId) =>
       _encodedPath('/reels/anime', animeId) ?? '/reels';
 
-  static String animeReels(String animeId) => canonical(animeReelsPath(animeId));
+  static String animeReels(String animeId) =>
+      canonical(animeReelsPath(animeId));
 
   static String characterReelsPath(String characterId) =>
       _encodedPath('/reels/character', characterId) ?? '/reels';
@@ -95,8 +96,7 @@ abstract final class PubgetLinks {
   static String creatorReels(String creatorId) =>
       canonical(creatorReelsPath(creatorId));
 
-  static String gamePath(String gameId) =>
-      _encodedPath('/game', gameId) ?? '';
+  static String gamePath(String gameId) => _encodedPath('/game', gameId) ?? '';
 
   static String game(String gameId) => canonical(gamePath(gameId));
 
@@ -126,6 +126,51 @@ abstract final class PubgetLinks {
 
   static String profile(String userId) => canonical(profilePath(userId));
 
+  /// Spec §2.3 — canonical shareable path for a Fan Work (`/work/{id}`).
+  ///
+  /// [fanWorkPath] is intentionally left as-is: `/fan-work/{id}` links are
+  /// already in circulation and must keep resolving.
+  static String workPath(String workId) => _encodedPath('/work', workId) ?? '';
+
+  static String work(String workId) => canonical(workPath(workId));
+
+  /// Canonical hashtag path (`/hashtag/{tag}`). [hashtagPath] keeps the legacy
+  /// `?tag=` shape for links already shared.
+  static String hashtagTagPath(String tag) {
+    final trimmed = tag.trim().replaceAll('#', '').toLowerCase();
+    if (trimmed.isEmpty) return '/reels';
+    return '/hashtag/${Uri.encodeComponent(trimmed)}';
+  }
+
+  static String hashtagTag(String tag) => canonical(hashtagTagPath(tag));
+
+  static String storeItemPath(String itemId) =>
+      _encodedPath('/store', itemId) ?? '/store';
+
+  static String storeItem(String itemId) => canonical(storeItemPath(itemId));
+
+  /// Short invite form. The web entry rewrites `/g/{id}` to `/group/{id}`
+  /// before Flutter boots, so this stays short for sharing without creating a
+  /// second route the app has to carry.
+  static String groupShort(String groupId) =>
+      canonical(_encodedPath('/g', groupId) ?? '');
+
+  /// Share text for a Reel. A bare URL with no caption shares as a mystery
+  /// link; the caption is what makes someone tap it, so it leads.
+  static String editShareText({required String caption, required String url}) {
+    final trimmed = caption.trim();
+    if (trimmed.isEmpty) return url;
+    return '$trimmed\n$url';
+  }
+
+  /// Share text for a Store item. The domain is stated because a cosmetics item
+  /// link out of context reads as a payment request.
+  static String storeShareText({required String name, required String url}) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return url;
+    return '$trimmed — Pubget Store\n$url';
+  }
+
   static Future<void> copy(
     BuildContext context,
     String url, {
@@ -144,6 +189,7 @@ abstract final class PubgetLinks {
     required String url,
     String? title,
     String type = 'link',
+    String? text,
   }) async {
     if (url.trim().isEmpty) return;
     analytics?.logEvent('share_started', parameters: {'type': type});
@@ -154,7 +200,7 @@ abstract final class PubgetLinks {
         return;
       }
       await SharePlus.instance.share(
-        ShareParams(text: url, title: title, subject: title),
+        ShareParams(text: text ?? url, title: title, subject: title),
       );
       analytics?.logEvent('share_completed', parameters: {'type': type});
     } catch (_) {

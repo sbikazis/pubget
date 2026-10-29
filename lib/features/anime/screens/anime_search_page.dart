@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_colors.dart';
@@ -642,6 +643,10 @@ class _AggregatedHitTile extends StatelessWidget {
       SearchHitType.fanWork => copy.entityFanWork,
       SearchHitType.character => copy.entityCharacter,
       SearchHitType.reel => copy.entityReel,
+      // Audio and hashtag are global-search-only kinds; they share the catalog
+      // labels instead of duplicating two more AnimeCopy getters.
+      SearchHitType.audio => AppStrings.of(context).searchHitLabel('audio'),
+      SearchHitType.hashtag => AppStrings.of(context).searchHitLabel('hashtag'),
     };
   }
 

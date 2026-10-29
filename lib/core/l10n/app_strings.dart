@@ -366,6 +366,8 @@ final class AppStrings {
     'fanWork' => pick('Fan work', 'عمل معجبين'),
     'character' => pick('Character', 'شخصية'),
     'reel' => pick('Reel', 'ريل'),
+    'audio' => pick('Audio', 'صوت'),
+    'hashtag' => pick('Hashtag', 'وسم'),
     _ => '',
   };
 
@@ -918,8 +920,10 @@ final class AppStrings {
   String get eventTabMine => pick('Mine', 'مالي');
   String get eventLoadFailed =>
       pick('Events could not load.', 'تعذّر تحميل الفعاليات.');
-  String get eventPermissionDenied =>
-      pick('You do not have permission to do that.', 'ليس لديك صلاحية لفعل ذلك.');
+  String get eventPermissionDenied => pick(
+    'You do not have permission to do that.',
+    'ليس لديك صلاحية لفعل ذلك.',
+  );
   String get eventRateLimited => pick(
     'Too many requests. Please wait a moment and try again.',
     'طلبات كثيرة. انتظر قليلاً ثم حاول مجدداً.',
@@ -1748,8 +1752,10 @@ final class AppStrings {
   // messages. Every dynamic string the screen shows is resolved through the
   // getters below, so no English sentence or raw wire token ever reaches the
   // Arabic UI.
-  String get mafiaLogCreated =>
-      pick('A Mafia lobby is waiting for players.', 'غرفة مافيا بانتظار اللاعبين.');
+  String get mafiaLogCreated => pick(
+    'A Mafia lobby is waiting for players.',
+    'غرفة مافيا بانتظار اللاعبين.',
+  );
   String get mafiaLogStarting => pick(
     'Mafia is starting. Roles will be assigned privately.',
     'بدأت المافيا. ستُوزَّع الأدوار سراً.',

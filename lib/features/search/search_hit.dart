@@ -7,6 +7,7 @@ import '../events/models/event_models.dart';
 import '../events/widgets/event_widgets.dart';
 import '../fan_works/widgets/fan_work_widgets.dart';
 import '../home/models/home_models.dart';
+import '../reels/models/audio_models.dart';
 
 enum SearchHitType {
   user,
@@ -16,6 +17,8 @@ enum SearchHitType {
   fanWork,
   character,
   reel,
+  audio,
+  hashtag,
 }
 
 final class SearchHit {
@@ -106,7 +109,7 @@ final class SearchHit {
             route: FanWorkLinks.path(work.id),
             canonicalUrl: FanWorkLinks.canonical(work.id),
           ),
-];
+    ];
     for (final character in results.characters) {
       if (character.characterId.isNotEmpty) {
         hits.add(
@@ -115,7 +118,9 @@ final class SearchHit {
             id: character.characterId,
             title: character.name,
             subtitle: 'شخصية',
-            imageUrl: character.imageUrl?.isEmpty ?? true ? null : character.imageUrl,
+            imageUrl: character.imageUrl?.isEmpty ?? true
+                ? null
+                : character.imageUrl,
             route: AnimeLinks.characterPath(character.characterId),
             canonicalUrl: PubgetLinks.character(character.characterId),
           ),
@@ -140,6 +145,47 @@ final class SearchHit {
     }
     return _dedupe(hits);
   }
+
+  /// One audio from the Reels audio library (spec §6 — audio search).
+  ///
+  /// Only `ready` audio is offered: an audio still extracting has no playable
+  /// source, so linking to it would open a detail page that cannot play.
+  static SearchHit? audio(ReelAudio audio) {
+    if (audio.audioId.isEmpty || !audio.isReady) return null;
+    final title = audio.displayName.trim().isNotEmpty
+        ? audio.displayName
+        : audio.name;
+    return SearchHit(
+      type: SearchHitType.audio,
+      id: audio.audioId,
+      title: title,
+      subtitle: 'Audio',
+      route: PubgetLinks.audioPath(audio.audioId),
+      canonicalUrl: PubgetLinks.audio(audio.audioId),
+    );
+  }
+
+  /// A query that *is* a hashtag (`#onepiece`) is itself a destination.
+  ///
+  /// Without this row the only way to reach a tag feed was to find a Reel that
+  /// already carried the tag, which is backwards: the member already knows the
+  /// tag they want.
+  static SearchHit? hashtag(String rawTag) {
+    final tag = rawTag.trim().replaceAll('#', '').toLowerCase();
+    if (tag.isEmpty) return null;
+    return SearchHit(
+      type: SearchHitType.hashtag,
+      id: tag,
+      title: '#$tag',
+      subtitle: 'Hashtag',
+      route: PubgetLinks.hashtagPath(tag),
+      canonicalUrl: PubgetLinks.hashtagTag(tag),
+    );
+  }
+
+  /// Drops duplicate ids and entries that cannot be opened.
+  static List<SearchHit> dedupe(Iterable<SearchHit?> hits) =>
+      _dedupe(<SearchHit>[for (final hit in hits) ?hit]);
 
   static List<SearchHit> _dedupe(List<SearchHit> hits) {
     final seen = <String>{};

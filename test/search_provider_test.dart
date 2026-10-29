@@ -6,6 +6,10 @@ import 'package:pubget/features/events/models/event_models.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/home/models/home_models.dart';
 import 'package:pubget/features/home/repositories/home_repository.dart';
+import 'package:pubget/features/reels/models/audio_models.dart';
+import 'package:pubget/features/reels/repositories/audio_repository.dart';
+import 'package:pubget/features/search/search_hit.dart';
+import 'package:pubget/features/search/search_history.dart';
 import 'package:pubget/features/search/search_provider.dart';
 import 'package:pubget/features/social/models/public_profile.dart';
 
@@ -42,7 +46,10 @@ void main() {
     search.searchChanged('frieren');
     await Future<void>.delayed(const Duration(milliseconds: 1));
     expect(search.state, LoadingState.loaded);
-    expect(search.hits.map((hit) => hit.id), containsAll(<String>['g-frieren', '52991']));
+    expect(
+      search.hits.map((hit) => hit.id),
+      containsAll(<String>['g-frieren', '52991']),
+    );
   });
 
   test('debounce waits before searching', () async {
@@ -143,7 +150,142 @@ void main() {
     expect(search.hits, isEmpty);
     expect(search.query, isEmpty);
   });
+
+  test('an entity filter narrows the list without refetching', () async {
+    final home = FakeDiscoveryRepository();
+    final search = SearchProvider(
+      homeRepository: home,
+      animeRepository: FakeAnimeRepository(),
+      debounce: Duration.zero,
+    );
+    addTearDown(search.dispose);
+
+    search.searchChanged('frieren');
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    expect(search.availableFilters, contains(SearchHitType.group));
+    final callsBefore = home.searchCalls;
+    final all = search.hits.length;
+
+    search.setFilter(SearchHitType.group);
+    expect(search.hits, isNotEmpty);
+    expect(search.hits.every((hit) => hit.type == SearchHitType.group), isTrue);
+    // Filtering is a view concern: it must not cost another round-trip.
+    expect(home.searchCalls, callsBefore);
+
+    search.setFilter(null);
+    expect(search.hits.length, all);
+  });
+
+  test('a hashtag query offers the tag feed as its first hit', () async {
+    final search = SearchProvider(
+      homeRepository: FakeDiscoveryRepository(),
+      debounce: Duration.zero,
+    );
+    addTearDown(search.dispose);
+
+    search.searchChanged('#OnePiece');
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    expect(search.hits.first.type, SearchHitType.hashtag);
+    expect(search.hits.first.route, '/hashtag?tag=onepiece');
+    expect(search.availableFilters, contains(SearchHitType.hashtag));
+  });
+
+  test(
+    'ready audio is searchable; audio still extracting is not offered',
+    () async {
+      final audio = FakeAudioRepository(
+        audios: <ReelAudio>[
+          _audio('a1', 'Epic Theme', ReelAudioStatus.ready),
+          _audio('a2', 'Epic Draft', ReelAudioStatus.extracting),
+        ],
+      );
+      final search = SearchProvider(
+        homeRepository: FakeDiscoveryRepository(),
+        audioRepository: audio,
+        debounce: Duration.zero,
+      );
+      addTearDown(search.dispose);
+
+      search.searchChanged('epic');
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+      final audioHits = search.hits
+          .where((hit) => hit.type == SearchHitType.audio)
+          .toList();
+      expect(audioHits.map((hit) => hit.id), <String>['a1']);
+      expect(audioHits.single.route, '/audio/a1');
+    },
+  );
+
+  test('committed searches are recorded, newest first', () async {
+    final history = SearchHistory();
+    final search = SearchProvider(
+      homeRepository: FakeDiscoveryRepository(),
+      history: history,
+      debounce: Duration.zero,
+    );
+    addTearDown(search.dispose);
+
+    search.recordQuery('Naruto');
+    search.recordQuery('Bleach');
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    expect(history.entries, <String>['Bleach', 'Naruto']);
+  });
 }
+
+final class FakeAudioRepository implements AudioRepository {
+  FakeAudioRepository({this.audios = const <ReelAudio>[]});
+
+  final List<ReelAudio> audios;
+
+  @override
+  Future<Result<List<ReelAudio>>> searchAudios({
+    required String query,
+    int limit = 15,
+  }) async => Success(audios);
+
+  @override
+  Future<Result<String>> extractAudio({
+    required String reelId,
+    String? audioName,
+    int startMs = 0,
+    int durationMs = 15000,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<Result<ReelAudioPage>> listAudios({
+    int limit = 20,
+    String? afterId,
+    String type = 'trending',
+  }) => throw UnimplementedError();
+
+  @override
+  Future<Result<ReelAudio>> getAudio(String audioId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<Result<void>> useAudio({
+    required String audioId,
+    required String reelId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<Result<void>> removeAudio(String reelId) => throw UnimplementedError();
+}
+
+ReelAudio _audio(String id, String name, ReelAudioStatus status) => ReelAudio(
+  audioId: id,
+  creatorId: 'u1',
+  originalReelId: 'r1',
+  name: name,
+  displayName: name,
+  storagePath: 'audio/$id.m4a',
+  durationMs: 15000,
+  startMs: 0,
+  usageCount: 0,
+  createdAt: DateTime(2026),
+  updatedAt: DateTime(2026),
+  status: status,
+);
 
 final class FakeDiscoveryRepository implements HomeRepository {
   Failure? failure;

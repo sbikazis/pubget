@@ -25,13 +25,26 @@ class _SearchPageState extends State<SearchPage> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: context.read<SearchProvider>().query);
+    _controller = TextEditingController(
+      text: context.read<SearchProvider>().query,
+    );
   }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Re-runs a recent search and puts the term back in the field, so the field
+  /// and the results never disagree about what was searched.
+  void _runRecent(SearchProvider search, String term) {
+    _controller.value = TextEditingValue(
+      text: term,
+      selection: TextSelection.collapsed(offset: term.length),
+    );
+    search.searchChanged(term);
+    search.recordQuery(term);
   }
 
   @override
@@ -55,13 +68,65 @@ class _SearchPageState extends State<SearchPage> {
               controller: _controller,
               hint: AnimeCopy.of(context).searchHomeHint,
               onChanged: search.searchChanged,
+              onSubmitted: search.recordQuery,
               onClear: () {
                 _controller.clear();
                 search.searchChanged('');
               },
             ),
           ),
-          Expanded(child: _SearchBody(search: search)),
+          // Two chips would be noise: only offer the filter row once the search
+          // actually spans more than one entity type.
+          if (search.isRunnable && search.availableFilters.length > 1)
+            _FilterBar(search: search),
+          Expanded(
+            child: _SearchBody(
+              search: search,
+              onHistoryPicked: (term) => _runRecent(search, term),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Entity-type filter (spec §6). Only types present in the results appear.
+class _FilterBar extends StatelessWidget {
+  const _FilterBar({required this.search});
+
+  final SearchProvider search;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = SearchCopy.of(context);
+    final labels = AppStrings.of(context);
+    return SizedBox(
+      height: 52,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsetsDirectional.only(end: AppSpacing.sm),
+            child: FilterChip(
+              label: Text(copy.allFilter),
+              selected: search.filter == null,
+              onSelected: (_) => search.setFilter(null),
+            ),
+          ),
+          for (final type in search.availableFilters)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: AppSpacing.sm),
+              child: FilterChip(
+                label: Text(labels.searchHitLabel(type.name)),
+                selected: search.filter == type,
+                // Tapping the active chip clears it, so a filter is never a
+                // trap the member has to hunt for a way out of.
+                onSelected: (_) =>
+                    search.setFilter(search.filter == type ? null : type),
+              ),
+            ),
         ],
       ),
     );
@@ -84,20 +149,23 @@ class SearchResultsView extends StatelessWidget {
 }
 
 class _SearchBody extends StatelessWidget {
-  const _SearchBody({required this.search, this.shrinkWrap = false});
+  const _SearchBody({
+    required this.search,
+    this.shrinkWrap = false,
+    this.onHistoryPicked,
+  });
 
   final SearchProvider search;
   final bool shrinkWrap;
 
+  /// Absent in embedded uses of [SearchResultsView], which own no text field to
+  /// replay a term into.
+  final ValueChanged<String>? onHistoryPicked;
+
   @override
   Widget build(BuildContext context) {
     if (!search.isRunnable) {
-      final copy = SearchCopy.of(context);
-      return PubgetEmptyState(
-        title: copy.runnableTitle,
-        message: copy.runnableMessage(SearchQuery.minLength),
-        icon: Icons.search,
-      );
+      return _HistoryAndHint(search: search, onPicked: onHistoryPicked);
     }
     if (search.state == LoadingState.loading) {
       return const Padding(
@@ -123,8 +191,19 @@ class _SearchBody extends StatelessWidget {
     }
     if (search.state == LoadingState.error) {
       return PubgetErrorState(
-        message: search.failure?.message ?? AppStrings.of(context).searchLoadFailed,
+        message:
+            search.failure?.message ?? AppStrings.of(context).searchLoadFailed,
         onRetry: search.retry,
+      );
+    }
+    if (search.hits.isEmpty && search.hasAnyHit) {
+      // The filter emptied the list, not the backend: say so, and do not imply
+      // the thing does not exist.
+      final copy = SearchCopy.of(context);
+      return PubgetEmptyState(
+        title: copy.filterEmptyTitle,
+        message: copy.filterEmptyMessage,
+        icon: Icons.filter_list_off,
       );
     }
     return ListView.builder(
@@ -134,15 +213,84 @@ class _SearchBody extends StatelessWidget {
           ? const NeverScrollableScrollPhysics()
           : const AlwaysScrollableScrollPhysics(),
       itemCount: search.hits.length,
-      itemBuilder: (context, index) => SearchHitTile(hit: search.hits[index]),
+      itemBuilder: (context, index) => SearchHitTile(
+        hit: search.hits[index],
+        onOpen: () => search.recordQuery(search.query),
+      ),
+    );
+  }
+}
+
+/// Recent searches above the runnable hint. A member who searched yesterday
+/// should not have to retype the same name today.
+class _HistoryAndHint extends StatelessWidget {
+  const _HistoryAndHint({required this.search, this.onPicked});
+
+  final SearchProvider search;
+  final ValueChanged<String>? onPicked;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = SearchCopy.of(context);
+    final entries = onPicked == null
+        ? const <String>[]
+        : search.history.entries;
+    return ListView(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+      children: <Widget>[
+        if (entries.isNotEmpty) ...<Widget>[
+          Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(
+              AppSpacing.lg,
+              0,
+              AppSpacing.sm,
+              0,
+            ),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    copy.historyTitle,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                TextButton(
+                  onPressed: search.history.clear,
+                  child: Text(copy.clearHistory),
+                ),
+              ],
+            ),
+          ),
+          for (final term in entries)
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: Text(term, maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: IconButton(
+                tooltip: copy.removeHistoryEntry(term),
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () => search.history.remove(term),
+              ),
+              onTap: () => onPicked?.call(term),
+            ),
+          const Divider(height: AppSpacing.lg),
+        ],
+        PubgetEmptyState(
+          title: copy.runnableTitle,
+          message: copy.runnableMessage(SearchQuery.minLength),
+          icon: Icons.search,
+        ),
+      ],
     );
   }
 }
 
 class SearchHitTile extends StatelessWidget {
-  const SearchHitTile({required this.hit, super.key});
+  const SearchHitTile({required this.hit, this.onOpen, super.key});
 
   final SearchHit hit;
+
+  /// Fired before navigation so the query can be remembered as a real search.
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +300,10 @@ class SearchHitTile extends StatelessWidget {
       leading: _leading,
       title: Text(_localizedTitle(copy)),
       subtitle: subtitle == null ? null : Text(subtitle),
-      onTap: () => hit.open(context),
+      onTap: () {
+        onOpen?.call();
+        hit.open(context);
+      },
     );
   }
 
@@ -180,6 +331,8 @@ class SearchHitTile extends StatelessWidget {
       SearchHitType.fanWork => raw == 'Fan Work',
       SearchHitType.character => raw == 'شخصية',
       SearchHitType.reel => raw == 'ريل',
+      SearchHitType.audio => raw == 'Audio',
+      SearchHitType.hashtag => raw == 'Hashtag',
     };
     if (!isKindLiteral) return raw;
     final label = copy.searchHitLabel(hit.type.name);
@@ -202,6 +355,8 @@ class SearchHitTile extends StatelessWidget {
       SearchHitType.fanWork => Icons.auto_awesome_outlined,
       SearchHitType.character => Icons.face_outlined,
       SearchHitType.reel => Icons.video_library_outlined,
+      SearchHitType.audio => Icons.music_note_outlined,
+      SearchHitType.hashtag => Icons.tag,
     };
     return Icon(icon);
   }
