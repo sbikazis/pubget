@@ -57,6 +57,8 @@ const MIN_STORY_CHARS = 20;
 const COMMENT_MAX = 500;
 const COMMENT_COOLDOWN_MS = 2000;
 
+const { enqueueModerationCase } = require("./moderationQueue");
+
 function requireAuth(request, HttpsError) {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "Authentication is required.");
@@ -991,6 +993,8 @@ function createFanWorksDomain({
     const ref = workRef(db, workId);
     const reportId = `${workId}_${reporterId}`;
     const reportRef = ref.collection("reports").doc(reportId);
+    // Captured inside the transaction so the queued case carries the author.
+    let reportCreatorId = null;
     await db.runTransaction(async (transaction) => {
       const [work, existing] = await Promise.all([
         transaction.get(ref),
@@ -1005,6 +1009,7 @@ function createFanWorksDomain({
         throw new HttpsError("failed-precondition", "Only published Fan Works can be reported.");
       }
       if (existing.exists) return;
+      reportCreatorId = current.creatorId || null;
       transaction.create(reportRef, {
         reporterId,
         reason,
@@ -1017,6 +1022,20 @@ function createFanWorksDomain({
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
+
+    // Phase 10 — mirror the report into the flat moderation queue.
+    await enqueueModerationCase({
+      db,
+      FieldValue,
+      type: "fanWork",
+      targetId: workId,
+      reporterId,
+      creatorId: reportCreatorId,
+      reason,
+      details: details || null,
+      sourcePath: `fanWorks/${workId}/reports/${reportId}`,
+    });
+
     return { ok: true };
   }
 

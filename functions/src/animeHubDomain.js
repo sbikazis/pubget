@@ -1,6 +1,7 @@
 "use strict";
 
 const { scanText } = require("./contentFilter");
+const { enqueueModerationCase } = require("./moderationQueue");
 const {
   readScoreDistribution,
   hasScoreDistribution,
@@ -318,6 +319,23 @@ function createAnimeHubDomain({ db, FieldValue, HttpsError }) {
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
+
+    // Phase 10 — queue the review report for human triage. The review itself
+    // keeps `moderationStatus: "flagged"` so the read rules hide it until a
+    // moderator resolves the case.
+    await enqueueModerationCase({
+      db,
+      FieldValue,
+      type: "animeReview",
+      targetId: targetUserId,
+      targetParentId: animeId,
+      reporterId,
+      creatorId: targetUserId,
+      reason,
+      details: details || null,
+      sourcePath: `anime_stats/${animeId}/reviews/${targetUserId}/reports/${reporterId}`,
+    });
+
     return { ok: true };
   }
 

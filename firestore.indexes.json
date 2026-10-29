@@ -1465,6 +1465,76 @@
           "arrayConfig": "NONE"
         }
       ]
+    },
+    {
+      "collectionGroup": "moderation_cases",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "moderation_cases",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "reviews",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "fanWorks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
