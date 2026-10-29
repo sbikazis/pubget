@@ -15,6 +15,7 @@ const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
+const { getAuth } = require("firebase-admin/auth");
 const { randomUUID } = require("node:crypto");
 const {
   createAvatarPrivacySync,
@@ -52,6 +53,7 @@ const { createEconomyDomain } = require("./src/economyDomain");
 const { createAchievementsDomain } = require("./src/achievementsDomain");
 const { createHomeSections } = require("./src/homeSectionsDomain");
 const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
+const { createModerationDomain } = require("./src/moderationDomain");
 
 // The project's Storage bucket is the modern `{project}.firebasestorage.app`
 // (a `{project}.appspot.com` bucket does not exist for it). Do not rely on the
@@ -861,6 +863,65 @@ exports.adminGeneratePremiumCode = onCall(
   { region: "us-central1" },
   economyDomain.adminGeneratePremiumCode,
 );
+// Phase 10 (spec axis 23) — moderation & admin surface.
+//
+// Staff identity is a custom claim. This is the only place it is ever written,
+// and it is reached only through an admin-gated callable; nothing here trusts a
+// Firestore role, which a client could otherwise forge.
+const moderationDomain = createModerationDomain({
+  db: lazyFirestore,
+  FieldValue,
+  HttpsError,
+  syncModeratorClaim: async ({ uid, moderator }) => {
+    const auth = getAuth();
+    const user = await auth.getUser(uid);
+    const claims = { ...(user.customUserClaims || {}) };
+    if (moderator) claims.moderator = true;
+    else delete claims.moderator;
+    await auth.setCustomUserClaims(uid, claims);
+  },
+});
+exports.listModerationCases = onCall(
+  { region: "us-central1" },
+  moderationDomain.listCases,
+);
+exports.getModerationCase = onCall(
+  { region: "us-central1" },
+  moderationDomain.getCase,
+);
+exports.listModerationNeedsReview = onCall(
+  { region: "us-central1" },
+  moderationDomain.listNeedsReview,
+);
+exports.resolveModerationCase = onCall(
+  { region: "us-central1" },
+  moderationDomain.resolveCase,
+);
+exports.removeModeratedContent = onCall(
+  { region: "us-central1" },
+  moderationDomain.removeContent,
+);
+exports.restoreModeratedContent = onCall(
+  { region: "us-central1" },
+  moderationDomain.restoreContent,
+);
+exports.restrictUser = onCall(
+  { region: "us-central1" },
+  moderationDomain.restrictUser,
+);
+exports.unrestrictUser = onCall(
+  { region: "us-central1" },
+  moderationDomain.unrestrictUser,
+);
+exports.setModeratorRole = onCall(
+  { region: "us-central1" },
+  moderationDomain.setModeratorRole,
+);
+exports.getModerationSummary = onCall(
+  { region: "us-central1" },
+  moderationDomain.getModerationSummary,
+);
+
 exports.processEventLifecycle = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },
   eventsDomain.processEventLifecycle,

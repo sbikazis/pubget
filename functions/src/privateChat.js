@@ -37,6 +37,8 @@ const {
   validateMessage,
 } = require("./groupChat");
 
+const { enqueueModerationCase } = require("./moderationQueue");
+
 const WHO_CAN_MESSAGE = new Set(["related", "friends"]);
 const CHAT_ID_MAX = 320;
 
@@ -593,6 +595,23 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
         createdAt: FieldValue.serverTimestamp(),
       });
     });
+
+    // Phase 10 — private-message reports join the same queue. Without this a
+    // report about harassment in DMs was recorded somewhere no moderator could
+    // reach, which is the worst place for it to be.
+    await enqueueModerationCase({
+      db,
+      FieldValue,
+      type: "privateMessage",
+      targetId: messageId.trim(),
+      targetParentId: chatId.trim(),
+      reporterId,
+      creatorId: messageSnap.data().senderId || null,
+      reason,
+      details: details || null,
+      sourcePath: `privateChats/${chatId.trim()}/messageReports/${reportId}`,
+    });
+
     return { ok: true, reportId };
   }
 
