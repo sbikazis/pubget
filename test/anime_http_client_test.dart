@@ -98,6 +98,58 @@ void main() {
       '/v4/top/anime',
     ]);
   });
+
+  test('opens the circuit after a connection failure so queued requests fail '
+      'fast without touching the host', () async {
+    final inner = FakeAnimeHttpClient()
+      ..alwaysThrow = true
+      ..throwError = TimeoutException('timeout');
+    final client = ResilientAnimeHttpClient(
+      inner: inner,
+      minInterval: Duration.zero,
+      maxRetries: 0,
+      delay: (_) async {},
+      backoff: (_) => Duration.zero,
+      circuitCooldown: const Duration(minutes: 1),
+    );
+
+    await expectLater(
+      client.get(Uri.parse('https://example.test/v4/top')),
+      throwsA(isA<TimeoutException>()),
+    );
+    expect(inner.calls, hasLength(1));
+
+    // The host is now known unreachable: the next request must be rejected
+    // immediately, otherwise every queued hub fetch would wait out the full
+    // connect timeout in turn.
+    await expectLater(
+      client.get(Uri.parse('https://example.test/v4/airing')),
+      throwsA(isA<TimeoutException>()),
+    );
+    expect(inner.calls, hasLength(1));
+  });
+
+  test('does not open the circuit on a retryable HTTP status', () async {
+    final inner = FakeAnimeHttpClient(
+      responses: <String, AnimeHttpResponse>{
+        '/v4/top': const AnimeHttpResponse(statusCode: 503, body: '{}'),
+      },
+    );
+    final client = ResilientAnimeHttpClient(
+      inner: inner,
+      minInterval: Duration.zero,
+      maxRetries: 0,
+      delay: (_) async {},
+      backoff: (_) => Duration.zero,
+      circuitCooldown: const Duration(minutes: 1),
+    );
+
+    final first = await client.get(Uri.parse('https://example.test/v4/top'));
+    expect(first.statusCode, 503);
+    final second = await client.get(Uri.parse('https://example.test/v4/top'));
+    expect(second.statusCode, 503);
+    expect(inner.calls, hasLength(2));
+  });
 }
 
 final class _SequenceHttpClient implements AnimeHttpClient {

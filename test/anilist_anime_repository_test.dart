@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/anime/data/anime_http_client.dart';
+import 'package:pubget/features/anime/models/anime_models.dart';
 import 'package:pubget/features/anime/repositories/anilist_anime_repository.dart';
 
 import 'anime_test_support.dart';
@@ -30,6 +31,28 @@ const _mediaJson = '''
   "trailer": {"id": "abc", "site": "youtube"},
   "externalLinks": [{"site": "Crunchyroll", "url": "https://example.test/cr"}],
   "isAdult": false
+}
+''';
+
+// Native AniList id differs from the MyAnimeList id, which is what the
+// canonical `Anime.id` must follow.
+const _idMalMediaJson = '''
+{
+  "id": 1000001,
+  "idMal": 52991,
+  "title": {"romaji": "Sousou no Frieren", "english": "Frieren: Beyond Journey's End", "native": "葬送のフリーレン", "userPreferred": "Frieren"},
+  "format": "TV",
+  "status": "FINISHED",
+  "episodes": 28,
+  "duration": 24,
+  "season": "FALL",
+  "averageScore": 93,
+  "popularity": 999,
+  "coverImage": {"large": "https://example.test/f.jpg"},
+  "genres": ["Adventure"],
+  "studios": {"nodes": [{"id": 11, "name": "Madhouse", "isAnimationStudio": true}]},
+  "productionCompanies": {"nodes": [{"id": 1, "name": "Aniplex"}, {"id": 2, "name": "TOHO"}]},
+  "isAdult": true
 }
 ''';
 
@@ -90,6 +113,22 @@ void main() {
       expect(anime.externalLinks.first.label, 'Crunchyroll');
     });
 
+    test('searchAnime forwards score bounds as averageScore variables',
+        () async {
+      final (repository, client) = await repo({
+        'MediaPage': _pageBody(_mediaJson),
+      });
+      await repository.searchAnime(
+        'Attack on Titan',
+        filter: const AnimeSearchFilter(minScore: 7, maxScore: 9.5),
+      );
+      final body = client.postBodies.single! as Map<String, Object?>;
+      final variables = body['variables']! as Map<String, Object?>;
+      // AniList's averageScore is 0..100, so the 0..10 bounds scale up.
+      expect(variables['averageScore_greater'], 70);
+      expect(variables['averageScore_lesser'], 95);
+    });
+
     test('getAnimeDetails with a numeric (Mal) id resolves via idMal',
         () async {
       final (repository, client) = await repo({
@@ -101,6 +140,33 @@ void main() {
       expect(anime.id, '16498');
       final posted = client.calls.last;
       expect(posted.host, 'graphql.anilist.test');
+    });
+
+    test('maps the MAL id (idMal) as the canonical id when present', () async {
+      final (repository, _) = await repo({
+        'MediaPage': _pageBody(_idMalMediaJson),
+      });
+      final result = await repository.searchAnime('Frieren');
+      final page = (result as Success).value as AnimePage;
+      final anime = page.items.first;
+      // AniList's native id is 1000001 but the canonical id must be the MAL id
+      // so cache/community keys match the primary Jikan provider.
+      expect(anime.id, '52991');
+      expect(anime.producers, <String>['Aniplex', 'TOHO']);
+      expect(anime.rating, 'R+');
+      expect(anime.ageRating, AnimeAgeFilter.adult);
+    });
+
+    test('getAnimeSummaries resolves canonical ids through idMal_in', () async {
+      final (repository, client) = await repo({
+        'Summaries': '{"data":{"Page":{"media":[$_idMalMediaJson]}}}',
+      });
+      final result = await repository.getAnimeSummaries(<String>['52991']);
+      final items = (result as Success).value as List<Anime>;
+      expect(items.single.id, '52991');
+      final query = (client.postBodies.last as Map)['query'] as String;
+      expect(query, contains('idMal_in'));
+      expect(query, isNot(contains('id_in')));
     });
 
     test('getAnimeDetails returns NotFound when GraphQL errors with 404',

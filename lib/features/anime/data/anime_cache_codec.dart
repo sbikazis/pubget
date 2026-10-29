@@ -2,6 +2,11 @@ import '../models/anime_models.dart';
 
 /// Serializes anime catalog models to JSON-safe maps for the durable
 /// Firestore cache and restores them to fresh domain objects.
+///
+/// Decoding always marks the result [Anime.fromCache]/[AnimePage.fromCache]
+/// as true: the only consumer of these decoders is the durable cache read
+/// path, which must surface stale data as stale so the UI can show its
+/// offline banner instead of presenting a cached page as a live fetch.
 abstract final class AnimeCacheCodec {
   static Anime animeFromMap(Map<String, dynamic> map) {
     return Anime(
@@ -55,6 +60,7 @@ abstract final class AnimeCacheCodec {
           .toList(growable: false),
       nextEpisodeLabel: map['nextEpisodeLabel'] as String?,
       airing: map['airing'] as bool?,
+      fromCache: true,
     );
   }
 
@@ -107,6 +113,7 @@ abstract final class AnimeCacheCodec {
           .toList(growable: false),
       page: _int(map['page']) ?? 1,
       hasNextPage: map['hasNextPage'] as bool? ?? false,
+      fromCache: true,
     );
   }
 
@@ -306,6 +313,37 @@ abstract final class AnimeCacheCodec {
   static Map<String, dynamic> charactersToMap(List<AnimeCharacter> characters) {
     return <String, dynamic>{
       'items': characters.map(AnimeCacheCodec.characterToMap).toList(),
+    };
+  }
+
+  static List<AnimeStaff> staffFromMap(Map<String, dynamic> map) {
+    return (map['items'] as List? ?? const [])
+        .map(
+          (item) => AnimeStaff(
+            id: (item as Map)['id'] as String? ?? '',
+            name: (item['name'] as String?) ?? '',
+            imageUrl: item['imageUrl'] as String?,
+            roles: (item['roles'] as List? ?? const [])
+                .cast<String>()
+                .toList(growable: false),
+          ),
+        )
+        .where((item) => item.id.isNotEmpty && item.name.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  static Map<String, dynamic> staffToMap(List<AnimeStaff> staff) {
+    return <String, dynamic>{
+      'items': staff
+          .map(
+            (item) => <String, dynamic>{
+              'id': item.id,
+              'name': item.name,
+              'imageUrl': item.imageUrl,
+              'roles': item.roles,
+            },
+          )
+          .toList(),
     };
   }
 

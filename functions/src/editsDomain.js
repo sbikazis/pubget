@@ -18,6 +18,7 @@ const {
   buildHiddenCreatorSet,
   applyVisibility,
 } = require("./reelVisibility");
+const { setMediaVisible } = require("./reelMediaAccess");
 
 function string(value, max) {
   return typeof value === "string" && value.trim().length <= max
@@ -416,22 +417,28 @@ function createEditsDomain({
     // no idempotency key, and no moderation pass over the new row beyond the
     // copy filter, so the daily cap was bypassable and a double tap produced
     // two identical published Reels.
+    // The key is namespaced by creator (matching `startUpload`) so one account
+    // cannot collide with another's key and receive their editId. The lookup
+    // also runs before the quota reservation: a retry of a repost that already
+    // succeeded must be a no-op, not a second draw against the daily cap.
+    const idempotencyKey = string(request.data?.idempotencyKey || "", 128);
+    const keyDoc = idempotencyKey
+      ? db.collection(uploadKeyCollection).doc(`${creatorId}_${idempotencyKey}`)
+      : null;
+    if (keyDoc) {
+      const existingKey = await keyDoc.get();
+      if (existingKey.exists && existingKey.data()?.editId) {
+        return {
+          editId: existingKey.data().editId,
+          quotaRemaining: null,
+          reused: true,
+        };
+      }
+    }
     if (EDIT_UPLOAD_QUOTA.repostDrawsQuota) {
       const reservation = await reserveQuota(creatorId);
       if (!reservation.allowed) {
         throw new HttpsError("resource-exhausted", quotaExceededMessage(reservation));
-      }
-    }
-    const idempotencyKey = string(request.data?.idempotencyKey || "", 128);
-    if (idempotencyKey) {
-      const keyRef = db.collection(uploadKeyCollection).doc(idempotencyKey);
-      const existingKey = await keyRef.get();
-      if (existingKey.exists) {
-        return {
-          editId: existingKey.data()?.editId,
-          quotaRemaining: null,
-          reused: true,
-        };
       }
     }
     const originalCreatorId = source.originalCreatorId || source.creatorId;
@@ -472,8 +479,8 @@ function createEditsDomain({
         metadata: { editId: ref.id, originalEditId },
       });
     }
-    if (idempotencyKey) {
-      await db.collection(uploadKeyCollection).doc(idempotencyKey).set(
+    if (keyDoc) {
+      await keyDoc.set(
         { creatorId, editId: ref.id, kind: "repost", createdAt: FieldValue.serverTimestamp() },
         { merge: true },
       );
@@ -1279,7 +1286,14 @@ function createEditsDomain({
     // even if a query clause is later dropped.
     const candidates = (published.docs || [])
       .map((doc) => ({ id: doc.id, data: doc.data() || {} }))
-      .filter((item) => matchesScope(item.data, scope));
+      .filter((item) => matchesScope(item.data, scope))
+      // §15.18 — a reported/flagged Reel keeps `status: 'published'` so the
+      // takedown path can still restore it, but it must never be served. The
+      // candidate query cannot carry `moderationStatus` without a composite
+      // index per scope, so the gate is applied here, before ranking, for every
+      // feed type. Only `approved` is eligible; `flagged`, `needs_review`, and
+      // `removed` all drop out.
+      .filter((item) => (item.data.moderationStatus || "") === "approved");
     // A creator you blocked or muted must not appear in any feed scope. This is
     // applied after ranking scope so it cannot be bypassed by choosing a scope.
     const visible = applyVisibility(candidates, hiddenCreatorIds, viewerId);

@@ -9,6 +9,11 @@ service cloud.firestore {
     function changedOnly(keys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
+    // Unified media layer (lib/core/media): the only statuses a client may
+    // write on a `media` record.
+    function validMediaStatus(value) {
+      return value in ['pending', 'uploaded', 'failed', 'deleting', 'deleted'];
+    }
     function activePremium(uid) {
       let user = get(/databases/$(database)/documents/users/$(uid)).data;
       return user.get('subscriptionType', 'free') == 'premium' &&
@@ -638,6 +643,16 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if false;
     }
+    // Anime reports: one document per reporter per anime, written only by the
+    // server-side callable; clients may read their own reports.
+    match /anime_reports/{animeId}/reports/{reporterId} {
+      allow read: if isAdmin() || self(reporterId);
+      allow write: if false;
+    }
+    match /animeReportRate/{actor} {
+      allow read: if self(actor);
+      allow write: if false;
+    }
     // Achievements: server-authored badges and progress are readable (profile
     // strips show unlocked badges to any signed-in visitor) but never
     // client-writable.
@@ -1025,9 +1040,16 @@ service cloud.firestore {
         );
       }
       allow get: if editReadable(request.auth.uid);
-      // A collection query must carry `where status == 'published'` for this to
-      // succeed; Firestore rejects queries that could return anything else.
-      allow list: if signedIn() && resource.data.status == 'published';
+      // §15.18 — a reported/flagged Reel keeps `status: 'published'` so the
+      // takedown path can restore it, which is why the list rule must also
+      // require `moderationStatus == 'approved'`. Without it any signed-in
+      // client could query flagged, needs_review, or removed Reels directly.
+      // A collection query must carry both `where status == 'published'` and
+      // `where moderationStatus == 'approved'`; Firestore rejects a query that
+      // could return anything else.
+      allow list: if signedIn() &&
+        resource.data.status == 'published' &&
+        resource.data.moderationStatus == 'approved';
       // Edit documents and all aggregate counters are server-authoritative.
       allow create, update, delete: if false;
       // §15.18 audit trail — written only by the server takedown path.
@@ -1036,10 +1058,13 @@ service cloud.firestore {
         allow write: if false;
       }
       // §15.18 §15.3 — real moderation reports, one document per reporter.
+      // Written only by the `reportEdit` callable, which validates the category
+      // and enforces a per-user rate limit. A client-side `create` bypassed both
+      // (any signed-in user could write an arbitrary category and flood the
+      // queue), so the reporter keeps read access but no write access.
       match /reports/{uid} {
         allow read: if isAdmin() || self(uid);
-        allow create: if signedIn() && uid == request.auth.uid;
-        allow update, delete: if false;
+        allow write: if false;
       }
       match /comments/{commentId} {
         // Subcollection reads are not implicitly covered by the parent rule, so
@@ -1055,10 +1080,10 @@ service cloud.firestore {
         allow read: if parentReadable();
         allow create, update, delete: if false;
         match /likes/{uid} { allow read: if self(uid); allow write: if false; }
+        // Comment reports are written only by the `editCommentAction` callable.
         match /reports/{uid} {
           allow read: if isAdmin() || self(uid);
-          allow create: if signedIn() && uid == request.auth.uid;
-          allow update, delete: if false;
+          allow write: if false;
         }
       }
       match /likes/{uid} { allow read: if self(uid); allow write: if false; }
@@ -1277,6 +1302,38 @@ service cloud.firestore {
     match /game_history/{gameId} {
       allow read: if signedIn() && request.auth.uid in resource.data.participants;
       allow write: if false;
+    }
+
+    // Unified media metadata (`lib/core/media`). Metadata only — bytes live
+    // in the storage backend. Contract: a signed-in user may read media
+    // records, but may only create their own (with a key that really belongs
+    // to them), may only move the transient `status`/`updatedAt` fields, and
+    // may only delete their own. The server never writes here, so no
+    // server-only branch is needed.
+    match /media/{mediaId} {
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+          request.resource.data.ownerUid == request.auth.uid &&
+          request.resource.data.mediaId == mediaId &&
+          request.resource.data.storageKey is string &&
+          request.resource.data.storageKey.matches(
+              '^(images|reels|audio)/' + request.auth.uid +
+              '/[A-Za-z0-9_-]+[.][A-Za-z0-9]+$') &&
+          request.resource.data.kind in ['image', 'reels', 'audio'] &&
+          request.resource.data.backend in ['firebase', 'r2'] &&
+          validMediaStatus(request.resource.data.status) &&
+          request.resource.data.sizeBytes is int &&
+          request.resource.data.sizeBytes > 0 &&
+          request.resource.data.sizeBytes <= 100 * 1024 * 1024;
+      allow update: if signedIn() &&
+          resource.data.ownerUid == request.auth.uid &&
+          request.resource.data.ownerUid == resource.data.ownerUid &&
+          request.resource.data.mediaId == resource.data.mediaId &&
+          request.resource.data.storageKey == resource.data.storageKey &&
+          validMediaStatus(request.resource.data.status) &&
+          changedOnly(['status', 'updatedAt']);
+      allow delete: if signedIn() &&
+          resource.data.ownerUid == request.auth.uid;
     }
 
     // Joined tab: collection-group *list* of `members` is own-uid only.

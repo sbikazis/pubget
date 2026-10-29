@@ -7,6 +7,24 @@ import 'package:pubget/features/anime/providers/anime_hub_social_provider.dart';
 import 'package:pubget/features/anime/repositories/anime_hub_social_repository.dart';
 
 void main() {
+  test('reportReview needs a bound anime and forwards once loaded', () async {
+    final social = AnimeHubSocialProvider(repository: _FakeHubSocialRepository());
+    addTearDown(social.dispose);
+
+    final unbound = await social.reportReview(
+      targetUserId: 'bob',
+      reason: 'spam',
+    );
+    expect(unbound.isSuccess, isFalse);
+
+    await social.loadAnime('16498');
+    final reported = await social.reportReview(
+      targetUserId: 'bob',
+      reason: 'spam',
+    );
+    expect(reported.isSuccess, isTrue);
+  });
+
   test('details, rankings, and profile panel load fixture ratings', () async {
     final repository = _FakeHubSocialRepository();
     final social = AnimeHubSocialProvider(repository: repository);
@@ -83,6 +101,27 @@ void main() {
     expect(social.userRatings.single.overall, 9.0);
     expect(social.userList.single.status, AnimeListStatus.watching);
     expect(social.userCharacters.single.characterId, 'erwin');
+  });
+
+  test('loadStatsFor batches unseen titles once and caches them', () async {
+    final repository = _FakeHubSocialRepository();
+    final social = AnimeHubSocialProvider(repository: repository);
+    addTearDown(social.dispose);
+
+    await social.loadStatsFor(<String>['a', 'b', 'a', ' ']);
+    expect(repository.communityCalls, hasLength(1));
+    expect(repository.communityCalls.single, <String>['a', 'b']);
+    expect(social.statsFor('a')?.averageScore, 7.5);
+    expect(social.statsFor('b')?.ratingCount, 3);
+
+    // Everything is cached now, so a re-render asks for nothing new.
+    await social.loadStatsFor(<String>['a', 'b']);
+    expect(repository.communityCalls, hasLength(1));
+
+    // A new title joins the next page and is fetched on its own.
+    await social.loadStatsFor(<String>['a', 'c']);
+    expect(repository.communityCalls, hasLength(2));
+    expect(repository.communityCalls.last, <String>['c']);
   });
 
   test('character discussion loads, posts, and deletes', () async {
@@ -242,6 +281,8 @@ void main() {
 }
 
 final class _FakeHubSocialRepository implements AnimeHubSocialRepository {
+  final List<List<String>> communityCalls = <List<String>>[];
+
   AnimeReview mine = const AnimeReview(
     animeId: '16498',
     userId: 'alice',
@@ -314,6 +355,13 @@ final class _FakeHubSocialRepository implements AnimeHubSocialRepository {
   }) async => const Success<void>(null);
 
   @override
+  Future<Result<void>> reportAnime({
+    required String animeId,
+    required String reason,
+    String details = '',
+  }) async => const Success<void>(null);
+
+  @override
   Future<Result<List<AnimeCommunityStats>>> listTopRated({
     int limit = 40,
   }) async => const Success(<AnimeCommunityStats>[
@@ -335,6 +383,22 @@ final class _FakeHubSocialRepository implements AnimeHubSocialRepository {
       listedCount: 24,
     ),
   ]);
+
+  @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) async {
+    communityCalls.add(List<String>.of(animeIds));
+    return Success(<AnimeCommunityStats>[
+      for (final id in animeIds)
+        AnimeCommunityStats(
+          animeId: id,
+          title: 'Title $id',
+          averageScore: 7.5,
+          ratingCount: 3,
+        ),
+    ]);
+  }
 
   @override
   Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({

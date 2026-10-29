@@ -33,6 +33,8 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
   LoadingState _mostListedState = LoadingState.initial;
   Failure? _mostListedFailure;
 
+  final Set<String> _statsFetching = <String>{};
+
   List<CharacterCommunityStats> _popularCharacters =
       const <CharacterCommunityStats>[];
   LoadingState _charactersState = LoadingState.initial;
@@ -161,6 +163,22 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
     );
   }
 
+  /// Reports the currently open anime from the More menu.
+  Future<Result<void>> reportAnime({
+    required String reason,
+    String details = '',
+  }) async {
+    final animeId = _animeId;
+    if (animeId == null) {
+      return const FailureResult(ValidationError('Anime is required.'));
+    }
+    return _repository.reportAnime(
+      animeId: animeId,
+      reason: reason,
+      details: details,
+    );
+  }
+
   Future<void> loadTopRated() async {
     _topState = LoadingState.loading;
     _safeNotify();
@@ -232,6 +250,39 @@ final class AnimeHubSocialProvider extends ChangeNotifier {
       },
     );
     _safeNotify();
+  }
+
+  /// Backs discovery grids with real community aggregates: one batched read for
+  /// the titles currently on screen, cached in the same map `statsFor` consults.
+  /// Ids that already have stats, or that a fetch is already in flight for, are
+  /// skipped so scrolling pages stay one request per unseen title.
+  Future<void> loadStatsFor(List<String> animeIds) async {
+    final missing = <String>[
+      for (final raw in animeIds)
+        if (raw.trim().isNotEmpty &&
+            !_statsById.containsKey(raw.trim()) &&
+            _statsFetching.add(raw.trim()))
+          raw.trim(),
+    ];
+    if (missing.isEmpty) return;
+    final result = await _repository.getAnimeCommunityStats(missing);
+    for (final id in missing) {
+      _statsFetching.remove(id);
+    }
+    if (_disposed) return;
+    var changed = false;
+    result.fold(
+      onSuccess: (items) {
+        for (final item in items) {
+          if (item.animeId.isEmpty) continue;
+          _statsById[item.animeId] = item;
+          if (_stats?.animeId == item.animeId) _stats = item;
+          changed = true;
+        }
+      },
+      onFailure: (_) {},
+    );
+    if (changed) _safeNotify();
   }
 
   Future<CharacterCommunityStats?> characterStats(String characterId) async {

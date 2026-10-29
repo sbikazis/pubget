@@ -132,7 +132,7 @@ const CATALOG = Object.freeze([
       {
         id: "works_10",
         labelEn: "10 published Reels + Fan Works",
-        labelAr: "10 أعمال منشورة (الريلز + أعمال المعجبين)",
+        labelAr: "10 أعمال منشورة (ريلز + أعمال المعجبين)",
         target: 10,
       },
       {

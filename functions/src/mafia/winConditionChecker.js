@@ -6,7 +6,7 @@ const { createHistoryWriter } = require("./historyWriter");
 const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
 
-const db = admin.firestore();
+const db = require("../lazyAdmin").firestore;
 const { writeHistory } = createHistoryWriter({ db });
 
 function winnerFromAliveTeams(teams) {

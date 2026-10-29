@@ -1,0 +1,19 @@
+{
+  "name": "pubget-media-worker",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Authenticated Cloudflare Worker in front of the pubget-media R2 bucket: Firebase-token auth, UUID keys, size/type limits, short-lived presigned PUTs.",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  }
+}

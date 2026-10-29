@@ -403,10 +403,14 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
   var _userPaused = false;
   var _showPlayGlyph = false;
   Timer? _glyphTimer;
+  // Captured in initState so the final view flush in dispose does not read an
+  // ancestor Provider after the element is deactivated.
+  EditsProvider? _editsProvider;
 
   @override
   void initState() {
     super.initState();
+    _editsProvider = context.read<EditsProvider>();
     _loadProfiles();
     if (widget.active || widget.prefetch) {
       unawaited(_ensureController());
@@ -563,7 +567,9 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
   void _sendView({bool force = false}) {
     if (_controller == null || _sessionId == null) return;
     if (_maxPercent < Limits.editQualifiedViewPercent && !force) return;
-    context.read<EditsProvider>().view(
+    // `_editsProvider` is null only if this ran before the first
+    // didChangeDependencies, which cannot happen for a mounted cell.
+    _editsProvider?.view(
       editId: widget.edit.id,
       sessionId: _sessionId!,
       percent: _maxPercent,
@@ -1033,13 +1039,15 @@ class _EditActionRail extends StatelessWidget {
   Future<void> _share(BuildContext context, EditsProvider provider) async {
     // Open the share sheet immediately (optimistic UX); signal in parallel.
     unawaited(provider.share(edit.id));
-    final url = PubgetLinks.canonical(ReelsBrand.route);
+    // §15.18 — share the specific Reel's canonical link. A generic `/reels`
+    // link dropped the viewer at the top of the feed instead of this Reel.
+    final url = PubgetLinks.reel(edit.id);
     final text = edit.caption.isEmpty
         ? url
         : '${edit.caption}\n$url';
     try {
       await SharePlus.instance.share(
-        ShareParams(text: text, title: 'Pubget Reel'),
+        ShareParams(text: text, title: EditCopy.of(context).feedTitle),
       );
     } catch (_) {
       if (!context.mounted) return;
@@ -1079,7 +1087,7 @@ class _EditActionRail extends StatelessWidget {
     await PubgetBottomSheet.present<void>(
       context: context,
       backgroundColor: const Color(0xFF1A1228),
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
@@ -1090,10 +1098,25 @@ class _EditActionRail extends StatelessWidget {
               ),
               title: Text(copy.report, style: const TextStyle(color: Colors.white)),
               onTap: () {
-                Navigator.pop(context);
-                provider.report(edit.id);
+                Navigator.pop(sheetContext);
+                unawaited(_reportReel(context, provider));
               },
             ),
+            if (viewerId != null && viewerId != edit.creatorId)
+              ListTile(
+                leading: const PhosphorIcon(
+                  PhosphorIconsRegular.thumbsDown,
+                  color: Colors.white70,
+                ),
+                title: Text(
+                  copy.notInterested,
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  unawaited(_notInterested(context, provider));
+                },
+              ),
             if (viewerId != null && viewerId != edit.creatorId)
               ListTile(
                 leading: const PhosphorIcon(
@@ -1102,7 +1125,7 @@ class _EditActionRail extends StatelessWidget {
                 ),
                 title: Text(copy.mute, style: const TextStyle(color: Colors.white)),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   provider.muteCreator(edit.creatorId, mute: true);
                 },
               ),
@@ -1117,7 +1140,7 @@ class _EditActionRail extends StatelessWidget {
                   style: const TextStyle(color: Colors.white),
                 ),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(sheetContext);
                   context.read<EditsRepository>().deleteEdit(edit.id);
                 },
               ),
@@ -1125,5 +1148,64 @@ class _EditActionRail extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Axis 15 §15.18 — a real, categorized moderation report. The previous flow
+  /// reused the negative taste signal, so no report ever reached the moderation
+  /// queue. Reports now go through the server-validated `reportEdit` callable,
+  /// which checks the category, dedupes per reporter, and rate limits.
+  Future<void> _reportReel(
+    BuildContext context,
+    EditsProvider provider,
+  ) async {
+    final copy = EditCopy.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final category = await PubgetBottomSheet.present<String>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1228),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Text(
+                copy.reportPrompt,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+            for (final id in editReportCategories)
+              ListTile(
+                title: Text(
+                  copy.reportCategory(id),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () => Navigator.pop(sheetContext, id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (category == null) return;
+    final result = await provider.report(edit.id, category: category);
+    final message = result.isSuccess ? copy.reportSubmitted : copy.reportFailed;
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Axis 15 §15.9 — a private negative signal. Distinct from a report: it
+  /// hides the Reel locally and softens future recommendations without opening
+  /// a moderation ticket.
+  Future<void> _notInterested(
+    BuildContext context,
+    EditsProvider provider,
+  ) async {
+    final copy = EditCopy.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    await provider.notInterested(edit.id);
+    messenger.showSnackBar(SnackBar(content: Text(copy.notInterestedDone)));
   }
 }

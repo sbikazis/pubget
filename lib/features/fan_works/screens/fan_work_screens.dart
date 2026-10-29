@@ -854,9 +854,10 @@ class _FanWorkEditorPageState extends State<FanWorkEditorPage> {
     Uint8List bytes;
     try {
       bytes = await read();
-    } on Exception catch (error) {
+    } on Exception catch (error, stack) {
+      debugPrint('Fan work media read failed: $error\n$stack');
       if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+      messenger.showSnackBar(SnackBar(content: Text(copy.uploadFailed)));
       return;
     }
     if (!mounted) return;

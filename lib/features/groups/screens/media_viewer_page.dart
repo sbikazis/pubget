@@ -4,10 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/l10n/app_strings.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/chat_models.dart';
 import '../services/storage_video_controller.dart';
 
+/// Full-screen viewer for group media.
+///
+/// Deliberately dark in both themes: photos and video read better against a
+/// near-black chrome. Colors come from the palette rather than raw `Colors.*`
+/// so the surface stays consistent with the rest of the app.
 class MediaViewerPage extends StatefulWidget {
   const MediaViewerPage({
     required this.messages,
@@ -44,44 +52,68 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final total = widget.messages.length;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.royalNight,
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: const Text('Group media'),
-      ),
-      body: PageView.builder(
-        controller: _pageController,
-        itemCount: widget.messages.length,
-        onPageChanged: (index) => setState(() => _visibleIndex = index),
-        itemBuilder: (context, index) {
-          final message = widget.messages[index];
-          if (message.type == ChatMessageType.video &&
-              message.mediaUrl != null) {
-            if (index != _visibleIndex) {
-              // Teardown happens by leaving the tree, so this is just a poster.
-              return const _VideoPlaceholder();
-            }
-            return _VideoViewer(url: message.mediaUrl!);
-          }
-          return InteractiveViewer(
-            minScale: 0.8,
-            maxScale: 5,
-            child: Center(
-              child: AppImageLoader(
-                imageUrl: message.mediaUrl ?? '',
-                fit: BoxFit.contain,
-                errorWidget: const Icon(
-                  Icons.broken_image_outlined,
-                  color: Colors.white,
-                  size: 64,
+        backgroundColor: AppColors.royalNight,
+        foregroundColor: AppColors.darkText,
+        elevation: 0,
+        title: Text(copy.groupMedia),
+        actions: <Widget>[
+          if (total > 1)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: AppSpacing.lg),
+              child: Center(
+                child: Semantics(
+                  label: copy.mediaPositionLabel(_visibleIndex + 1, total),
+                  excludeSemantics: true,
+                  child: Text(
+                    '${_visibleIndex + 1} / $total',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: AppColors.darkTextMuted,
+                    ),
+                  ),
                 ),
               ),
             ),
-          );
-        },
+        ],
+      ),
+      body: SafeArea(
+        top: false,
+        child: PageView.builder(
+          controller: _pageController,
+          itemCount: total,
+          onPageChanged: (index) => setState(() => _visibleIndex = index),
+          itemBuilder: (context, index) {
+            final message = widget.messages[index];
+            if (message.type == ChatMessageType.video &&
+                message.mediaUrl != null) {
+              if (index != _visibleIndex) {
+                // Teardown happens by leaving the tree, so this is just a poster.
+                return const _VideoPlaceholder();
+              }
+              return _VideoViewer(url: message.mediaUrl!);
+            }
+            return InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 5,
+              child: Center(
+                child: AppImageLoader(
+                  imageUrl: message.mediaUrl ?? '',
+                  fit: BoxFit.contain,
+                  errorWidget: const Icon(
+                    Icons.broken_image_outlined,
+                    color: AppColors.darkTextMuted,
+                    size: 64,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -177,13 +209,15 @@ class _VideoViewerState extends State<_VideoViewer> {
   Widget build(BuildContext context) {
     final controller = _controller;
     if (_error != null) {
-      return const _VideoMessage(
+      return _VideoMessage(
         icon: Icons.videocam_off_outlined,
-        label: 'This video could not be played.',
+        label: AppStrings.of(context).mediaVideoFailed,
       );
     }
     if (controller == null || !controller.value.isInitialized) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.goldSheen),
+      );
     }
     return GestureDetector(
       onTap: _toggle,
@@ -197,7 +231,7 @@ class _VideoViewerState extends State<_VideoViewer> {
               if (!controller.value.isPlaying)
                 const Icon(
                   Icons.play_circle_fill,
-                  color: Colors.white,
+                  color: AppColors.darkText,
                   size: 72,
                 ),
             ],
@@ -212,9 +246,9 @@ class _VideoPlaceholder extends StatelessWidget {
   const _VideoPlaceholder();
 
   @override
-  Widget build(BuildContext context) => const _VideoMessage(
+  Widget build(BuildContext context) => _VideoMessage(
     icon: Icons.play_circle_outline,
-    label: 'Swipe to load video',
+    label: AppStrings.of(context).mediaSwipeToLoadVideo,
   );
 }
 
@@ -226,17 +260,23 @@ class _VideoMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(icon, color: Colors.white, size: 56),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, color: AppColors.darkTextMuted, size: 56),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppColors.darkTextMuted,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

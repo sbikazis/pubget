@@ -26,6 +26,7 @@ import '../../events/widgets/home_event_card.dart';
 import '../../fan_works/providers/fan_work_providers.dart';
 import '../../fan_works/widgets/home_fan_work_card.dart';
 import '../../notifications/providers/unread_engine.dart';
+import '../discovery_module.dart';
 import '../models/home_models.dart';
 import '../providers/home_provider.dart';
 import '../section_rotation.dart';
@@ -79,19 +80,18 @@ class _HomePageState extends State<HomePage> {
         child: RefreshIndicator(
           onRefresh: home.refresh,
           child: CustomScrollView(
-            // §5.2 fixes promoted groups first and personalized edits second,
-            // then rotates everything between visits so the same discovery
-            // surfaces do not own the same screen twice.
+            // §5.2 fixes promoted groups first, personalized edits second, and
+            // a people strip third; everything after that rotates between
+            // visits so the same discovery surfaces do not own the same screen
+            // twice. The order and membership live in
+            // [DiscoveryModuleRegistry], not in this widget.
             slivers: <Widget>[
-              _groupSliver(
-                key: const Key('home-promoted'),
-                title: copy.sectionPromoted,
-                kind: HomeSectionKind.promotedGroups,
-                finish: HomeGroupFinish.gold,
-              ),
-              const SliverToBoxAdapter(child: _EditsSection()),
-              _peopleSliver(),
-              ..._rotatedSections(copy, home.rotationSeed),
+              for (final module in DiscoveryModuleRegistry.pinned)
+                _moduleSliver(context, copy, module),
+              ...<Widget>[
+                for (final module in DiscoveryModuleRegistry.rotating)
+                  _moduleSliver(context, copy, module),
+              ].rotate(home.rotationSeed),
               const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
             ],
           ),
@@ -100,67 +100,49 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// §5.2.3 — every section after the two fixed ones is rotated once per visit
-  /// using a seed that changes on every Home load.
-  ///
-  /// Promotion stays pinned inside its own group so a rotating section can
-  /// never jump ahead of a promoted item, and the rotation never reorders
-  /// within a single build, so a rebuild cannot make rows swap under a finger.
-  List<Widget> _rotatedSections(AppStrings copy, int rotationSeed) {
-    final rotated = <Widget>[
-      const SliverToBoxAdapter(child: _HomeAdSlot()),
-      const SliverToBoxAdapter(child: _EventsSection()),
-      _groupSliver(
-        key: const Key('home-suggested'),
-        title: copy.sectionRecommended,
-        kind: HomeSectionKind.recommendedGroups,
-        finish: HomeGroupFinish.silver,
-      ),
-      _groupSliver(
-        key: const Key('home-rising'),
-        title: copy.sectionRising,
-        kind: HomeSectionKind.risingGroups,
-        finish: HomeGroupFinish.rising,
-      ),
-      SliverToBoxAdapter(
-        child: HomeRankedSection(
-          key: const Key('home-anime-of-week'),
-          kind: HomeSectionKind.animeOfTheWeek,
-          title: copy.sectionAnimeOfTheWeek,
-          seeMorePath: '/anime',
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: HomeRankedSection(
-          key: const Key('home-popular-characters'),
-          kind: HomeSectionKind.popularCharacters,
-          title: copy.sectionPopularCharacters,
-          seeMorePath: '/anime/characters',
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: HomeRankedSection(
-          key: const Key('home-rising-creators'),
-          kind: HomeSectionKind.risingCreators,
-          title: copy.sectionRisingCreators,
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: HomeRankedSection(
-          key: const Key('home-friends-activity'),
-          kind: HomeSectionKind.friendsActivity,
-          title: copy.sectionFriendsActivity,
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: HomeRankedSection(
-          key: const Key('home-freshest'),
-          kind: HomeSectionKind.freshestContent,
-          title: copy.sectionFreshestContent,
-        ),
-      ),
-      SliverToBoxAdapter(
-        child: Padding(
+  /// A single registry entry as a sliver. Every module renders through
+  /// [_moduleWidget], which is the one place that maps a
+  /// [DiscoveryModuleType] to a concrete section widget.
+  Widget _moduleSliver(
+    BuildContext context,
+    AppStrings copy,
+    DiscoveryModule module,
+  ) {
+    return SliverToBoxAdapter(child: _moduleWidget(context, copy, module));
+  }
+
+  Widget _moduleWidget(
+    BuildContext context,
+    AppStrings copy,
+    DiscoveryModule module,
+  ) {
+    switch (module.type) {
+      case DiscoveryModuleType.groupStrip:
+        final groupKind = module.kind!;
+        return _GroupSection(
+          key: Key('home-${module.id}'),
+          title: _groupTitle(copy, groupKind),
+          kind: groupKind,
+          finish: _groupFinish(groupKind),
+        );
+      case DiscoveryModuleType.peopleStrip:
+        return const _PeopleSection();
+      case DiscoveryModuleType.edits:
+        return const _EditsSection();
+      case DiscoveryModuleType.adSlot:
+        return const _HomeAdSlot();
+      case DiscoveryModuleType.events:
+        return const _EventsSection();
+      case DiscoveryModuleType.rankedRow:
+        final rankedKind = module.kind!;
+        return HomeRankedSection(
+          key: Key('home-${module.id}'),
+          kind: rankedKind,
+          title: _rankedTitle(copy, rankedKind),
+          seeMorePath: module.seeMorePath,
+        );
+      case DiscoveryModuleType.achievements:
+        return Padding(
           padding: const EdgeInsets.only(top: AppSpacing.md),
           child: _SectionFrame(
             title: copy.sectionAchievements,
@@ -171,28 +153,33 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-        ),
-      ),
-      const SliverToBoxAdapter(child: _FanWorksSection()),
-      const SliverToBoxAdapter(child: _AnimeSection()),
-    ];
-    return rotated.rotate(rotationSeed);
+        );
+      case DiscoveryModuleType.fanWorks:
+        return const _FanWorksSection();
+      case DiscoveryModuleType.animeCatalog:
+        return const _AnimeSection();
+    }
   }
 
-  Widget _groupSliver({
-    required Key key,
-    required String title,
-    required HomeSectionKind kind,
-    required HomeGroupFinish finish,
-  }) {
-    return SliverToBoxAdapter(
-      child: _GroupSection(key: key, title: title, kind: kind, finish: finish),
-    );
-  }
+  String _groupTitle(AppStrings copy, HomeSectionKind kind) => switch (kind) {
+    HomeSectionKind.promotedGroups => copy.sectionPromoted,
+    HomeSectionKind.risingGroups => copy.sectionRising,
+    _ => copy.sectionRecommended,
+  };
 
-  Widget _peopleSliver() {
-    return const SliverToBoxAdapter(child: _PeopleSection());
-  }
+  HomeGroupFinish _groupFinish(HomeSectionKind kind) => switch (kind) {
+    HomeSectionKind.promotedGroups => HomeGroupFinish.gold,
+    HomeSectionKind.risingGroups => HomeGroupFinish.rising,
+    _ => HomeGroupFinish.silver,
+  };
+
+  String _rankedTitle(AppStrings copy, HomeSectionKind kind) => switch (kind) {
+    HomeSectionKind.animeOfTheWeek => copy.sectionAnimeOfTheWeek,
+    HomeSectionKind.popularCharacters => copy.sectionPopularCharacters,
+    HomeSectionKind.risingCreators => copy.sectionRisingCreators,
+    HomeSectionKind.friendsActivity => copy.sectionFriendsActivity,
+    _ => copy.sectionFreshestContent,
+  };
 }
 
 class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
@@ -208,23 +195,26 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
   final String? name;
   final String? avatarUrl;
   final String? frameId;
+
+  /// Live wallet balance. `null` means the balance is not known yet, so the
+  /// chip is hidden rather than shown as a fake zero (§0.4).
   final int? coins;
+
   final int notifyCount;
 
   static const barHeight = 56.0;
   static const iconSize = 36.0;
   static const logoSize = 54.0;
-  static const coinStripHeight = 36.0;
   static const itemGap = 8.0;
   static const edgePad = 8.0;
 
-  /// Narrow-phone metrics. The logo stays 1.5x the icons, as §4.1 requires.
+  /// Narrow-phone metrics. The logo stays 1.5x the icons.
   static const iconSizeCompact = 32.0;
   static const logoSizeCompact = 48.0;
   static const itemGapCompact = 4.0;
   static const edgePadCompact = 6.0;
 
-  /// Below this width the seven §4.1 controls stop fitting at full size.
+  /// Below this width the controls stop fitting at full size.
   static const _compactBreakpoint = 380.0;
 
   @override
@@ -246,7 +236,7 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
       // place the avatar on the wrong side of the bar in the Arabic UI.
       title: LayoutBuilder(
         builder: (context, constraints) {
-          // Seven controls at full size overflow a narrow phone, so the bar
+          // Seven controls at full size do not fit a narrow phone, so the bar
           // scales its metrics down together rather than clipping or dropping
           // a control. The 1.5x logo ratio from §4.1 is preserved at every
           // size, and the bar height never changes.
@@ -264,10 +254,19 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
                 children: <Widget>[
                   PubgetLogoMark(key: const Key('home-logo'), size: logo),
                   SizedBox(width: gap),
-                  _CoinChipSlot(
-                    balance: coins,
-                    tooltip: copy.store,
-                    compact: compact,
+                  // The coin chip is the only variable-width control. It is
+                  // allowed to shrink (never to push the row over) so a very
+                  // large balance can never overflow the bar.
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.centerStart,
+                      child: _CoinChipSlot(
+                        balance: coins,
+                        tooltip: copy.store,
+                        compact: compact,
+                      ),
+                    ),
                   ),
                   SizedBox(width: gap),
                   SizedBox.square(
@@ -337,8 +336,10 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// Inline coins. The previous layout parked coins in a second strip under the
-/// bar; §4.1 puts them in the bar itself.
+/// Inline coins, as required by §4.1 ("عداد العملات (+)"). The previous layout
+/// parked coins in a second strip under the bar; the spec puts them in the bar
+/// itself. When the balance is unknown the slot collapses to nothing so the UI
+/// never advertises a fake zero.
 class _CoinChipSlot extends StatelessWidget {
   const _CoinChipSlot({
     required this.balance,
@@ -388,6 +389,9 @@ class _GroupSection extends StatelessWidget {
     }
     return _SectionFrame(
       title: title,
+      // Every group section lands on the real groups discovery surface; there
+      // is no separate promoted/recommended listing page to deep-link to.
+      onSeeAll: () => AppNavigation.go(context, '/groups'),
       child: _stateChild(
         context,
         state: state,
@@ -428,6 +432,7 @@ class _PeopleSection extends StatelessWidget {
     return _SectionFrame(
       key: const Key('home-people'),
       title: copy.sectionPeople,
+      onSeeAll: () => AppNavigation.go(context, '/search'),
       child: _stateChild(
         context,
         state: state,
@@ -485,6 +490,7 @@ class _EditsSection extends StatelessWidget {
     return _SectionFrame(
       key: const Key('home-edits'),
       title: copy.sectionEdits,
+      onSeeAll: () => AppNavigation.go(context, '/reels'),
       child: child,
     );
   }
@@ -613,19 +619,34 @@ class _AnimeSection extends StatelessWidget {
 }
 
 class _SectionFrame extends StatelessWidget {
-  const _SectionFrame({required this.title, required this.child, super.key});
+  const _SectionFrame({
+    required this.title,
+    required this.child,
+    this.onSeeAll,
+    super.key,
+  });
 
   final String title;
   final Widget child;
 
+  /// Master Spec §5.3 requires a "See all" in every section that has a
+  /// standalone section page. Null deliberately omits the action: a section
+  /// without a real listing page must not link somewhere unrelated.
+  final VoidCallback? onSeeAll;
+
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          PubgetSectionHeader(title: title),
+          PubgetSectionHeader(
+            title: title,
+            actionLabel: onSeeAll == null ? null : copy.seeAll,
+            onAction: onSeeAll,
+          ),
           child,
         ],
       ),
@@ -644,10 +665,24 @@ Widget _stateChild(
   if (state.state == LoadingState.loading && !state.hasContent) {
     return const _SkeletonSection();
   }
-  if (state.state == LoadingState.error && !state.hasContent) {
+  // §2.1 lists Offline as its own mandatory state, separate from Error and
+  // from Empty. Offline with cached rows keeps the strip and adds a retry
+  // banner, so a failed refresh never silently claims everything is fine.
+  if (state.state == LoadingState.offline && state.hasContent) {
+    return _staleColumn(home, kind, loaded);
+  }
+  // Offline or failed with nothing cached has to say the section could not be
+  // fetched. Falling through to `loaded` rendered a blank rail that read as a
+  // broken screen; falling through to the empty state told the user there is
+  // nothing when the truth is that nothing could be fetched.
+  if ((state.state == LoadingState.error ||
+          state.state == LoadingState.offline) &&
+      !state.hasContent) {
     return PubgetErrorState(
       title: copy.sectionFailed,
-      message: state.failure == null
+      message: state.state == LoadingState.offline
+          ? copy.discoveryOffline
+          : state.failure == null
           ? copy.discoveryUnavailable
           : discoveryFailureMessage(copy, state.failure!),
       onRetry: () => home.retrySection(kind),
@@ -677,6 +712,26 @@ Widget _stateChild(
     );
   }
   return loaded;
+}
+
+/// §2.1 — a refresh that failed keeps the rows the user can already act on, so
+/// the section is marked stale instead of being replaced by an error.
+Widget _staleColumn(HomeProvider home, HomeSectionKind kind, Widget loaded) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: <Widget>[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          0,
+          AppSpacing.md,
+          AppSpacing.sm,
+        ),
+        child: PubgetStaleBanner(onRetry: () => home.retrySection(kind)),
+      ),
+      loaded,
+    ],
+  );
 }
 
 class _MoreCell extends StatelessWidget {

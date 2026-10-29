@@ -78,7 +78,9 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
                   children: [
                     for (final category in stickerCategories)
                       Padding(
-                        padding: const EdgeInsets.only(right: AppSpacing.sm),
+                        padding: const EdgeInsetsDirectional.only(
+                          end: AppSpacing.sm,
+                        ),
                         child: ChoiceChip(
                           key: Key('sticker-category-$category'),
                           label: Text(category),
@@ -138,7 +140,7 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
                             ),
                             if (favored)
                               const Align(
-                                alignment: Alignment.topRight,
+                                alignment: AlignmentDirectional.topEnd,
                                 child: Icon(Icons.star, size: 16),
                               ),
                           ],

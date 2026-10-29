@@ -3,6 +3,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/media/media_reference.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -386,8 +387,13 @@ class HomeEditPreviewCardState extends State<HomeEditPreviewCard> {
 
   Future<void> _prepare() async {
     if (_player != null) return;
-    final url = widget.edit.videoUrl.trim();
-    if (url.isEmpty) return;
+    final reference = widget.edit.videoUrl.trim();
+    if (reference.isEmpty) return;
+    // `videoUrl` is the server-written `processedStoragePath` (a bare Storage
+    // path), while legacy records stored a full download URL. Resolving both
+    // here is what stopped the teaser from silently failing to initialize.
+    final url = await resolveMediaDownloadUrl(reference);
+    if (url == null || url.isEmpty || !mounted || _player != null) return;
     final controller = VideoPlayerController.networkUrl(Uri.parse(url));
     _player = controller;
     await controller.setVolume(0);

@@ -9,7 +9,6 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../groups/providers/group_provider.dart';
 import '../models/event_models.dart';
-import '../models/event_type_registry.dart';
 import '../providers/event_providers.dart';
 import '../widgets/event_widgets.dart';
 
@@ -58,21 +57,24 @@ class _EventListScreenState extends State<EventListScreen> {
   @override
   Widget build(BuildContext context) {
     final list = context.watch<EventListProvider>();
+    final copy = AppStrings.of(context);
     final groupId = widget.groupId;
     return DefaultTabController(
       length: groupId == null ? 4 : 1,
       child: Scaffold(
         appBar: AppBar(
           leading: AppBackButton.maybeOf(context),
-          title: Text(groupId == null ? 'Events' : 'Group events'),
+          title: Text(
+            groupId == null ? copy.eventListTitle : copy.eventGroupEventsTitle,
+          ),
           bottom: groupId == null
-              ? const TabBar(
+              ? TabBar(
                   isScrollable: true,
                   tabs: <Widget>[
-                    Tab(text: 'Active'),
-                    Tab(text: 'Upcoming'),
-                    Tab(text: 'Recent'),
-                    Tab(text: 'Mine'),
+                    Tab(text: copy.eventTabActive),
+                    Tab(text: copy.eventTabUpcoming),
+                    Tab(text: copy.eventTabRecent),
+                    Tab(text: copy.eventTabMine),
                   ],
                 )
               : null,
@@ -86,7 +88,7 @@ class _EventListScreenState extends State<EventListScreen> {
                   context,
                   '/events/create?groupId=${Uri.encodeComponent(groupId)}',
                 ),
-                label: const Text(EventStrings.create),
+                label: Text(copy.eventCreate),
                 icon: const Icon(Icons.add),
               ),
         body: PubgetLoadingStateView(
@@ -95,8 +97,8 @@ class _EventListScreenState extends State<EventListScreen> {
               ? list.loadHome()
               : list.loadGroup(widget.groupId!),
           empty: PubgetEmptyState(
-            title: EventStrings.noEventsTitle,
-            message: EventStrings.noEventsMessage,
+            title: copy.eventNoActiveYet,
+            message: copy.eventNoActiveMessage,
             icon: Icons.celebration_outlined,
             action:
                 groupId != null &&
@@ -106,13 +108,13 @@ class _EventListScreenState extends State<EventListScreen> {
                       context,
                       '/events/create?groupId=${Uri.encodeComponent(groupId)}',
                     ),
-                    semanticLabel: EventStrings.create,
-                    child: const Text(EventStrings.create),
+                    semanticLabel: copy.eventCreate,
+                    child: Text(copy.eventCreate),
                   )
                 : null,
           ),
           error: PubgetErrorState(
-            message: list.failure?.message ?? 'Events could not load.',
+            message: list.failure?.message ?? copy.eventLoadFailed,
             onRetry: () => widget.groupId == null
                 ? list.loadHome()
                 : list.loadGroup(widget.groupId!),
@@ -136,9 +138,9 @@ class _EventListScreenState extends State<EventListScreen> {
                     children: <Widget>[
                       Expanded(
                         child: TextField(
-                          decoration: const InputDecoration(
-                            hintText: 'Search Events',
-                            prefixIcon: Icon(Icons.search),
+                          decoration: InputDecoration(
+                            hintText: copy.eventSearchHint,
+                            prefixIcon: const Icon(Icons.search),
                           ),
                           onChanged: (value) => setState(() => _query = value),
                         ),
@@ -146,11 +148,11 @@ class _EventListScreenState extends State<EventListScreen> {
                       const SizedBox(width: AppSpacing.sm),
                       DropdownButton<EventType?>(
                         value: _typeFilter,
-                        hint: const Text('Type'),
+                        hint: Text(copy.eventFilterType),
                         items: <DropdownMenuItem<EventType?>>[
-                          const DropdownMenuItem<EventType?>(
+                          DropdownMenuItem<EventType?>(
                             value: null,
-                            child: Text('All'),
+                            child: Text(copy.eventFilterAll),
                           ),
                           ...EventType.values.map(
                             (type) => DropdownMenuItem<EventType?>(
@@ -209,10 +211,11 @@ class _EventTiles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     if (events.isEmpty && !loadingMore) {
-      return const PubgetEmptyState(
-        title: EventStrings.noEventsTitle,
-        message: EventStrings.noEventsMessage,
+      return PubgetEmptyState(
+        title: copy.eventNoActiveYet,
+        message: copy.eventNoActiveMessage,
       );
     }
     return ListView.separated(
@@ -228,7 +231,7 @@ class _EventTiles extends StatelessWidget {
                   ? const CircularProgressIndicator()
                   : OutlinedButton(
                       onPressed: onLoadMore,
-                      child: const Text('Load more'),
+                      child: Text(copy.loadMore),
                     ),
             ),
           );
@@ -241,7 +244,8 @@ class _EventTiles extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             title: Text(event.title),
             subtitle: Text(
-              '${AppStrings.of(context).eventTypeLabel(event.type.name)} · ${event.status.name}',
+              '${copy.eventTypeLabel(event.type.name)} · '
+              '${copy.eventStatusLabel(event.status.name)}',
             ),
             trailing: EventCountdown(event: event),
           ),

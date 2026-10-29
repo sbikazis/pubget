@@ -9,7 +9,7 @@ String? anilistGenreId(String? name) => name?.trim().toLowerCase();
 Anime? mapAniListAnime(Object? raw) {
   if (raw is! Map) return null;
   final map = Map<String, dynamic>.from(raw);
-  final id = anilistIdOf(map['id']);
+  final id = anilistCanonicalId(map);
   final title = anilistTitle(map['title']);
   if (id == null || title == null || title.isEmpty) return null;
 
@@ -51,7 +51,7 @@ Anime? mapAniListAnime(Object? raw) {
       mapAniListRelations(map['relations']),
     ),
     source: _anilistSourceLabel(map['source']),
-    rating: map['isAdult'] == true ? 'R+ - Mild Nudity' : null,
+    rating: map['isAdult'] == true ? 'R+' : null,
     images: _anilistImages(map['coverImage']),
     trailerUrl: _anilistTrailer(map['trailer']),
     externalLinks: List<AnimeExternalLink>.unmodifiable(
@@ -104,6 +104,36 @@ List<AnimeCharacter> mapAniListCharacters(Object? raw) {
   );
 }
 
+AnimeStaff? mapAniListStaffEntry(Object? raw) {
+  if (raw is! Map) return null;
+  final map = Map<String, dynamic>.from(raw);
+  final node = _map(map['node']);
+  if (node == null) return null;
+  final id = anilistIdOf(node['id']);
+  final name = _staffName(node['name']);
+  if (id == null || name == null || name.isEmpty) return null;
+  final role = _string(map['role'])?.trim();
+  return AnimeStaff(
+    id: id,
+    name: name,
+    imageUrl: _anilistCharacterImage(node['image']),
+    roles: role == null || role.isEmpty ? const <String>[] : <String>[role],
+  );
+}
+
+List<AnimeStaff> mapAniListStaff(Object? raw) {
+  if (raw is! List) return const <AnimeStaff>[];
+  return List<AnimeStaff>.unmodifiable(
+    raw.map(mapAniListStaffEntry).whereType<AnimeStaff>(),
+  );
+}
+
+String? _staffName(Object? raw) {
+  final map = _map(raw);
+  if (map == null) return _string(raw);
+  return _string(map['full']) ?? _string(map['native']);
+}
+
 List<AnimeGenre> mapAniListGenres(Object? raw) {
   if (raw is! List) return const <AnimeGenre>[];
   final items = <AnimeGenre>[];
@@ -130,7 +160,7 @@ List<AnimeRelated> mapAniListRelations(Object? raw) {
     final relation = _anilistRelationLabel(_string(edge['relationType']));
     final node = _map(edge['node']);
     if (node == null) continue;
-    final id = anilistIdOf(node['id']);
+    final id = anilistCanonicalId(node);
     final title = anilistTitle(node['title']);
     if (id == null || title == null || title.isEmpty) continue;
     items.add(
@@ -156,6 +186,14 @@ String? anilistIdOf(Object? raw) {
   final text = _string(raw);
   return text == null || text.isEmpty ? null : text;
 }
+
+/// The canonical id for an AniList anime node: the MyAnimeList id (`idMal`)
+/// when AniList reports one, otherwise the native AniList id. This keeps
+/// AniList-fetched entries keyed on the same ids the primary Jikan provider
+/// uses, so the durable cache, community ratings and favorites do not fork
+/// into two id spaces when the active provider changes.
+String? anilistCanonicalId(Map<String, dynamic> node) =>
+    anilistIdOf(node['idMal']) ?? anilistIdOf(node['id']);
 
 String? anilistTitle(Object? raw) {
   final map = _map(raw);
@@ -198,7 +236,7 @@ List<CharacterAppearance> _anilistAppearances(Object? raw) {
   final items = <CharacterAppearance>[];
   for (final node in nodes) {
     if (node['type'] != anilistAnimeType) continue;
-    final id = anilistIdOf(node['id']);
+    final id = anilistCanonicalId(node);
     final title = anilistTitle(node['title']);
     if (id == null || title == null || title.isEmpty) continue;
     items.add(

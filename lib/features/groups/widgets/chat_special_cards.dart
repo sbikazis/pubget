@@ -5,6 +5,7 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../games/models/game_type_registry.dart';
+import '../l10n/chat_copy.dart';
 import '../models/chat_models.dart';
 import 'chat_contrast_theme.dart';
 
@@ -26,33 +27,22 @@ class ChatGameLobbyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final activity = message.gameActivity;
     final spec = activity == null
         ? null
         : GameTypeRegistry.byName(activity.gameType);
     final title = activity?.title?.trim().isNotEmpty == true
         ? activity!.title!
-        : (spec?.name ?? 'Game');
+        : (spec?.name ?? copy.chatGameGenericTitle);
     final host = activity?.hostName?.trim().isNotEmpty == true
         ? activity!.hostName!
         : message.senderName;
     final current = activity?.playerCount ?? 1;
     final max = activity?.maxPlayers ?? (spec?.capabilities.maxPlayers ?? 8);
     final required = activity?.requiredPlayers;
-    final status = activity?.isCancelled == true
-        ? 'أُغلقت'
-        : activity?.isStarted == true
-        ? 'مباشر الآن'
-        : activity?.isFull == true
-            ? 'اكتمل العدد'
-            : 'قاعة الانتظار';
-    final cta = activity?.isCancelled == true
-        ? 'عرض التفاصيل'
-        : activity?.isStarted == true
-        ? 'عرض اللعبة'
-        : activity?.isFull == true
-            ? 'اكتمل العدد'
-            : 'انضمام للعبة';
+    final status = chatGameStatusLabel(activity, copy);
+    final cta = chatGameActionLabel(activity, copy);
     final avatars = activity?.participantAvatars ?? const <String>[];
     final dark = Theme.of(context).brightness == Brightness.dark;
 
@@ -149,7 +139,7 @@ class ChatGameLobbyCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'بدأ $host غرفة لعب جديدة',
+                      copy.chatGameHostStarted(host),
                       style: TextStyle(
                         fontSize: 13,
                         color: dark
@@ -187,7 +177,7 @@ class ChatGameLobbyCard extends StatelessWidget {
                     if (required != null && required > 0) ...[
                       const SizedBox(height: 6),
                       Text(
-                        'يبدأ عند $required لاعبين',
+                        copy.chatGameStartsAt(required),
                         style: TextStyle(
                           fontSize: 12,
                           color: dark
@@ -288,6 +278,7 @@ class ChatNewMemberCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
     final meta = message.cardMeta ?? const <String, dynamic>{};
     final title = message.senderTitle ??
@@ -295,13 +286,13 @@ class ChatNewMemberCard extends StatelessWidget {
         (meta['bio'] as String?) ??
         '';
     final ageCountry = [
-      if (meta['age'] != null) '${meta['age']} سنة',
+      if (meta['age'] != null) copy.pick('${meta['age']} yrs', '${meta['age']} سنة'),
       if ((meta['country'] as String?)?.trim().isNotEmpty == true)
         meta['country'],
     ].join(' • ');
     final badges = (meta['badges'] is List)
         ? (meta['badges'] as List).whereType<String>().toList()
-        : const <String>['عضو جديد'];
+        : <String>[copy.chatWelcomeNewMember];
     final bio = (meta['bio'] as String?) ?? message.text ?? '';
 
     return Align(
@@ -335,9 +326,9 @@ class ChatNewMemberCard extends StatelessWidget {
                   color: _waGreen.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Text(
-                  'رحّبوا بالعضو الجديد!',
-                  style: TextStyle(
+                child: Text(
+                  copy.chatWelcomeBadge,
+                  style: const TextStyle(
                     color: _waGreen,
                     fontWeight: FontWeight.w800,
                     fontSize: 12,
@@ -412,7 +403,7 @@ class ChatNewMemberCard extends StatelessWidget {
                   Expanded(
                     child: FilledButton.tonal(
                       onPressed: onWelcome,
-                      child: const Text('👋 ترحيب'),
+                      child: Text(copy.chatWelcomeAction),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -427,7 +418,7 @@ class ChatNewMemberCard extends StatelessWidget {
                             if (uid.isEmpty) return;
                             AppNavigation.go(context, '/profile?uid=$uid');
                           },
-                      child: const Text('💬 دردشة'),
+                      child: Text(copy.chatChatAction),
                     ),
                   ),
                 ],
@@ -482,9 +473,11 @@ class ChatEventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
     final meta = message.cardMeta ?? const <String, dynamic>{};
-    final title = (meta['title'] as String?) ?? message.text ?? 'فعالية';
+    final title =
+        (meta['title'] as String?) ?? message.text ?? copy.chatEventFallbackTitle;
     final when = (meta['when'] as String?) ?? (meta['schedule'] as String?) ?? '';
     final place = (meta['place'] as String?) ?? (meta['location'] as String?) ?? '';
 
@@ -555,12 +548,12 @@ class ChatEventCard extends StatelessWidget {
                   ],
                   const SizedBox(height: 10),
                   Row(
-                    children: const <Widget>[
-                      _RsvpChip(label: 'سأحضر ✅'),
-                      SizedBox(width: 6),
-                      _RsvpChip(label: 'ربما ❓'),
-                      SizedBox(width: 6),
-                      _RsvpChip(label: 'لن أحضر ❌'),
+                    children: <Widget>[
+                      _RsvpChip(label: copy.chatEventRsvpGoing),
+                      const SizedBox(width: 6),
+                      _RsvpChip(label: copy.chatEventRsvpMaybe),
+                      const SizedBox(width: 6),
+                      _RsvpChip(label: copy.chatEventRsvpDeclined),
                     ],
                   ),
                 ],
@@ -613,6 +606,7 @@ class ChatDebateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
     final meta = message.cardMeta ?? const <String, dynamic>{};
     final agree = ((meta['agree'] as num?)?.toDouble() ?? 0.7).clamp(0.0, 1.0);
@@ -697,7 +691,8 @@ class ChatDebateCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'موافق ${(agree * 100).round()}% · غير موافق ${((1 - agree) * 100).round()}%',
+                '${copy.chatDebateAgree} ${(agree * 100).round()}% · '
+                '${copy.chatDebateDisagree} ${((1 - agree) * 100).round()}%',
                 style: const TextStyle(fontSize: 11, color: Color(0xFF8696A0)),
               ),
               const SizedBox(height: 8),
@@ -705,7 +700,7 @@ class ChatDebateCard extends StatelessWidget {
                 alignment: AlignmentDirectional.centerEnd,
                 child: TextButton(
                   onPressed: onReply,
-                  child: const Text('أضف حجتك / رأيك'),
+                  child: Text(copy.chatDebateAddArgument),
                 ),
               ),
             ],
@@ -774,29 +769,19 @@ class ChatEncryptionBanner extends StatelessWidget {
   }
 }
 
-String chatDayLabel(DateTime? date, {required DateTime now}) {
+String chatDayLabel(
+  DateTime? date, {
+  required DateTime now,
+  required AppStrings copy,
+}) {
   if (date == null) return '';
   final local = date.toLocal();
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(local.year, local.month, local.day);
   final diff = today.difference(day).inDays;
-  if (diff == 0) return 'اليوم';
-  if (diff == 1) return 'أمس';
-  const months = <String>[
-    'يناير',
-    'فبراير',
-    'مارس',
-    'أبريل',
-    'مايو',
-    'يونيو',
-    'يوليو',
-    'أغسطس',
-    'سبتمبر',
-    'أكتوبر',
-    'نوفمبر',
-    'ديسمبر',
-  ];
-  return '${local.day} ${months[local.month - 1]} ${local.year}';
+  if (diff == 0) return copy.chatDayToday;
+  if (diff == 1) return copy.chatDayYesterday;
+  return '${local.day} ${copy.chatMonthLabel(local.month)} ${local.year}';
 }
 
 /// Short-lived wash behind a message that was jumped to, so the eye lands on it.

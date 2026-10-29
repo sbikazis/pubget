@@ -85,6 +85,17 @@ abstract interface class EditsRepository {
     required String type,
   });
 
+  /// Axis 15 §15.18 — send a categorized moderation report for a Reel.
+  ///
+  /// Server-authoritative: the category is validated against
+  /// `editReportCategories`, one report per reporter is kept, and the call is
+  /// rate limited. The client never writes the report document directly.
+  Future<Result<void>> reportEdit({
+    required String editId,
+    required String category,
+    String? detail,
+  });
+
   /// Hide or unhide every Reel by [creatorId] from the viewer's feed.
   ///
   /// Server-side truth: the mute row lives in `reelMutes/{viewerId}/creators`

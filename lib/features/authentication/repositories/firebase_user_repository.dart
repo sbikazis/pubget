@@ -5,7 +5,9 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/media/media_url_uploader.dart';
 import '../models/pubget_user.dart';
 import '../models/username_status.dart';
 import 'user_repository.dart';
@@ -15,14 +17,20 @@ final class FirebaseUserRepository implements UserRepository {
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
     FirebaseFunctions? functions,
+    MediaUrlUploader? mediaUploader,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _storage = storage ?? FirebaseStorage.instance,
        _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
+       _mediaUploader = mediaUploader;
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
+
+  /// When set, avatar bytes go through the shared media stack instead of the
+  /// legacy direct-storage path. Null preserves the previous behaviour.
+  final MediaUrlUploader? _mediaUploader;
 
   CollectionReference<Map<String, dynamic>> get _users =>
       _firestore.collection('users');
@@ -73,16 +81,25 @@ final class FirebaseUserRepository implements UserRepository {
     required Uint8List bytes,
     String contentType = 'image/jpeg',
   }) async {
-    try {
-      final reference = _storage.ref('users/$userId/avatar.jpg');
-      final snapshot = await reference.putData(
-        bytes,
-        SettableMetadata(contentType: contentType),
-      );
-      return Success<String>(await snapshot.ref.getDownloadURL());
-    } on Object catch (error) {
-      return FailureResult<String>(_mapFailure(error));
+    final uploader = _mediaUploader;
+    if (uploader == null) {
+      try {
+        final reference = _storage.ref('users/$userId/avatar.jpg');
+        final snapshot = await reference.putData(
+          bytes,
+          SettableMetadata(contentType: contentType),
+        );
+        return Success<String>(await snapshot.ref.getDownloadURL());
+      } on Object catch (error) {
+        return FailureResult<String>(_mapFailure(error));
+      }
     }
+    return uploader.uploadImage(
+      ownerUid: userId,
+      bytes: bytes,
+      claimedContentType: contentType,
+      fileName: 'avatar.jpg',
+    );
   }
 
   @override
@@ -149,10 +166,12 @@ final class FirebaseUserRepository implements UserRepository {
         'already-exists' => const ValidationError(
           'This username is already taken.',
         ),
-        'unavailable' || 'deadline-exceeded' => const NetworkError(
+        'unavailable' ||
+        'deadline-exceeded' ||
+        'resource-exhausted' => const NetworkError(
           'Check your connection and try again.',
         ),
-        _ => UnknownError(error.message ?? 'Profile update failed.'),
+        _ => mapFirebaseFailure(error, message: 'Profile update failed.'),
       };
     }
     if (error is FirebaseException) {
@@ -161,12 +180,15 @@ final class FirebaseUserRepository implements UserRepository {
           'You do not have permission to update this profile.',
         ),
         'not-found' => const NotFoundError('Profile not found.'),
+        'already-exists' => const ValidationError(
+          'This username is already taken.',
+        ),
         'unavailable' || 'deadline-exceeded' => const NetworkError(
           'Check your connection and try again.',
         ),
-        _ => UnknownError(error.message ?? 'Profile update failed.'),
+        _ => mapFirebaseFailure(error, message: 'Profile update failed.'),
       };
     }
-    return const UnknownError('We could not save this profile.');
+    return mapFirebaseFailure(error, message: 'We could not save this profile.');
   }
 }

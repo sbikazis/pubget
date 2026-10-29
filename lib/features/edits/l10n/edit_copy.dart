@@ -67,7 +67,7 @@ final class EditCopy {
   );
   String get videoReadyOffer => _s.pick(
     'Your Reel is ready — watch it now?',
-    'الريل جاهز — شاهده الآن؟',
+    'ريلك جاهز — شاهده الآن؟',
   );
   String get watchNow => _s.pick('Watch now', 'شاهده الآن');
   String get openEdit =>
@@ -83,8 +83,8 @@ final class EditCopy {
   String get syncing => _s.pick('Syncing with server…', 'مزامنة مع الخادم…');
   String get noEdits => _s.pick('No Reels yet', 'لا ريلز بعد');
   String get noEditsMessage => _s.pick(
-    'Be the first creator to share a video.',
-    'كن أول مبدع يشارك فيديو.',
+    'Be the first creator to share a Reel.',
+    'كن أول مبدع يشارك ريلاً.',
   );
   String get failedLoad =>
       _s.pick('Reels could not load.', 'تعذّر تحميل الريلز.');
@@ -116,6 +116,36 @@ final class EditCopy {
   String get newest => _s.pick('Newest', 'الأحدث');
   String get top => _s.pick('Top', 'الأكثر إعجابًا');
   String get report => _s.pick('Report', 'إبلاغ');
+  // Axis 15 §15.18 — moderated report flow. The ids must stay in sync with the
+  // server's REPORT_CATEGORIES set; only the labels are localized.
+  String get reportPrompt => _s.pick(
+        'Why are you reporting this Reel?',
+        'لماذا تبلّغ عن هذا الريل؟',
+      );
+  String get reportSubmitted => _s.pick(
+        'Thanks — your report was sent to the moderation queue.',
+        'شكرًا — أُرسل بلاغك إلى قائمة المراجعة.',
+      );
+  String get reportFailed => _s.pick(
+        'Could not send the report. Please retry.',
+        'تعذّر إرسال البلاغ. أعد المحاولة.',
+      );
+  String reportCategory(String id) => switch (id) {
+        'spam' => _s.pick('Spam or scam', 'محتوى مزعج أو احتيالي'),
+        'harassment' => _s.pick('Harassment or bullying', 'تحرّش أو تنمّر'),
+        'hate' => _s.pick('Hate speech', 'خطاب كراهية'),
+        'sexual' => _s.pick('Sexual content', 'محتوى جنسي'),
+        'violence' => _s.pick('Violence', 'عنف'),
+        'copyright' => _s.pick('Copyright violation', 'انتهاك حقوق النشر'),
+        'self_harm' => _s.pick('Self-harm', 'إيذاء النفس'),
+        'misleading' => _s.pick('Misinformation', 'معلومات مضللة'),
+        _ => _s.pick('Something else', 'سبب آخر'),
+      };
+  String get notInterested => _s.pick('Not interested', 'غير مهتم');
+  String get notInterestedDone => _s.pick(
+        'We will show fewer Reels like this.',
+        'سنعرض ريلز أقل مشابهة لهذا.',
+      );
   String get delete => _s.pick('Delete', 'حذف');
   String get mention => _s.pick('Mention', 'إشارة');
   String get sticker => _s.pick('Sticker', 'ملصق');
@@ -124,6 +154,21 @@ final class EditCopy {
   String get play => _s.pick('Play', 'تشغيل');
   String get pause => _s.pick('Pause', 'إيقاف');
   String views(int count) => _s.pick('$count views', '$count مشاهدة');
+  String likes(int count) => _s.pick('$count likes', '$count إعجاب');
+  String get reply => _s.pick('Reply', 'رد');
+  String get cancelReply => _s.pick('Cancel reply', 'إلغاء الرد');
+  String replyingTo(String text) =>
+      _s.pick('Replying to $text', 'ردًا على $text');
+  String get noCommentsMessage => _s.pick(
+        'Be the first to reply to this Reel.',
+        'كن أول من يرد على هذا الريل.',
+      );
+  String get loadingMore => _s.pick('Loading…', 'جارٍ التحميل…');
+  String get loadMore => _s.pick('Load more', 'عرض المزيد');
+  String get loadMoreFailed => _s.pick(
+        'Could not load more comments.',
+        'تعذّر تحميل المزيد من التعليقات.',
+      );
 
   // Axis 15 §15.16 — feed strategy labels.
   String feedLabel(FeedType type) => switch (type) {
@@ -144,13 +189,13 @@ final class EditCopy {
         'Tag up to 8 characters so fans can find this Reel',
         'وسم حتى 8 شخصيات ليجدها المعجبون',
       );
-  String get audio => _s.pick('Sound track (optional)', 'الصوت (اختياري)');
+  String get audio => _s.pick('Audio (optional)', 'الصوت (اختياري)');
   String get audioHint =>
       _s.pick('Pick audio from the library', 'اختر صوتًا من المكتبة');
   String get audioNone => _s.pick('None selected', 'لم يتم الاختيار');
-  String get audioClear => _s.pick('Remove sound track', 'إزالة الصوت');
+  String get audioClear => _s.pick('Remove audio', 'إزالة الصوت');
   String get audioOffline => _s.pick(
-        'Reconnect to pick a sound track',
+        'Reconnect to pick audio',
         'أعد الاتصال لاختيار صوت',
       );
 

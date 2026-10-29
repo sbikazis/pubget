@@ -1,7 +1,9 @@
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/anime_list_models.dart';
 import 'anime_library_repository.dart';
 
@@ -232,27 +234,24 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success(await action());
+      return Success(await runWithRetry(action, mapError: _fail));
     } on Object catch (error) {
       return FailureResult(_fail(error));
     }
   }
 }
 
+/// Maps a callable error into the shared failure taxonomy.
+///
+/// Delegates the code table to [mapFirebaseFailure] so an `internal`/`aborted`
+/// backend hiccup becomes an `UnavailableError` and a throttle a
+/// `RateLimitedError`. The old blanket mapping turned both into a
+/// `NetworkError` and told the member to check a connection that was fine.
 Failure _fail(Object error) {
-  if (error is FirebaseFunctionsException) {
-    return switch (error.code) {
-      'unauthenticated' || 'permission-denied' => PermissionError(
-        error.message ?? 'Anime lists require a signed-in account.',
-      ),
-      'unavailable' || 'deadline-exceeded' => const NetworkError(
-        'Check your connection and try again.',
-      ),
-      'invalid-argument' => ValidationError(
-        error.message ?? 'That list update is not valid.',
-      ),
-      _ => UnknownError(error.message ?? 'Anime list update failed.'),
-    };
+  if (error is FirebaseFunctionsException && error.code == 'unauthenticated') {
+    return PermissionError(
+      error.message ?? 'Anime lists require a signed-in account.',
+    );
   }
-  return const UnknownError('Anime list update failed.');
+  return mapFirebaseFailure(error, message: 'Anime list update failed.');
 }

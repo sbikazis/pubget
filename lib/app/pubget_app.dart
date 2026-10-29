@@ -11,6 +11,18 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart' as provider;
 
+import '../core/media/default_media_repository.dart';
+import '../core/media/firebase_media_storage_provider.dart';
+import '../core/media/firestore_media_metadata_store.dart';
+import '../core/media/media_compressor.dart';
+import '../core/media/media_kind.dart';
+import '../core/media/media_repository.dart';
+import '../core/media/media_storage_provider.dart';
+import '../core/media/media_upload_service.dart';
+import '../core/media/media_url_uploader.dart';
+import '../core/media/memory_media_storage_provider.dart';
+import '../core/media/r2_media_storage_provider.dart';
+import '../core/media/unavailable_media_repository.dart';
 import '../core/network/network_service.dart';
 import '../core/theme/app_theme.dart';
 import '../features/authentication/auth_route_guard.dart';
@@ -80,6 +92,7 @@ import '../features/anime/repositories/provider_chain_anime_repository.dart';
 import '../features/anime/theme/anime_hub_colors.dart';
 import '../features/anime/providers/anime_character_provider.dart';
 import '../features/anime/screens/anime_browse_page.dart';
+import '../features/anime/screens/anime_cast_page.dart';
 import '../features/anime/screens/anime_character_page.dart';
 import '../features/anime/screens/anime_details_page.dart';
 import '../features/anime/screens/anime_favorite_characters_page.dart';
@@ -260,6 +273,34 @@ class PubgetApp extends StatelessWidget {
           create: (context) =>
               AudioProvider(repository: context.read<AudioRepository>()),
         ),
+        // The unified media layer. Registered outside the positional
+        // repository record for the same reason audio is (above), and behind
+        // a swappable [MediaStorageProvider]: Firebase Storage by default,
+        // the R2 worker only when `MEDIA_BACKEND=r2` and `R2_WORKER_URL` are
+        // both configured at build time.
+        provider.Provider<MediaStorageProvider>(
+          create: (_) => firebaseState.isReady
+              ? _createMediaStorageProvider()
+              : MemoryMediaStorageProvider(),
+        ),
+        provider.Provider<MediaUploadService>(
+          create: (context) => MediaUploadService(
+            provider: context.read<MediaStorageProvider>(),
+            compressor: const ImagePackageMediaCompressor(),
+          ),
+        ),
+        provider.Provider<MediaRepository>(
+          create: (context) => firebaseState.isReady
+              ? DefaultMediaRepository(
+                  uploadService: context.read<MediaUploadService>(),
+                  store: FirestoreMediaMetadataStore(),
+                  provider: context.read<MediaStorageProvider>(),
+                )
+              : UnavailableMediaRepository(
+                  firebaseState.message ??
+                      'Firebase is unavailable in this build.',
+                ),
+        ),
         provider.Provider<PrivateChatRepository>.value(value: repositories.$12),
         provider.Provider<EventRepository>.value(value: repositories.$13),
         provider.Provider<AnimeRepository>(
@@ -267,14 +308,25 @@ class PubgetApp extends StatelessWidget {
             final network = context.read<NetworkService>();
             final chain = ProviderChainAnimeRepository(
               providers: <AnimeRepository>[
+                // Jikan (MyAnimeList) is the canonical source but is frequently
+                // unreachable. It is the primary provider, so it is the one the
+                // hub waits on before falling back: give it a single, short
+                // attempt and open its circuit on a connection failure so a
+                // burst of hub requests does not serialise into a minute of
+                // "loading" — AniList below carries the retries instead.
                 JikanAnimeRepository(
                   http: ResilientAnimeHttpClient(
                     inner: PackageAnimeHttpClient(),
+                    maxRetries: 0,
+                    requestTimeout: const Duration(seconds: 6),
+                    circuitCooldown: const Duration(seconds: 60),
                   ),
                 ),
                 AniListAnimeRepository(
                   http: ResilientAnimeHttpClient(
                     inner: PackageAnimeHttpClient(),
+                    maxRetries: 2,
+                    requestTimeout: const Duration(seconds: 10),
                   ),
                 ),
               ],
@@ -687,6 +739,51 @@ class PubgetApp extends StatelessWidget {
     );
   }
 
+  /// Picks the storage backend for the unified media layer. A missing or
+  /// placeholder `R2_WORKER_URL` degrades to Firebase Storage rather than
+  /// breaking uploads; no secrets are read here (see
+  /// `resolveMediaBackendConfig`).
+  MediaStorageProvider _createMediaStorageProvider() {
+    final config = resolveMediaBackendConfig();
+    switch (config.backend) {
+      case MediaBackend.r2:
+        return R2MediaStorageProvider(
+          workerUrl: config.workerUrl,
+          idTokenProvider: () async =>
+              firebase_auth.FirebaseAuth.instance.currentUser?.getIdToken(),
+        );
+      case MediaBackend.firebase:
+        return FirebaseMediaStorageProvider();
+      case MediaBackend.memory:
+        return MemoryMediaStorageProvider();
+    }
+  }
+
+  /// Builds the shared-media seam for the profile/avatar repositories, but only
+  /// when explicitly opted in at build time. Left off by default so avatar and
+  /// cover uploads keep their proven direct-storage path until the unified
+  /// media rules are deployed and verified in production.
+  ///
+  /// Enable with: `--dart-define=MEDIA_UNIFIED_UPLOADS=true`.
+  MediaUrlUploader? _buildMediaUrlUploader() {
+    const enabled = bool.fromEnvironment(
+      'MEDIA_UNIFIED_UPLOADS',
+      defaultValue: false,
+    );
+    if (!enabled || !firebaseState.isReady) return null;
+    final provider = _createMediaStorageProvider();
+    return RepositoryMediaUrlUploader(
+      repository: DefaultMediaRepository(
+        uploadService: MediaUploadService(
+          provider: provider,
+          compressor: const ImagePackageMediaCompressor(),
+        ),
+        store: FirestoreMediaMetadataStore(),
+        provider: provider,
+      ),
+    );
+  }
+
   (
     AuthRepository,
     UserRepository,
@@ -732,6 +829,7 @@ class PubgetApp extends StatelessWidget {
         UnavailableAchievementRepository(message),
       );
     }
+    final mediaUploader = _buildMediaUrlUploader();
     return (
       FirebaseAuthRepository(
         auth: firebase_auth.FirebaseAuth.instance,
@@ -740,10 +838,12 @@ class PubgetApp extends StatelessWidget {
       FirebaseUserRepository(
         firestore: FirebaseFirestore.instance,
         storage: FirebaseStorage.instance,
+        mediaUploader: mediaUploader,
       ),
       FirebaseProfileRepository(
         firestore: FirebaseFirestore.instance,
         storage: FirebaseStorage.instance,
+        mediaUploader: mediaUploader,
       ),
       FirebaseSocialRepository(
         firestore: FirebaseFirestore.instance,
@@ -1083,11 +1183,13 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         },
         '/events/create': (parameters) {
           final groupId = parameters['groupId'];
-          if (groupId == null || groupId.isEmpty) {
+          final hasGroup = groupId != null && groupId.isNotEmpty;
+          // No explicit audience yet -> let the creator pick one first.
+          if (!hasGroup && parameters['scope'] == null) {
             return CreateEventEntryPage(templateId: parameters['templateId']);
           }
           return EventBuilderPage(
-            groupId: groupId,
+            groupId: hasGroup ? groupId : null,
             templateId: parameters['templateId'],
           );
         },
@@ -1124,6 +1226,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
             const AnimeFavoriteCharactersPage(),
         '/anime/character': (parameters) =>
             AnimeCharacterPage(characterId: parameters['characterId'] ?? ''),
+        '/anime/cast': (parameters) =>
+            AnimeCastPage(animeId: parameters['animeId'] ?? ''),
         '/anime/me': (parameters) => AnimeMyPage(userId: parameters['uid']),
         '/game': (parameters) =>
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),

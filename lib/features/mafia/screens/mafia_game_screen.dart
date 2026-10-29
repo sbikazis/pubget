@@ -6,9 +6,10 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
-import '../../games/models/game_type_registry.dart';
+import '../../games/l10n/game_copy.dart';
 import '../../games/widgets/game_play_panels.dart';
 import '../../games/widgets/game_widgets.dart';
+import '../models/mafia_dynamic_copy.dart';
 import '../models/mafia_leave_copy.dart';
 import '../models/mafia_models.dart';
 import '../providers/mafia_provider.dart';
@@ -76,6 +77,14 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
         game.canLeaveViaServer &&
         state.self != null &&
         !state.self!.hasLeft;
+    final nameOf = <String, String>{
+      for (final player in state.players) player.userId: player.username,
+    };
+    final logLines = state.events
+        .take(8)
+        .map((event) => mafiaLogLine(copy, event, (id) => nameOf[id] ?? id))
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
@@ -99,12 +108,14 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
                 userId: uid,
               ),
         empty: PubgetEmptyState(
-          title: GameStrings.missing,
-          message: GameStrings.missing,
+          title: GameCopy.of(context).missing,
+          message: GameCopy.of(context).missing,
         ),
         error: PubgetErrorState(
           title: copy.mafiaCouldNotLoad,
-          message: state.failure?.message ?? copy.tryLoadingProfileAgain,
+          message: state.failure == null
+              ? copy.tryLoadingProfileAgain
+              : mafiaFailureMessage(copy, state.failure!),
           onRetry: uid == null
               ? null
               : () => context.read<MafiaProvider>().open(
@@ -117,6 +128,20 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
             : ListView(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 children: <Widget>[
+                  if (state.self?.isDisconnected == true) ...<Widget>[
+                    PubgetCard(
+                      child: Row(
+                        children: <Widget>[
+                          const Icon(Icons.wifi_off_outlined),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(GameCopy.of(context).reconnecting),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                  ],
                   _LobbyHeader(game: game),
                   const SizedBox(height: AppSpacing.md),
                   _PlayerStrip(players: state.players, userId: uid),
@@ -131,15 +156,8 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
                     copy.mafiaLog,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  for (final event in state.events.take(8))
-                    ListTile(
-                      dense: true,
-                      title: Text(
-                        event['message'] as String? ??
-                            event['type'] as String? ??
-                            '',
-                      ),
-                    ),
+                  for (final line in logLines)
+                    ListTile(dense: true, title: Text(line)),
                   if (_canChat(game, state.self)) ...<Widget>[
                     PubgetTextField(
                       controller: _chat,
@@ -183,7 +201,8 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
                     for (final line in state.mafiaChat.take(12))
                       Text('${line['senderId']}: ${line['text']}'),
                   ],
-                  if (state.failure != null) Text(state.failure!.message),
+                  if (state.failure != null)
+                    Text(mafiaFailureMessage(copy, state.failure!)),
                 ],
               ),
       ),
@@ -297,13 +316,17 @@ class _PlayerStrip extends StatelessWidget {
           if (private.lastInvestigationResult != null)
             Text(
               copy.mafiaInvestigationResult(
-                private.lastInvestigationResult!['result'] as String? ?? '',
+                copy.mafiaVerdict(
+                  private.lastInvestigationResult!['result'] as String? ?? '',
+                ),
               ),
             ),
           if (private.lastDonInvestigationResult != null)
             Text(
               copy.mafiaDonResult(
-                private.lastDonInvestigationResult!['result'] as String? ?? '',
+                copy.mafiaVerdict(
+                  private.lastDonInvestigationResult!['result'] as String? ?? '',
+                ),
               ),
             ),
           const SizedBox(height: AppSpacing.sm),
@@ -556,7 +579,7 @@ class _Result extends StatelessWidget {
             onPressed: game.groupId.isEmpty
                 ? null
                 : () => GameLinks.openCreate(context, groupId: game.groupId),
-            semanticLabel: GameStrings.playAgain,
+            semanticLabel: GameCopy.of(context).playAgain,
             child: Text(copy.mafiaPlayAgain),
           ),
         ],

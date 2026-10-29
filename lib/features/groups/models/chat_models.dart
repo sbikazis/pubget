@@ -446,12 +446,6 @@ final class ChatGameActivity {
   bool get isStarted =>
       status == 'started' || status == 'live' || kind == 'started';
   bool get isCancelled => kind == 'cancelled' || status == 'cancelled';
-  String get actionLabel {
-    if (isCancelled) return 'Closed';
-    if (isStarted) return 'View';
-    if (isFull) return 'Full';
-    return isCreated ? 'Join' : 'View result';
-  }
 
   static ChatGameActivity? tryParse(dynamic raw) {
     if (raw is! Map) return null;

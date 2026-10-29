@@ -24,15 +24,34 @@ Failure discoveryFailureFrom(Object error) {
 String discoveryFailureMessage(AppStrings copy, Failure failure) {
   if (failure is NetworkError) return copy.discoveryOffline;
   if (failure is PermissionError) return copy.discoverySignInRequired;
+  if (failure is RateLimitedError) return copy.discoveryRateLimited;
   return copy.discoveryUnavailable;
 }
 
+/// Maps a callable/discovery error code to the honest failure kind.
+///
+/// Only a genuine connectivity problem (`unavailable`/`deadline-exceeded`
+/// beyond the retry budget) becomes a [NetworkError] and earns the "check your
+/// connection" copy. A backend hiccup (`internal`, `aborted`, `data-loss`) is
+/// an [UnavailableError] and a throttle (`resource-exhausted`) a
+/// [RateLimitedError]: both are real, but neither is the member's connection,
+/// so telling them to check it was the false offline banner this fixes.
 Failure discoveryFailureFromCode(String code) {
   return switch (code) {
     'unavailable' || 'deadline-exceeded' => const NetworkError(),
     'unauthenticated' => const PermissionError(),
-    'permission-denied' => const UnknownError(),
-    'failed-precondition' => const UnknownError(),
+    // Backend hiccups are real and transient, but they are not the member's
+    // connection. They keep the generic copy instead of a false offline banner.
+    'internal' ||
+    'unknown' ||
+    'aborted' ||
+    'data-loss' => const UnavailableError(),
+    'resource-exhausted' ||
+    'quota-exceeded' ||
+    'too-many-requests' => const RateLimitedError(),
+    // A rules/IAM/App Check denial is not an entitlement check either; keep the
+    // generic copy rather than claiming the account lacks access.
+    'permission-denied' || 'failed-precondition' => const UnknownError(),
     _ => const UnknownError(),
   };
 }

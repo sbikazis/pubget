@@ -53,7 +53,25 @@ const { createAchievementsDomain } = require("./src/achievementsDomain");
 const { createHomeSections } = require("./src/homeSectionsDomain");
 const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
 
-initializeApp();
+// The project's Storage bucket is the modern `{project}.firebasestorage.app`
+// (a `{project}.appspot.com` bucket does not exist for it). Do not rely on the
+// Admin default, which resolves through FIREBASE_CONFIG and has been seen to
+// point at the legacy `appspot.com` name — every `getStorage().bucket()` call
+// below would then address a bucket that does not exist.
+const STORAGE_BUCKET =
+  process.env.STORAGE_BUCKET ||
+  `${process.env.GCLOUD_PROJECT || "pubget-aaf27"}.firebasestorage.app`;
+
+initializeApp({ storageBucket: STORAGE_BUCKET });
+
+// Lazy admin clients (see src/lazyAdmin.js): the Functions deploy
+// discovery process loads this module and gives it a 10s window to
+// start, so cloud-resource clients must initialize on first use, not
+// at module load.
+const {
+  firestore: lazyFirestore,
+  storageBucket: lazyStorageBucket,
+} = require("./src/lazyAdmin");
 
 // Load Mafia actions after Admin initialization because the action domain
 // obtains its Firestore handle at module load time.
@@ -61,18 +79,18 @@ const mafiaActions = require("./src/mafia/actionDomain");
 exports.syncAvatarPrivacy = onDocumentWritten(
   "users/{uid}",
   createAvatarPrivacySync({
-    db: getFirestore(),
-    bucket: getStorage().bucket(),
+    db: lazyFirestore,
+    bucket: lazyStorageBucket,
     randomUUID,
   }),
 );
 const userNameCallables = createUserNameCallables({
-  db: getFirestore(),
+  db: lazyFirestore,
   HttpsError,
 });
 exports.syncUsernameReservation = onDocumentWritten(
   "users/{uid}",
-  createUsernameReconciliationTrigger({ db: getFirestore() }),
+  createUsernameReconciliationTrigger({ db: lazyFirestore }),
 );
 
 exports.checkUsernameAvailable = onCall(
@@ -87,8 +105,8 @@ exports.reserveUsername = onCall(
 exports.updateSocialProfile = onCall(
   { region: "us-central1" },
   createUpdateSocialProfile({
-    db: getFirestore(),
-    bucket: getStorage().bucket(),
+    db: lazyFirestore,
+    bucket: lazyStorageBucket,
     randomUUID,
     HttpsError,
     userNameRegistry: userNameCallables.registry,
@@ -117,38 +135,38 @@ exports.syncPublicProfile = onDocumentWritten("users/{uid}", async (event) => {
 });
 
 const privateChat = createPrivateChat({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
 });
 const notificationBuilder = createNotificationBuilder({
-  db: getFirestore(),
+  db: lazyFirestore,
   messaging: getMessaging(),
   FieldValue,
 });
 const economyDomain = createEconomyDomain({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
   notificationBuilder,
 });
 const achievementsDomain = createAchievementsDomain({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
   economy: economyDomain,
   notificationBuilder,
 });
 const groupChat = createGroupChat({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
-  bucket: getStorage().bucket(),
+  bucket: lazyStorageBucket,
   randomUUID,
   achievements: achievementsDomain,
 });
 const socialGraph = createSocialGraph({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
   achievements: achievementsDomain,
@@ -156,9 +174,9 @@ const socialGraph = createSocialGraph({
 // Canonical Anime/Character repository (Master Spec 16.2). Games validate every
 // submitted ID through it, and the roleplay group pickers read it, so no engine
 // and no picker ever decides from a local table.
-const animeCatalog = createAnimeCatalogDomain({ db: getFirestore() });
+const animeCatalog = createAnimeCatalogDomain({ db: lazyFirestore });
 const groupsDomain = createGroupsDomain({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
   randomUUID,
@@ -166,7 +184,7 @@ const groupsDomain = createGroupsDomain({
   catalog: animeCatalog,
 });
 const eventsDomain = createEventsDomain({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
   notificationBuilder,
@@ -176,7 +194,7 @@ const eventsDomain = createEventsDomain({
 // Canonical Anime/Character repository (Master Spec 16.2). Games validate every
 // submitted ID through it, so no engine ever decides from a local table.
 const gamesDomain = createGamesDomain({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
   notificationBuilder,
@@ -185,7 +203,7 @@ const gamesDomain = createGamesDomain({
   catalog: animeCatalog,
 });
 const mafiaDomain = createMafiaDomain({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   Timestamp,
   HttpsError,
@@ -195,61 +213,61 @@ const mafiaDomain = createMafiaDomain({
 // scoped capability. It is created once and injected into the domain so the
 // callables never touch the bucket directly.
 const fanWorksSigner = createFanWorksSigner({
-  bucket: getStorage().bucket(),
+  bucket: lazyStorageBucket,
   HttpsError,
 });
 const fanWorksDomain = createFanWorksDomain({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
   notificationBuilder,
-  storage: getStorage().bucket(),
+  storage: lazyStorageBucket,
   signer: fanWorksSigner,
   economy: economyDomain,
   achievements: achievementsDomain,
 });
 const notificationCallables = createNotificationCallables({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
 });
 const notificationTriggers = createNotificationTriggers({
-  db: getFirestore(),
+  db: lazyFirestore,
   builder: notificationBuilder,
 });
 const discoveryScheduler = createDiscoveryScheduler({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
 });
 const recommendationEngine = createRecommendationEngine({
-  db: getFirestore(),
+  db: lazyFirestore,
   HttpsError,
 });
 const animeListsDomain = createAnimeListsDomain({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
 });
 const animeHubDomain = createAnimeHubDomain({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
 });
 const processEditVideo = createEditPipeline({
-  db: getFirestore(),
-  bucket: getStorage().bucket(),
+  db: lazyFirestore,
+  bucket: lazyStorageBucket,
   economy: economyDomain,
   achievements: achievementsDomain,
   notifications: notificationBuilder,
   FieldValue,
 });
 const editsDomain = createEditsDomain({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
   achievements: achievementsDomain,
   processEdit: processEditVideo,
-  bucket: getStorage().bucket(),
+  bucket: lazyStorageBucket,
 });
 
 exports.refreshGroupActivityScores = onSchedule(
@@ -265,7 +283,7 @@ exports.getDiscoveryFeed = onCall(
 // rising creators, freshest content). Each returns only real signals: an empty
 // list is the correct answer when there is no signal, never filler.
 const homeSectionsDomain = createHomeSections({
-  db: getFirestore(),
+  db: lazyFirestore,
   HttpsError,
 });
 exports.getHomeSections = onCall(
@@ -335,6 +353,14 @@ exports.deleteAnimeRating = onCall(
 exports.reportAnimeReview = onCall(
   { region: "us-central1" },
   animeHubDomain.reportAnimeReview,
+);
+exports.reportAnime = onCall(
+  { region: "us-central1" },
+  animeHubDomain.reportAnime,
+);
+exports.getAnimeCommunityStats = onCall(
+  { region: "us-central1" },
+  animeHubDomain.getAnimeCommunityStats,
 );
 exports.postCharacterDiscussion = onCall(
   { region: "us-central1" },
@@ -415,8 +441,8 @@ exports.finalizeEditUpload = onCall(
 // The domain is built on the same collection the Edit domain uses, so audio
 // attaches to real Reels instead of an empty parallel `reels` collection.
 const audioDomain = createAudioDomain({
-  db: getFirestore(),
-  bucket: getStorage().bucket(),
+  db: lazyFirestore,
+  bucket: lazyStorageBucket,
   FieldValue,
   HttpsError,
   reelCollection: "edits",
@@ -614,6 +640,18 @@ exports.addEventComment = onCall(
 exports.reactToEvent = onCall(
   { region: "us-central1" },
   eventsDomain.reactToEvent,
+);
+exports.crosspostEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.crosspostEvent,
+);
+exports.getEventCreationQuota = onCall(
+  { region: "us-central1" },
+  eventsDomain.getEventCreationQuota,
+);
+exports.reportEvent = onCall(
+  { region: "us-central1" },
+  eventsDomain.reportEvent,
 );
 exports.createGame = onCall(
   { region: "us-central1" },
@@ -830,8 +868,8 @@ exports.processEventLifecycle = onSchedule(
 exports.processGroupChatMedia = onObjectFinalized(
   { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
   createGroupMediaPipeline({
-    db: getFirestore(),
-    bucket: getStorage().bucket(),
+    db: lazyFirestore,
+    bucket: lazyStorageBucket,
     randomUUID,
   }),
 );

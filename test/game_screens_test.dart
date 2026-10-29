@@ -12,6 +12,7 @@ import 'package:pubget/features/games/providers/game_providers.dart';
 import 'package:pubget/features/games/repositories/game_repository.dart';
 import 'package:pubget/features/games/screens/game_details_screen.dart';
 import 'package:pubget/features/games/screens/game_list_screen.dart';
+import 'package:pubget/features/games/widgets/game_widgets.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
 import 'package:pubget/features/groups/repositories/group_repository.dart';
@@ -47,7 +48,7 @@ void main() {
     expect(find.text('Guess the Character'), findsOneWidget);
     await _scrollTo(tester, find.text('Mafia'));
 
-    await tester.tap(find.text('Live'));
+    await tester.tap(find.text('Active'));
     await tester.pumpAndSettle();
     expect(find.text(GameStrings.noGamesTitle), findsWidgets);
   });
@@ -109,6 +110,87 @@ void main() {
 
     expect(find.text(GameStrings.missing), findsWidgets);
     expect(find.byType(PubgetEmptyState), findsOneWidget);
+  });
+
+  testWidgets('game center exposes the six sections from Spec 12.1', (
+    tester,
+  ) async {
+    final auth = await _auth();
+    final repository = _FakeGameRepository();
+    final list = GameListProvider(repository: repository);
+    addTearDown(list.dispose);
+    addTearDown(auth.dispose);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<GameListProvider>.value(value: list),
+          ChangeNotifierProvider<GroupProvider>(
+            create: (_) => GroupProvider(repository: _FakeGroupRepository()),
+          ),
+        ],
+        child: const MaterialApp(home: GameListScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final label in const <String>[
+      'Available',
+      'Active',
+      'Waiting',
+      'Recent',
+      'History',
+      'Rules',
+    ]) {
+      expect(find.text(label), findsOneWidget);
+    }
+  });
+
+  testWidgets('available games create only when the screen came from a chat', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AvailableGamesSection(groupId: 'g1', canCreate: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Only members can create a game'), findsOneWidget);
+    expect(find.textContaining('Create game'), findsNothing);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AvailableGamesSection(groupId: 'g1', canCreate: true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Create game'), findsWidgets);
+  });
+
+  testWidgets('waiting room countdown follows the server deadline', (
+    tester,
+  ) async {
+    final deadline = DateTime.now().add(const Duration(minutes: 8));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: WaitingRoomCountdown(deadline: deadline)),
+      ),
+    );
+    // A ticking widget never settles, so advance frames by hand.
+    await tester.pump(const Duration(seconds: 1));
+    expect(
+      find.textContaining(
+        RegExp(r'^Waiting room closes in \d+:\d{2}$'),
+      ),
+      findsOneWidget,
+    );
+    // Do not leave a pending timer behind for the test framework.
+    await tester.pumpWidget(const SizedBox());
   });
 }
 

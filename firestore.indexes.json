@@ -414,6 +414,28 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "groupIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "creatorId",
           "order": "ASCENDING"
         },
@@ -556,6 +578,28 @@
         {
           "fieldPath": "__name__",
           "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "groupIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
         }
       ]
     },
@@ -918,6 +962,32 @@
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "animeTag",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "searchName",
           "order": "ASCENDING"
         },
@@ -1262,12 +1332,159 @@
           "arrayConfig": "NONE"
         }
       ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "characterIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "animeTag",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
     {
       "collectionGroup": "members",
       "fieldPath": "uid",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "viewers",
+      "fieldPath": "viewerId",
       "indexes": [
         {
           "order": "ASCENDING",

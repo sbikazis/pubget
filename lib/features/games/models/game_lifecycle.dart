@@ -49,8 +49,10 @@ abstract final class GameValidation {
     if (draft.configuration.maxPlayers < draft.configuration.minPlayers) {
       return 'maxPlayers must be greater than or equal to minPlayers.';
     }
-    if (draft.type == GameType.mafia && draft.configuration.minPlayers < 4) {
-      return 'Mafia requires at least 4 players.';
+    // Master Spec 13.2: Mafia needs 7-15 players. This mirrored 4, which
+    // matched no spec and gave the owner a start button the server would reject.
+    if (draft.type == GameType.mafia && draft.configuration.minPlayers < 7) {
+      return 'Mafia requires at least 7 players.';
     }
     return null;
   }

@@ -144,7 +144,7 @@ abstract final class AchievementCatalog {
         AchievementConditionProgress(
           id: 'works_10',
           labelEn: '10 published Reels + Fan Works',
-          labelAr: '10 أعمال منشورة (الريلز + أعمال المعجبين)',
+          labelAr: '10 أعمال منشورة (ريلز + أعمال المعجبين)',
           current: 0,
           target: 10,
           met: false,

@@ -137,6 +137,9 @@ final class _FlakyRepository implements AnimeRepository {
       _missing();
 
   @override
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId) => _missing();
+
+  @override
   Future<Result<AnimeCharacter>> getCharacterDetails(String characterId) =>
       _missing();
 

@@ -81,7 +81,15 @@ class _AudioDetailPageState extends State<AudioDetailPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.chevron_left, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+          // A deep link can open this page as the root of the stack; popping
+          // then would close the app instead of returning the user somewhere.
+          onPressed: () {
+            if (AppNavigation.canPop(context)) {
+              Navigator.of(context).maybePop();
+            } else {
+              AppNavigation.go(context, '/home');
+            }
+          },
         ),
         actions: [
           IconButton(
@@ -131,7 +139,10 @@ class _AudioDetailPageState extends State<AudioDetailPage> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'by ${_creatorName ?? audio.creatorId} · ${audio.durationFormatted}',
+                              copy.pick(
+                                'by ${_creatorName ?? audio.creatorId} · ${audio.durationFormatted}',
+                                'بواسطة ${_creatorName ?? audio.creatorId} · ${audio.durationFormatted}',
+                              ),
                               style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
                             ),
                           ],
@@ -166,7 +177,10 @@ class _AudioDetailPageState extends State<AudioDetailPage> {
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   Text(
-                    '${audio.usageCount} Reels',
+                    copy.pick(
+                      '${audio.usageCount} Reels',
+                      '${audio.usageCount} ${copy.productReelsName}',
+                    ),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white),
                   ),
                   const SizedBox(height: AppSpacing.md),

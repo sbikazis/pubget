@@ -8,10 +8,8 @@ import 'package:pubget/features/home/screens/home_page.dart';
 ///
 ///   logo ← coins (+) ← dragon store ← search ← notifications ← profile ← ☰
 ///
-/// The previous version of this test asserted the opposite (a centred logo,
-/// coins on a second strip below it, and a settings button). That encoded the
-/// defect the audit found: the bar was forced LTR, had no search or store
-/// button, and coins were not part of the bar.
+/// The bar is directional: the same source order reads right-to-left in Arabic
+/// and mirrors left-to-right in English. It is never forced LTR.
 void main() {
   Future<void> pumpBar(
     WidgetTester tester, {
@@ -105,7 +103,7 @@ void main() {
     // rather than sitting on a second strip underneath it.
     expect(coins.center.dy, closeTo(notify.center.dy, 4));
 
-    // The bar adds no extra height for a coin strip any more.
+    // The bar adds no extra height for a coin strip.
     final bar = tester.widget<HomeTopBar>(find.byType(HomeTopBar));
     expect(bar.preferredSize.height, HomeTopBar.barHeight);
   }

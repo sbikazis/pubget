@@ -85,7 +85,7 @@ class _AchievementsPageState extends State<AchievementsPage> {
     final visible = _progressMode ? state.items : unlocked;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0714),
+      backgroundColor: AppColors.royalNight,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         leading: AppBackButton.maybeOf(context),
@@ -227,7 +227,7 @@ class _AchievementCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: <Color>[
             AppColors.royalPurple.withValues(alpha: highlighted ? 0.55 : 0.32),
-            const Color(0xFF160B24),
+            AppColors.royalViolet,
           ],
         ),
         border: Border.all(
@@ -257,14 +257,14 @@ class _AchievementCard extends StatelessWidget {
                       Text(
                         item.definition.name(arabic),
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              color: Colors.white,
+                              color: AppColors.darkText,
                               fontWeight: FontWeight.w800,
                             ),
                       ),
                       Text(
                         item.definition.name(!arabic),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.white70,
+                              color: AppColors.darkTextMuted,
                             ),
                       ),
                       const SizedBox(height: AppSpacing.sm),
@@ -309,7 +309,7 @@ class _AchievementCard extends StatelessWidget {
                   ? item.definition.meaning(arabic)
                   : item.definition.description(arabic),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.white,
+                    color: AppColors.darkText,
                     height: 1.35,
                   ),
             ),
@@ -372,14 +372,14 @@ class _ConditionRow extends StatelessWidget {
             Icon(
               met ? Icons.check_circle : Icons.radio_button_unchecked,
               size: 18,
-              color: met ? Colors.lightGreenAccent : Colors.white54,
+              color: met ? AppColors.success : AppColors.darkOutline,
             ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
                 condition.label(arabic),
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white,
+                      color: AppColors.darkText,
                     ),
               ),
             ),
@@ -387,7 +387,7 @@ class _ConditionRow extends StatelessWidget {
               Text(
                 '${_trim(current)}/${_trim(target)}',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: Colors.white70,
+                      color: AppColors.darkTextMuted,
                     ),
               ),
           ],
@@ -399,8 +399,8 @@ class _ConditionRow extends StatelessWidget {
             child: LinearProgressIndicator(
               value: ratio,
               minHeight: 7,
-              backgroundColor: Colors.white12,
-              color: met ? Colors.lightGreenAccent : AppColors.gold,
+              backgroundColor: AppColors.darkSurfaceStrong,
+              color: met ? AppColors.success : AppColors.gold,
             ),
           ),
         ],

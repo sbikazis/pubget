@@ -29,6 +29,21 @@ enum EditStatus {
 /// each strategy; the client only declares which one it is asking for.
 enum FeedType { forYou, following, trending }
 
+/// Axis 15 §15.18 — report categories. These ids are the contract with the
+/// server's `REPORT_CATEGORIES` set; the server rejects anything else, so the
+/// client never sends a free-form reason. Labels live in [EditCopy].
+const List<String> editReportCategories = <String>[
+  'spam',
+  'harassment',
+  'hate',
+  'sexual',
+  'violence',
+  'copyright',
+  'self_harm',
+  'misleading',
+  'other',
+];
+
 final class EditCounters {
   const EditCounters({
     this.likes = 0,

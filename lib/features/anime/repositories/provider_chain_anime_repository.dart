@@ -77,6 +77,10 @@ final class ProviderChainAnimeRepository implements AnimeRepository {
       _run((provider) => provider.getCharacters(animeId));
 
   @override
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId) =>
+      _run((provider) => provider.getStaff(animeId));
+
+  @override
   Future<Result<List<Anime>>> getAnimeSummaries(
     List<String> ids, {
     int chunkSize = 100,

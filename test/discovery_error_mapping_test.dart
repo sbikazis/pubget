@@ -41,13 +41,44 @@ void main() {
     expect(_arabicCopy(failure), contains('اتصالك'));
   });
 
-  test('an unmapped code still produces a localized, non-entitlement message', () {
-    final failure = discoveryFailureFromCode('something-new');
-    expect(failure, isA<UnknownError>());
-    expect(_copy(failure), isNotEmpty);
-    expect(_arabicCopy(failure), isNotEmpty);
-    expect(_arabicCopy(failure), isNot(contains('Sign in')));
+  test('backend hiccups are not dressed up as a connection problem', () {
+    for (final code in <String>[
+      'internal',
+      'aborted',
+      'data-loss',
+      'unknown',
+    ]) {
+      final failure = discoveryFailureFromCode(code);
+      expect(
+        failure,
+        isA<UnavailableError>(),
+        reason: '$code is a backend fault, not the member losing connectivity',
+      );
+      // The whole point of the fix: no false "check your connection" banner.
+      expect(_copy(failure), isNot(contains('connection')));
+      expect(_arabicCopy(failure), isNot(contains('اتصالك')));
+      expect(_copy(failure), isNotEmpty);
+    }
   });
+
+  test('a throttle is a rate limit, not a connection problem', () {
+    final failure = discoveryFailureFromCode('resource-exhausted');
+    expect(failure, isA<RateLimitedError>());
+    expect(_copy(failure), contains('Too many requests'));
+    expect(_arabicCopy(failure), contains('طلبات كثيرة'));
+    expect(_copy(failure), isNot(contains('connection')));
+  });
+
+  test(
+    'an unmapped code still produces a localized, non-entitlement message',
+    () {
+      final failure = discoveryFailureFromCode('something-new');
+      expect(failure, isA<UnknownError>());
+      expect(_copy(failure), isNotEmpty);
+      expect(_arabicCopy(failure), isNotEmpty);
+      expect(_arabicCopy(failure), isNot(contains('Sign in')));
+    },
+  );
 
   test('discovery failure copy is localized rather than hardcoded English', () {
     // The same failure must produce different copy per locale.
@@ -55,43 +86,55 @@ void main() {
     expect(_copy(failure), isNot(_arabicCopy(failure)));
   });
 
-  test('rankedOrFallback uses Firestore data when the callable fails', () async {
-    final result = await rankedOrFallback(
-      ranked: Future<Result<List<PublicProfile>>>.value(
-        const FailureResult(
-          PermissionError('Discovery is not available for this account.'),
+  test(
+    'rankedOrFallback uses Firestore data when the callable fails',
+    () async {
+      final result = await rankedOrFallback(
+        ranked: Future<Result<List<PublicProfile>>>.value(
+          const FailureResult(
+            PermissionError('Discovery is not available for this account.'),
+          ),
         ),
-      ),
-      fallback: () async => const Success(<PublicProfile>[
-        PublicProfile(uid: 'noon', username: 'noon'),
-      ]),
-    );
-    expect(result.isSuccess, isTrue);
-    expect(result.valueOrNull, hasLength(1));
-    expect(result.valueOrNull!.single.username, 'noon');
-  });
+        fallback: () async => const Success(<PublicProfile>[
+          PublicProfile(uid: 'noon', username: 'noon'),
+        ]),
+      );
+      expect(result.isSuccess, isTrue);
+      expect(result.valueOrNull, hasLength(1));
+      expect(result.valueOrNull!.single.username, 'noon');
+    },
+  );
 
-  test('Home loads people when ranking fails but fallback content exists', () async {
-    final provider = HomeProvider(repository: _CallableDownFirestoreUpRepository());
-    addTearDown(provider.dispose);
-    provider.load('alice');
-    provider.ensureLoaded(HomeSectionKind.recommendedPeople);
-    await Future<void>.delayed(Duration.zero);
-    await Future<void>.delayed(Duration.zero);
+  test(
+    'Home loads people when ranking fails but fallback content exists',
+    () async {
+      final provider = HomeProvider(
+        repository: _CallableDownFirestoreUpRepository(),
+      );
+      addTearDown(provider.dispose);
+      provider.load('alice');
+      provider.ensureLoaded(HomeSectionKind.recommendedPeople);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
-    expect(
-      provider.section(HomeSectionKind.recommendedPeople).state,
-      LoadingState.loaded,
-    );
-    expect(
-      provider.section(HomeSectionKind.recommendedPeople).people.single.username,
-      'noon',
-    );
-    expect(
-      provider.section(HomeSectionKind.promotedGroups).groups.single.id,
-      'promo-1',
-    );
-  });
+      expect(
+        provider.section(HomeSectionKind.recommendedPeople).state,
+        LoadingState.loaded,
+      );
+      expect(
+        provider
+            .section(HomeSectionKind.recommendedPeople)
+            .people
+            .single
+            .username,
+        'noon',
+      );
+      expect(
+        provider.section(HomeSectionKind.promotedGroups).groups.single.id,
+        'promo-1',
+      );
+    },
+  );
 }
 
 /// English copy for a failure, as the UI would render it.

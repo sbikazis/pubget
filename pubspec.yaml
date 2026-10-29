@@ -1,5 +1,5 @@
 name: pubget
-description: "A new Flutter project."
+description: "Pubget — a bilingual (Arabic/English) anime community app built on Firebase."
 publish_to: 'none'
 
 version: 1.0.2+18
@@ -38,6 +38,10 @@ dependencies:
   youtube_player_flutter: ^9.1.3
   pdfrx: ^2.1.5
   file_selector: ^1.0.4
+  # Pure-Dart image decode/encode for the media layer's compression step.
+  # Already in pubspec.lock as a transitive dependency (4.10.1), so promoting
+  # it adds no new package to the build.
+  image: 4.10.1
 
 dev_dependencies:
   flutter_test:
@@ -48,6 +52,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/pubget_torii.png
+    - assets/branding/pubget_torii_mark.png
     - assets/branding/pubget_settings.png
     - assets/branding/pubget_coin.png
     - assets/chat/pubget_default_wallpaper.png

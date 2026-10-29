@@ -3,7 +3,9 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/anime_list_models.dart';
 import '../models/anime_rating_models.dart';
 import 'anime_hub_social_repository.dart';
@@ -118,6 +120,19 @@ final class FirebaseAnimeHubSocialRepository
   });
 
   @override
+  Future<Result<void>> reportAnime({
+    required String animeId,
+    required String reason,
+    String details = '',
+  }) => _guard(() async {
+    await _functions.httpsCallable('reportAnime').call(<String, dynamic>{
+      'animeId': animeId,
+      'category': reason,
+      'detail': details,
+    });
+  });
+
+  @override
   Future<Result<List<AnimeCommunityStats>>> listTopRated({int limit = 40}) =>
       _guard(() async {
         final snap = await _firestore
@@ -145,6 +160,29 @@ final class FirebaseAnimeHubSocialRepository
             .where((item) => item.listedCount > 0)
             .toList(growable: false);
       });
+
+  @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) => _guard(() async {
+    final ids = {
+      for (final raw in animeIds)
+        if (raw.trim().isNotEmpty) raw.trim(),
+    }.toList(growable: false);
+    if (ids.isEmpty) return const <AnimeCommunityStats>[];
+    final result = await _functions
+        .httpsCallable('getAnimeCommunityStats')
+        .call(<String, dynamic>{'animeIds': ids});
+    final data = Map<String, dynamic>.from(result.data as Map);
+    final raw = data['stats'] as Map? ?? const <String, dynamic>{};
+    return <AnimeCommunityStats>[
+      for (final entry in raw.entries)
+        AnimeCommunityStats.fromMap(
+          Map<String, dynamic>.from(entry.value as Map),
+          id: entry.key,
+        ),
+    ];
+  });
 
   @override
   Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({
@@ -294,7 +332,9 @@ final class FirebaseAnimeHubSocialRepository
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success(await action());
+      return Success(
+        await runWithRetry(action, mapError: _fail),
+      );
     } on Object catch (error) {
       return FailureResult(_fail(error));
     }
@@ -316,8 +356,8 @@ Failure _fail(Object error) {
       'invalid-argument' => ValidationError(
         error.message ?? 'That rating is not valid.',
       ),
-      _ => UnknownError(error.message ?? 'Anime rating update failed.'),
+      _ => mapFirebaseFailure(error, message: 'Anime rating update failed.'),
     };
   }
-  return const UnknownError('Anime rating update failed.');
+  return mapFirebaseFailure(error, message: 'Anime rating update failed.');
 }
