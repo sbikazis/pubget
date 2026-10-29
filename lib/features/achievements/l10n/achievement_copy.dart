@@ -31,8 +31,8 @@ final class AchievementCopy {
   String get unlockedEmptyTitle =>
       _s.pick('No achievements yet', 'لا إنجازات بعد');
   String get unlockedEmptyBody => _s.pick(
-        'Join a group, send a message, or publish an Edit to cross The Threshold.',
-        'انضم لمجموعة أو أرسل رسالة أو انشر Edit لعبور العتبة.',
+        'Join a group, send a message, or publish a Reel to cross The Threshold.',
+        'انضم لمجموعة أو أرسل رسالة أو انشر ريل لعبور العتبة.',
       );
   String get loadFailed =>
       _s.pick('Achievements could not load.', 'تعذّر تحميل الإنجازات.');

@@ -294,7 +294,7 @@ function createEditsDomain({
         coverFrameMs < 0 || coverFrameMs > 60000) {
       throw new HttpsError("invalid-argument", "Caption or anime tag is invalid.");
     }
-    // An Edit must never point at an audio that does not exist or is not
+    // An Reel must never point at an audio that does not exist or is not
     // playable. Checking here — before any byte is uploaded — turns a silent
     // dead-video bug into a fast, actionable failure.
     if (audioId) {
@@ -498,7 +498,7 @@ function createEditsDomain({
     if (!snap.exists) return { ok: true };
     const data = snap.data() || {};
     if (data.creatorId !== creatorId) {
-      throw new HttpsError("permission-denied", "Only the creator can delete this edit.");
+      throw new HttpsError("permission-denied", "Only the creator can delete this Reel.");
     }
     if (data.status === "deleted") return { ok: true, alreadyDeleted: true };
 
@@ -1476,7 +1476,7 @@ function createEditsDomain({
     if (data.creatorId !== creatorId) {
       throw new HttpsError("permission-denied", "Only the creator can retry this Reel.");
     }
-    // Allow stuck "processing" retries — never leave an Edit permanently dead.
+    // Allow stuck "processing" retries — never leave a Reel permanently dead.
     if (!["failed", "rejected", "uploading", "processing", "needs_review"].includes(data.status)) {
       throw new HttpsError("failed-precondition", "This Reel is not waiting for a retry.");
     }
