@@ -5,6 +5,14 @@ service cloud.firestore {
     // opt-in custom claim; do not use a writable Firestore role as an admin bit.
     function signedIn() { return request.auth != null; }
     function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+    // Phase 10 (axis 23) — platform staff. `moderator` is a custom claim set
+    // only by the `setModeratorRole` callable through the Admin SDK. It is never
+    // derived from a Firestore document, because a client can write documents
+    // and cannot write claims.
+    function isModerator() {
+      return signedIn() &&
+        (request.auth.token.admin == true || request.auth.token.moderator == true);
+    }
     function self(uid) { return signedIn() && request.auth.uid == uid; }
     function changedOnly(keys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
@@ -627,7 +635,7 @@ service cloud.firestore {
         allow read: if signedIn();
         allow write: if false;
         match /reports/{reportId} {
-          allow read: if isAdmin();
+          allow read: if isAdmin() || isModerator();
           allow create: if signedIn() &&
             request.auth.uid == request.resource.data.reporterId &&
             reportId == request.auth.uid;
@@ -646,7 +654,7 @@ service cloud.firestore {
     // Anime reports: one document per reporter per anime, written only by the
     // server-side callable; clients may read their own reports.
     match /anime_reports/{animeId}/reports/{reporterId} {
-      allow read: if isAdmin() || self(reporterId);
+      allow read: if isAdmin() || isModerator() || self(reporterId);
       allow write: if false;
     }
     match /animeReportRate/{actor} {
@@ -688,6 +696,19 @@ service cloud.firestore {
       // This is a server-maintained projection of users/{uid}. Allowing a
       // client write would let callers forge badges and social counters.
       allow create, update, delete: if false;
+    }
+
+    // Phase 10 (axis 23) — the flat moderation queue and its audit trail.
+    // Server-owned in both directions: no client may read another user's
+    // reports, forge a case, or erase the record of a takedown. Staff read
+    // through claims only.
+    match /moderation_cases/{caseId} {
+      allow read: if isModerator();
+      allow write: if false;
+    }
+    match /moderation_audit/{entryId} {
+      allow read: if isModerator();
+      allow write: if false;
     }
 
     match /usernames/{username} {
@@ -844,8 +865,9 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
       match /messageReports/{reportId} {
+        // Phase 10 — staff need to read the report they are acting on.
         allow read: if signedIn() &&
-          resource.data.reporterId == request.auth.uid;
+          (isModerator() || resource.data.reporterId == request.auth.uid);
         allow create, update, delete: if false;
       }
       match /transferConfirmations/{uid} {
@@ -1063,7 +1085,7 @@ service cloud.firestore {
       // (any signed-in user could write an arbitrary category and flood the
       // queue), so the reporter keeps read access but no write access.
       match /reports/{uid} {
-        allow read: if isAdmin() || self(uid);
+        allow read: if isAdmin() || isModerator() || self(uid);
         allow write: if false;
       }
       match /comments/{commentId} {
@@ -1082,7 +1104,7 @@ service cloud.firestore {
         match /likes/{uid} { allow read: if self(uid); allow write: if false; }
         // Comment reports are written only by the `editCommentAction` callable.
         match /reports/{uid} {
-          allow read: if isAdmin() || self(uid);
+          allow read: if isAdmin() || isModerator() || self(uid);
           allow write: if false;
         }
       }
@@ -1182,7 +1204,8 @@ service cloud.firestore {
       }
       match /reports/{reportId} {
         allow read: if signedIn() && fanWorkExists() &&
-          (fanWorkData().creatorId == request.auth.uid ||
+          (isModerator() ||
+           fanWorkData().creatorId == request.auth.uid ||
            resource.data.reporterId == request.auth.uid);
         allow create, update, delete: if false;
       }

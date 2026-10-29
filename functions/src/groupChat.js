@@ -22,6 +22,8 @@ const STICKER_CATALOG = Object.freeze({
   "pubget/spark": { category: "pubget", name: "Spark" },
   "pubget/moon": { category: "pubget", name: "Moon" },
 });
+const { enqueueModerationCase } = require("./moderationQueue");
+
 const REPORT_REASONS = Object.freeze([
   "inappropriate", "spam", "copyright", "harassment", "other",
 ]);
@@ -781,6 +783,22 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
         createdAt: FieldValue.serverTimestamp(),
       });
     });
+
+    // Phase 10 — the group report used to end here, readable only by its
+    // reporter and an admin client. Queue it for real triage.
+    await enqueueModerationCase({
+      db,
+      FieldValue,
+      type: "groupMessage",
+      targetId: messageId,
+      targetParentId: groupId,
+      reporterId,
+      creatorId: message.data().senderId || null,
+      reason,
+      details: details || null,
+      sourcePath: `groups/${groupId}/messageReports/${reportId}`,
+    });
+
     return { ok: true, reportId };
   }
 

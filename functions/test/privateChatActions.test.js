@@ -19,6 +19,8 @@ class TestHttpsError extends Error {
 const FieldValue = {
   serverTimestamp: () => ({ _serverTimestamp: true }),
   delete: () => ({ _delete: true }),
+  // Phase 10 — the moderation queue bumps `repeatCount` on a duplicate report.
+  increment: (value) => ({ _increment: value }),
 };
 
 function clone(value) {
@@ -78,6 +80,15 @@ function createFakeDb(seed = {}, { strictOrder = false } = {}) {
             exists: data !== undefined,
             data: () => (data === undefined ? undefined : clone(data)),
           };
+        },
+        // Phase 10 — report callables now also enqueue a moderation case with
+        // `doc().set()`, so the fake needs the same surface as Firestore.
+        async set(data, options) {
+          const merge = options && options.merge;
+          store.set(
+            path,
+            merge ? applyUpdate(store.get(path) || {}, data) : clone(data),
+          );
         },
       };
     },

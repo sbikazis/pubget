@@ -120,6 +120,8 @@ function eventCreationLimitRef(db, uid, now = new Date()) {
     .doc(`${uid}_${utcDayKey(now)}`);
 }
 
+const { enqueueModerationCase } = require("./moderationQueue");
+
 function requireAuth(request, HttpsError) {
   if (!request || !request.auth || !validString(request.auth.uid, 128)) {
     throw new HttpsError("unauthenticated", "Authentication is required.");
@@ -2372,6 +2374,18 @@ function createEventsDomain({
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       repeatCount: 1,
+    });
+    // Phase 10 — queue the event report for triage.
+    await enqueueModerationCase({
+      db,
+      FieldValue,
+      type: "event",
+      targetId: eventId,
+      reporterId: actor,
+      creatorId: current.creatorId || null,
+      reason: category,
+      details: detail || null,
+      sourcePath: `events/${eventId}/reports/${actor}`,
     });
     return { ok: true, alreadyReported: false };
   }

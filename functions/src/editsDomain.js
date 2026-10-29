@@ -19,6 +19,7 @@ const {
   applyVisibility,
 } = require("./reelVisibility");
 const { setMediaVisible } = require("./reelMediaAccess");
+const { enqueueModerationCase } = require("./moderationQueue");
 
 function string(value, max) {
   return typeof value === "string" && value.trim().length <= max
@@ -1060,6 +1061,21 @@ function createEditsDomain({
     await ref.update({
       negativeFeedbackCount: FieldValue.increment(1),
       moderationStatus: "flagged",
+    });
+
+    // Phase 10 — the report row above is the record of *who reported what*.
+    // This adds the same report to the flat queue a moderator actually works,
+    // which is what the pipeline was missing end to end.
+    await enqueueModerationCase({
+      db,
+      FieldValue,
+      type: "edit",
+      targetId: editId,
+      reporterId: actor,
+      creatorId: snap.data()?.creatorId || null,
+      reason: category,
+      details: detail || null,
+      sourcePath: `edits/${editId}/reports/${actor}`,
     });
 
     return { ok: true };
