@@ -1,30 +1,33 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
-import '../../groups/models/chat_models.dart';
-import '../../groups/services/chat_send_reliability.dart';
-import '../models/private_chat_models.dart';
-import 'private_chat_repository.dart';
+import '../../../core/storage/media_upload_service.dart';
+import '../../../core/storage/r2_storage_service.dart';
 
 final class FirebasePrivateChatRepository implements PrivateChatRepository {
   FirebasePrivateChatRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
     FirebaseStorage? storage,
+    MediaUploadService? mediaUploadService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _storage = storage ?? FirebaseStorage.instance;
+       _storage = storage ?? FirebaseStorage.instance,
+       _mediaUploadService = mediaUploadService ?? MediaUploadService();
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
   final FirebaseStorage _storage;
+  final MediaUploadService _mediaUploadService;
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
@@ -203,48 +206,44 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
     required String contentType,
     required void Function(double progress) onProgress,
   }) => _guard(() async {
-    final extension = _extension(fileName, contentType);
-    final type = contentType.startsWith('video/')
-        ? ChatMessageType.video
-        : ChatMessageType.image;
-    final path = 'privateChats/$chatId/media/${mediaId}_original.$extension';
-    final reference = _storage.ref(path);
-    final task = reference.putData(
-      bytes,
-      SettableMetadata(
-        contentType: contentType,
-        customMetadata: <String, String>{
-          'uploadedBy': _uid ?? '',
-          'mediaId': mediaId,
-          'pipeline': 'pubget-chat-v1',
-        },
-      ),
-    );
-    task.snapshotEvents.listen((snapshot) {
-      if (snapshot.totalBytes > 0) {
-        onProgress(snapshot.bytesTransferred / snapshot.totalBytes);
-      }
-    });
-    await task;
-    onProgress(1);
-    final mediaSnapshot = await _chats
-        .doc(chatId)
-        .collection('media')
-        .doc(mediaId)
-        .snapshots()
-        .firstWhere(
-          (snapshot) =>
-              snapshot.data()?['status'] == 'ready' ||
-              snapshot.data()?['status'] == 'failed',
-        )
-        .timeout(const Duration(minutes: 3));
-    final data = mediaSnapshot.data() ?? const <String, dynamic>{};
-    if (data['status'] != 'ready') {
-      throw StateError('Media processing failed.');
+    final uid = _uid ?? '';
+    final isVideo = contentType.startsWith('video/');
+    final type = isVideo ? ChatMessageType.video : ChatMessageType.image;
+    
+    R2UploadResult result;
+    if (isVideo) {
+      final dir = await getTemporaryDirectory();
+      final ext = _extension(fileName, contentType);
+      final file = File('${dir.path}/$mediaId.$ext');
+      await file.writeAsBytes(bytes);
+      result = await _mediaUploadService.uploadReel(userId: uid, video: file);
+      await file.delete();
+    } else {
+      result = await _mediaUploadService.uploadImageBytes(
+        userId: uid,
+        bytes: bytes,
+        extension: _extension(fileName, contentType),
+      );
     }
+    
+    onProgress(0.5);
+    try {
+      await _chats
+          .doc(chatId)
+          .collection('media')
+          .doc(mediaId)
+          .set({
+        'mediumPath': result.publicUrl,
+        'originalPath': result.publicUrl,
+        'status': 'ready',
+        'type': type.name,
+      }, SetOptions(merge: true));
+    } catch (_) {}
+    onProgress(1);
+    
     return ChatMediaUpload(
-      mediaUrl: (data['mediumPath'] ?? data['originalPath']) as String,
-      thumbnailUrl: data['thumbnailPath'] as String?,
+      mediaUrl: result.publicUrl,
+      thumbnailUrl: result.publicUrl,
       mediaId: mediaId,
       type: type,
     );

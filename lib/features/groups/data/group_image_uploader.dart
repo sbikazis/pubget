@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:firebase_storage/firebase_storage.dart';
+import '../../../core/storage/media_upload_service.dart';
 
 bool isRemoteHttpUrl(String? value) {
   final trimmed = value?.trim() ?? '';
@@ -29,11 +29,10 @@ abstract interface class GroupImageUploader {
 }
 
 final class FirebaseGroupImageUploader implements GroupImageUploader {
-  FirebaseGroupImageUploader({FirebaseStorage? storage}) : _storage = storage;
+  FirebaseGroupImageUploader({MediaUploadService? mediaUploadService})
+      : _mediaUploadService = mediaUploadService ?? MediaUploadService();
 
-  final FirebaseStorage? _storage;
-
-  FirebaseStorage get storage => _storage ?? FirebaseStorage.instance;
+  final MediaUploadService _mediaUploadService;
 
   static const maxBytes = 10 * 1024 * 1024;
 
@@ -93,22 +92,14 @@ final class FirebaseGroupImageUploader implements GroupImageUploader {
     validatePayload(uid: uid, bytes: bytes);
     final mime = normalizeContentType(contentType);
     final safeKind = kind.trim().isEmpty ? 'image' : kind.trim();
-    final name =
-        '${safeKind}_${DateTime.now().millisecondsSinceEpoch}.${extensionFor(mime)}';
-    final path = 'users/$uid/group_staging/$name';
-    final ref = storage.ref(path);
     try {
-      await ref.putData(
-        bytes,
-        SettableMetadata(
-          contentType: mime,
-          customMetadata: <String, String>{
-            'kind': safeKind,
-            'clientBytes': '${bytes.length}',
-          },
-        ),
+      final extension = extensionFor(mime);
+      final result = await _mediaUploadService.uploadImageBytes(
+        userId: uid,
+        bytes: bytes,
+        extension: extension,
       );
-      final url = await ref.getDownloadURL();
+      final url = result.downloadUrl;
       if (!isRemoteHttpUrl(url)) {
         throw const GroupImageUploadException(
           'Upload did not return a download URL.',
@@ -118,13 +109,6 @@ final class FirebaseGroupImageUploader implements GroupImageUploader {
       return url;
     } on GroupImageUploadException {
       rethrow;
-    } on FirebaseException catch (error) {
-      // Preserve the real Storage code for logs/UI — do not invent "offline".
-      throw GroupImageUploadException(
-        _messageForFirebase(error),
-        code: error.code,
-        cause: error,
-      );
     } on Object catch (error) {
       throw GroupImageUploadException(
         'Image upload failed: $error',
@@ -134,25 +118,8 @@ final class FirebaseGroupImageUploader implements GroupImageUploader {
     }
   }
 
-  static String _messageForFirebase(FirebaseException error) {
-    final code = error.code.toLowerCase();
-    if (code == 'unauthorized' || code == 'permission-denied') {
-      return 'Storage rejected the upload (permission). Sign in again, then retry.';
-    }
-    if (code == 'canceled') return 'Upload was canceled.';
-    if (code == 'retry-limit-exceeded' ||
-        code == 'unavailable' ||
-        code == 'network-request-failed') {
-      return 'Network interrupted during upload. Retry the same image.';
-    }
-    if (code == 'object-not-found') {
-      return 'Upload could not be verified in Storage.';
-    }
-    final detail = error.message?.trim();
-    if (detail != null && detail.isNotEmpty) {
-      return 'Upload failed ($code): $detail';
-    }
-    return 'Upload failed ($code).';
+  static String _messageForFirebase(Object error) {
+    return 'Upload failed: $error';
   }
 }
 

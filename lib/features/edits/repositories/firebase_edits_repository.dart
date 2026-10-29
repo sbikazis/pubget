@@ -1,12 +1,15 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
-import '../data/edit_storage_put.dart';
-import '../models/edit_models.dart';
-import 'edits_repository.dart';
+import '../../../core/storage/media_upload_service.dart';
+import '../../../core/storage/r2_storage_service.dart';
 
 Failure mapEditException(Object error) {
   if (error is Failure) return error;
@@ -75,15 +78,18 @@ class FirebaseEditsRepository implements EditsRepository {
     FirebaseStorage? storage,
     FirebaseFunctions? functions,
     bool reels = false,
+    MediaUploadService? mediaUploadService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _storage = storage ?? FirebaseStorage.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _reels = reels;
+       _reels = reels,
+       _mediaUploadService = mediaUploadService ?? MediaUploadService();
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
+  final MediaUploadService _mediaUploadService;
   final bool _reels;
   UploadTask? _activeUpload;
 
@@ -152,16 +158,10 @@ class FirebaseEditsRepository implements EditsRepository {
     UploadStarted? onStarted,
     UploadProgress? onProgress,
   }) => _guard(() async {
-    late final String path;
     late final String editId;
     final resumeId = resumeEditId?.trim();
-    final resumePath = resumeVideoPath?.trim();
-    if (resumeId != null &&
-        resumeId.isNotEmpty &&
-        resumePath != null &&
-        resumePath.isNotEmpty) {
+    if (resumeId != null && resumeId.isNotEmpty) {
       editId = resumeId;
-      path = resumePath;
     } else {
       final startPayload = <String, dynamic>{
         'caption': caption,
@@ -172,38 +172,50 @@ class FirebaseEditsRepository implements EditsRepository {
       final start = await _functions
            .httpsCallable(_callable('startEditUpload'))
           .call(startPayload);
-      path = start.data['videoPath'] as String;
        editId = _returnedId(start.data);
     }
-    // Always force exact video/mp4 — Storage rules reject codec-suffixed types.
-    final task = putEditVideo(
-      _storage.ref(path),
-      source,
-      SettableMetadata(
-        contentType: 'video/mp4',
-        customMetadata: _uploadMetadata(
-          fileName: fileName,
-          sizeBytes: sizeBytes,
-        ),
-      ),
-    );
-    onStarted?.call(editId, path);
-    _activeUpload = task;
-    task.snapshotEvents.listen((snapshot) {
-      if (snapshot.totalBytes > 0) {
-        onProgress?.call(snapshot.bytesTransferred / snapshot.totalBytes);
-      }
-    });
-    await task;
-    _activeUpload = null;
-    onProgress?.call(1);
-
-    // Explicit finalize — recovers when Storage finalize trigger is delayed/missed.
-     final finalized = await finalizeEditUpload(editId);
-    if (finalized.isSuccess) {
-      return finalized.valueOrNull!;
+    
+    onStarted?.call(editId, resumeVideoPath ?? '');
+    onProgress?.call(0.3);
+    
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    R2UploadResult result;
+    final bytes = source.bytes;
+    final path = source.path;
+    if (path != null && path.isNotEmpty) {
+      result = await _mediaUploadService.uploadReel(
+        userId: uid,
+        video: File(path),
+      );
+    } else if (bytes != null && bytes.isNotEmpty) {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$editId.mp4');
+      await file.writeAsBytes(bytes);
+      result = await _mediaUploadService.uploadReel(userId: uid, video: file);
+      await file.delete();
+    } else {
+      throw const UnknownError('No video data to upload');
     }
-    // Upload itself succeeded; surface server state even if finalize soft-fails.
+    
+    onProgress?.call(0.7);
+    
+    try {
+      await _firestore.collection(_collection).doc(editId).set({
+        'videoUrl': result.publicUrl,
+        'mediaKey': result.key,
+        'status': 'processing',
+      }, SetOptions(merge: true));
+    } catch (_) {}
+    
+    onProgress?.call(1);
+    
+    try {
+      final finalized = await finalizeEditUpload(editId);
+      if (finalized.isSuccess) {
+        return finalized.valueOrNull!;
+      }
+    } catch (_) {}
+    
     return _readEdit(editId, caption: caption, animeTag: animeTag);
   });
 
@@ -217,10 +229,6 @@ class FirebaseEditsRepository implements EditsRepository {
 
   @override
   Future<Result<void>> cancelUpload() async {
-    final task = _activeUpload;
-    if (task == null) return const Success<void>(null);
-    await task.cancel();
-    _activeUpload = null;
     return const Success<void>(null);
   }
 

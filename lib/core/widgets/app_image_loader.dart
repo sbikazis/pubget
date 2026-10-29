@@ -1,7 +1,9 @@
-import 'package:flutter/material.dart';
 import 'dart:typed_data';
 
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/material.dart';
+
+import '../storage/r2_config.dart';
 
 class AppImageLoader extends StatelessWidget {
   const AppImageLoader({
@@ -27,67 +29,18 @@ class AppImageLoader extends StatelessWidget {
   final Widget? placeholder;
   final Widget? errorWidget;
 
-  @override
-  Widget build(BuildContext context) {
-    final fallback =
-        errorWidget ??
-        ColoredBox(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: const Center(child: Icon(Icons.broken_image_outlined)),
-        );
-    final isRemoteUrl =
-        imageUrl.startsWith('http://') || imageUrl.startsWith('https://');
-    Widget image = isRemoteUrl
-        ? Image.network(
-            imageUrl,
-            width: width,
-            height: height,
-            fit: fit,
-            cacheWidth: memCacheWidth,
-            cacheHeight: memCacheHeight,
-            filterQuality: FilterQuality.medium,
-            frameBuilder: (context, child, frame, synchronouslyLoaded) {
-              if (synchronouslyLoaded || frame != null) return child;
-              return placeholder ??
-                  ColoredBox(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.surfaceContainerHighest,
-                    child: const Center(child: CircularProgressIndicator()),
-                  );
-            },
-            errorBuilder: (_, _, _) => fallback,
-          )
-        : FutureBuilder<Uint8List?>(
-            future: imageUrl.isEmpty
-                ? Future<Uint8List?>.value()
-                : FirebaseStorage.instance
-                      .ref(imageUrl)
-                      .getData(12 * 1024 * 1024),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) return fallback;
-              final bytes = snapshot.data;
-              if (bytes == null) {
-                return placeholder ??
-                    ColoredBox(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainerHighest,
-                      child: const Center(child: CircularProgressIndicator()),
-                    );
-              }
-              return Image.memory(
-                bytes,
-                width: width,
-                height: height,
-                fit: fit,
-                cacheWidth: memCacheWidth,
-                cacheHeight: memCacheHeight,
-                filterQuality: FilterQuality.medium,
-                errorBuilder: (_, _, _) => fallback,
-              );
-            },
-          );
+  String _resolveUrl(String url) {
+    if (url.isEmpty) return url;
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    // Try R2
+    try {
+      return R2Config.publicUrl(url);
+    } catch (_) {
+      return url;
+    }
+  }
     if (borderRadius != null) {
       image = ClipRRect(borderRadius: borderRadius!, child: image);
     }

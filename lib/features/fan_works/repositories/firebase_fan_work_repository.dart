@@ -1,27 +1,33 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
-import '../models/fan_work_models.dart';
-import 'fan_work_repository.dart';
+import '../../../core/storage/media_upload_service.dart';
+import '../../../core/storage/r2_storage_service.dart';
 
 final class FirebaseFanWorkRepository implements FanWorkRepository {
   FirebaseFanWorkRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
     FirebaseStorage? storage,
+    MediaUploadService? mediaUploadService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _storage = storage ?? FirebaseStorage.instance;
+       _storage = storage ?? FirebaseStorage.instance,
+       _mediaUploadService = mediaUploadService ?? MediaUploadService();
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
   final FirebaseStorage _storage;
+  final MediaUploadService _mediaUploadService;
 
   CollectionReference<Map<String, dynamic>> get _works =>
       _firestore.collection('fanWorks');
@@ -83,17 +89,35 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
     required List<int> bytes,
     required String contentType,
   }) => _guard(() async {
-    await _storage
-        .ref(ticket.path)
-        .putData(
-          Uint8List.fromList(bytes),
-          SettableMetadata(
-            contentType: contentType,
-            customMetadata: <String, String>{
-              'uploadedBy': ticket.path.split('/')[1],
-            },
-          ),
-        );
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
+    final isVideo = contentType.startsWith('video/');
+    final ext = _extensionFromContentType(contentType);
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
+    
+    R2UploadResult result;
+    if (isVideo) {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(Uint8List.fromList(bytes));
+      result = await _mediaUploadService.uploadReel(userId: uid, video: file);
+      await file.delete();
+    } else {
+      result = await _mediaUploadService.uploadImageBytes(
+        userId: uid,
+        bytes: Uint8List.fromList(bytes),
+        extension: ext,
+      );
+    }
+    
+    // Try to update the media doc if path structure matches
+    try {
+      await confirmMedia(
+        workId: ticket.workId,
+        mediaId: ticket.mediaId,
+        path: result.publicUrl,
+        role: FanWorkMediaRole.gallery,
+      );
+    } catch (_) {}
   });
 
   @override
@@ -367,10 +391,16 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
             .toList(growable: false);
       });
 
-  Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
-      _guard(() async {
-        await _functions.httpsCallable(name).call(data);
-      });
+  String _extensionFromContentType(String contentType) {
+    if (contentType.startsWith('video/')) {
+      if (contentType.contains('webm')) return 'webm';
+      return 'mp4';
+    }
+    if (contentType.contains('png')) return 'png';
+    if (contentType.contains('webp')) return 'webp';
+    if (contentType.contains('gif')) return 'gif';
+    return 'jpg';
+  }
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {

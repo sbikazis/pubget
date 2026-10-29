@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/storage/media_upload_service.dart';
 import '../../authentication/models/pubget_user.dart';
 import '../models/public_profile.dart';
 import 'profile_repository.dart';
@@ -15,14 +16,17 @@ final class FirebaseProfileRepository implements ProfileRepository {
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
     FirebaseFunctions? functions,
+    MediaUploadService? mediaUploadService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _storage = storage ?? FirebaseStorage.instance,
        _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
+       _mediaUploadService = mediaUploadService ?? MediaUploadService();
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
+  final MediaUploadService _mediaUploadService;
 
   @override
   Future<Result<PublicProfile>> getPublicProfile(String userId) async {
@@ -119,14 +123,14 @@ final class FirebaseProfileRepository implements ProfileRepository {
     required String field,
   }) async {
     try {
-      final ref = _storage.ref(path);
-      final snapshot = await ref.putData(
-        bytes,
-        SettableMetadata(contentType: contentType),
+      final extension = contentType.contains('png') ? 'png' : 'jpg';
+      final result = await _mediaUploadService.uploadImageBytes(
+        userId: userId,
+        bytes: bytes,
+        extension: extension,
       );
-      final url = await snapshot.ref.getDownloadURL();
-      await _firestore.collection('users').doc(userId).update({field: url});
-      return Success<String>(url);
+      await _firestore.collection('users').doc(userId).update({field: result.downloadUrl});
+      return Success<String>(result.downloadUrl);
     } on Object catch (error) {
       return FailureResult<String>(_mapFailure(error));
     }

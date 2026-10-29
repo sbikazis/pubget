@@ -5,6 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/storage/media_upload_service.dart';
 import '../models/pubget_user.dart';
 import 'user_repository.dart';
 
@@ -12,11 +13,14 @@ final class FirebaseUserRepository implements UserRepository {
   FirebaseUserRepository({
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
+    MediaUploadService? mediaUploadService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _storage = storage ?? FirebaseStorage.instance;
+       _storage = storage ?? FirebaseStorage.instance,
+       _mediaUploadService = mediaUploadService ?? MediaUploadService();
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
+  final MediaUploadService _mediaUploadService;
 
   CollectionReference<Map<String, dynamic>> get _users =>
       _firestore.collection('users');
@@ -68,12 +72,13 @@ final class FirebaseUserRepository implements UserRepository {
     String contentType = 'image/jpeg',
   }) async {
     try {
-      final reference = _storage.ref('users/$userId/avatar.jpg');
-      final snapshot = await reference.putData(
-        bytes,
-        SettableMetadata(contentType: contentType),
+      final extension = contentType.contains('png') ? 'png' : 'jpg';
+      final result = await _mediaUploadService.uploadImageBytes(
+        userId: userId,
+        bytes: bytes,
+        extension: extension,
       );
-      return Success<String>(await snapshot.ref.getDownloadURL());
+      return Success<String>(result.downloadUrl);
     } on Object catch (error) {
       return FailureResult<String>(_mapFailure(error));
     }
