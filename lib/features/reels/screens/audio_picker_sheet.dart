@@ -81,6 +81,7 @@ class _AudioPickerSheetState extends State<AudioPickerSheet> {
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
     final provider = context.watch<AudioProvider>();
+    final theme = Theme.of(context);
 
     return SafeArea(
       child: Padding(
@@ -103,18 +104,26 @@ class _AudioPickerSheetState extends State<AudioPickerSheet> {
                     child: TextField(
                       controller: _searchController,
                       autofocus: true,
-                      style: const TextStyle(color: Colors.white),
+                      style: theme.textTheme.bodyLarge,
                       decoration: InputDecoration(
                         hintText: copy.searchAudioHint,
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                        hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                         border: InputBorder.none,
-                        prefixIcon: const Icon(Icons.search, color: Colors.white70),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),
                   if (_searchQuery.isNotEmpty)
                     IconButton(
-                      icon: const Icon(Icons.clear, color: Colors.white70),
+                      icon: Icon(
+                        Icons.clear,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                       onPressed: () {
                         _searchController.clear();
                         setState(() => _searchResults = []);
@@ -139,7 +148,12 @@ class _AudioPickerSheetState extends State<AudioPickerSheet> {
       }
       if (_searchResults.isEmpty) {
         return Center(
-          child: Text(copy.noAudioFound, style: TextStyle(color: Colors.white70)),
+          child: Text(
+            copy.noAudioFound,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         );
       }
       return _AudioList(audios: _searchResults, onPicked: _onPicked);
@@ -150,7 +164,14 @@ class _AudioPickerSheetState extends State<AudioPickerSheet> {
       case LoadingState.initial:
         return const Center(child: CircularProgressIndicator());
       case LoadingState.empty:
-        return Center(child: Text(copy.noAudioAvailable, style: TextStyle(color: Colors.white70)));
+        return Center(
+          child: Text(
+            copy.noAudioAvailable,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        );
       case LoadingState.error:
         return Center(
           child: PubgetErrorState(
@@ -222,18 +243,22 @@ class _AudioTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isReady = audio.isReady;
+    final theme = Theme.of(context);
+    final copy = AppStrings.of(context);
     return ListTile(
       onTap: isReady ? () => onTap(audio) : null,
       leading: Container(
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: isReady ? Colors.transparent : Colors.white.withValues(alpha: 0.1),
+          color: isReady
+              ? Colors.transparent
+              : theme.colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: Icon(
           isReady ? Icons.music_note : Icons.hourglass_empty,
-          color: isReady ? AppColors.gold : Colors.white.withValues(alpha: 0.5),
+          color: isReady ? AppColors.gold : theme.colorScheme.onSurfaceVariant,
           size: 24,
         ),
       ),
@@ -241,14 +266,24 @@ class _AudioTile extends StatelessWidget {
         audio.displayName,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        style: theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
       ),
       subtitle: Text(
-        '${audio.creatorId} · ${audio.durationFormatted} · ${audio.usageCount} uses',
-        style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
+        '${audio.creatorId} · ${audio.durationFormatted} · '
+        '${audio.usageCount} ${copy.audioUses}',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
       ),
 trailing: isReady
-          ? Icon(Icons.chevron_right, color: Colors.white.withValues(alpha: 0.5))
+          ? Icon(
+              Directionality.of(context) == TextDirection.rtl
+                  ? Icons.chevron_left
+                  : Icons.chevron_right,
+              color: theme.colorScheme.onSurfaceVariant,
+            )
           : const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
       contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
     );

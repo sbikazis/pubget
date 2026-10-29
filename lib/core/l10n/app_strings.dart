@@ -254,6 +254,7 @@ final class AppStrings {
       pick('My Favorite Characters', 'شخصياتي المفضلة');
   String get myAnime => pick('My Anime', 'أنميّاتي');
   String get notifications => pick('Notifications', 'الإشعارات');
+  String get notificationsUnread => pick('Unread', 'غير مقروء');
   String get notificationsMarkAllRead =>
       pick('Mark all read', 'تحديد الكل كمقروء');
   String get notificationsEmptyTitle => pick('No notifications', 'لا إشعارات');
@@ -1166,6 +1167,13 @@ final class AppStrings {
   String get copyGroupLink => pick('Copy group link', 'نسخ رابط المجموعة');
   String get groupInformation => pick('Group information', 'معلومات المجموعة');
   String get groupMedia => pick('Group media', 'وسائط المجموعة');
+  String mediaPositionLabel(int current, int total) =>
+      pick('Media $current of $total', 'الوسائط $current من $total');
+  String get mediaVideoFailed =>
+      pick('This video could not be played.', 'تعذّر تشغيل هذا الفيديو.');
+  String get mediaSwipeToLoadVideo =>
+      pick('Swipe to load video', 'اسحب لتحميل الفيديو');
+  String get audioUses => pick('uses', 'استخدام');
   String get editGroup => pick('Edit group', 'تعديل المجموعة');
   String get chatBackground => pick('Chat background', 'خلفية الدردشة');
   String get groupMenu => pick('Group menu', 'قائمة المجموعة');

@@ -134,7 +134,14 @@ class _NotificationTile extends StatelessWidget {
             ),
           ),
           if (item.isUnread)
-            const Icon(Icons.circle, size: 10, color: Colors.red),
+            Semantics(
+              label: copy.notificationsUnread,
+              child: Icon(
+                Icons.circle,
+                size: 10,
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
         ],
       ),
     );
