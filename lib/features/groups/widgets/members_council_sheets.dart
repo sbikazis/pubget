@@ -8,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/council_copy.dart';
 import '../models/group_authority.dart';
 import '../models/group_models.dart';
 import '../providers/group_members_provider.dart';
@@ -59,7 +60,7 @@ Future<void> showMemberActionSheet(
       ListTile(
         key: const Key('member-action-role'),
         leading: const Icon(Icons.military_tech_outlined),
-        title: const Text('تعديل الرتبة'),
+        title: Text(CouncilCopy.of(host).editRank),
         onTap: () => afterClose(() {
           showRankManagementSheet(
             host,
@@ -72,7 +73,7 @@ Future<void> showMemberActionSheet(
     ListTile(
       key: const Key('member-action-info'),
       leading: const Icon(Icons.info_outline),
-      title: const Text('معلومات العضو'),
+      title: Text(CouncilCopy.of(host).memberInfo),
       onTap: () => afterClose(() {
         showMemberInfoSheet(host, target: target, groupId: groupId);
       }),
@@ -80,7 +81,7 @@ Future<void> showMemberActionSheet(
     ListTile(
       key: const Key('member-action-profile'),
       leading: const Icon(Icons.person_outline),
-      title: const Text('الملف الشخصي'),
+      title: Text(CouncilCopy.of(host).profile),
       onTap: () => afterClose(() {
         AppNavigation.go(host, '/profile?uid=${target.uid}');
       }),
@@ -89,7 +90,7 @@ Future<void> showMemberActionSheet(
       ListTile(
         key: const Key('member-action-warn'),
         leading: const Icon(Icons.warning_amber_outlined),
-        title: const Text('تحذير'),
+        title: Text(CouncilCopy.of(host).warn),
         onTap: () => afterClose(() {
           showWarnMemberSheet(host, target: target);
         }),
@@ -99,7 +100,7 @@ Future<void> showMemberActionSheet(
         key: const Key('member-action-kick'),
         leading: Icon(Icons.person_remove_outlined, color: AppColors.error),
         title: Text(
-          'طرد',
+          CouncilCopy.of(host).remove,
           style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w700),
         ),
         onTap: () => afterClose(() {
@@ -111,7 +112,7 @@ Future<void> showMemberActionSheet(
         key: const Key('member-action-transfer'),
         leading: Icon(Icons.swap_horiz, color: AppColors.warningDark),
         title: Text(
-          'نقل الملكية',
+          CouncilCopy.of(host).transferOwnership,
           style: TextStyle(
             color: AppColors.warningDark,
             fontWeight: FontWeight.w700,

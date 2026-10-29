@@ -82,6 +82,13 @@ void main() {
           ChangeNotifierProvider<SocialProvider>.value(value: social),
         ],
         child: MaterialApp(
+          // Phase 11 — the sheet used to be hardcoded Arabic, so this assertion
+          // passed under any locale. It is bilingual now, which means the test
+          // has to state the locale it is asserting.
+          // No locale override here: this test asserts the social path, not
+          // locale rendering. Forcing `ar` would require MaterialLocalizations
+          // delegates for Arabic, which Pubget does not ship — it localizes
+          // product copy through AppStrings, not framework strings.
           home: Builder(
             builder: (context) => TextButton(
               onPressed: () => showGiveRespectSheet(
@@ -97,11 +104,62 @@ void main() {
     );
     await tester.tap(find.text('Open respect'));
     await tester.pumpAndSettle();
-    expect(find.text('منح الاحترام'), findsOneWidget);
+    // Locale rendering is asserted by the dedicated English test below and by
+    // `respect and council catalogs are genuinely bilingual` in
+    // app_language_test.dart. This test's contract is the social path: the
+    // sheet opens and confirming grants Respect exactly once.
+    expect(find.byKey(const Key('edit-give-respect')), findsOneWidget);
     await tester.tap(find.byKey(const Key('edit-give-respect')));
     await tester.pump();
     // Sheet closes optimistically; server call continues in background.
     await tester.pump(const Duration(milliseconds: 50));
     expect(socialRepository.respectCalls, 1);
+  });
+
+  testWidgets('edit respect sheet renders English copy under the English locale', (
+    tester,
+  ) async {
+    final authRepository = FakeAuthRepository(
+      user: const AuthUser(id: 'user-1', email: 'fan@example.com'),
+    );
+    final auth = AuthProvider(repository: authRepository);
+    await auth.initialize();
+    addTearDown(authRepository.close);
+    addTearDown(auth.dispose);
+    final socialRepository = FakeSocialRepository();
+    final social = SocialProvider(repository: socialRepository);
+    addTearDown(social.dispose);
+    social.bindUser('user-1');
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthProvider>.value(value: auth),
+          ChangeNotifierProvider<SocialProvider>.value(value: social),
+        ],
+        child: MaterialApp(
+          locale: const Locale('en'),
+          supportedLocales: const <Locale>[Locale('ar'), Locale('en')],
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showGiveRespectSheet(
+                context,
+                toUserId: 'creator-2',
+                initialValue: 5,
+              ),
+              child: const Text('Open respect'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open respect'));
+    await tester.pumpAndSettle();
+
+    // The regression this guards: these were Arabic literals, so an English
+    // member saw Arabic text on a primary action.
+    expect(find.text('Give Respect'), findsOneWidget);
+    expect(find.text('Confirm'), findsOneWidget);
+    expect(find.text('منح الاحترام'), findsNothing);
   });
 }
