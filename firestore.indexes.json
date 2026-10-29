@@ -1502,42 +1502,23 @@
           "arrayConfig": "NONE"
         }
       ]
-    },
-    {
-      "collectionGroup": "reviews",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "moderationStatus",
-          "order": "ASCENDING",
-          "arrayConfig": "NONE"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "edits",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "moderationStatus",
-          "order": "ASCENDING",
-          "arrayConfig": "NONE"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "fanWorks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "moderationStatus",
-          "order": "ASCENDING",
-          "arrayConfig": "NONE"
-        }
-      ]
     }
   ],
   "fieldOverrides": [
+    {
+      "collectionGroup": "reviews",
+      "fieldPath": "moderationStatus",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
     {
       "collectionGroup": "members",
       "fieldPath": "uid",
