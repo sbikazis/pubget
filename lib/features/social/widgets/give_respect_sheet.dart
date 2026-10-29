@@ -7,6 +7,7 @@ import '../../../core/constants/limits.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/respect_copy.dart';
 import '../models/social_models.dart';
 import '../providers/social_provider.dart';
 
@@ -54,6 +55,7 @@ class _GiveRespectSheetState extends State<_GiveRespectSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final copy = RespectCopy.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
@@ -77,7 +79,7 @@ class _GiveRespectSheetState extends State<_GiveRespectSheet> {
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
-            'منح الاحترام',
+            copy.title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.w700,
@@ -85,7 +87,10 @@ class _GiveRespectSheetState extends State<_GiveRespectSheet> {
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            'اختر مقدار الاحترام (0–${Limits.respectMax}). عند ${Limits.fanThreshold}+ تصبح من معجبيه.',
+            copy.body(
+              max: Limits.respectMax,
+              fanThreshold: Limits.fanThreshold,
+            ),
             style: const TextStyle(color: Colors.white70, height: 1.35),
           ),
           const SizedBox(height: AppSpacing.md),
@@ -103,6 +108,8 @@ class _GiveRespectSheetState extends State<_GiveRespectSheet> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                // The numeral alone is meaningless spoken aloud.
+                tooltip: copy.valueLabel(value),
                 selected: selected,
                 selectedColor: fanMark
                     ? AppColors.gold
@@ -144,9 +151,9 @@ class _GiveRespectSheetState extends State<_GiveRespectSheet> {
                       ),
                     );
                   },
-            semanticLabel: 'Give selected Respect',
+            semanticLabel: copy.confirmSemantic,
             loading: _submitting,
-            child: const Text('تأكيد'),
+            child: Text(copy.confirm),
           ),
         ],
       ),
