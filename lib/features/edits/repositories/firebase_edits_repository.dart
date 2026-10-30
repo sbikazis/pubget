@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/errors/failure.dart';
@@ -78,23 +77,19 @@ Failure _mapCode(String code, String? message) {
 class FirebaseEditsRepository implements EditsRepository {
   FirebaseEditsRepository({
     FirebaseFirestore? firestore,
-    FirebaseStorage? storage,
     FirebaseFunctions? functions,
     bool reels = false,
     MediaUploadService? mediaUploadService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _storage = storage ?? FirebaseStorage.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
        _reels = reels,
        _mediaUploadService = mediaUploadService ?? MediaUploadService();
 
   final FirebaseFirestore _firestore;
-  final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
   final MediaUploadService _mediaUploadService;
   final bool _reels;
-  UploadTask? _activeUpload;
 
   String get _collection => _reels ? 'reels' : 'edits';
   String _callable(String editName) {
@@ -104,14 +99,6 @@ class FirebaseEditsRepository implements EditsRepository {
 
   String _returnedId(Map<dynamic, dynamic> data) {
     return (data['reelId'] ?? data['editId']) as String;
-  }
-
-  Map<String, String> _uploadMetadata({String? fileName, int? sizeBytes}) {
-    final metadata = <String, String>{};
-    final name = fileName;
-    if (name != null) metadata['fileName'] = name;
-    if (sizeBytes != null) metadata['clientSize'] = '$sizeBytes';
-    return metadata;
   }
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {

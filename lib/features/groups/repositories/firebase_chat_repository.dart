@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/errors/failure.dart';
@@ -12,23 +11,21 @@ import '../../../core/errors/result.dart';
 import '../../../core/storage/media_upload_service.dart';
 import '../../../core/storage/r2_storage_service.dart';
 import '../models/chat_models.dart';
+import '../services/chat_send_reliability.dart';
 import 'chat_repository.dart';
 
 final class FirebaseChatRepository implements ChatRepository {
   FirebaseChatRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
-    FirebaseStorage? storage,
     MediaUploadService? mediaUploadService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _storage = storage ?? FirebaseStorage.instance,
        _mediaUploadService = mediaUploadService ?? MediaUploadService();
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
-  final FirebaseStorage _storage;
   final MediaUploadService _mediaUploadService;
 
   CollectionReference<Map<String, dynamic>> _messages(String groupId) =>
@@ -232,7 +229,7 @@ final class FirebaseChatRepository implements ChatRepository {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     R2UploadResult result;
-    if (type == ChatMediaType.video) {
+    if (type == ChatMessageType.video) {
       // Save to temp file for video
       final dir = await getTemporaryDirectory();
       final ext = _extension(fileName, contentType);
@@ -240,7 +237,7 @@ final class FirebaseChatRepository implements ChatRepository {
       await file.writeAsBytes(bytes);
       result = await _mediaUploadService.uploadReel(userId: uid, video: file);
       await file.delete();
-    } else if (type == ChatMediaType.audio) {
+    } else if (type == ChatMessageType.audio) {
       final dir = await getTemporaryDirectory();
       final ext = _extension(fileName, contentType);
       final file = File('${dir.path}/$mediaId.$ext');

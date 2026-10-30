@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/errors/failure.dart';
@@ -18,17 +17,14 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
   FirebaseFanWorkRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
-    FirebaseStorage? storage,
     MediaUploadService? mediaUploadService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _storage = storage ?? FirebaseStorage.instance,
        _mediaUploadService = mediaUploadService ?? MediaUploadService();
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
-  final FirebaseStorage _storage;
   final MediaUploadService _mediaUploadService;
 
   CollectionReference<Map<String, dynamic>> get _works =>
@@ -117,7 +113,7 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
         workId: ticket.workId,
         mediaId: ticket.mediaId,
         path: result.publicUrl,
-        role: FanWorkMediaRole.gallery,
+        role: FanWorkMediaRole.image,
       );
     } catch (_) {}
   });
@@ -399,6 +395,11 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
     if (contentType.contains('gif')) return 'gif';
     return 'jpg';
   }
+
+  Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
+      _guard(() async {
+        await _functions.httpsCallable(name).call(data);
+      });
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {

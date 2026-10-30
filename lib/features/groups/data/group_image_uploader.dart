@@ -91,7 +91,6 @@ final class FirebaseGroupImageUploader implements GroupImageUploader {
   }) async {
     validatePayload(uid: uid, bytes: bytes);
     final mime = normalizeContentType(contentType);
-    final safeKind = kind.trim().isEmpty ? 'image' : kind.trim();
     try {
       final extension = extensionFor(mime);
       final result = await _mediaUploadService.uploadImageBytes(
@@ -118,9 +117,6 @@ final class FirebaseGroupImageUploader implements GroupImageUploader {
     }
   }
 
-  static String _messageForFirebase(Object error) {
-    return 'Upload failed: $error';
-  }
 }
 
 final class UnavailableGroupImageUploader implements GroupImageUploader {

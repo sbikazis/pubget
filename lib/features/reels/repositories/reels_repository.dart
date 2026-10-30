@@ -7,7 +7,6 @@ final class FirebaseReelsRepository extends FirebaseEditsRepository
     implements ReelsRepository {
   FirebaseReelsRepository({
     super.firestore,
-    super.storage,
     super.functions,
   }) : super(reels: true);
 }

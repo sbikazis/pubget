@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
@@ -12,14 +11,11 @@ import 'user_repository.dart';
 final class FirebaseUserRepository implements UserRepository {
   FirebaseUserRepository({
     FirebaseFirestore? firestore,
-    FirebaseStorage? storage,
     MediaUploadService? mediaUploadService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _storage = storage ?? FirebaseStorage.instance,
        _mediaUploadService = mediaUploadService ?? MediaUploadService();
 
   final FirebaseFirestore _firestore;
-  final FirebaseStorage _storage;
   final MediaUploadService _mediaUploadService;
 
   CollectionReference<Map<String, dynamic>> get _users =>

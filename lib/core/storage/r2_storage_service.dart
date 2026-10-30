@@ -1,10 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
-import 'r2_auth_helper.dart';
 import 'r2_config.dart';
 import 'r2_presign_client.dart';
 
