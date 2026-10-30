@@ -68,27 +68,28 @@ class NotificationInboxPage extends StatelessWidget {
           ),
         ),
       ),
-      floatingActionButton: provider.state == LoadingState.loaded ||
+      floatingActionButton:
+          provider.state == LoadingState.loaded ||
               provider.state == LoadingState.loadingMore
           ? FloatingActionButton.extended(
-        onPressed: () async {
-          final result = await provider.enablePush();
-          if (!context.mounted) return;
-          final enabled = result.valueOrNull ?? false;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                enabled
-                    ? 'Push notifications enabled'
-                    : result.failureOrNull?.message ??
-                          'Notification permission was not granted',
-              ),
-            ),
-          );
-        },
-        icon: const Icon(Icons.notifications_active_outlined),
-        label: const Text('Enable push'),
-      )
+              onPressed: () async {
+                final result = await provider.enablePush();
+                if (!context.mounted) return;
+                final enabled = result.valueOrNull ?? false;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      enabled
+                          ? 'Push notifications enabled'
+                          : result.failureOrNull?.message ??
+                                'Notification permission was not granted',
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.notifications_active_outlined),
+              label: const Text('Enable push'),
+            )
           : null,
     );
   }
@@ -141,8 +142,9 @@ class _NotificationTile extends StatelessWidget {
     'join_request' => Icons.group_add_outlined,
     'friend_request' => Icons.person_add_outlined,
     'respect_received' => Icons.favorite_outline,
-    'game_invite' || 'game_started' || 'game_completed' =>
-      Icons.sports_esports_outlined,
+    'game_invite' ||
+    'game_started' ||
+    'game_completed' => Icons.sports_esports_outlined,
     'achievement_unlocked' => Icons.emoji_events_outlined,
     'edit_published' => Icons.movie_filter_outlined,
     'edit_failed' => Icons.error_outline,
@@ -177,9 +179,9 @@ class _NotificationTile extends StatelessWidget {
       'game_started' => 'Game starting',
       'game_completed' => 'Game result',
       'achievement_unlocked' => 'Achievement unlocked',
-      'edit_published' => 'Edit published',
-      'edit_failed' => 'Edit processing failed',
-      'edit_needs_review' => 'Edit held for review',
+      'edit_published' => 'Reel published',
+      'edit_failed' => 'Reel processing failed',
+      'edit_needs_review' => 'Reel held for review',
       'rank_promoted' => 'Rank promoted',
       'rank_demoted' => 'Rank demoted',
       'member_warning' => 'Member warning',

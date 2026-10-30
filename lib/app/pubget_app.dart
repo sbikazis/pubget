@@ -156,6 +156,7 @@ import '../features/social/screens/friend_requests_page.dart';
 import '../features/social/screens/profile_page.dart';
 import 'app_route.dart';
 import 'app_router.dart';
+import 'entity_routes.dart';
 import 'app_shell.dart';
 import 'app_shell_scope.dart';
 import 'design_system_showcase_page.dart';
@@ -202,9 +203,7 @@ class PubgetApp extends StatelessWidget {
             final network = context.read<NetworkService>();
             return CachedAnimeRepository(
               inner: JikanAnimeRepository(
-                http: ResilientAnimeHttpClient(
-                  inner: PackageAnimeHttpClient(),
-                ),
+                http: ResilientAnimeHttpClient(inner: PackageAnimeHttpClient()),
               ),
               isOnline: () => network.isOnline,
             );
@@ -409,7 +408,10 @@ class PubgetApp extends StatelessWidget {
             analytics: context.read<Analytics>(),
           ),
         ),
-        provider.ChangeNotifierProxyProvider<AuthProvider, AnimeLibraryProvider>(
+        provider.ChangeNotifierProxyProvider<
+          AuthProvider,
+          AnimeLibraryProvider
+        >(
           create: (context) {
             final library = AnimeLibraryProvider(
               repository: context.read<AnimeLibraryRepository>(),
@@ -544,6 +546,7 @@ class PubgetApp extends StatelessWidget {
       child: _PubgetRouterHost(firebaseState: firebaseState),
     );
   }
+
   (
     AuthRepository,
     UserRepository,
@@ -715,10 +718,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
               onPressed: () {
                 manager.acceptSoftPublishedOffer(editId);
                 unawaited(
-                  AppNavigation.go(
-                    context,
-                    PubgetLinks.editHighlightPath(editId),
-                  ),
+                  AppNavigation.go(context, PubgetLinks.reelPath(editId)),
                 );
               },
             ),
@@ -726,9 +726,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         );
         return;
       }
-      unawaited(
-        AppNavigation.go(context, PubgetLinks.editHighlightPath(editId)),
-      );
+      unawaited(AppNavigation.go(context, PubgetLinks.reelPath(editId)));
     };
 
     manager.onPublishedWhileBackgrounded = (editId) {
@@ -743,10 +741,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           ),
           action: SnackBarAction(
             label: copy.openEdit,
-            onPressed: () => AppNavigation.go(
-              context,
-              PubgetLinks.editHighlightPath(editId),
-            ),
+            onPressed: () =>
+                AppNavigation.go(context, PubgetLinks.reelPath(editId)),
           ),
         ),
       );
@@ -762,10 +758,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: copy.openEdit,
-            onPressed: () => AppNavigation.go(
-              context,
-              PubgetLinks.editHighlightPath(editId),
-            ),
+            onPressed: () =>
+                AppNavigation.go(context, PubgetLinks.reelPath(editId)),
           ),
         ),
       );
@@ -805,9 +799,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
           messaging: widget.firebaseState.isReady
               ? FirebaseMessaging.instance
               : null,
-          child: EditUploadOverlayHost(
-            child: child ?? const SizedBox.shrink(),
-          ),
+          child: EditUploadOverlayHost(child: child ?? const SizedBox.shrink()),
         );
       },
       routerConfig: _router!,
@@ -845,6 +837,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/friend-requests': const FriendRequestsPage(),
         '/notifications': const NotificationInboxPage(),
         '/edits': const AppShell(),
+        '/reels': const AppShell(),
         '/edits/upload': const EditUploadPage(),
         '/groups': const AppShell(),
         '/joined': const AppShell(),
@@ -860,6 +853,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/economy/history': const EconomyHistoryPage(),
       },
       parameterizedPages: <String, ParameterizedPageBuilder>{
+        ...EntityRoutes.pages(),
         '/profile': (parameters) => ProfilePage(userId: parameters['uid']),
         '/groups/create': (parameters) {
           final raw = parameters['type'];
@@ -931,8 +925,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         ),
         '/anime/library': (parameters) => const AnimeLibraryPage(),
         '/anime/ratings': (parameters) => const AnimeRatingsPage(),
-        '/anime/characters': (parameters) =>
-            const AnimePopularCharactersPage(),
+        '/anime/characters': (parameters) => const AnimePopularCharactersPage(),
         '/anime/me': (parameters) => AnimeMyPage(userId: parameters['uid']),
         '/game': (parameters) =>
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),

@@ -11,6 +11,8 @@ import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/storage/media_upload_service.dart';
 import '../../../core/storage/r2_storage_service.dart';
+import '../models/private_chat_models.dart';
+import 'private_chat_repository.dart';
 
 final class FirebasePrivateChatRepository implements PrivateChatRepository {
   FirebasePrivateChatRepository({
@@ -209,7 +211,7 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
     final uid = _uid ?? '';
     final isVideo = contentType.startsWith('video/');
     final type = isVideo ? ChatMessageType.video : ChatMessageType.image;
-    
+
     R2UploadResult result;
     if (isVideo) {
       final dir = await getTemporaryDirectory();
@@ -225,14 +227,10 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
         extension: _extension(fileName, contentType),
       );
     }
-    
+
     onProgress(0.5);
     try {
-      await _chats
-          .doc(chatId)
-          .collection('media')
-          .doc(mediaId)
-          .set({
+      await _chats.doc(chatId).collection('media').doc(mediaId).set({
         'mediumPath': result.publicUrl,
         'originalPath': result.publicUrl,
         'status': 'ready',
@@ -240,7 +238,7 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
       }, SetOptions(merge: true));
     } catch (_) {}
     onProgress(1);
-    
+
     return ChatMediaUpload(
       mediaUrl: result.publicUrl,
       thumbnailUrl: result.publicUrl,

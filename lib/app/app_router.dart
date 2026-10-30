@@ -378,6 +378,34 @@ AppRoute _routeFromUri(Uri uri) {
     );
   }
 
+  // Canonical entity routes (Phase 2).
+  if (segments.length == 2 && segments.first == 'reel') {
+    return entity(path: '/reel', key: 'reelId', id: segments[1]);
+  }
+  if (segments.length == 2 && segments.first == 'audio') {
+    return entity(path: '/audio', key: 'audioId', id: segments[1]);
+  }
+  if (segments.length == 2 && segments.first == 'hashtag') {
+    return entity(path: '/hashtag', key: 'tag', id: segments[1]);
+  }
+
+  // Legacy feed-highlight links resolve onto the canonical entity route.
+  if (segments.length == 1 &&
+      (segments.first == 'edits' || segments.first == 'reels')) {
+    final highlight = query['highlight']?.trim() ?? '';
+    if (highlight.isEmpty) {
+      return ParameterizedRoute(path: '/${segments.first}', parameters: query);
+    }
+    return ParameterizedRoute(
+      path: '/reel',
+      parameters: <String, String>{
+        for (final entry in query.entries)
+          if (entry.key != 'highlight') entry.key: entry.value,
+        'reelId': highlight,
+      },
+    );
+  }
+
   if (segments.length == 2 && segments.first == 'event') {
     return entity(path: '/event', key: 'eventId', id: segments[1]);
   }
@@ -423,6 +451,9 @@ AppRoute _routeFromUri(Uri uri) {
 }
 
 const _requiredEntityKeys = <String, String>{
+  '/reel': 'reelId',
+  '/audio': 'audioId',
+  '/hashtag': 'tag',
   '/event': 'eventId',
   '/game': 'gameId',
   '/games/waiting': 'gameId',

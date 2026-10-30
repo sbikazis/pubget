@@ -24,16 +24,19 @@ class _GuidePageState extends State<GuidePage> {
   @override
   Widget build(BuildContext context) {
     final needle = _query.text.trim().toLowerCase();
-    final topics = GuideTopic.all.where((topic) {
-      if (needle.isEmpty) return true;
-      return topic.title.toLowerCase().contains(needle) ||
-          topic.body.toLowerCase().contains(needle);
-    }).toList(growable: false);
+    final topics = GuideTopic.all
+        .where((topic) {
+          if (needle.isEmpty) return true;
+          return topic.title.toLowerCase().contains(needle) ||
+              topic.body.toLowerCase().contains(needle);
+        })
+        .toList(growable: false);
 
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text('Guide')),
+        title: const Text('Guide'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: <Widget>[
@@ -94,11 +97,7 @@ class _GuidePageState extends State<GuidePage> {
 }
 
 final class GuideTopic {
-  const GuideTopic({
-    required this.title,
-    required this.body,
-    this.route,
-  });
+  const GuideTopic({required this.title, required this.body, this.route});
 
   final String title;
   final String body;
@@ -159,9 +158,9 @@ final class GuideTopic {
       route: '/events',
     ),
     GuideTopic(
-      title: 'Edits',
+      title: 'Reels',
       body:
-          'Edits are short videos, not a photo gallery. Views count only after '
+          'Reels are short videos, not a photo gallery. Views count only after '
           'real watch time — opening a page is not a view.',
       route: '/edits',
     ),

@@ -11,6 +11,8 @@ import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/storage/media_upload_service.dart';
 import '../../../core/storage/r2_storage_service.dart';
+import '../models/chat_models.dart';
+import 'chat_repository.dart';
 
 final class FirebaseChatRepository implements ChatRepository {
   FirebaseChatRepository({
@@ -228,7 +230,7 @@ final class FirebaseChatRepository implements ChatRepository {
   }) => _guard(() async {
     final type = chatMediaTypeFor(contentType: contentType, fileName: fileName);
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    
+
     R2UploadResult result;
     if (type == ChatMediaType.video) {
       // Save to temp file for video
@@ -252,10 +254,10 @@ final class FirebaseChatRepository implements ChatRepository {
         extension: _extension(fileName, contentType),
       );
     }
-    
+
     onProgress(0.5);
     onBytesUploaded?.call();
-    
+
     // Try to update media doc if exists
     try {
       await _firestore
@@ -264,15 +266,15 @@ final class FirebaseChatRepository implements ChatRepository {
           .collection('media')
           .doc(mediaId)
           .set({
-        'mediumPath': result.publicUrl,
-        'originalPath': result.publicUrl,
-        'status': 'ready',
-        'type': type.name,
-      }, SetOptions(merge: true));
+            'mediumPath': result.publicUrl,
+            'originalPath': result.publicUrl,
+            'status': 'ready',
+            'type': type.name,
+          }, SetOptions(merge: true));
     } catch (_) {}
-    
+
     onProgress(1);
-    
+
     return ChatMediaUpload(
       mediaUrl: result.publicUrl,
       thumbnailUrl: result.publicUrl,
@@ -309,14 +311,15 @@ final class FirebaseChatRepository implements ChatRepository {
 Failure _chatFailure(Object error) {
   if (error is FirebaseFunctionsException) {
     return switch (error.code) {
-      'unauthenticated' || 'permission-denied' => const PermissionError(
-        ChatFailureCodes.permission,
-      ),
+      'unauthenticated' ||
+      'permission-denied' => const PermissionError(ChatFailureCodes.permission),
       'not-found' => const NotFoundError(ChatFailureCodes.notFound),
-      'unavailable' || 'deadline-exceeded' || 'resource-exhausted' =>
-        const NetworkError(ChatFailureCodes.network),
-      'invalid-argument' || 'failed-precondition' || 'already-exists' =>
-        const ValidationError(ChatFailureCodes.validation),
+      'unavailable' ||
+      'deadline-exceeded' ||
+      'resource-exhausted' => const NetworkError(ChatFailureCodes.network),
+      'invalid-argument' ||
+      'failed-precondition' ||
+      'already-exists' => const ValidationError(ChatFailureCodes.validation),
       _ => ValidationError(error.message ?? ChatFailureCodes.unknown),
     };
   }

@@ -337,9 +337,7 @@ class _EditUploadPageState extends State<EditUploadPage>
           onPressed: offline || _submitting ? null : _retryFailed,
           semanticLabel: copy.retryProcessing,
           loading: _submitting,
-          child: Text(
-            _video != null ? copy.retry : copy.retryProcessing,
-          ),
+          child: Text(_video != null ? copy.retry : copy.retryProcessing),
         ),
         const SizedBox(height: AppSpacing.sm),
         if (_video != null)
@@ -361,15 +359,12 @@ class _EditUploadPageState extends State<EditUploadPage>
         onPressed: _busy || offline
             ? null
             : _video == null
-                ? () => _choose(ImageSource.gallery)
-                : _submit,
+            ? () => _choose(ImageSource.gallery)
+            : _submit,
         semanticLabel: copy.publish,
         loading: _submitting,
         child: Text(
-          copy.primaryActionLabel(
-            hasVideo: _video != null,
-            phase: _phase.name,
-          ),
+          copy.primaryActionLabel(hasVideo: _video != null, phase: _phase.name),
         ),
       ),
       if (_video != null) ...[
@@ -512,8 +507,9 @@ class _EditUploadPageState extends State<EditUploadPage>
       _phase = _UploadPhase.processing;
       _error = null;
     });
-    final result =
-        await context.read<EditsRepository>().retryProcessing(editId);
+    final result = await context.read<EditsRepository>().retryProcessing(
+      editId,
+    );
     if (!mounted) return;
     if (result.isSuccess) {
       _submitting = false;
@@ -527,7 +523,7 @@ class _EditUploadPageState extends State<EditUploadPage>
       _error = copy.friendlyFailure(
         result.failureOrNull ??
             const UnknownError(
-              'Something went wrong while preparing your Edit. Please try again.',
+              'Something went wrong while preparing your Reel. Please try again.',
             ),
       );
     });
@@ -743,18 +739,19 @@ class _StatusBanner extends StatelessWidget {
       );
     }
     final paused =
-        phase == _UploadPhase.paused || (phase == _UploadPhase.uploading && offline);
+        phase == _UploadPhase.paused ||
+        (phase == _UploadPhase.uploading && offline);
     final title = syncing
         ? copy.syncing
         : paused
-            ? copy.paused
-            : phase == _UploadPhase.processing
-                ? copy.processing
-                : phase == _UploadPhase.uploading
-                    ? '${copy.uploading} ${(progress * 100).round()}%'
-                    : phase == _UploadPhase.failed
-                        ? copy.failedStatus
-                        : copy.draftStatus;
+        ? copy.paused
+        : phase == _UploadPhase.processing
+        ? copy.processing
+        : phase == _UploadPhase.uploading
+        ? '${copy.uploading} ${(progress * 100).round()}%'
+        : phase == _UploadPhase.failed
+        ? copy.failedStatus
+        : copy.draftStatus;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.05),

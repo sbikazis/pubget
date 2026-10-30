@@ -16,11 +16,17 @@ Edit testEdit({
   int likes = 2,
   int comments = 1,
   int views = 4,
+  List<String> hashtags = const <String>[],
+  List<String> mentions = const <String>[],
+  List<String> characterIds = const <String>[],
+  String audioId = '',
+  bool allowRemix = true,
+  String? videoUrl,
 }) {
   return Edit(
     id: id,
     creatorId: creatorId,
-    videoUrl: 'edits-processed/$creatorId/$id.mp4',
+    videoUrl: videoUrl ?? 'edits-processed/$creatorId/$id.mp4',
     thumbnailUrl: 'edits/$creatorId/t_$id.jpg',
     caption: 'Gear five port',
     animeTag: 'one_piece',
@@ -33,13 +39,19 @@ Edit testEdit({
     status: status,
     originalEditId: originalEditId,
     originalCreatorId: originalCreatorId ?? creatorId,
+    hashtags: hashtags,
+    mentions: mentions,
+    characterIds: characterIds,
+    audioId: audioId,
+    allowRemix: allowRemix,
   );
 }
 
 final class FakeEditsRepository implements EditsRepository {
   FakeEditsRepository({List<Edit>? feed, List<EditComment>? comments})
     : feed = feed ?? <Edit>[testEdit()],
-      comments = comments ??
+      comments =
+          comments ??
           <EditComment>[
             EditComment(
               id: 'c1',
@@ -53,6 +65,7 @@ final class FakeEditsRepository implements EditsRepository {
   List<Edit> feed;
   List<EditComment> comments;
   Failure? uploadFailure;
+  Failure? getEditFailure;
   Failure? likeFailure;
   Failure? signalFailure;
   Future<Result<void>> Function(bool like)? likeHandler;
@@ -80,11 +93,16 @@ final class FakeEditsRepository implements EditsRepository {
   }) async {
     uploadCalls += 1;
     lastIdempotencyKey = idempotencyKey;
-    onStarted?.call(resumeEditId ?? 'draft-1', resumeVideoPath ?? 'edits/u/draft-1.mp4');
+    onStarted?.call(
+      resumeEditId ?? 'draft-1',
+      resumeVideoPath ?? 'edits/u/draft-1.mp4',
+    );
     onProgress?.call(1);
     if (uploadFailure != null) return FailureResult(uploadFailure!);
     lastUploadStatus = 'processing';
-    return Success(testEdit(id: resumeEditId ?? 'draft-1', status: 'processing'));
+    return Success(
+      testEdit(id: resumeEditId ?? 'draft-1', status: 'processing'),
+    );
   }
 
   @override
@@ -111,12 +129,37 @@ final class FakeEditsRepository implements EditsRepository {
   Future<Result<List<Edit>>> getCreatorEdits(
     String creatorId, {
     int limit = 12,
-  }) async => Success(feed.where((edit) => edit.creatorId == creatorId).toList());
+  }) async =>
+      Success(feed.where((edit) => edit.creatorId == creatorId).toList());
 
   @override
-  Future<Result<Edit>> getEdit(String editId) async => Success(
-    feed.firstWhere((edit) => edit.id == editId, orElse: () => testEdit()),
+  Future<Result<List<Edit>>> getEditsByAudio(
+    String audioId, {
+    int limit = 24,
+  }) async => Success(
+    feed
+        .where((edit) => edit.audioId == audioId && edit.isPublished)
+        .toList(growable: false),
   );
+
+  @override
+  Future<Result<List<Edit>>> getEditsByHashtag(
+    String hashtag, {
+    int limit = 24,
+  }) async => Success(
+    feed
+        .where((edit) => edit.hashtags.contains(hashtag) && edit.isPublished)
+        .toList(growable: false),
+  );
+
+  @override
+  Future<Result<Edit>> getEdit(String editId) async {
+    final failure = getEditFailure;
+    if (failure != null) return FailureResult(failure);
+    return Success(
+      feed.firstWhere((edit) => edit.id == editId, orElse: () => testEdit()),
+    );
+  }
 
   @override
   Future<Result<Edit>> repostEdit(String editId) async =>

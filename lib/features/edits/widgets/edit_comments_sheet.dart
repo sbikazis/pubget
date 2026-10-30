@@ -129,7 +129,10 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Text(copy.comments, style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                copy.comments,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               const SizedBox(height: AppSpacing.sm),
               SegmentedButton<EditCommentSort>(
                 segments: <ButtonSegment<EditCommentSort>>[
@@ -221,7 +224,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
         compact: true,
         icon: Icons.chat_bubble_outline,
         title: copy.comments,
-        message: 'Be the first to reply to this Edit.',
+        message: 'Be the first to reply to this Reel.',
       );
     }
     final viewerId = context.watch<AuthProvider>().currentUser?.id;
@@ -281,11 +284,12 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
                 IconButton(
                   tooltip: copy.report,
                   icon: const Icon(Icons.flag_outlined),
-                  onPressed: () => context.read<EditsRepository>().commentAction(
-                    editId: widget.edit.id,
-                    commentId: comment.id,
-                    action: 'report',
-                  ),
+                  onPressed: () =>
+                      context.read<EditsRepository>().commentAction(
+                        editId: widget.edit.id,
+                        commentId: comment.id,
+                        action: 'report',
+                      ),
                 ),
             ],
           ),

@@ -255,10 +255,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 value: 'related',
                 child: Text('Fans and Friends'),
               ),
-              DropdownMenuItem(
-                value: 'friends',
-                child: Text('Friends only'),
-              ),
+              DropdownMenuItem(value: 'friends', child: Text('Friends only')),
             ],
             onChanged: loading
                 ? null
@@ -327,7 +324,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         ),
       ),
       tile(
-        'Show works (Edits / Fan Works)',
+        'Show works (Reels / Fan Works)',
         _sectionPrivacy.works,
         (value) => setState(
           () => _sectionPrivacy = _sectionPrivacy.copyWith(works: value),
@@ -351,8 +348,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'Show achievements',
         _sectionPrivacy.achievements,
         (value) => setState(
-          () =>
-              _sectionPrivacy = _sectionPrivacy.copyWith(achievements: value),
+          () => _sectionPrivacy = _sectionPrivacy.copyWith(achievements: value),
         ),
       ),
     ];
