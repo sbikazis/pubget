@@ -38,7 +38,27 @@ abstract final class PubgetLinks {
 
   static String fanWork(String workId) => canonical(fanWorkPath(workId));
 
-  /// Deep link into the Edits feed focused on a specific clip.
+  /// Canonical Reel entity link — `/reel/:reelId`.
+  static String reelPath(String reelId) => _encodedPath('/reel', reelId) ?? '';
+
+  static String reel(String reelId) => canonical(reelPath(reelId));
+
+  /// Canonical audio entity link — `/audio/:audioId`.
+  static String audioPath(String audioId) =>
+      _encodedPath('/audio', audioId) ?? '';
+
+  static String audio(String audioId) => canonical(audioPath(audioId));
+
+  /// Canonical hashtag entity link — `/hashtag/:tag`.
+  static String hashtagPath(String tag) {
+    final normalized = tag.trim().replaceFirst(RegExp(r'^#+'), '');
+    return _encodedPath('/hashtag', normalized) ?? '';
+  }
+
+  static String hashtag(String tag) => canonical(hashtagPath(tag));
+
+  /// Legacy feed-highlight link, kept for stored links and older clients.
+  /// New links use [reelPath].
   static String editHighlightPath(String editId) {
     final trimmed = editId.trim();
     if (trimmed.isEmpty) return '/edits';
@@ -48,6 +68,8 @@ abstract final class PubgetLinks {
   static String editHighlight(String editId) =>
       canonical(editHighlightPath(editId));
 
+  /// Legacy feed-highlight link for the `/reels` feed. New links use
+  /// [reelPath].
   static String reelHighlightPath(String reelId) {
     final trimmed = reelId.trim();
     if (trimmed.isEmpty) return '/reels';
@@ -57,8 +79,7 @@ abstract final class PubgetLinks {
   static String reelHighlight(String reelId) =>
       canonical(reelHighlightPath(reelId));
 
-  static String gamePath(String gameId) =>
-      _encodedPath('/game', gameId) ?? '';
+  static String gamePath(String gameId) => _encodedPath('/game', gameId) ?? '';
 
   static String game(String gameId) => canonical(gamePath(gameId));
 
