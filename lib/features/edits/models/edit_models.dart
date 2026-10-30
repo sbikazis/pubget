@@ -59,6 +59,7 @@ final class EditCounters {
       final value = counters[nestedKey] ?? map[flatKey];
       return value is num ? value.toInt() : 0;
     }
+
     return EditCounters(
       likes: read('likes', 'likesCount'),
       comments: read('comments', 'commentsCount'),
@@ -177,11 +178,10 @@ final class Edit {
     if (statusEnum == EditStatus.needsReview ||
         moderationStatus == 'needs_review') {
       return moderationReason ??
-          'This Edit is held for review (possible third-party watermark).';
+          'This Reel is held for review (possible third-party watermark).';
     }
     if (moderationStatus == 'flagged' || statusEnum == EditStatus.rejected) {
-      return moderationReason ??
-          'This Edit was flagged and was not published.';
+      return moderationReason ?? 'This Reel was flagged and was not published.';
     }
     return switch (failureReason) {
       'invalid-video' =>
@@ -241,10 +241,12 @@ final class Edit {
     return Edit(
       id: id,
       creatorId: map['creatorId'] as String? ?? '',
-      videoUrl: (map['processedStoragePath'] as String?) ??
+      videoUrl:
+          (map['processedStoragePath'] as String?) ??
           map['videoUrl'] as String? ??
           '',
-      thumbnailUrl: (map['thumbnailStoragePath'] as String?) ??
+      thumbnailUrl:
+          (map['thumbnailStoragePath'] as String?) ??
           map['thumbnailUrl'] as String? ??
           '',
       caption: map['caption'] as String? ?? '',
@@ -287,7 +289,7 @@ final class Edit {
     if (status == 'published') return null;
     if (status == 'rejected') {
       return ValidationError(
-        moderationReason ?? 'This Edit was flagged and was not published.',
+        moderationReason ?? 'This Reel was flagged and was not published.',
       );
     }
     if (status == 'failed' || status == 'uploading' || status == 'processing') {

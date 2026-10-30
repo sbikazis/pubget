@@ -233,7 +233,8 @@ class _ProfileViewData {
     final pub = public ?? const PublicProfile(uid: '');
     return _ProfileViewData(
       name: pub.primaryName(),
-      handle: pub.distinctHandle ??
+      handle:
+          pub.distinctHandle ??
           (pub.username == null || pub.username!.trim().isEmpty
               ? null
               : '@${pub.username}'),
@@ -474,9 +475,9 @@ class _ProfileHero extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.headlineSmall
                                         ?.copyWith(
-                                      color: AppColors.white,
-                                      fontWeight: FontWeight.w800,
-                                    ),
+                                          color: AppColors.white,
+                                          fontWeight: FontWeight.w800,
+                                        ),
                                   ),
                                 ),
                                 if (data.isPremium) ...[
@@ -659,9 +660,9 @@ class _AchievementsEntryButton extends StatelessWidget {
                     child: Text(
                       label,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                   const Icon(Icons.chevron_right, color: AppColors.gold),
@@ -729,7 +730,9 @@ class _QuoteCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.royalPurplePale.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.royalPurpleLight.withValues(alpha: 0.35)),
+        border: Border.all(
+          color: AppColors.royalPurpleLight.withValues(alpha: 0.35),
+        ),
       ),
       child: Text(
         '“$quote”',
@@ -751,7 +754,11 @@ class _CoverPatternPainter extends CustomPainter {
       ..strokeWidth = 1.2;
     for (var i = -4; i < 12; i++) {
       final x = i * 48.0;
-      canvas.drawLine(Offset(x, 0), Offset(x + size.height, size.height), paint);
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x + size.height, size.height),
+        paint,
+      );
     }
   }
 
@@ -908,9 +915,7 @@ class _FavoritesSection extends StatelessWidget {
           PubgetEmptyState(
             compact: true,
             icon: Icons.movie_outlined,
-            title: isOwner
-                ? 'No favorite anime yet'
-                : 'No favorites to show',
+            title: isOwner ? 'No favorite anime yet' : 'No favorites to show',
             message: isOwner
                 ? 'Discover anime and pin what you love.'
                 : 'This collector is still exploring.',
@@ -973,7 +978,7 @@ class _CreatorEditsState extends State<_CreatorEdits> {
       }
       if (snapshot.hasError || snapshot.data is FailureResult) {
         return PubgetErrorState(
-          message: 'Could not load edits.',
+          message: 'Could not load Reels.',
           onRetry: () => setState(() {}),
         );
       }
@@ -982,7 +987,7 @@ class _CreatorEditsState extends State<_CreatorEdits> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           ProfileSectionHeader(
-            title: 'Edits',
+            title: 'Reels',
             onViewAll: () => AppNavigation.go(context, '/edits'),
           ),
           if (edits.isEmpty)
@@ -990,16 +995,16 @@ class _CreatorEditsState extends State<_CreatorEdits> {
               compact: true,
               icon: Icons.movie_creation_outlined,
               title: widget.isOwner
-                  ? 'No edits published yet'
-                  : 'No edits to show',
+                  ? 'No Reels published yet'
+                  : 'No Reels to show',
               message: widget.isOwner
-                  ? 'Cut a scene and publish your first edit.'
-                  : 'This creator has not shared edits yet.',
+                  ? 'Cut a scene and publish your first Reel.'
+                  : 'This creator has not shared Reels yet.',
               action: widget.isOwner
                   ? PubgetTextButton(
                       onPressed: () => AppNavigation.go(context, '/edits'),
-                      semanticLabel: 'Open edits',
-                      child: const Text('Create an edit'),
+                      semanticLabel: 'Open Reels',
+                      child: const Text('Create a Reel'),
                     )
                   : null,
             )
@@ -1059,56 +1064,52 @@ class _CreatorFanWorksState extends State<_CreatorFanWorks> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      FutureBuilder<Result<FanWorkListPage>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const SizedBox(height: 1);
-          }
-          if (snapshot.hasError || snapshot.data is FailureResult) {
-            return const PubgetErrorState(
-              message: 'Could not load fan works.',
-            );
-          }
-          final works =
-              snapshot.data?.valueOrNull?.items ?? const <FanWork>[];
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              ProfileSectionHeader(
-                title: FanWorkStrings.feedTitle,
-                onViewAll: () => AppNavigation.go(context, '/fan-works'),
-              ),
-              if (works.isEmpty)
-                PubgetEmptyState(
-                  compact: true,
-                  icon: Icons.brush_outlined,
-                  title: widget.isOwner
-                      ? 'No fan works yet'
-                      : 'No fan works to show',
-                  message: widget.isOwner
-                      ? 'Share a drawing, manga page, or story.'
-                      : 'This creator has not shared works yet.',
-                )
-              else
-                SizedBox(
-                  height: 180,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: works.take(12).length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(width: AppSpacing.sm),
-                    itemBuilder: (context, index) => SizedBox(
-                      width: 120,
-                      child: FanWorkPreviewCard(work: works[index]),
-                    ),
-                  ),
+  Widget build(BuildContext context) => FutureBuilder<Result<FanWorkListPage>>(
+    future: _future,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const SizedBox(height: 1);
+      }
+      if (snapshot.hasError || snapshot.data is FailureResult) {
+        return const PubgetErrorState(message: 'Could not load fan works.');
+      }
+      final works = snapshot.data?.valueOrNull?.items ?? const <FanWork>[];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          ProfileSectionHeader(
+            title: FanWorkStrings.feedTitle,
+            onViewAll: () => AppNavigation.go(context, '/fan-works'),
+          ),
+          if (works.isEmpty)
+            PubgetEmptyState(
+              compact: true,
+              icon: Icons.brush_outlined,
+              title: widget.isOwner
+                  ? 'No fan works yet'
+                  : 'No fan works to show',
+              message: widget.isOwner
+                  ? 'Share a drawing, manga page, or story.'
+                  : 'This creator has not shared works yet.',
+            )
+          else
+            SizedBox(
+              height: 180,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: works.take(12).length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(width: AppSpacing.sm),
+                itemBuilder: (context, index) => SizedBox(
+                  width: 120,
+                  child: FanWorkPreviewCard(work: works[index]),
                 ),
-            ],
-          );
-        },
+              ),
+            ),
+        ],
       );
+    },
+  );
 }
 
 class _GroupsSection extends StatefulWidget {
@@ -1158,9 +1159,7 @@ class _GroupsSectionState extends State<_GroupsSection> {
               PubgetEmptyState(
                 compact: true,
                 icon: Icons.groups_outlined,
-                title: widget.isOwner
-                    ? 'No groups yet'
-                    : 'No groups to show',
+                title: widget.isOwner ? 'No groups yet' : 'No groups to show',
                 message: widget.isOwner
                     ? 'Join a community or create your own.'
                     : 'Groups stay private or empty for now.',
@@ -1353,9 +1352,11 @@ class _StartChatAction extends StatelessWidget {
         );
         return;
       }
-      final message = result.failureOrNull?.message ??
-          'Could not start this private chat.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      final message =
+          result.failureOrNull?.message ?? 'Could not start this private chat.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } on ProviderNotFoundException {
       return;
     }

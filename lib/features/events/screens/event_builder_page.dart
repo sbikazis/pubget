@@ -325,7 +325,7 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                       ),
                       DropdownMenuItem(
                         value: 'publish_edit',
-                        child: Text('Publish an edit'),
+                        child: Text('Publish a Reel'),
                       ),
                       DropdownMenuItem(
                         value: 'create_group',

@@ -26,14 +26,13 @@ final class AchievementCopy {
   }
 
   String get progressRatio => _s.pick('Progress', 'نسبة التقدم');
-  String get showUnlockedOnly =>
-      _s.pick('Show unlocked', 'عرض المحقَّقة');
+  String get showUnlockedOnly => _s.pick('Show unlocked', 'عرض المحقَّقة');
   String get unlockedEmptyTitle =>
       _s.pick('No achievements yet', 'لا إنجازات بعد');
   String get unlockedEmptyBody => _s.pick(
-        'Join a group, send a message, or publish an Edit to cross The Threshold.',
-        'انضم لمجموعة أو أرسل رسالة أو انشر Edit لعبور العتبة.',
-      );
+    'Join a group, send a message, or publish a Reel to cross The Threshold.',
+    'انضم لمجموعة أو أرسل رسالة أو انشر ريلاً لعبور العتبة.',
+  );
   String get loadFailed =>
       _s.pick('Achievements could not load.', 'تعذّر تحميل الإنجازات.');
   String get retry => _s.pick('Try again', 'إعادة المحاولة');
@@ -42,11 +41,11 @@ final class AchievementCopy {
   String get conditions => _s.pick('Requirements', 'الشروط');
 
   String rarityLabel(AchievementRarity rarity) => switch (rarity) {
-        AchievementRarity.common => _s.pick('Common', 'شائع'),
-        AchievementRarity.uncommon => _s.pick('Uncommon', 'غير شائع'),
-        AchievementRarity.rare => _s.pick('Rare', 'نادر'),
-        AchievementRarity.epic => _s.pick('Epic', 'ملحمي'),
-        AchievementRarity.legendary => _s.pick('Legendary', 'أسطوري'),
-        AchievementRarity.mythic => _s.pick('Mythic', 'ميثي'),
-      };
+    AchievementRarity.common => _s.pick('Common', 'شائع'),
+    AchievementRarity.uncommon => _s.pick('Uncommon', 'غير شائع'),
+    AchievementRarity.rare => _s.pick('Rare', 'نادر'),
+    AchievementRarity.epic => _s.pick('Epic', 'ملحمي'),
+    AchievementRarity.legendary => _s.pick('Legendary', 'أسطوري'),
+    AchievementRarity.mythic => _s.pick('Mythic', 'ميثي'),
+  };
 }

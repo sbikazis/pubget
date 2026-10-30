@@ -285,8 +285,8 @@ final class AppStrings {
   String get homeWhatNow =>
       pick('What should I do right now?', 'ماذا أفعل الآن؟');
   String get homeHeroSubtitle => pick(
-    'Discover people, groups, edits, and games in one place.',
-    'اكتشف الأشخاص والمجموعات والمقاطع والألعاب من مكان واحد.',
+    'Discover people, groups, Reels, and games in one place.',
+    'اكتشف الأشخاص والمجموعات والريلز والألعاب من مكان واحد.',
   );
   String get nowJoinGroup => pick('Join a group', 'انضم لمجموعة');
   String get nowWatchEdits => pick('Watch Reels', 'شاهد الريلز');
@@ -430,8 +430,8 @@ final class AppStrings {
   String get seeMore => pick('See more', 'مشاهدة المزيد');
   String get createNew => pick('Create', 'إنشاء');
   String get createGroupAction => pick('Create a group', 'إنشاء مجموعة');
-  String get createVideoClip => pick('Create video clip', 'إنشاء مقطع فيديو');
-  String get uploadClip => pick('Upload a clip', 'رفع مقطع');
+  String get createVideoClip => pick('Create Reel', 'إنشاء ريل');
+  String get uploadClip => pick('Upload Reel', 'رفع الريل');
   String get createFanWork => pick('Create a fan work', 'إنشاء عمل معجبين');
   String get browseEvents => pick('Browse events', 'تصفح الفعاليات');
   String get pickHostGroup =>

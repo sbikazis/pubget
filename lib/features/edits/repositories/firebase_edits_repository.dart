@@ -26,7 +26,7 @@ Failure mapEditException(Object error) {
     );
   }
   return const UnknownError(
-    'Something went wrong while preparing your Edit. Please try again.',
+    'Something went wrong while preparing your Reel. Please try again.',
   );
 }
 
@@ -58,17 +58,18 @@ Failure _mapCode(String code, String? message) {
   }
   if (normalized == 'failed-precondition') {
     return ValidationError(
-      message ?? 'This Edit cannot continue yet. Try again or replace the video.',
+      message ??
+          'This Reel cannot continue yet. Try again or replace the video.',
     );
   }
   if (normalized == 'not-found') {
-    return const NotFoundError('Edit not found.');
+    return const NotFoundError('Reel not found.');
   }
   if (normalized == 'invalid-argument') {
-    return ValidationError(message ?? 'That Edit request was invalid.');
+    return ValidationError(message ?? 'That Reel request was invalid.');
   }
   return const UnknownError(
-    'Something went wrong while preparing your Edit. Please try again.',
+    'Something went wrong while preparing your Reel. Please try again.',
   );
 }
 
@@ -96,9 +97,7 @@ class FirebaseEditsRepository implements EditsRepository {
   String get _collection => _reels ? 'reels' : 'edits';
   String _callable(String editName) {
     if (!_reels) return editName;
-    return editName
-        .replaceFirst('Edit', 'Reel')
-        .replaceFirst('edit', 'reel');
+    return editName.replaceFirst('Edit', 'Reel').replaceFirst('edit', 'reel');
   }
 
   String _returnedId(Map<dynamic, dynamic> data) {
@@ -123,7 +122,11 @@ class FirebaseEditsRepository implements EditsRepository {
     }
   }
 
-  Future<Edit> _readEdit(String editId, {String? caption, String? animeTag}) async {
+  Future<Edit> _readEdit(
+    String editId, {
+    String? caption,
+    String? animeTag,
+  }) async {
     final snap = await _firestore.collection(_collection).doc(editId).get();
     if (!snap.exists || snap.data() == null) {
       return Edit(
@@ -170,14 +173,14 @@ class FirebaseEditsRepository implements EditsRepository {
       final key = idempotencyKey;
       if (key != null) startPayload['idempotencyKey'] = key;
       final start = await _functions
-           .httpsCallable(_callable('startEditUpload'))
+          .httpsCallable(_callable('startEditUpload'))
           .call(startPayload);
-       editId = _returnedId(start.data);
+      editId = _returnedId(start.data);
     }
-    
+
     onStarted?.call(editId, resumeVideoPath ?? '');
     onProgress?.call(0.3);
-    
+
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     R2UploadResult result;
     final bytes = source.bytes;
@@ -196,9 +199,9 @@ class FirebaseEditsRepository implements EditsRepository {
     } else {
       throw const UnknownError('No video data to upload');
     }
-    
+
     onProgress?.call(0.7);
-    
+
     try {
       await _firestore.collection(_collection).doc(editId).set({
         'videoUrl': result.publicUrl,
@@ -206,22 +209,22 @@ class FirebaseEditsRepository implements EditsRepository {
         'status': 'processing',
       }, SetOptions(merge: true));
     } catch (_) {}
-    
+
     onProgress?.call(1);
-    
+
     try {
       final finalized = await finalizeEditUpload(editId);
       if (finalized.isSuccess) {
         return finalized.valueOrNull!;
       }
     } catch (_) {}
-    
+
     return _readEdit(editId, caption: caption, animeTag: animeTag);
   });
 
   @override
   Future<Result<Edit>> finalizeEditUpload(String editId) => _guard(() async {
-     await _functions.httpsCallable(_callable('finalizeEditUpload')).call({
+    await _functions.httpsCallable(_callable('finalizeEditUpload')).call({
       'editId': editId,
     });
     return _readEdit(editId);
@@ -234,9 +237,11 @@ class FirebaseEditsRepository implements EditsRepository {
 
   @override
   Stream<Result<Edit>> watchEdit(String editId) {
-    return _firestore.collection(_collection).doc(editId).snapshots().map((snap) {
+    return _firestore.collection(_collection).doc(editId).snapshots().map((
+      snap,
+    ) {
       if (!snap.exists || snap.data() == null) {
-        return const FailureResult<Edit>(NotFoundError('Edit not found.'));
+        return const FailureResult<Edit>(NotFoundError('Reel not found.'));
       }
       return Success(Edit.fromMap(snap.data()!, id: snap.id));
     });
@@ -250,10 +255,9 @@ class FirebaseEditsRepository implements EditsRepository {
   Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) =>
       _guard(() async {
         try {
-          final result = await _functions.httpsCallable(_callable('getEditFeed')).call({
-            'limit': limit,
-            if (after != null) 'afterId': after.id,
-          });
+          final result = await _functions
+              .httpsCallable(_callable('getEditFeed'))
+              .call({'limit': limit, if (after != null) 'afterId': after.id});
           final raw = result.data['items'];
           if (raw is List && raw.isNotEmpty) {
             final items = raw
@@ -267,17 +271,14 @@ class FirebaseEditsRepository implements EditsRepository {
                 .where((edit) => edit.id.isNotEmpty)
                 .toList(growable: false);
             if (items.isNotEmpty) {
-              return EditPage(
-                items,
-                hasMore: result.data['hasMore'] == true,
-              );
+              return EditPage(items, hasMore: result.data['hasMore'] == true);
             }
           }
         } on Object {
           // Fall through to the published score query.
         }
         var query = _firestore
-             .collection(_collection)
+            .collection(_collection)
             .where('status', isEqualTo: 'published')
             .orderBy('score', descending: true)
             .orderBy('createdAt', descending: true)
@@ -315,7 +316,7 @@ class FirebaseEditsRepository implements EditsRepository {
   Future<Result<Edit>> getEdit(String editId) => _guard(() async {
     final doc = await _firestore.collection(_collection).doc(editId).get();
     if (!doc.exists || doc.data() == null) {
-      throw const NotFoundError('Edit not found.');
+      throw const NotFoundError('Reel not found.');
     }
     return Edit.fromMap(doc.data()!, id: doc.id);
   });
@@ -327,9 +328,9 @@ class FirebaseEditsRepository implements EditsRepository {
 
   @override
   Future<Result<Edit>> repostEdit(String editId) => _guard(() async {
-    final result = await _functions.httpsCallable(_callable('repostEdit')).call({
-      'editId': editId,
-    });
+    final result = await _functions.httpsCallable(_callable('repostEdit')).call(
+      {'editId': editId},
+    );
     return (await getEdit(_returnedId(result.data))).valueOrNull!;
   });
 
@@ -386,9 +387,9 @@ class FirebaseEditsRepository implements EditsRepository {
 
   @override
   Future<Result<String>> startPlayback(String editId) => _guard(() async {
-    final result = await _functions.httpsCallable(_callable('startEditPlayback')).call({
-      'editId': editId,
-    });
+    final result = await _functions
+        .httpsCallable(_callable('startEditPlayback'))
+        .call({'editId': editId});
     return result.data['sessionId'] as String;
   });
 

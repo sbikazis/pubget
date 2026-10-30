@@ -334,8 +334,9 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
       PublicProfile? original;
       if (widget.edit.isRepost &&
           widget.edit.creatorId != widget.edit.displayCreatorId) {
-        original = (await repo.getPublicProfile(widget.edit.creatorId))
-            .valueOrNull;
+        original = (await repo.getPublicProfile(
+          widget.edit.creatorId,
+        )).valueOrNull;
       }
       if (!mounted) return;
       setState(() {
@@ -491,10 +492,7 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
       children: <Widget>[
         // Thumbnail always underneath so there is never a black void.
         if (widget.edit.hasThumbnail)
-          AppImageLoader(
-            imageUrl: widget.edit.thumbnailUrl,
-            fit: BoxFit.cover,
-          )
+          AppImageLoader(imageUrl: widget.edit.thumbnailUrl, fit: BoxFit.cover)
         else
           const ColoredBox(color: Color(0xFF140C22)),
         if (ready)
@@ -513,7 +511,8 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
               ),
             ),
           )
-        else if (_loadingVideo || (!_loadFailed && widget.edit.hasPlayableVideo))
+        else if (_loadingVideo ||
+            (!_loadFailed && widget.edit.hasPlayableVideo))
           const Center(
             child: SizedBox(
               width: 36,
@@ -605,10 +604,7 @@ class _EditFeedVideoItemState extends State<EditFeedVideoItem> {
             left: 0,
             right: 0,
             bottom: 0,
-            child: _Scrubber(
-              controller: controller,
-              onSeek: _seekFraction,
-            ),
+            child: _Scrubber(controller: controller, onSeek: _seekFraction),
           ),
       ],
     );
@@ -639,10 +635,7 @@ class _Scrubber extends StatelessWidget {
           inactiveTrackColor: Colors.white24,
           thumbColor: AppColors.gold,
         ),
-        child: Slider(
-          value: position,
-          onChanged: onSeek,
-        ),
+        child: Slider(value: position, onChanged: onSeek),
       ),
     );
   }
@@ -671,7 +664,8 @@ class _CreatorOverlay extends StatelessWidget {
       return matches.first.value;
     });
     final isFan = given >= SocialSnapshot.fanThreshold;
-    final name = profile?.primaryName(fallback: edit.displayCreatorId) ??
+    final name =
+        profile?.primaryName(fallback: edit.displayCreatorId) ??
         edit.displayCreatorId;
 
     return Column(
@@ -868,12 +862,10 @@ class _EditActionRail extends StatelessWidget {
     // Open the share sheet immediately (optimistic UX); signal in parallel.
     unawaited(provider.share(edit.id));
     final url = PubgetLinks.canonical(ReelsBrand.route);
-    final text = edit.caption.isEmpty
-        ? url
-        : '${edit.caption}\n$url';
+    final text = edit.caption.isEmpty ? url : '${edit.caption}\n$url';
     try {
       await SharePlus.instance.share(
-        ShareParams(text: text, title: 'Pubget Edit'),
+        ShareParams(text: text, title: 'Pubget Reel'),
       );
     } catch (_) {
       if (!context.mounted) return;
@@ -882,11 +874,9 @@ class _EditActionRail extends StatelessWidget {
   }
 
   Future<void> _respect(BuildContext context) async {
-    final given = context
-        .read<SocialProvider>()
-        .snapshot
-        .givenRespect
-        .where((item) => item.toUserId == edit.displayCreatorId);
+    final given = context.read<SocialProvider>().snapshot.givenRespect.where(
+      (item) => item.toUserId == edit.displayCreatorId,
+    );
     final becameFan = await showGiveRespectSheet(
       context,
       toUserId: edit.displayCreatorId,
@@ -922,7 +912,10 @@ class _EditActionRail extends StatelessWidget {
                 PhosphorIconsRegular.flag,
                 color: Colors.white70,
               ),
-              title: Text(copy.report, style: const TextStyle(color: Colors.white)),
+              title: Text(
+                copy.report,
+                style: const TextStyle(color: Colors.white),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 provider.report(edit.id);
