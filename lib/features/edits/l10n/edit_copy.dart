@@ -113,6 +113,49 @@ final class EditCopy {
   String get pause => _s.pick('Pause', 'إيقاف');
   String views(int count) => _s.pick('$count views', '$count مشاهدة');
 
+  // Entity surfaces (Reel / Audio / Hashtag).
+  String get reelDetails => _s.pick('Reel', 'ريل');
+  String get creatorFallback => _s.pick('Pubget creator', 'مبدع على Pubget');
+  String get originalAudio => _s.pick('Original Audio', 'الصوت الأصلي');
+  String get audio => _s.pick('Audio', 'الصوت');
+  String get audioSource => _s.pick('Audio source', 'مصدر الصوت');
+  String get openOriginalReel =>
+      _s.pick('Open original Reel', 'فتح الريل الأصلي');
+  String get relatedReels =>
+      _s.pick('Reels using this audio', 'ريلز تستخدم هذا الصوت');
+  String usedInReels(int count) => _s.pick(
+    'Used in $count ${count == 1 ? 'Reel' : 'Reels'}',
+    'مستخدم في $count ريل',
+  );
+  String get noAudioReels =>
+      _s.pick('No Reels use this audio yet', 'لا ريلز تستخدم هذا الصوت بعد');
+  String get noAudioReelsBody => _s.pick(
+    'Reels that keep this audio will show up here.',
+    'ستظهر هنا الريلز التي تحتفظ بهذا الصوت.',
+  );
+  String get noHashtagReels =>
+      _s.pick('No Reels with this hashtag yet', 'لا ريلز بهذا الوسم بعد');
+  String get noHashtagReelsBody => _s.pick(
+    'Tagged Reels appear here as creators publish them.',
+    'تظهر الريلز الموسومة هنا عند نشرها.',
+  );
+  String get remixEnabled => _s.pick('Remix enabled', 'إعادة المزج متاحة');
+  String get remixDisabled => _s.pick('Remix disabled', 'إعادة المزج معطّلة');
+  String get hashtags => _s.pick('Hashtags', 'الوسوم');
+  String get mentions => _s.pick('Mentions', 'الإشارات');
+  String charactersCount(int count) => _s.pick(
+    '$count ${count == 1 ? 'character' : 'characters'}',
+    '$count شخصية',
+  );
+  String animeTagOf(String tag) => _s.pick('Anime · $tag', 'أنمي · $tag');
+  String get openReel => _s.pick('Open Reel', 'فتح الريل');
+  String get reelUnavailable =>
+      _s.pick('This Reel is not available', 'هذا الريل غير متاح');
+  String get reelUnavailableBody => _s.pick(
+    'It may have been deleted or is still processing.',
+    'قد يكون محذوفًا أو ما زال قيد المعالجة.',
+  );
+
   String primaryActionLabel({required bool hasVideo, required String phase}) {
     return switch (phase) {
       'uploading' => uploading,

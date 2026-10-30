@@ -47,6 +47,18 @@ final class UnavailableEditsRepository implements EditsRepository {
   }) async => _failure();
 
   @override
+  Future<Result<List<Edit>>> getEditsByAudio(
+    String audioId, {
+    int limit = 24,
+  }) async => _failure();
+
+  @override
+  Future<Result<List<Edit>>> getEditsByHashtag(
+    String hashtag, {
+    int limit = 24,
+  }) async => _failure();
+
+  @override
   Future<Result<Edit>> getEdit(String editId) async => _failure();
 
   @override

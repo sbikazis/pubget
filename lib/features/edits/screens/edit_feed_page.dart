@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:phosphor_icons/phosphor_icons.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../app/app_route.dart';
@@ -30,6 +29,7 @@ import '../providers/edits_provider.dart';
 import '../repositories/edits_repository.dart';
 import '../widgets/edit_action_button.dart';
 import '../widgets/edit_comments_sheet.dart';
+import '../widgets/reel_metadata.dart';
 import '../../reels/reels_brand.dart';
 
 class EditFeedPage extends StatefulWidget {
@@ -664,9 +664,11 @@ class _CreatorOverlay extends StatelessWidget {
       return matches.first.value;
     });
     final isFan = given >= SocialSnapshot.fanThreshold;
-    final name =
-        profile?.primaryName(fallback: edit.displayCreatorId) ??
-        edit.displayCreatorId;
+    final profileName = profile?.primaryName(fallback: '') ?? '';
+    final originalName = originalProfile?.primaryName(fallback: '') ?? '';
+    final name = profileName.trim().isEmpty
+        ? copy.creatorFallback
+        : profileName.trim();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -734,7 +736,7 @@ class _CreatorOverlay extends StatelessWidget {
         if (edit.isRepost) ...[
           const SizedBox(height: AppSpacing.xs),
           Text(
-            '${copy.originalCreator} · ${originalProfile?.primaryName(fallback: edit.displayCreatorId) ?? edit.displayCreatorId}',
+            '${copy.originalCreator} · ${originalName.trim().isEmpty ? copy.creatorFallback : originalName.trim()}',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
@@ -755,6 +757,22 @@ class _CreatorOverlay extends StatelessWidget {
             '#${edit.animeTag}',
             style: const TextStyle(color: AppColors.goldLight, fontSize: 13),
           ),
+        if (edit.audioId.trim().isNotEmpty) ...<Widget>[
+          const SizedBox(height: AppSpacing.xs),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: ReelAudioAttribution(
+              edit: edit,
+              creatorName: name,
+              onDark: true,
+              dense: true,
+            ),
+          ),
+        ],
+        if (edit.hashtags.isNotEmpty) ...<Widget>[
+          const SizedBox(height: AppSpacing.xs),
+          ReelHashtagChips(hashtags: edit.hashtags, onDark: true, limit: 4),
+        ],
         const SizedBox(height: AppSpacing.xs),
         Text(
           copy.views(edit.viewsCount),
@@ -859,18 +877,14 @@ class _EditActionRail extends StatelessWidget {
   }
 
   Future<void> _share(BuildContext context, EditsProvider provider) async {
-    // Open the share sheet immediately (optimistic UX); signal in parallel.
+    // Canonical entity link — never the feed-highlight route.
     unawaited(provider.share(edit.id));
-    final url = PubgetLinks.canonical(ReelsBrand.route);
-    final text = edit.caption.isEmpty ? url : '${edit.caption}\n$url';
-    try {
-      await SharePlus.instance.share(
-        ShareParams(text: text, title: 'Pubget Reel'),
-      );
-    } catch (_) {
-      if (!context.mounted) return;
-      await PubgetLinks.copy(context, url, type: 'edit');
-    }
+    await PubgetLinks.share(
+      context,
+      url: PubgetLinks.reel(edit.id),
+      title: 'Pubget Reel',
+      type: 'edit',
+    );
   }
 
   Future<void> _respect(BuildContext context) async {
@@ -907,6 +921,21 @@ class _EditActionRail extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            ListTile(
+              key: const Key('open-reel-action'),
+              leading: const PhosphorIcon(
+                PhosphorIconsRegular.filmStrip,
+                color: Colors.white70,
+              ),
+              title: Text(
+                copy.openReel,
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                AppNavigation.go(context, PubgetLinks.reelPath(edit.id));
+              },
+            ),
             ListTile(
               leading: const PhosphorIcon(
                 PhosphorIconsRegular.flag,

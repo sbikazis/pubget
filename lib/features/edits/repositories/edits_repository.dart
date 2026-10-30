@@ -30,6 +30,15 @@ abstract interface class EditsRepository {
     String creatorId, {
     int limit = 12,
   });
+
+  /// Published Reels that carry [audioId] (audio attribution + usage).
+  Future<Result<List<Edit>>> getEditsByAudio(String audioId, {int limit = 24});
+
+  /// Published Reels tagged with [hashtag] (hashtag discovery).
+  Future<Result<List<Edit>>> getEditsByHashtag(
+    String hashtag, {
+    int limit = 24,
+  });
   Future<Result<Edit>> getEdit(String editId);
   Future<Result<Edit>> repostEdit(String editId);
   Future<Result<void>> deleteEdit(String editId);

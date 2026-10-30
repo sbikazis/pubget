@@ -10,6 +10,8 @@ import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/storage/media_upload_service.dart';
 import '../../../core/storage/r2_storage_service.dart';
+import '../models/edit_models.dart';
+import 'edits_repository.dart';
 
 Failure mapEditException(Object error) {
   if (error is Failure) return error;
@@ -311,6 +313,59 @@ class FirebaseEditsRepository implements EditsRepository {
         .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
         .toList(growable: false);
   });
+
+  /// Equality-only query on the stored `audioId`, so no composite index is
+  /// required. Publishing state is filtered client-side.
+  @override
+  Future<Result<List<Edit>>> getEditsByAudio(
+    String audioId, {
+    int limit = 24,
+  }) => _guard(() async {
+    final id = audioId.trim();
+    if (id.isEmpty) return const <Edit>[];
+    final snapshot = await _firestore
+        .collection(_collection)
+        .where('audioId', isEqualTo: id)
+        .limit(limit.clamp(1, 50))
+        .get();
+    return _publishedNewestFirst(snapshot.docs);
+  });
+
+  /// Single `array-contains` query on the stored `hashtags` array, so no
+  /// composite index is required.
+  @override
+  Future<Result<List<Edit>>> getEditsByHashtag(
+    String hashtag, {
+    int limit = 24,
+  }) => _guard(() async {
+    final tag = hashtag.trim().replaceFirst(RegExp(r'^#+'), '');
+    if (tag.isEmpty) return const <Edit>[];
+    final snapshot = await _firestore
+        .collection(_collection)
+        .where('hashtags', arrayContains: tag)
+        .limit(limit.clamp(1, 50))
+        .get();
+    return _publishedNewestFirst(snapshot.docs);
+  });
+
+  List<Edit> _publishedNewestFirst(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final items =
+        docs
+            .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
+            .where((edit) => edit.isPublished)
+            .toList(growable: false)
+          ..sort((a, b) {
+            final left = a.publishedAt ?? a.createdAt;
+            final right = b.publishedAt ?? b.createdAt;
+            if (left == null && right == null) return 0;
+            if (left == null) return 1;
+            if (right == null) return -1;
+            return right.compareTo(left);
+          });
+    return items;
+  }
 
   @override
   Future<Result<Edit>> getEdit(String editId) => _guard(() async {

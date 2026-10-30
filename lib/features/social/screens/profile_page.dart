@@ -1019,7 +1019,11 @@ class _CreatorEditsState extends State<_CreatorEdits> {
                 itemBuilder: (context, index) => SizedBox(
                   width: 100,
                   child: PubgetCard(
-                    onTap: () => AppNavigation.go(context, '/edits'),
+                    key: ValueKey<String>('profile-reel-${edits[index].id}'),
+                    onTap: () => AppNavigation.go(
+                      context,
+                      PubgetLinks.reelPath(edits[index].id),
+                    ),
                     child: AppImageLoader(
                       imageUrl: edits[index].thumbnailUrl,
                       fit: BoxFit.cover,

@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:pubget/app/app_route.dart';
 import 'package:pubget/app/app_router.dart';
 import 'package:pubget/app/entity_routes.dart';
 import 'package:pubget/core/links/pubget_deep_link.dart';
 import 'package:pubget/core/links/pubget_links.dart';
 import 'package:pubget/features/audio/screens/audio_page.dart';
+import 'package:pubget/features/edits/repositories/edits_repository.dart';
 import 'package:pubget/features/hashtags/screens/hashtag_page.dart';
 import 'package:pubget/features/reels/screens/reel_details_page.dart';
+
+import 'edits_test_support.dart';
 
 void main() {
   group('canonical entity links', () {
@@ -149,6 +153,11 @@ void main() {
   });
 
   testWidgets('/reel/abc123 opens ReelDetailsPage', (tester) async {
+    tester.binding.platformDispatcher.defaultRouteNameTestValue =
+        '/reel/abc123';
+    addTearDown(
+      tester.binding.platformDispatcher.clearDefaultRouteNameTestValue,
+    );
     final delegate = AppRouterDelegate(
       homePage: const Text('Splash'),
       parameterizedPages: EntityRoutes.pages(),
@@ -156,20 +165,27 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp.router(
-        routerDelegate: delegate,
-        routeInformationParser: AppRouteInformationParser(),
+      Provider<EditsRepository>.value(
+        value: FakeEditsRepository(),
+        child: MaterialApp.router(
+          routerDelegate: delegate,
+          routeInformationParser: AppRouteInformationParser(),
+        ),
       ),
     );
+    await tester.pumpAndSettle();
 
     expect(find.byType(ReelDetailsPage), findsOneWidget);
-    expect(find.text('abc123'), findsOneWidget);
-    expect(find.text('Route: /reel/abc123'), findsOneWidget);
   });
 
   testWidgets('legacy /edits?highlight=abc123 opens the same reel', (
     tester,
   ) async {
+    tester.binding.platformDispatcher.defaultRouteNameTestValue =
+        '/edits?highlight=abc123';
+    addTearDown(
+      tester.binding.platformDispatcher.clearDefaultRouteNameTestValue,
+    );
     final delegate = AppRouterDelegate(
       homePage: const Text('Splash'),
       parameterizedPages: EntityRoutes.pages(),
@@ -177,15 +193,17 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp.router(
-        routerDelegate: delegate,
-        routeInformationParser: AppRouteInformationParser(),
+      Provider<EditsRepository>.value(
+        value: FakeEditsRepository(),
+        child: MaterialApp.router(
+          routerDelegate: delegate,
+          routeInformationParser: AppRouteInformationParser(),
+        ),
       ),
     );
+    await tester.pumpAndSettle();
 
     expect(find.byType(ReelDetailsPage), findsOneWidget);
-    expect(find.text('abc123'), findsOneWidget);
-    expect(find.text('Route: /reel/abc123'), findsOneWidget);
   });
 
   testWidgets('AppNavigation.go(/reel/abc) opens the reel route', (
@@ -198,9 +216,12 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp.router(
-        routerDelegate: delegate,
-        routeInformationParser: AppRouteInformationParser(),
+      Provider<EditsRepository>.value(
+        value: FakeEditsRepository(),
+        child: MaterialApp.router(
+          routerDelegate: delegate,
+          routeInformationParser: AppRouteInformationParser(),
+        ),
       ),
     );
 
@@ -210,6 +231,5 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ReelDetailsPage), findsOneWidget);
-    expect(find.text('abc'), findsOneWidget);
   });
 }

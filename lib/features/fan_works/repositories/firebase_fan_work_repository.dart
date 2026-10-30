@@ -11,6 +11,8 @@ import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/storage/media_upload_service.dart';
 import '../../../core/storage/r2_storage_service.dart';
+import '../models/fan_work_models.dart';
+import 'fan_work_repository.dart';
 
 final class FirebaseFanWorkRepository implements FanWorkRepository {
   FirebaseFanWorkRepository({
@@ -93,7 +95,7 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
     final isVideo = contentType.startsWith('video/');
     final ext = _extensionFromContentType(contentType);
     final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
-    
+
     R2UploadResult result;
     if (isVideo) {
       final dir = await getTemporaryDirectory();
@@ -108,7 +110,7 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
         extension: ext,
       );
     }
-    
+
     // Try to update the media doc if path structure matches
     try {
       await confirmMedia(
@@ -239,10 +241,7 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
   Future<Result<void>> requestRemoval({
     required String workId,
     String details = '',
-  }) => _call('requestFanWorkRemoval', {
-    'workId': workId,
-    'details': details,
-  });
+  }) => _call('requestFanWorkRemoval', {'workId': workId, 'details': details});
 
   @override
   Stream<Result<FanWork>> watchWork(String workId) {
@@ -315,14 +314,13 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
   }
 
   @override
-  Future<Result<List<FanWork>>> getMyDrafts({required String userId}) =>
-      _list(
-        _works
-            .where('creatorId', isEqualTo: userId)
-            .where('status', isEqualTo: 'draft')
-            .orderBy('updatedAt', descending: true)
-            .limit(40),
-      );
+  Future<Result<List<FanWork>>> getMyDrafts({required String userId}) => _list(
+    _works
+        .where('creatorId', isEqualTo: userId)
+        .where('status', isEqualTo: 'draft')
+        .orderBy('updatedAt', descending: true)
+        .limit(40),
+  );
 
   @override
   Future<Result<List<FanWorkPreview>>> search(String query) async {

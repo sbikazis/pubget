@@ -13,70 +13,76 @@ import 'edits_test_support.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('enqueue leaves job active without awaiting upload completion', () async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
-    final slow = _SlowUploadRepository();
-    var uploadStarted = false;
-    slow.onStart = () => uploadStarted = true;
-    final manager = EditUploadManager(repository: slow);
-    await manager.restore();
+  test(
+    'enqueue leaves job active without awaiting upload completion',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final slow = _SlowUploadRepository();
+      var uploadStarted = false;
+      slow.onStart = () => uploadStarted = true;
+      final manager = EditUploadManager(repository: slow);
+      await manager.restore();
 
-    final job = await manager.enqueue(
-      caption: 'hi',
-      animeTag: 'one_piece',
-      contentType: 'video/mp4',
-      fileName: 'clip.mp4',
-      localPath: '/tmp/clip.mp4',
-      sizeBytes: 1024,
-    );
-    // Enqueue returns before upload finishes — job is already tracked.
-    expect(manager.hasVisibleJobs, isTrue);
-    expect(job.localId, isNotEmpty);
+      final job = await manager.enqueue(
+        caption: 'hi',
+        animeTag: 'one_piece',
+        contentType: 'video/mp4',
+        fileName: 'clip.mp4',
+        localPath: '/tmp/clip.mp4',
+        sizeBytes: 1024,
+      );
+      // Enqueue returns before upload finishes — job is already tracked.
+      expect(manager.hasVisibleJobs, isTrue);
+      expect(job.localId, isNotEmpty);
 
-    await Future<void>.delayed(const Duration(milliseconds: 30));
-    expect(uploadStarted, isTrue);
-    expect(
-      manager.primaryJob?.phase,
-      anyOf(
-        EditUploadJobPhase.queued,
-        EditUploadJobPhase.uploading,
-        EditUploadJobPhase.processing,
-      ),
-    );
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(uploadStarted, isTrue);
+      expect(
+        manager.primaryJob?.phase,
+        anyOf(
+          EditUploadJobPhase.queued,
+          EditUploadJobPhase.uploading,
+          EditUploadJobPhase.processing,
+        ),
+      );
 
-    slow.completeUpload();
-    await Future<void>.delayed(const Duration(milliseconds: 40));
-    expect(manager.primaryJob?.phase, EditUploadJobPhase.processing);
+      slow.completeUpload();
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(manager.primaryJob?.phase, EditUploadJobPhase.processing);
 
-    manager.dispose();
-  });
+      manager.dispose();
+    },
+  );
 
-  test('failed job stays visible with retry path and draft persistence', () async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
-    final repo = FakeEditsRepository()
-      ..uploadFailure = const NetworkError('offline');
-    final manager = EditUploadManager(repository: repo);
-    await manager.restore();
-    await manager.enqueue(
-      caption: 'draft',
-      animeTag: '',
-      contentType: 'video/mp4',
-      fileName: 'wide.mp4',
-      localPath: '/tmp/wide.mp4',
-      sizeBytes: 2048,
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 40));
-    expect(manager.primaryJob?.isFailed, isTrue);
-    expect(manager.primaryJob?.errorMessage, contains('offline'));
+  test(
+    'failed job stays visible with retry path and draft persistence',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final repo = FakeEditsRepository()
+        ..uploadFailure = const NetworkError('offline');
+      final manager = EditUploadManager(repository: repo);
+      await manager.restore();
+      await manager.enqueue(
+        caption: 'draft',
+        animeTag: '',
+        contentType: 'video/mp4',
+        fileName: 'wide.mp4',
+        localPath: '/tmp/wide.mp4',
+        sizeBytes: 2048,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(manager.primaryJob?.isFailed, isTrue);
+      expect(manager.primaryJob?.errorMessage, contains('offline'));
 
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('edit_upload_queue_v2');
-    expect(raw, isNotNull);
-    expect(raw, contains('wide.mp4'));
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('edit_upload_queue_v2');
+      expect(raw, isNotNull);
+      expect(raw, contains('wide.mp4'));
 
-    manager.dispose();
-    await repo.close();
-  });
+      manager.dispose();
+      await repo.close();
+    },
+  );
 
   test('EditStatus parses needs_review for moderation hold', () {
     expect(EditStatus.parse('needs_review'), EditStatus.needsReview);
@@ -102,6 +108,18 @@ void main() {
 }
 
 final class _SlowUploadRepository implements EditsRepository {
+  @override
+  Future<Result<List<Edit>>> getEditsByAudio(
+    String audioId, {
+    int limit = 24,
+  }) async => const Success<List<Edit>>(<Edit>[]);
+
+  @override
+  Future<Result<List<Edit>>> getEditsByHashtag(
+    String hashtag, {
+    int limit = 24,
+  }) async => const Success<List<Edit>>(<Edit>[]);
+
   void Function() onStart = () {};
   Completer<Result<Edit>>? _gate;
 
