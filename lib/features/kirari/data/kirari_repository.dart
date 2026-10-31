@@ -125,6 +125,34 @@ class FirebaseKirariRepository implements KirariRepository {
   }
 
   @override
+  Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8}) async {
+    final result = await _call('getKirariHashtagFeed', {'hashtag': hashtag, 'limit': limit});
+    final raw = result['items'];
+    final items = <KirariReel>[];
+    if (raw is List) {
+      for (final value in raw.whereType<Map>()) {
+        final map = Map<dynamic, dynamic>.from(value);
+        final variants = map['renditions'];
+        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
+        final preferred = paths['720'] ?? paths['540'] ?? paths['360'];
+        final videoPath = preferred is Map ? preferred['path'] as String? : null;
+        final coverPath = map['coverPath'] as String?;
+        if (videoPath == null || videoPath.isEmpty) continue;
+        final videoUrl = await _storage.ref(videoPath).getDownloadURL();
+        final coverUrl = coverPath == null || coverPath.isEmpty
+            ? '' : await _storage.ref(coverPath).getDownloadURL();
+        items.add(KirariReel.fromMap({...map, 'playbackUrl': videoUrl, 'coverUrl': coverUrl}));
+      }
+    }
+    return KirariFeedPageResult(items, hasMore: result['hasMore'] == true);
+  }
+
+  @override
+  Future<void> setCreatorMute({required String creatorId, required bool muted}) async {
+    await _call('setKirariCreatorMute', {'creatorId': creatorId, 'muted': muted});
+  }
+
+  @override
   Future<KirariUploadSession> startUpload({
     required String caption,
     required List<String> hashtags,
