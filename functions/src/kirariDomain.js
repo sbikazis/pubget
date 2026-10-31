@@ -283,7 +283,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const uid = auth(request);
     const reelId = inputString(request.data?.reelId, 128, "reelId");
     const kind = request.data?.kind;
-    const allowed = new Set(["like", "unlike", "save", "unsave", "share", "not_interested", "report"]);
+    const allowed = new Set(["like", "unlike", "save", "unsave", "share", "not_interested", "undo_not_interested", "report"]);
     if (!allowed.has(kind)) fail("invalid-argument", "Unsupported Kirari action.");
     const ref = reelRef(reelId);
     const actionRef = ref.collection("actions").doc(`${uid}_${kind === "unlike" ? "like" : kind === "unsave" ? "save" : kind}`);
@@ -299,6 +299,14 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       }
       if (kind === "not_interested") {
         if (!existing.exists) tx.create(actionRef, { uid, kind, createdAt: FieldValue.serverTimestamp() });
+        tx.set(db.collection("users").doc(uid).collection("kirariNotInterested").doc(reelId), {
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        return;
+      }
+      if (kind === "undo_not_interested") {
+        if (existing.exists) tx.delete(actionRef);
+        tx.delete(db.collection("users").doc(uid).collection("kirariNotInterested").doc(reelId));
         return;
       }
       const positive = kind === "like" || kind === "save" || kind === "share";
@@ -513,6 +521,30 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return { ok: true };
   }
 
+  async function setCreatorMute(request) {
+    const uid = auth(request);
+    const creatorId = inputString(request.data?.creatorId, 128, "creatorId");
+    if (!creatorId || creatorId === uid) fail("invalid-argument", "Creator id is invalid.");
+    const muted = request.data?.muted !== false;
+    const ref = db.collection("users").doc(uid).collection("kirariMutedCreators").doc(creatorId);
+    if (muted) await ref.set({ creatorId, mutedAt: FieldValue.serverTimestamp() });
+    else await ref.delete();
+    return { ok: true, muted };
+  }
+
+  async function getHashtagFeed(request) {
+    auth(request);
+    const hashtag = inputString(request.data?.hashtag, 40, "hashtag").replace(/^#/, "").toLowerCase();
+    if (!hashtag) fail("invalid-argument", "Hashtag is required.");
+    const limit = Math.round(clamp(request.data?.limit || KIRARI.feedPageSize, 1, 12));
+    const snap = await reels().where("status", "==", "published")
+      .where("hashtags", "array-contains", hashtag)
+      .orderBy("rankingScore", "desc").orderBy("publishedAt", "desc")
+      .limit(limit + 1).get();
+    const items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return { items: items.slice(0, limit), hasMore: items.length > limit };
+  }
+
   async function getFeed(request) {
     const uid = auth(request);
     const type = request.data?.type || "forYou";
@@ -522,24 +554,34 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const afterId = request.data?.afterId || null;
     const profileSnap = await db.collection("users").doc(uid).get();
     const profile = profileSnap.data() || {};
-    const [blocked, interests, follows] = await Promise.all([
+    const userRef = db.collection("users").doc(uid);
+    const [blocked, interests, follows, muted, notInterested] = await Promise.all([
       db.collection("friendships").where("userIds", "array-contains", uid).get().catch(() => ({ docs: [] })),
-      db.collection("users").doc(uid).collection("kirariInterests").get().catch(() => ({ docs: [] })),
+      userRef.collection("kirariInterests").get().catch(() => ({ docs: [] })),
       db.collection("respects").where("fromUserId", "==", uid).get().catch(() => ({ docs: [] })),
+      userRef.collection("kirariMutedCreators").get().catch(() => ({ docs: [] })),
+      userRef.collection("kirariNotInterested").get().catch(() => ({ docs: [] })),
     ]);
     const blockedIds = new Set((blocked.docs || [])
       .filter((doc) => doc.data()?.status === "blocked")
       .flatMap((doc) => (doc.data()?.userIds || []).filter((id) => id !== uid)));
+    const mutedIds = new Set((muted.docs || []).map((doc) => doc.id));
+    const notInterestedIds = new Set((notInterested.docs || []).map((doc) => doc.id));
     const creatorIds = new Set((follows.docs || [])
       .filter((doc) => Number(doc.data()?.value || 0) >= 5)
       .map((doc) => doc.data()?.toUserId).filter(Boolean));
-    const interestIds = (interests.docs || []).map((doc) => doc.id);
+    const interestIds = [...new Set([
+      ...(interests.docs || []).map((doc) => doc.id),
+      ...(Array.isArray(profile.favoriteAnimeIds) ? profile.favoriteAnimeIds : []),
+    ])];
     const query = reels().where("status", "==", "published")
       .orderBy(type === "trending" ? "velocityScore" : "rankingScore", "desc")
       .orderBy("publishedAt", "desc").limit(100);
     const snap = await query.get();
     let items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-      .filter((item) => !blockedIds.has(item.creatorId) && item.creatorId !== uid);
+      .filter((item) => !blockedIds.has(item.creatorId) &&
+        !mutedIds.has(item.creatorId) && !notInterestedIds.has(item.id) &&
+        item.creatorId !== uid);
     if (type === "following") items = items.filter((item) => creatorIds.has(item.creatorId));
     const now = Date.now();
     if (type === "forYou") {
@@ -578,7 +620,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   return {
     startUpload, finalizeUpload, retryProcessing, deleteReel, action, addComment, commentAction,
-    startPlayback, recordPlayback, getFeed, setProcessingState,
+    startPlayback, recordPlayback, getFeed, getHashtagFeed, setCreatorMute, setProcessingState,
   };
 }
 
