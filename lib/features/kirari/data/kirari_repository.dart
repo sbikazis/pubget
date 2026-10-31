@@ -55,6 +55,8 @@ class KirariFeedPageResult {
 
 abstract interface class KirariRepository {
   Future<KirariFeedPageResult> getFeed({String type = 'forYou', int limit = 8, Map<String, dynamic>? cursor});
+  Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8});
+  Future<void> setCreatorMute({required String creatorId, required bool muted});
   Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey});
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress});
   Future<void> finalizeUpload(String reelId);
