@@ -310,6 +310,14 @@ exports.getKirariHashtagFeed = onCall(
   { region: "us-central1" },
   kirariDomain.getHashtagFeed,
 );
+exports.getKirariAudioLibrary = onCall(
+  { region: "us-central1" },
+  kirariDomain.getAudioLibrary,
+);
+exports.getKirariComments = onCall(
+  { region: "us-central1" },
+  kirariDomain.getComments,
+);
 exports.setKirariCreatorMute = onCall(
   { region: "us-central1" },
   kirariDomain.setCreatorMute,
