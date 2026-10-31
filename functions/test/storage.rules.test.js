@@ -301,6 +301,9 @@ test("Kirari source uploads are owner-only and processed renditions are server-w
   await assertFails(upload(owner, "kirari/alice/reel-3/source.mp4", "image/jpeg", 32));
   await assertFails(upload(owner, "kirari-processed/alice/reel-1/720.mp4", "video/mp4", 32));
   await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("kirari/reel-1").set({
+      creatorId: "alice", status: "published", moderationStatus: "approved",
+    });
     await context.storage().ref("kirari-processed/alice/reel-1/720.mp4")
       .put(bytes(32), { contentType: "video/mp4" });
   });
