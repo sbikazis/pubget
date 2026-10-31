@@ -95,9 +95,9 @@ function renditionArgs(source, output, height, bitrate) {
 }
 
 function escapeDrawtext(value) {
-  return String(value).replace(/\\/g, "\\\\\\\\")
-    .replace(/:/g, "\\\\:").replace(/'/g, "\\\\'")
-    .replace(/%/g, "\\\\%");
+  return String(value).replace(/\\/g, "\\\\")
+    .replace(/:/g, "\\:").replace(/'/g, "\\'")
+    .replace(/%/g, "\\%");
 }
 
 function editorVideoFilter(width, height, settings) {
