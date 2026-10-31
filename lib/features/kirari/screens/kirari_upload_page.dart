@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
@@ -35,7 +36,6 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
 
   Future<void> _pick() async {
     final repository = context.read<KirariRepository>();
-    if (repository is! FirebaseKirariRepository) return;
     final picked = await repository.pickGalleryVideo();
     if (picked == null || !mounted) return;
     final file = File(picked.path);
