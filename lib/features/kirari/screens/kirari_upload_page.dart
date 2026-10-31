@@ -349,8 +349,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         ),
       ),
     );
+    await _audioPreview.stop();
     if (!mounted || selectedId == null) return;
-    setState(() => _audioId = selectedId.isEmpty ? null : selectedId);
+    setState(() { _previewingAudioId = null; _audioId = selectedId.isEmpty ? null : selectedId; });
     await _savePendingUpload();
   }
 
@@ -438,13 +439,13 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                         ),
                       ],
                     )
-                  : const Column(
+                  : Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.video_library_outlined, size: 52),
-                        SizedBox(height: 12),
-                        Text('Choose a video from your gallery'),
-                        Text('Vertical video · 3–60 seconds · up to 500 MB'),
+                        const Icon(Icons.video_library_outlined, size: 52),
+                        const SizedBox(height: 12),
+                        Text(copy.chooseVideo),
+                        Text(copy.videoLimits),
                       ],
                     ),
             ),
