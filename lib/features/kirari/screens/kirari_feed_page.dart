@@ -35,6 +35,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   int? _prefetchIndex;
   KirariPlaybackReporter? _reporter;
   static double? _measuredMbps;
+  static DateTime? _measuredAt;
   Timer? _reportTimer;
   int _activeIndex = 0;
   bool _loading = true;
@@ -127,7 +128,8 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   }
 
   Future<int> _adaptiveQuality(KirariReel reel) async {
-    if (_measuredMbps == null) {
+    if (_measuredMbps == null || _measuredAt == null ||
+        DateTime.now().difference(_measuredAt!) > const Duration(minutes: 5)) {
       final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
       final watch = Stopwatch()..start();
       try {
@@ -144,8 +146,10 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         _measuredMbps = response.statusCode == HttpStatus.partialContent && watch.elapsedMilliseconds > 0
             ? (bytes * 8 / (watch.elapsedMilliseconds / 1000)) / 1000000
             : 1.8;
+        _measuredAt = DateTime.now();
       } catch (_) {
         _measuredMbps = 1.8;
+        _measuredAt = DateTime.now();
       } finally {
         client.close(force: true);
       }
@@ -166,8 +170,9 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     if (index < 0 || index >= _items.length ||
         _prefetchController != null || index == _activeIndex) return;
     final reel = _items[index];
+    VideoPlayerController? controller;
     try {
-      final controller = await _makeController(reel);
+      controller = await _makeController(reel);
       await controller.initialize();
       await controller.setLooping(true);
       await controller.pause();
@@ -178,6 +183,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       _prefetchController = controller;
       _prefetchIndex = index;
     } catch (_) {
+      if (controller != null) await controller.dispose();
       // Prefetch is opportunistic; the active item still has its own retry path.
     }
   }
@@ -202,10 +208,10 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       if (unused != null) await unused.dispose();
     }
     final reel = _items[index];
-    controller ??= await _makeController(reel);
-    _controller = controller;
-    setState(() => _activeIndex = index);
     try {
+      controller ??= await _makeController(reel);
+      _controller = controller;
+      setState(() => _activeIndex = index);
       if (!controller.value.isInitialized) await controller.initialize();
       await controller.setLooping(true);
       await controller.play();
@@ -223,7 +229,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       if (identical(_controller, controller)) {
         setState(() => _error = KirariCopy.of(context).playbackError);
       }
-      await controller.dispose();
+      if (controller != null) await controller.dispose();
     }
   }
 
