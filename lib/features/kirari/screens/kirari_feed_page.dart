@@ -169,7 +169,6 @@ class _KirariFeedPageState extends State<KirariFeedPage>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -207,11 +206,22 @@ class _KirariFeedPageState extends State<KirariFeedPage>
           ),
         ),
       ),
-      body: _body(theme),
+      body: _body(),
     );
   }
 
-  Widget _body(ThemeData theme) {
+  Future<void> _runAction(String reelId, String kind) async {
+    try {
+      await _repository.action(reelId, kind);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save that action. Please retry.')),
+      );
+    }
+  }
+
+  Widget _body() {
     if (_loading && _items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -293,21 +303,21 @@ class _KirariFeedPageState extends State<KirariFeedPage>
                 children: [
                   IconButton(
                     color: Colors.white,
-                    onPressed: () => _repository.action(reel.id, 'like'),
+                    onPressed: () => _runAction(reel.id, 'like'),
                     icon: const Icon(Icons.favorite_border, size: 30),
                   ),
                   Text('${reel.likesCount}', style: const TextStyle(color: Colors.white)),
                   const SizedBox(height: 16),
                   IconButton(
                     color: Colors.white,
-                    onPressed: () => _repository.action(reel.id, 'save'),
+                    onPressed: () => _runAction(reel.id, 'save'),
                     icon: const Icon(Icons.bookmark_border, size: 28),
                   ),
                   const Text('Save', style: TextStyle(color: Colors.white)),
                   const SizedBox(height: 16),
                   IconButton(
                     color: Colors.white,
-                    onPressed: () => _repository.action(reel.id, 'not_interested'),
+                    onPressed: () => _runAction(reel.id, 'not_interested'),
                     icon: const Icon(Icons.visibility_off_outlined, size: 26),
                   ),
                 ],
