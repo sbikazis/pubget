@@ -106,6 +106,17 @@ function createKirariPipeline({ db, bucket }) {
     const reel = snap.data();
     if (reel.creatorId !== uid || reel.originalStoragePath !== objectName) return null;
     if (["published", "rejected", "deleted"].includes(reel.status)) return null;
+    const sourceSize = Number(object.size || 0);
+    const sourceType = String(object.contentType || "");
+    if (sourceSize <= 0 || sourceSize > KIRARI.maxBytes || !sourceType.startsWith("video/")) {
+      await ref.update({
+        status: "failed",
+        failureReason: "invalid-source",
+        failedAt: new Date(),
+      });
+      await db.collection("kirariUploadLocks").doc(uid).delete().catch(() => {});
+      return null;
+    }
     if (!["uploading", "processing"].includes(reel.status)) return null;
 
     const lockRef = db.collection("kirariUploadLocks").doc(uid);
@@ -127,6 +138,7 @@ function createKirariPipeline({ db, bucket }) {
           moderationReason: "Kirari videos must be between 3 and 60 seconds.",
           rejectedAt: new Date(),
         });
+        await lockRef.delete().catch(() => {});
         return null;
       }
       const decision = moderateEditCopy({
@@ -139,6 +151,7 @@ function createKirariPipeline({ db, bucket }) {
           moderationReason: decision.reason || "Content did not pass moderation.",
           rejectedAt: new Date(),
         });
+        await lockRef.delete().catch(() => {});
         return null;
       }
       await ref.update({
