@@ -274,6 +274,10 @@ exports.retryKirariProcessing = onCall(
   { region: "us-central1", timeoutSeconds: 540, memory: "2GiB" },
   kirariDomain.retryProcessing,
 );
+exports.cancelKirariUpload = onCall(
+  { region: "us-central1" },
+  kirariDomain.cancelUpload,
+);
 exports.deleteKirariReel = onCall(
   { region: "us-central1" },
   kirariDomain.deleteReel,
