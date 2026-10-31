@@ -246,3 +246,29 @@ class KirariPlaybackReporter {
     }
   }
 }
+
+
+class UnavailableKirariRepository implements KirariRepository {
+  UnavailableKirariRepository(this.message);
+  final String message;
+  StateError _unavailable() => StateError(message);
+
+  @override
+  Future<KirariFeedPageResult> getFeed({String type = 'forYou', int limit = 8, Map<String, dynamic>? cursor}) async => throw _unavailable();
+  @override
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey}) async => throw _unavailable();
+  @override
+  Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress}) async => throw _unavailable();
+  @override
+  Future<void> finalizeUpload(String reelId) async => throw _unavailable();
+  @override
+  Future<void> action(String reelId, String kind) async => throw _unavailable();
+  @override
+  Future<String> startPlayback(String reelId) async => throw _unavailable();
+  @override
+  Future<void> recordPlayback({required String reelId, required String sessionId, required String eventId, required double watchSeconds, required double percent}) async => throw _unavailable();
+  @override
+  Future<void> deleteReel(String reelId) async => throw _unavailable();
+  @override
+  Future<XFile?> pickGalleryVideo() async => null;
+}
