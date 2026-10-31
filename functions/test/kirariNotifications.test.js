@@ -12,8 +12,21 @@ function makeDb({ followers = [], reel = null } = {}) {
     },
     collection(name) {
       if (name === "friendships") {
-        const query = { where() { return query; }, async get() { return { docs: [] }; } };
+        const query = {
+          where() { return query; },
+          async get() { return { docs: [] }; },
+          doc() { return { async get() { return { exists: false, data: () => null }; } }; },
+        };
         return query;
+      }
+      if (name === "users") {
+        return {
+          doc() {
+            return { collection() {
+              return { doc() { return { async get() { return { exists: false }; } }; } };
+            } };
+          },
+        };
       }
       if (name === "respects") {
         const query = {
