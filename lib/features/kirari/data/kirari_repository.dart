@@ -17,6 +17,7 @@ class KirariReel {
     required this.commentsCount,
     this.audioId,
     this.audioAttribution = const <String, dynamic>{},
+    this.renditionPaths = const <String, String>{},
   });
 
   final String id;
@@ -29,6 +30,7 @@ class KirariReel {
   final int commentsCount;
   final String? audioId;
   final Map<String, dynamic> audioAttribution;
+  final Map<String, String> renditionPaths;
 
   factory KirariReel.fromMap(Map<dynamic, dynamic> map) {
     return KirariReel(
@@ -44,6 +46,13 @@ class KirariReel {
       audioAttribution: map['audioAttribution'] is Map
           ? Map<String, dynamic>.from(map['audioAttribution'] as Map)
           : const <String, dynamic>{},
+      renditionPaths: map['renditionPaths'] is Map
+          ? Map<String, String>.from(map['renditionPaths'] as Map)
+          : (map['renditions'] is Map
+              ? (map['renditions'] as Map).map((key, value) => MapEntry(
+                  key.toString(), value is Map ? (value['path'] as String? ?? '') : '',
+                ))
+              : const <String, String>{}),
     );
   }
 }
@@ -90,6 +99,7 @@ abstract interface class KirariRepository {
   Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30});
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24});
   Future<KirariReel> getReel(String reelId);
+  Future<String> getPlaybackUrl(KirariReel reel, {required int quality});
   Future<void> giveCreatorRespect({required String creatorId, required int value});
   Future<List<Map<String, dynamic>>> getComments(String reelId, {String? before, int limit = 30});
   Future<void> addComment(String reelId, String text, {String? parentId});
@@ -139,7 +149,7 @@ class FirebaseKirariRepository implements KirariRepository {
         final map = Map<dynamic, dynamic>.from(item);
         final variants = map['renditions'];
         final paths = variants is Map ? variants : const <dynamic, dynamic>{};
-        final preferred = paths['720'] ?? paths['540'] ?? paths['360'];
+        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
         final videoPath = preferred is Map ? preferred['path'] as String? : null;
         final coverPath = map['coverPath'] as String?;
         if (videoPath == null || videoPath.isEmpty) continue;
@@ -391,6 +401,8 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8}) async => throw _unavailable();
   @override
   Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30}) async => throw _unavailable();
+  @override
+  Future<String> getPlaybackUrl(KirariReel reel, {required int quality}) async => throw _unavailable();
   @override
   Future<KirariReel> getReel(String reelId) async {
     final map = await _call('getKirariReel', {'reelId': reelId});
