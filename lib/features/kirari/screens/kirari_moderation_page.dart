@@ -154,6 +154,7 @@ class _ModerationVideoPreview extends StatefulWidget {
 
 class _ModerationVideoPreviewState extends State<_ModerationVideoPreview> {
   late final VideoPlayerController _controller;
+  bool _failed = false;
 
   @override
   void initState() {
@@ -161,6 +162,8 @@ class _ModerationVideoPreviewState extends State<_ModerationVideoPreview> {
     _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
       ..initialize().then((_) {
         if (mounted) setState(() {});
+      }).catchError((_) {
+        if (mounted) setState(() => _failed = true);
       });
   }
 
@@ -172,6 +175,7 @@ class _ModerationVideoPreviewState extends State<_ModerationVideoPreview> {
 
   @override
   Widget build(BuildContext context) {
+    if (_failed) return const Center(child: Text('Preview unavailable'));
     if (!_controller.value.isInitialized) {
       return const AspectRatio(
         aspectRatio: 9 / 16,
