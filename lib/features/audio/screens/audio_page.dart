@@ -13,6 +13,7 @@ import '../../edits/l10n/edit_copy.dart';
 import '../../edits/models/edit_models.dart';
 import '../../edits/repositories/edits_repository.dart';
 import '../../edits/widgets/reel_metadata.dart';
+import '../../kirari/data/kirari_repository.dart';
 import '../../social/models/public_profile.dart';
 import '../../social/repositories/profile_repository.dart';
 
@@ -34,6 +35,7 @@ class AudioPage extends StatefulWidget {
 
 class _AudioPageState extends State<AudioPage> {
   List<Edit> _reels = const <Edit>[];
+  List<KirariReel> _kirariReels = const <KirariReel>[];
   PublicProfile? _creator;
   Edit? _originalReel;
   var _loading = true;
@@ -46,9 +48,12 @@ class _AudioPageState extends State<AudioPage> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final result = await context.read<EditsRepository>().getEditsByAudio(
-      widget.audioId,
-    );
+    final results = await Future.wait([
+      context.read<EditsRepository>().getEditsByAudio(widget.audioId),
+      context.read<KirariRepository>().getReelsByAudio(widget.audioId),
+    ]);
+    final result = results[0] as dynamic;
+    final kirariReels = results[1] as List<KirariReel>;
     if (!mounted) return;
     final reels = result.valueOrNull ?? const <Edit>[];
     final original = _oldest(reels);
@@ -66,6 +71,7 @@ class _AudioPageState extends State<AudioPage> {
     if (!mounted) return;
     setState(() {
       _reels = reels;
+      _kirariReels = kirariReels;
       _originalReel = original;
       _creator = creator;
       _loading = false;
@@ -101,7 +107,7 @@ class _AudioPageState extends State<AudioPage> {
               children: <Widget>[
                 _header(copy),
                 const SizedBox(height: AppSpacing.lg),
-                if (_reels.isEmpty)
+                if (_reels.isEmpty && _kirariReels.isEmpty)
                   PubgetEmptyState(
                     title: copy.noAudioReels,
                     message: copy.noAudioReelsBody,
