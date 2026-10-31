@@ -12,7 +12,7 @@ const KIRARI = Object.freeze({
   maxCaption: 2200,
   maxHashtags: 12,
   maxComment: 500,
-  uploadLockMs: 30 * 60 * 1000,
+  uploadLockMs: 2 * 60 * 60 * 1000,
   playbackSessionMs: 10 * 60 * 1000,
   maxWatchEventSeconds: 10,
   explorationRatio: 0.2,
@@ -88,7 +88,7 @@ function rankKirari(item, profile, now = Date.now()) {
   );
 }
 
-function createKirariDomain({ db, FieldValue, HttpsError, bucket }) {
+function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }) {
   const reels = () => db.collection("kirari");
   const fail = (code, message) => { throw new HttpsError(code, message); };
   function auth(request) {
@@ -232,7 +232,38 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket }) {
       assertTransition(snap.data().status, "deleted");
       await ref.update({ status: "deleted", deletedAt: FieldValue.serverTimestamp() });
     }
+    const lockRef = db.collection("kirariUploadLocks").doc(uid);
+    const lock = await lockRef.get();
+    if (lock.exists && lock.data()?.reelId === reelId) await lockRef.delete();
     return { ok: true };
+  }
+
+  async function retryProcessing(request) {
+    const uid = auth(request);
+    const reelId = cleanString(request.data?.reelId, 128, "reelId");
+    const ref = reelRef(reelId);
+    const snap = await ref.get();
+    if (!snap.exists) fail("not-found", "Kirari video not found.");
+    const reel = snap.data();
+    if (reel.creatorId !== uid) fail("permission-denied", "You do not own this video.");
+    if (reel.status === "published") return { status: "published", reelId };
+    if (reel.status !== "failed") fail("failed-precondition", "Only failed videos can be retried.");
+    const storagePath = reel.originalStoragePath || reel.storagePath;
+    const file = bucket.file(storagePath);
+    const [exists] = await file.exists();
+    if (!exists) fail("failed-precondition", "The original video is missing. Upload it again.");
+    assertTransition("failed", "processing");
+    await ref.update({
+      status: "processing",
+      failureReason: FieldValue.delete(),
+      processingStartedAt: FieldValue.serverTimestamp(),
+    });
+    if (typeof processVideo !== "function") {
+      fail("unavailable", "Kirari processing is temporarily unavailable.");
+    }
+    await processVideo({ data: { name: storagePath, bucket: bucket.name } });
+    const latest = await ref.get();
+    return { status: latest.data()?.status || "processing", reelId };
   }
 
   async function action(request) {
@@ -528,7 +559,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket }) {
   }
 
   return {
-    startUpload, finalizeUpload, deleteReel, action, addComment, commentAction,
+    startUpload, finalizeUpload, retryProcessing, deleteReel, action, addComment, commentAction,
     startPlayback, recordPlayback, getFeed, setProcessingState,
   };
 }
