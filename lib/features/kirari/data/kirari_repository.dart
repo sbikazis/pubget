@@ -40,6 +40,29 @@ class KirariReel {
   }
 }
 
+class KirariAudioTrack {
+  const KirariAudioTrack({
+    required this.id, required this.title, required this.artist,
+    required this.license, required this.attribution, required this.audioUrl,
+  });
+  final String id;
+  final String title;
+  final String artist;
+  final String license;
+  final String attribution;
+  final String audioUrl;
+
+  factory KirariAudioTrack.fromMap(Map<dynamic, dynamic> map, String url) =>
+      KirariAudioTrack(
+        id: map['id'] as String? ?? '',
+        title: map['title'] as String? ?? 'Untitled audio',
+        artist: map['artist'] as String? ?? '',
+        license: map['license'] as String? ?? 'unknown',
+        attribution: map['attribution'] as String? ?? '',
+        audioUrl: url,
+      );
+}
+
 class KirariUploadSession {
   const KirariUploadSession({required this.reelId, required this.storagePath});
   final String reelId;
@@ -56,6 +79,10 @@ class KirariFeedPageResult {
 abstract interface class KirariRepository {
   Future<KirariFeedPageResult> getFeed({String type = 'forYou', int limit = 8, Map<String, dynamic>? cursor});
   Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8});
+  Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30});
+  Future<List<Map<String, dynamic>>> getComments(String reelId, {String? before, int limit = 30});
+  Future<void> addComment(String reelId, String text, {String? parentId});
+  Future<void> commentAction(String reelId, String commentId, String kind);
   Future<void> setCreatorMute({required String creatorId, required bool muted});
   Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey});
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress});
@@ -148,6 +175,50 @@ class FirebaseKirariRepository implements KirariRepository {
   }
 
   @override
+  Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30}) async {
+    final result = await _call('getKirariAudioLibrary', {'limit': limit});
+    final raw = result['items'];
+    final tracks = <KirariAudioTrack>[];
+    if (raw is List) {
+      for (final value in raw.whereType<Map>()) {
+        final map = Map<dynamic, dynamic>.from(value);
+        final path = map['audioPath'] as String?;
+        if (path == null || path.isEmpty) continue;
+        final url = await _storage.ref(path).getDownloadURL();
+        tracks.add(KirariAudioTrack.fromMap(map, url));
+      }
+    }
+    return tracks;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getComments(
+    String reelId, {String? before, int limit = 30}
+  ) async {
+    final result = await _call('getKirariComments', {
+      'reelId': reelId, 'limit': limit, if (before != null) 'before': before,
+    });
+    final raw = result['items'];
+    return raw is List
+        ? raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+        : <Map<String, dynamic>>[];
+  }
+
+  @override
+  Future<void> addComment(String reelId, String text, {String? parentId}) async {
+    await _call('addKirariComment', {
+      'reelId': reelId, 'text': text, if (parentId != null) 'parentId': parentId,
+    });
+  }
+
+  @override
+  Future<void> commentAction(String reelId, String commentId, String kind) async {
+    await _call('kirariCommentAction', {
+      'reelId': reelId, 'commentId': commentId, 'kind': kind,
+    });
+  }
+
+  @override
   Future<void> setCreatorMute({required String creatorId, required bool muted}) async {
     await _call('setKirariCreatorMute', {'creatorId': creatorId, 'muted': muted});
   }
@@ -157,11 +228,15 @@ class FirebaseKirariRepository implements KirariRepository {
     required String caption,
     required List<String> hashtags,
     required String idempotencyKey,
+    Map<String, dynamic> editSettings = const <String, dynamic>{},
+    String? audioId,
   }) async {
     final result = await _call('startKirariUpload', {
       'caption': caption,
       'hashtags': hashtags,
       'idempotencyKey': idempotencyKey,
+      'editSettings': editSettings,
+      if (audioId != null) 'audioId': audioId,
     });
     final path = result['storagePath'] as String?;
     final reelId = result['reelId'] as String?;
@@ -303,6 +378,14 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<KirariFeedPageResult> getFeed({String type = 'forYou', int limit = 8, Map<String, dynamic>? cursor}) async => throw _unavailable();
   @override
   Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8}) async => throw _unavailable();
+  @override
+  Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30}) async => throw _unavailable();
+  @override
+  Future<List<Map<String, dynamic>>> getComments(String reelId, {String? before, int limit = 30}) async => throw _unavailable();
+  @override
+  Future<void> addComment(String reelId, String text, {String? parentId}) async => throw _unavailable();
+  @override
+  Future<void> commentAction(String reelId, String commentId, String kind) async => throw _unavailable();
   @override
   Future<void> setCreatorMute({required String creatorId, required bool muted}) async => throw _unavailable();
   @override
