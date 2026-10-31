@@ -93,8 +93,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         _preview = controller;
         _duration = seconds;
         _trim = RangeValues(
-          start.clamp(0, seconds - 3),
-          end.clamp(3, seconds),
+          start.clamp(0, seconds - 3).toDouble(),
+          end.clamp(3, seconds).toDouble(),
         );
         _speed = (data['speed'] as num?)?.toDouble() ?? 1;
         _filter = data['filter'] as String? ?? 'none';
@@ -341,7 +341,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     final copy = KirariCopy.of(context);
     final preview = _preview;
     final filter = _previewFilter();
-    final selectedTrack = _audioTracks.where((track) => track.id == _audioId).firstOrNull;
+    final selectedTracks = _audioTracks.where((track) => track.id == _audioId);
+    final selectedTrack = selectedTracks.isEmpty ? null : selectedTracks.first;
     return Scaffold(
       appBar: AppBar(title: Text(copy.create)),
       body: ListView(
@@ -412,7 +413,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             RangeSlider(
               min: 0,
               max: _duration,
-              divisions: (_duration * 2).round().clamp(6, 120),
+              divisions: (_duration * 2).round().clamp(6, 120).toInt(),
               values: _trim,
               labels: RangeLabels('${_trim.start.toStringAsFixed(1)}s', '${_trim.end.toStringAsFixed(1)}s'),
               onChanged: _busy ? null : (value) {
@@ -480,7 +481,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             Slider(
               min: _trim.start,
               max: _trim.end,
-              value: _coverTime.clamp(_trim.start, _trim.end),
+              value: _coverTime.clamp(_trim.start, _trim.end).toDouble(),
               onChanged: _busy ? null : (value) {
                 setState(() => _coverTime = value);
                 _savePendingUpload();
