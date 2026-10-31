@@ -121,7 +121,14 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       fail("invalid-argument", error.message);
     }
   }
-  function reelRef(id) { return reels().doc(id); }
+  function inputId(value, field) {
+    const id = inputString(value, 128, field);
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+      fail("invalid-argument", field + " contains unsupported characters.");
+    }
+    return id;
+  }
+  function reelRef(id) { return reels().doc(inputId(id, "reelId")); }
   function assertTransition(from, to) {
     if (!transitionStatus(from, to)) {
       fail("failed-precondition", `Invalid Kirari state transition: ${from} → ${to}.`);
@@ -516,7 +523,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const moderation = moderateEditCopy({ caption: text, animeTag: "" });
     if (moderation.flagged) fail("failed-precondition", moderation.reason || "This comment needs moderation.");
     const parentId = request.data?.parentId
-      ? inputString(request.data.parentId, 128, "parentId") : null;
+      ? inputId(request.data.parentId, "parentId") : null;
     const ref = reelRef(reelId);
     const reel = await ref.get();
     if (!reel.exists || reel.data().status !== "published" || reel.data().moderationStatus !== "approved") fail("not-found", "Kirari video not found.");
@@ -737,7 +744,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       fail("invalid-argument", "Decision must be approved or rejected.");
     }
     const commentId = request.data?.commentId
-      ? inputString(request.data.commentId, 128, "commentId") : null;
+      ? inputId(request.data.commentId, "commentId") : null;
     const reelRefValue = reelRef(reelId);
     if (commentId) {
       const commentRef = reelRefValue.collection("comments").doc(commentId);
@@ -812,7 +819,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (!request.auth || request.auth.token?.admin !== true) {
       fail("permission-denied", "Administrator access is required.");
     }
-    const audioId = inputString(request.data?.audioId, 128, "audioId");
+    const audioId = inputId(request.data?.audioId, "audioId");
     const title = inputString(request.data?.title, 100, "title");
     const artist = inputString(request.data?.artist || "Unknown artist", 100, "artist");
     const license = inputString(request.data?.license, 120, "license");
@@ -865,7 +872,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   async function getCreatorReels(request) {
     const uid = auth(request);
-    const creatorId = inputString(request.data?.creatorId || uid, 128, "creatorId");
+    const creatorId = inputId(request.data?.creatorId || uid, "creatorId");
     if (creatorId !== uid) {
       const profile = await db.collection("public_profiles").doc(creatorId).get();
       if (!profile.exists || profile.data()?.sectionPrivacy?.works === false) {
@@ -908,7 +915,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       .orderBy("createdAt", "desc").limit(limit + 1);
     if (request.data?.before) {
       const before = await ref.collection("comments").doc(
-        inputString(request.data.before, 128, "before"),
+        inputId(request.data.before, "before"),
       ).get();
       if (before.exists) query = query.startAfter(before);
     }
@@ -923,7 +930,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   async function setCreatorMute(request) {
     const uid = auth(request);
-    const creatorId = inputString(request.data?.creatorId, 128, "creatorId");
+    const creatorId = inputId(request.data?.creatorId, "creatorId");
     if (!creatorId || creatorId === uid) fail("invalid-argument", "Creator id is invalid.");
     const muted = request.data?.muted !== false;
     const ref = db.collection("users").doc(uid).collection("kirariMutedCreators").doc(creatorId);
