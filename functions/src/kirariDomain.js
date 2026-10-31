@@ -575,6 +575,17 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return { ok: true };
   }
 
+  async function getReel(request) {
+    auth(request);
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
+    const snap = await reelRef(reelId).get();
+    if (!snap.exists || snap.data()?.status !== "published" ||
+        snap.data()?.moderationStatus !== "approved") {
+      fail("not-found", "Kirari video not found.");
+    }
+    return { id: snap.id, ...snap.data() };
+  }
+
   async function getAudioLibrary(request) {
     auth(request);
     const limit = Math.round(clamp(request.data?.limit || 30, 1, 50));
@@ -722,7 +733,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   return {
     startUpload, finalizeUpload, retryProcessing, cancelUpload, deleteReel, action, addComment, commentAction,
-    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, getComments, getReelsByAudio, setCreatorMute, setProcessingState,
+    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, getComments, getReelsByAudio, getReel, setCreatorMute, setProcessingState,
   };
 }
 
