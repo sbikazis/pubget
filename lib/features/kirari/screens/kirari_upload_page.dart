@@ -21,6 +21,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   VideoPlayerController? _preview;
   KirariUploadSession? _session;
   bool _busy = false;
+  bool _submitted = false;
   double _progress = 0;
   String? _error;
   String? _status;
@@ -67,6 +68,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         _progress = 0;
         _error = null;
         _status = null;
+        _submitted = false;
       });
     } catch (_) {
       await controller.dispose();
@@ -108,7 +110,10 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       setState(() => _status = 'Processing video and creating quality versions…');
       await repository.finalizeUpload(session.reelId);
       if (!mounted) return;
-      setState(() => _status = 'Upload received. Processing continues in the background.');
+      setState(() {
+        _status = 'Upload received. Processing continues in the background.';
+        _submitted = true;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Kirari upload received.')),
       );
@@ -190,11 +195,11 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
           ],
           const SizedBox(height: 18),
           FilledButton.icon(
-            onPressed: _busy || _video == null ? null : _publish,
+            onPressed: _busy || _video == null || _submitted ? null : _publish,
             icon: _busy
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.cloud_upload_outlined),
-            label: Text(_busy ? 'Uploading…' : 'Publish video'),
+            label: Text(_busy ? 'Uploading…' : _submitted ? 'Submitted' : 'Publish video'),
           ),
         ],
       ),
