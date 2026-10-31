@@ -752,6 +752,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       await db.runTransaction(async (tx) => {
         const [reel, comment] = await Promise.all([tx.get(reelRefValue), tx.get(commentRef)]);
         if (!reel.exists || !comment.exists) fail("not-found", "Reported comment not found.");
+        if (comment.data()?.status !== "review_pending") {
+          fail("failed-precondition", "This comment is not awaiting moderation review.");
+        }
         tx.update(commentRef, {
           status: decision === "approved" ? "published" : "rejected",
           moderationStatus: decision,
