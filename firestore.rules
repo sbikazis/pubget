@@ -1106,6 +1106,11 @@ service cloud.firestore {
         }
       }
     }
+    match /kirariAudio/{audioId} {
+      allow read: if signedIn() && resource.data.status == 'approved';
+      allow create, update, delete: if false;
+    }
+
     match /kirariUploadLocks/{uid} {
       allow read, write: if false;
     }
