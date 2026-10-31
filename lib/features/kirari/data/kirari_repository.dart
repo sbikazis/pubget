@@ -106,6 +106,8 @@ abstract interface class KirariRepository {
   Future<void> addComment(String reelId, String text, {String? parentId});
   Future<void> commentAction(String reelId, String commentId, String kind);
   Future<void> setCreatorMute({required String creatorId, required bool muted});
+  Future<List<Map<String, dynamic>>> getModerationQueue({int limit = 50});
+  Future<void> reviewContent({required String reelId, String? commentId, required String decision});
   Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId});
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress});
   Future<void> finalizeUpload(String reelId);
@@ -268,6 +270,23 @@ class FirebaseKirariRepository implements KirariRepository {
     final path = reel.renditionPaths['$quality'];
     if (path == null || path.isEmpty) return reel.videoUrl;
     return _storage.ref(path).getDownloadURL();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getModerationQueue({int limit = 50}) async {
+    final result = await _call('getKirariModerationQueue', {'limit': limit});
+    final raw = result['items'];
+    if (raw is! List) return const <Map<String, dynamic>>[];
+    return raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
+  @override
+  Future<void> reviewContent({required String reelId, String? commentId, required String decision}) async {
+    await _call('reviewKirariContent', {
+      'reelId': reelId,
+      if (commentId != null) 'commentId': commentId,
+      'decision': decision,
+    });
   }
 
   @override
@@ -489,6 +508,10 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<KirariReel> getReel(String reelId) async => throw _unavailable();
   @override
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24}) async => throw _unavailable();
+  @override
+  Future<List<Map<String, dynamic>>> getModerationQueue({int limit = 50}) async => throw _unavailable();
+  @override
+  Future<void> reviewContent({required String reelId, String? commentId, required String decision}) async => throw _unavailable();
   @override
   Future<void> giveCreatorRespect({required String creatorId, required int value}) async => throw _unavailable();
   @override
