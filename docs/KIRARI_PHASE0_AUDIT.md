@@ -145,3 +145,22 @@ Kirari is complete only when:
 - Cross-domain integration tests prove block/mute, Respect/Fans, Home, notifications, deep links and settings behavior.
 - Flutter analyze/test/build, Functions tests, and Firestore/Storage emulator tests pass, with exact logs recorded.
 - `lib_legacy/` has zero changes.
+
+## 7. Implementation progress (branch snapshot)
+
+Implemented on `feat/kirari-system-rebuild` after this audit:
+- Added `functions/src/kirariDomain.js` with upload-session creation, UTC-day quota accounting, one-active-upload lease, idempotency keys, owner-only cancellation/deletion/retry, server-mediated interactions/comments, playback sessions, 3-second qualified-view threshold, 95% completion/replay handling, three feed types, hashtag feed, block/mute/not-interested filtering and server-side ranking signals.
+- Added `functions/src/kirariPipeline.js` with source validation, 3–60 second enforcement, content-copy moderation gate, 9:16 360p/540p/720p renditions, cover generation and publication state updates.
+- Registered Kirari callables and the Storage finalize trigger in `functions/index.js`.
+- Added dedicated Flutter repository, feed viewer and gallery upload screen; connected the Reels tab to Kirari and added Arabic/English copy.
+- Added Firestore/Storage rules and composite indexes plus initial domain, rendition and emulator rules tests.
+
+**Not complete / not verified yet:**
+- Audio library, rights/attribution workflow, audio mixing and audio detail surfaces are not implemented.
+- Full editor (trim/speed/timed text/filters/custom cover) is not implemented; only gallery selection and basic caption/hashtag metadata exist.
+- Comments UI, creator profile integration, Respect interaction, notifications, Home discovery cards and Kirari deep links are not yet wired end-to-end.
+- Playback currently selects the highest available rendition; adaptive network-quality selection and bounded next-item prefetch/cache are not complete.
+- Trending velocity is a cumulative engagement proxy, not a time-windowed velocity model; feed cursor stability and seen-ring pruning need hardening.
+- Moderation currently reuses text moderation; there is no full visual/audio moderation review queue or creator appeal flow.
+- The current Flutter upload can retry the same object while the screen remains alive, but upload task continuation after process death is not yet implemented.
+- No Flutter analyze/test/build, Functions tests, or emulator rules suite has been executed in this environment. GitHub Actions workflows on this repository currently run on pushes to `main`; a test PR has deliberately not been opened because the user requested a single PR only after the whole system is ready.
