@@ -107,7 +107,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       setState(() {
         _loading = false;
         _loadingMore = false;
-        _error = 'Could not load Kirari. Check your connection and retry.';
+        _error = KirariCopy.of(context).loadError;
       });
     }
   }
@@ -222,7 +222,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(KirariCopy.of(context).uploadError)),
+        SnackBar(content: Text(KirariCopy.of(context).actionError)),
       );
     }
   }
