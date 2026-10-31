@@ -683,10 +683,12 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       await db.runTransaction(async (tx) => {
         const reel = await tx.get(reelRefValue);
         if (!reel.exists) fail("not-found", "Reported video not found.");
-        if (reel.data()?.status !== "published") {
-          fail("failed-precondition", "Only published videos can be reviewed here.");
+        if (!["published", "rejected"].includes(reel.data()?.status) ||
+            reel.data()?.moderationStatus !== "review_pending") {
+          fail("failed-precondition", "This video is not awaiting moderation review.");
         }
         tx.update(reelRefValue, {
+          status: decision === "approved" ? "published" : "rejected",
           moderationStatus: decision,
           moderationReviewedBy: request.auth.uid,
           moderationReviewedAt: FieldValue.serverTimestamp(),
