@@ -56,6 +56,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     _hashtags.dispose();
     _overlayText.dispose();
     _audioPreview.dispose();
+    _preview?.removeListener(_previewLoop);
     _preview?.dispose();
     super.dispose();
   }
@@ -85,6 +86,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       final controller = VideoPlayerController.file(file);
       await controller.initialize();
       await controller.setLooping(true);
+      controller.addListener(_previewLoop);
       final seconds = controller.value.duration.inMilliseconds / 1000;
       if (!mounted) {
         await controller.dispose();
@@ -131,6 +133,17 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     return File(picked.path).copy(target.path);
   }
 
+  void _previewLoop() {
+    final controller = _preview;
+    if (controller == null || !controller.value.isInitialized || !controller.value.isPlaying) return;
+    final position = controller.value.position.inMilliseconds / 1000;
+    if (position >= _trim.end) {
+      controller.pause();
+      controller.seekTo(Duration(milliseconds: (_trim.start * 1000).round()));
+      if (mounted) setState(() {});
+    }
+  }
+
   Future<void> _pick() async {
     final picked = await context.read<KirariRepository>().pickGalleryVideo();
     if (picked == null || !mounted) return;
@@ -150,7 +163,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         return;
       }
       await controller.setLooping(true);
+      controller.addListener(_previewLoop);
       final durableFile = await _keepLocalCopy(picked);
+      _preview?.removeListener(_previewLoop);
       await _preview?.dispose();
       if (!mounted) {
         await controller.dispose();
