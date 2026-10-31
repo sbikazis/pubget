@@ -71,6 +71,7 @@ test("all Kirari callables reject unauthenticated requests before touching Fires
     ["getAudioLibrary", {}],
     ["getComments", { reelId: "r1" }],
     ["getReelsByAudio", { audioId: "a1" }],
+    ["getCreatorReels", { creatorId: "bob" }],
     ["getReel", { reelId: "r1" }],
     ["action", { reelId: "r1", kind: "like" }],
     ["addComment", { reelId: "r1", text: "hi" }],
@@ -102,4 +103,19 @@ test("editor settings are bounded and unsafe filter values fall back to original
     overlayText: "x".repeat(80),
     coverTimeSeconds: 0,
   });
+});
+
+test("admin moderation and audio catalog endpoints require the admin claim", async () => {
+  const domain = createKirariDomain({
+    db: { collection() { throw new Error("database must not be touched"); } },
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+    bucket: {},
+  });
+  for (const name of ["publishAudioTrack", "reviewContent", "getModerationQueue"]) {
+    await assert.rejects(
+      domain[name]({ auth: { uid: "member", token: { admin: false } }, data: {} }),
+      (error) => error.code === "permission-denied",
+    );
+  }
 });
