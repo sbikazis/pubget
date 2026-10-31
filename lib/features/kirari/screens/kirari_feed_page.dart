@@ -512,6 +512,8 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
   bool _loading = true;
   bool _sending = false;
   String? _error;
+  String? _replyToId;
+  String? _replyToAuthor;
 
   @override
   void initState() {
@@ -539,8 +541,9 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
     try {
-      await widget.repository.addComment(widget.reel.id, text);
+      await widget.repository.addComment(widget.reel.id, text, parentId: _replyToId);
       _controller.clear();
+      if (mounted) setState(() { _replyToId = null; _replyToAuthor = null; });
       await _load();
     } catch (_) {
       if (mounted) setState(() => _error = 'Could not send comment. Please retry.');
@@ -576,15 +579,53 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                             itemBuilder: (context, index) {
                               final item = _comments[index];
                               final deleted = item['status'] == 'deleted';
+                              final commentId = item['id'] as String? ?? '';
+                              final authorId = item['authorId'] as String? ?? '';
                               return ListTile(
                                 title: Text(deleted ? 'Comment removed' : item['text'] as String? ?? ''),
-                                subtitle: Text('@${item['authorId'] ?? ''}'),
-                                trailing: Text('${item['likesCount'] ?? 0}'),
+                                subtitle: Text('@' + authorId),
+                                trailing: deleted ? null : Wrap(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      tooltip: 'Like comment',
+                                      icon: const Icon(Icons.favorite_border, size: 19),
+                                      onPressed: () async {
+                                        await widget.repository.commentAction(widget.reel.id, commentId, 'like');
+                                        await _load();
+                                      },
+                                    ),
+                                    Text((item['likesCount'] ?? 0).toString()),
+                                    IconButton(
+                                      tooltip: 'Reply',
+                                      icon: const Icon(Icons.reply, size: 19),
+                                      onPressed: () => setState(() { _replyToId = commentId; _replyToAuthor = authorId; }),
+                                    ),
+                                    PopupMenuButton<String>(
+                                      onSelected: (kind) async {
+                                        await widget.repository.commentAction(widget.reel.id, commentId, kind);
+                                        await _load();
+                                      },
+                                      itemBuilder: (_) => const [
+                                        PopupMenuItem(value: 'report', child: Text('Report comment')),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               );
                             },
                           ),
               ),
               if (_error != null) Padding(padding: const EdgeInsets.all(8), child: Text(_error!)),
+              if (_replyToId != null)
+                ListTile(
+                  dense: true,
+                  title: Text('Replying to @' + (_replyToAuthor ?? '')),
+                  trailing: IconButton(
+                    onPressed: () => setState(() { _replyToId = null; _replyToAuthor = null; }),
+                    icon: const Icon(Icons.close),
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                 child: Row(children: [
