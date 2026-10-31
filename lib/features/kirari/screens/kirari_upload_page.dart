@@ -194,6 +194,27 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
           const SizedBox(height: 18),
+          if (_session != null && _error != null && !_busy)
+            TextButton(
+              onPressed: () async {
+                try {
+                  await context.read<KirariRepository>().cancelUpload(_session!.reelId);
+                  if (!mounted) return;
+                  setState(() {
+                    _session = null;
+                    _video = null;
+                    _preview?.dispose();
+                    _preview = null;
+                    _error = null;
+                    _status = 'Upload canceled.';
+                    _progress = 0;
+                  });
+                } catch (_) {
+                  if (mounted) setState(() => _error = 'Could not cancel this upload. Try again.');
+                }
+              },
+              child: const Text('Cancel upload'),
+            ),
           FilledButton.icon(
             onPressed: _busy || _video == null || _submitted ? null : _publish,
             icon: _busy
