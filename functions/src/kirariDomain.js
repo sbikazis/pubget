@@ -379,10 +379,23 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const [reel, existing] = await Promise.all([tx.get(ref), tx.get(actionRef)]);
       if (!reel.exists || reel.data().status !== "published") fail("not-found", "Kirari video not found.");
       if (kind === "report") {
-        if (!existing.exists) tx.create(actionRef, {
-          uid, kind, reason: inputString(request.data?.reason || "unspecified", 200, "reason"),
-          createdAt: FieldValue.serverTimestamp(),
-        });
+        if (!existing.exists) {
+          tx.create(actionRef, {
+            uid, kind, reason: inputString(request.data?.reason || "unspecified", 200, "reason"),
+            createdAt: FieldValue.serverTimestamp(),
+          });
+          const reportCount = Number(reel.data()?.reportsCount || 0) + 1;
+          tx.update(ref, {
+            reportsCount: FieldValue.increment(1),
+            ...(reportCount >= 3 ? { moderationStatus: "review_pending" } : {}),
+          });
+          if (reportCount >= 3) {
+            tx.set(db.collection("kirariModerationQueue").doc("reel_" + reelId), {
+              contentType: "reel", reelId, status: "pending",
+              reportCount, queuedAt: FieldValue.serverTimestamp(),
+            }, { merge: true });
+          }
+        }
         return;
       }
       if (kind === "not_interested") {
@@ -422,13 +435,21 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     try { text = inputString(request.data?.text, KIRARI.maxComment, "text"); }
     catch (error) { fail("invalid-argument", error.message); }
     if (!text) fail("invalid-argument", "A comment cannot be empty.");
+    const moderation = moderateEditCopy({ caption: text, animeTag: "" });
+    if (moderation.flagged) fail("failed-precondition", moderation.reason || "This comment needs moderation.");
     const parentId = request.data?.parentId
       ? inputString(request.data.parentId, 128, "parentId") : null;
     const ref = reelRef(reelId);
     const reel = await ref.get();
     if (!reel.exists || reel.data().status !== "published") fail("not-found", "Kirari video not found.");
     const commentRef = ref.collection("comments").doc();
+    const rateRef = db.collection("kirariCommentRateLimits").doc(uid);
     await db.runTransaction(async (tx) => {
+      const rate = await tx.get(rateRef);
+      const lastCommentAt = rate.data()?.lastCommentAt?.toMillis?.() || 0;
+      if (Date.now() - lastCommentAt < 2000) {
+        fail("resource-exhausted", "Please wait before posting another comment.");
+      }
       if (parentId) {
         const parent = await tx.get(ref.collection("comments").doc(parentId));
         if (!parent.exists || parent.data().status === "deleted") {
@@ -447,6 +468,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         rankingScore: FieldValue.increment(3),
         velocityScore: FieldValue.increment(3),
       });
+      tx.set(rateRef, { lastCommentAt: FieldValue.serverTimestamp() }, { merge: true });
     });
     return { commentId: commentRef.id };
   }
