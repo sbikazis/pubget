@@ -195,6 +195,8 @@ function createKirariPipeline({ db, bucket }) {
           status: "rejected", moderationStatus: "review_pending",
           moderationReason: decision.reason || "Content did not pass moderation.",
           rejectedAt: new Date(),
+          processingLeaseId: null,
+          processingLeaseUntil: new Date(0),
         });
         await db.collection("kirariModerationQueue").doc("reel_" + reelId).set({
           contentType: "reel", reelId, status: "pending",
