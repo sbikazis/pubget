@@ -43,6 +43,7 @@ final class KirariCopy {
     'تعذّر تحميل كيراري. تحقق من الاتصال وحاول مجددًا.',
   );
   String get retry => _strings.pick('Retry', 'إعادة المحاولة');
+  String get actionError => _strings.pick('Could not save that action. Please retry.', 'تعذّر حفظ هذا الإجراء. حاول مجددًا.');
   String get uploadError => _strings.pick(
     'Upload failed. Check your connection and retry.',
     'فشل رفع الفيديو. تحقق من الاتصال وحاول مجددًا.',
