@@ -270,6 +270,21 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       assertTransition(reel.status, "deleted");
       await ref.update({ status: "deleted", deletedAt: FieldValue.serverTimestamp() });
     }
+    if (["uploading", "failed"].includes(reel.status)) {
+      if (reel.quotaDay) {
+        const quotaRef = db.collection("kirariUploadQuotas").doc(uid + "_" + reel.quotaDay);
+        const quota = await quotaRef.get();
+        if (quota.exists) {
+          await quotaRef.update({
+            count: Math.max(0, Number(quota.data()?.count || 0) - 1),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
+      }
+      if (reel.idempotencyKey) {
+        await db.collection("kirariUploadKeys").doc(uid + "_" + reel.idempotencyKey).delete().catch(() => {});
+      }
+    }
     const lockRef = db.collection("kirariUploadLocks").doc(uid);
     const lock = await lockRef.get();
     if (lock.exists && lock.data()?.reelId === reelId) await lockRef.delete();
