@@ -24,6 +24,21 @@ final class KirariCopy {
   );
   String get caption => _strings.pick('Caption', 'الوصف');
   String get hashtags => _strings.pick('Hashtags', 'الوسوم');
+  String get trim => _strings.pick('Trim video', 'قص الفيديو');
+  String get speed => _strings.pick('Playback speed', 'سرعة الفيديو');
+  String get filter => _strings.pick('Color filter', 'فلتر الألوان');
+  String get overlayText => _strings.pick('Text overlay', 'نص على الفيديو');
+  String get coverFrame => _strings.pick('Cover frame', 'إطار الغلاف');
+  String get audioLibrary => _strings.pick('Audio library', 'مكتبة الصوت');
+  String get originalAudio => _strings.pick('Use original audio', 'استخدم الصوت الأصلي');
+  String get chooseAudio => _strings.pick('Choose audio', 'اختر صوتًا');
+  String get resumeUpload => _strings.pick('Resume previous upload', 'استئناف الرفع السابق');
+  String get comments => _strings.pick('Comments', 'التعليقات');
+  String get addComment => _strings.pick('Add a comment…', 'أضف تعليقًا…');
+  String get send => _strings.pick('Send', 'إرسال');
+  String get muteCreator => _strings.pick('Mute creator', 'كتم المنشئ');
+  String get report => _strings.pick('Report', 'إبلاغ');
+  String get retry => _strings.pick('Retry', 'إعادة المحاولة');
   String get publish => _strings.pick('Publish video', 'نشر الفيديو');
   String get uploading => _strings.pick('Uploading…', 'جارٍ الرفع…');
   String get processing => _strings.pick(
