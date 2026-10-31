@@ -89,6 +89,7 @@ abstract interface class KirariRepository {
   Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8});
   Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30});
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24});
+  Future<KirariReel> getReel(String reelId);
   Future<void> giveCreatorRespect({required String creatorId, required int value});
   Future<List<Map<String, dynamic>>> getComments(String reelId, {String? before, int limit = 30});
   Future<void> addComment(String reelId, String text, {String? parentId});
@@ -390,6 +391,23 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8}) async => throw _unavailable();
   @override
   Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30}) async => throw _unavailable();
+  @override
+  Future<KirariReel> getReel(String reelId) async {
+    final map = await _call('getKirariReel', {'reelId': reelId});
+    final variants = map['renditions'];
+    final paths = variants is Map ? variants : const <dynamic, dynamic>{};
+    final preferred = paths['720'] ?? paths['540'] ?? paths['360'];
+    final videoPath = preferred is Map ? preferred['path'] as String? : null;
+    if (videoPath == null || videoPath.isEmpty) throw StateError('This video is not available.');
+    final coverPath = map['coverPath'] as String?;
+    return KirariReel.fromMap({
+      ...map,
+      'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+      'coverUrl': coverPath == null || coverPath.isEmpty
+          ? '' : await _storage.ref(coverPath).getDownloadURL(),
+    });
+  }
+
   @override
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24}) async => throw _unavailable();
   @override
