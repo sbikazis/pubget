@@ -172,7 +172,19 @@ function createNotificationTriggers({ db, builder }) {
     const creatorId = after.creatorId;
     if (!creatorId) return;
     const followers = await db.collection("respects").where("toUserId", "==", creatorId).where("value", ">=", 5).limit(100).get();
-    const recipientIds = [...new Set(followers.docs.map((doc) => doc.data()?.fromUserId).filter((uid) => uid && uid !== creatorId))];
+    let recipientIds = [...new Set(followers.docs.map((doc) => doc.data()?.fromUserId).filter((uid) => uid && uid !== creatorId))];
+    if (!recipientIds.length) return;
+    const [muted, creatorBlocksA, creatorBlocksB] = await Promise.all([
+      db.collectionGroup("kirariMutedCreators").where("creatorId", "==", creatorId).get(),
+      db.collection("friendships").where("userA", "==", creatorId).get(),
+      db.collection("friendships").where("userB", "==", creatorId).get(),
+    ]);
+    const excluded = new Set([
+      ...(muted.docs || []).map((doc) => doc.ref.parent.parent?.id).filter(Boolean),
+      ...(creatorBlocksA.docs || []).filter((doc) => doc.data()?.status === "blocked").map((doc) => doc.data()?.userB),
+      ...(creatorBlocksB.docs || []).filter((doc) => doc.data()?.status === "blocked").map((doc) => doc.data()?.userA),
+    ]);
+    recipientIds = recipientIds.filter((uid) => !excluded.has(uid));
     if (!recipientIds.length) return;
     return builder.build({
       id: "kirari_published_" + reelId, recipientIds, type: "kirari_published",
