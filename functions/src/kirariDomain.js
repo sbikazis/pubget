@@ -724,6 +724,40 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return { id: snap.id, ...snap.data() };
   }
 
+  async function publishAudioTrack(request) {
+    if (!request.auth || request.auth.token?.admin !== true) {
+      fail("permission-denied", "Administrator access is required.");
+    }
+    const audioId = inputString(request.data?.audioId, 128, "audioId");
+    const title = inputString(request.data?.title, 100, "title");
+    const artist = inputString(request.data?.artist || "Unknown artist", 100, "artist");
+    const license = inputString(request.data?.license, 120, "license");
+    const attribution = inputString(request.data?.attribution, 300, "attribution");
+    const audioPath = inputString(request.data?.audioPath, 300, "audioPath");
+    if (!audioPath.startsWith("kirari-audio/" + audioId + "/")) {
+      fail("invalid-argument", "Audio assets must be stored in their own Kirari audio folder.");
+    }
+    const file = bucket.file(audioPath);
+    const [exists] = await file.exists();
+    if (!exists) fail("not-found", "The uploaded audio asset was not found.");
+    const [metadata] = await file.getMetadata();
+    const contentType = String(metadata.contentType || "");
+    const size = Number(metadata.size || 0);
+    if (!contentType.startsWith("audio/") || size <= 0 || size > 25 * 1024 * 1024) {
+      fail("invalid-argument", "Audio must be a supported file no larger than 25 MB.");
+    }
+    await db.collection("kirariAudio").doc(audioId).set({
+      title, artist, license, attribution, audioPath,
+      creatorId: request.data?.creatorId || null,
+      allowReuse: request.data?.allowReuse === true,
+      status: request.data?.approved === true ? "approved" : "pending",
+      contentType, sizeBytes: size,
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(request.data?.approved === true ? { approvedAt: FieldValue.serverTimestamp() } : {}),
+    }, { merge: true });
+    return { ok: true, status: request.data?.approved === true ? "approved" : "pending" };
+  }
+
   async function getAudioLibrary(request) {
     auth(request);
     const limit = Math.round(clamp(request.data?.limit || 30, 1, 50));
@@ -894,7 +928,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   return {
     startUpload, finalizeUpload, retryProcessing, cancelUpload, deleteReel, action, addComment, commentAction,
-    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, getComments, getReelsByAudio, getReel, reviewContent, getModerationQueue, setCreatorMute, setProcessingState,
+    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, publishAudioTrack, getComments, getReelsByAudio, getReel, reviewContent, getModerationQueue, setCreatorMute, setProcessingState,
   };
 }
 
