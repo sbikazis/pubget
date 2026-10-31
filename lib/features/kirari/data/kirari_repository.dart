@@ -41,6 +41,12 @@ class KirariReel {
   }
 }
 
+class KirariUploadSession {
+  const KirariUploadSession({required this.reelId, required this.storagePath});
+  final String reelId;
+  final String storagePath;
+}
+
 class KirariFeedPageResult {
   const KirariFeedPageResult(this.items, {required this.hasMore, this.nextCursor});
   final List<KirariReel> items;
@@ -50,7 +56,7 @@ class KirariFeedPageResult {
 
 abstract interface class KirariRepository {
   Future<KirariFeedPageResult> getFeed({String type = 'forYou', int limit = 8});
-  Future<String> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey});
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey});
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress});
   Future<void> finalizeUpload(String reelId);
   Future<void> action(String reelId, String kind);
@@ -111,7 +117,7 @@ class FirebaseKirariRepository implements KirariRepository {
   }
 
   @override
-  Future<String> startUpload({
+  Future<KirariUploadSession> startUpload({
     required String caption,
     required List<String> hashtags,
     required String idempotencyKey,
@@ -126,7 +132,7 @@ class FirebaseKirariRepository implements KirariRepository {
     if (path == null || reelId == null) {
       throw StateError('The server returned an incomplete Kirari upload session.');
     }
-    return '$reelId|$path';
+    return KirariUploadSession(reelId: reelId, storagePath: path);
   }
 
   @override
