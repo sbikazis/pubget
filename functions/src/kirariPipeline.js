@@ -57,11 +57,14 @@ async function probeVideo(binary, file) {
       child.once("exit", (code) => code === 0 ? resolve(stdout) : reject(new Error(stderr)));
     });
     const parsed = JSON.parse(output);
-    const video = (parsed.streams || []).find((stream) => stream.codec_type === "video");
+    const streams = parsed.streams || [];
+    const video = streams.find((stream) => stream.codec_type === "video");
+    const audio = streams.some((stream) => stream.codec_type === "audio");
     return {
       durationSeconds: Number(parsed.format?.duration || 0),
       width: Number(video?.width || 0),
       height: Number(video?.height || 0),
+      hasAudio: audio,
     };
   }
   const stderr = await new Promise((resolve, reject) => {
@@ -79,6 +82,7 @@ async function probeVideo(binary, file) {
     durationSeconds: Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]),
     width: dimensions ? Number(dimensions[1]) : 0,
     height: dimensions ? Number(dimensions[2]) : 0,
+    hasAudio: /Audio:/.test(stderr),
   };
 }
 
@@ -225,11 +229,21 @@ function createKirariPipeline({ db, bucket }) {
         const args = ["-ss", String(trimStart), "-i", source];
         if (audioSource) args.push("-stream_loop", "-1", "-i", audioSource);
         args.push("-t", String(clipDuration), "-map", "0:v:0");
-        if (audioSource) args.push("-map", "1:a:0"); else args.push("-map", "0:a?");
+        if (audioSource && metadata.hasAudio) {
+          args.push("-filter_complex",
+            "[0:a]volume=0.25,atempo=" + speed + "[sourceaudio];" +
+            "[1:a]volume=0.85,atempo=" + speed + "[trackaudio];" +
+            "[sourceaudio][trackaudio]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+            "-map", "[aout]");
+        } else if (audioSource) {
+          args.push("-map", "1:a:0", "-af", "atempo=" + speed);
+        } else {
+          args.push("-map", "0:a?", "-af", "atempo=" + speed);
+        }
         args.push("-vf", editorVideoFilter(width, height, { ...settings, speed }));
         args.push("-c:v", "libx264", "-preset", "veryfast", "-b:v", bitrate,
           "-maxrate", bitrate, "-bufsize", bitrate, "-c:a", "aac", "-b:a", "128k",
-          "-af", "atempo=" + speed, "-movflags", "+faststart", "-shortest", "-y", output);
+          "-movflags", "+faststart", "-shortest", "-y", output);
         await run(ffmpeg, args);
         const destination = `kirari-processed/${uid}/${reelId}/${height}.mp4`;
         await bucket.upload(output, {
