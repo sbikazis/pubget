@@ -399,7 +399,10 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         return;
       }
       if (kind === "not_interested") {
-        if (!existing.exists) tx.create(actionRef, { uid, kind, createdAt: FieldValue.serverTimestamp() });
+        if (!existing.exists) {
+          tx.create(actionRef, { uid, kind, createdAt: FieldValue.serverTimestamp() });
+          tx.update(ref, { negativeFeedbackCount: FieldValue.increment(1) });
+        }
         tx.set(db.collection("users").doc(uid).collection("kirariNotInterested").doc(reelId), {
           createdAt: FieldValue.serverTimestamp(),
         });
