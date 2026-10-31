@@ -50,7 +50,8 @@ class _AudioPageState extends State<AudioPage> {
     setState(() => _loading = true);
     final results = await Future.wait([
       context.read<EditsRepository>().getEditsByAudio(widget.audioId),
-      context.read<KirariRepository>().getReelsByAudio(widget.audioId),
+      context.read<KirariRepository>().getReelsByAudio(widget.audioId)
+          .catchError((_) => <KirariReel>[]),
     ]);
     final result = results[0] as dynamic;
     final kirariReels = results[1] as List<KirariReel>;
