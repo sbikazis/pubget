@@ -393,6 +393,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     await db.runTransaction(async (tx) => {
       const [reel, existing] = await Promise.all([tx.get(ref), tx.get(actionRef)]);
       if (!reel.exists || reel.data().status !== "published") fail("not-found", "Kirari video not found.");
+      if (kind !== "report" && reel.data().moderationStatus !== "approved") {
+        fail("not-found", "Kirari video not found.");
+      }
       if (kind === "report") {
         if (!existing.exists) {
           tx.create(actionRef, {
