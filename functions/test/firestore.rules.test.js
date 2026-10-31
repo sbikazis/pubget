@@ -145,6 +145,12 @@ test.beforeEach(async () => {
     await admin.doc("kirari/reel-review").set({
       creatorId: "alice", status: "published", moderationStatus: "review_pending",
     });
+    await admin.doc("kirari/reel-public/comments/comment-public").set({
+      authorId: "bob", text: "Nice edit", status: "published",
+    });
+    await admin.doc("kirari/reel-review/comments/comment-review").set({
+      authorId: "bob", text: "Hidden comment", status: "published",
+    });
     await admin.doc("kirariAudio/track-approved").set({
       status: "approved", allowReuse: true, audioPath: "kirari-audio/track-approved/audio.mp3",
     });
@@ -1264,6 +1270,8 @@ test("Kirari exposes only approved public reels and approved audio metadata", as
   await assertSucceeds(db("bob").doc("kirari/reel-public").get());
   await assertFails(db("bob").doc("kirari/reel-review").get());
   await assertSucceeds(db("alice").doc("kirari/reel-review").get());
+  await assertSucceeds(db("bob").doc("kirari/reel-public/comments/comment-public").get());
+  await assertFails(db("bob").doc("kirari/reel-review/comments/comment-review").get());
   await assertFails(db("bob").doc("kirari/reel-public").update({ likesCount: 999 }));
   await assertFails(db("bob").doc("kirari/reel-public/comments/c1").set({
     authorId: "bob", text: "forged", status: "published",
