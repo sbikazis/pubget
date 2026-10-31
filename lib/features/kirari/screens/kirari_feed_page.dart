@@ -446,7 +446,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
                     onPressed: () => _runAction(reel.id, 'save'),
                     icon: const Icon(Icons.bookmark_border, size: 28),
                   ),
-                  const Text('Save', style: TextStyle(color: Colors.white)),
+                  Text(copy.save, style: const TextStyle(color: Colors.white)),
                   const SizedBox(height: 16),
                   IconButton(
                     color: Colors.white,
