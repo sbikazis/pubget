@@ -785,8 +785,10 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const license = inputString(request.data?.license, 120, "license");
     const attribution = inputString(request.data?.attribution, 300, "attribution");
     const audioPath = inputString(request.data?.audioPath, 300, "audioPath");
-    if (!audioPath.startsWith("kirari-audio/" + audioId + "/")) {
-      fail("invalid-argument", "Audio assets must be stored in their own Kirari audio folder.");
+    const allowedAudioPaths = ["mp3", "m4a", "aac", "ogg"]
+      .map((extension) => "kirari-audio/" + audioId + "/audio." + extension);
+    if (!allowedAudioPaths.includes(audioPath)) {
+      fail("invalid-argument", "Audio assets must use the approved filename in their own Kirari audio folder.");
     }
     const file = bucket.file(audioPath);
     const [exists] = await file.exists();
