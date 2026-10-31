@@ -45,7 +45,8 @@ class _HashtagPageState extends State<HashtagPage> {
     setState(() => _loading = true);
     final results = await Future.wait([
       context.read<EditsRepository>().getEditsByHashtag(_normalizedTag),
-      context.read<KirariRepository>().getHashtagFeed(hashtag: _normalizedTag),
+      context.read<KirariRepository>().getHashtagFeed(hashtag: _normalizedTag)
+          .catchError((_) => const KirariFeedPageResult([], hasMore: false)),
     ]);
     final result = results[0] as dynamic;
     final kirari = results[1] as KirariFeedPageResult;
