@@ -14,6 +14,7 @@ import '../../edits/models/edit_models.dart';
 import '../../edits/repositories/edits_repository.dart';
 import '../../edits/widgets/reel_metadata.dart';
 import '../../kirari/data/kirari_repository.dart';
+import '../../kirari/l10n/kirari_copy.dart';
 import '../../social/models/public_profile.dart';
 import '../../social/repositories/profile_repository.dart';
 
