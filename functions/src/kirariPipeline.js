@@ -83,9 +83,10 @@ async function probeVideo(binary, file) {
 }
 
 function renditionArgs(source, output, height, bitrate) {
+  const width = Math.floor((height * 9 / 16) / 2) * 2;
   return [
     "-i", source, "-map", "0:v:0", "-map", "0:a?",
-    "-vf", `scale=-2:${height}:force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2`,
+    "-vf", "scale=" + width + ":" + height + ":force_original_aspect_ratio=increase,crop=" + width + ":" + height,
     "-c:v", "libx264", "-preset", "veryfast", "-b:v", bitrate,
     "-maxrate", bitrate, "-bufsize", bitrate,
     "-c:a", "aac", "-b:a", "96k",
@@ -98,7 +99,7 @@ function createKirariPipeline({ db, bucket }) {
     const object = event.data || event;
     const objectName = object.name || "";
     const match = /^kirari\/([^/]+)\/([^/]+)\/source\.mp4$/.exec(objectName);
-    if (!match || !object.bucket) return null;
+    if (!match || !object.bucket || object.bucket !== bucket.name) return null;
     const [, uid, reelId] = match;
     const ref = db.collection("kirari").doc(reelId);
     const snap = await ref.get();
@@ -183,7 +184,7 @@ function createKirariPipeline({ db, bucket }) {
       const cover = path.join(dir, "cover.jpg");
       await run(ffmpeg, [
         "-ss", "0.5", "-i", source, "-frames:v", "1",
-        "-vf", "scale='min(720,iw)':-2:force_original_aspect_ratio=decrease",
+        "-vf", "scale=404:720:force_original_aspect_ratio=increase,crop=404:720",
         "-q:v", "3", "-y", cover,
       ]);
       const coverPath = `kirari-processed/${uid}/${reelId}/cover.jpg`;
