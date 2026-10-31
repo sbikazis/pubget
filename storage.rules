@@ -38,6 +38,12 @@ service firebase.storage {
           /databases/(default)/documents/groups/$(groupId));
     }
 
+    function kirariAudioPublished(audioId) {
+      return firestore.exists(/databases/(default)/documents/kirariAudio/$(audioId)) &&
+        firestore.get(/databases/(default)/documents/kirariAudio/$(audioId)).data.status == 'approved' &&
+        firestore.get(/databases/(default)/documents/kirariAudio/$(audioId)).data.allowReuse == true;
+    }
+
     function kirariPublished(reelId) {
       return firestore.exists(
           /databases/(default)/documents/kirari/$(reelId)) &&
@@ -343,6 +349,12 @@ service firebase.storage {
         request.resource.contentType.matches('video/mp4.*') &&
         request.resource.size <= 500 * 1024 * 1024;
       allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /kirari-audio/{audioId}/{fileName} {
+      allow read: if signedIn() && kirariAudioPublished(audioId) &&
+        fileName.matches('audio\\.(mp3|m4a|aac|ogg)');
+      allow write: if false;
     }
 
     match /kirari-processed/{userId}/{reelId}/{fileName} {
