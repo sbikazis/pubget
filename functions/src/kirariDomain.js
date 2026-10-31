@@ -827,7 +827,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const [exists] = await file.exists();
     if (!exists) fail("not-found", "The uploaded audio asset was not found.");
     const [metadata] = await file.getMetadata();
-    if (!metadata.metadata?.firebaseStorageDownloadTokens) {
+    if (request.data?.approved !== true || !metadata.metadata?.firebaseStorageDownloadTokens) {
       await file.setMetadata({
         metadata: {
           ...(metadata.metadata || {}),
