@@ -504,7 +504,20 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       } else if (kind === "report") {
         const reportRef = commentRef.collection("reports").doc(uid);
         const report = await tx.get(reportRef);
-        if (!report.exists) tx.create(reportRef, { uid, createdAt: FieldValue.serverTimestamp() });
+        if (!report.exists) {
+          tx.create(reportRef, { uid, createdAt: FieldValue.serverTimestamp() });
+          const reportCount = Number(data.reportsCount || 0) + 1;
+          tx.update(commentRef, {
+            reportsCount: FieldValue.increment(1),
+            ...(reportCount >= 3 ? { status: "review_pending" } : {}),
+          });
+          if (reportCount >= 3) {
+            tx.set(db.collection("kirariModerationQueue").doc("comment_" + reelId + "_" + commentId), {
+              contentType: "comment", reelId, commentId, status: "pending",
+              reportCount, queuedAt: FieldValue.serverTimestamp(),
+            }, { merge: true });
+          }
+        }
       } else if (kind === "like" && !like.exists) {
         tx.create(actionRef, { uid, createdAt: FieldValue.serverTimestamp() });
         tx.update(commentRef, { likesCount: FieldValue.increment(1) });
@@ -629,6 +642,68 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       });
     });
     return { ok: true };
+  }
+
+  async function reviewContent(request) {
+    if (!request.auth || request.auth.token?.admin !== true) {
+      fail("permission-denied", "Administrator access is required.");
+    }
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
+    const decision = request.data?.decision;
+    if (!["approved", "rejected"].includes(decision)) {
+      fail("invalid-argument", "Decision must be approved or rejected.");
+    }
+    const commentId = request.data?.commentId
+      ? inputString(request.data.commentId, 128, "commentId") : null;
+    const reelRefValue = reelRef(reelId);
+    if (commentId) {
+      const commentRef = reelRefValue.collection("comments").doc(commentId);
+      const queueRef = db.collection("kirariModerationQueue").doc("comment_" + reelId + "_" + commentId);
+      await db.runTransaction(async (tx) => {
+        const [reel, comment] = await Promise.all([tx.get(reelRefValue), tx.get(commentRef)]);
+        if (!reel.exists || !comment.exists) fail("not-found", "Reported comment not found.");
+        tx.update(commentRef, {
+          status: decision === "approved" ? "published" : "rejected",
+          moderationStatus: decision,
+          reviewedBy: request.auth.uid,
+          reviewedAt: FieldValue.serverTimestamp(),
+        });
+        tx.set(queueRef, {
+          status: "resolved", decision, reviewedBy: request.auth.uid,
+          resolvedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      });
+    } else {
+      const queueRef = db.collection("kirariModerationQueue").doc("reel_" + reelId);
+      await db.runTransaction(async (tx) => {
+        const reel = await tx.get(reelRefValue);
+        if (!reel.exists) fail("not-found", "Reported video not found.");
+        if (reel.data()?.status !== "published") {
+          fail("failed-precondition", "Only published videos can be reviewed here.");
+        }
+        tx.update(reelRefValue, {
+          moderationStatus: decision,
+          moderationReviewedBy: request.auth.uid,
+          moderationReviewedAt: FieldValue.serverTimestamp(),
+        });
+        tx.set(queueRef, {
+          status: "resolved", decision, reviewedBy: request.auth.uid,
+          resolvedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      });
+    }
+    return { ok: true, decision };
+  }
+
+  async function getModerationQueue(request) {
+    if (!request.auth || request.auth.token?.admin !== true) {
+      fail("permission-denied", "Administrator access is required.");
+    }
+    const limit = Math.round(clamp(request.data?.limit || 50, 1, 100));
+    const snap = await db.collection("kirariModerationQueue")
+      .where("status", "==", "pending")
+      .orderBy("queuedAt", "asc").limit(limit).get();
+    return { items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
   }
 
   async function getReel(request) {
@@ -789,7 +864,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   return {
     startUpload, finalizeUpload, retryProcessing, cancelUpload, deleteReel, action, addComment, commentAction,
-    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, getComments, getReelsByAudio, getReel, setCreatorMute, setProcessingState,
+    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, getComments, getReelsByAudio, getReel, reviewContent, getModerationQueue, setCreatorMute, setProcessingState,
   };
 }
 
