@@ -216,13 +216,19 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       await controller.setLooping(true);
       await controller.play();
       final reporter = KirariPlaybackReporter(_repository, reel.id);
-      await reporter.start();
+      try {
+        await reporter.start();
+        if (mounted && identical(_controller, controller)) {
+          _reporter = reporter;
+          _startReporter();
+        }
+      } catch (_) {
+        // Playback must remain available when analytics is temporarily offline.
+      }
       if (!mounted || !identical(_controller, controller)) {
         await controller.dispose();
         return;
       }
-      _reporter = reporter;
-      _startReporter();
       setState(() {});
       unawaited(_prefetchNext(index + 1));
     } catch (_) {
