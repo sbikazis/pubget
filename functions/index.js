@@ -326,6 +326,14 @@ exports.getKirariReel = onCall(
   { region: "us-central1" },
   kirariDomain.getReel,
 );
+exports.reviewKirariContent = onCall(
+  { region: "us-central1" },
+  kirariDomain.reviewContent,
+);
+exports.getKirariModerationQueue = onCall(
+  { region: "us-central1" },
+  kirariDomain.getModerationQueue,
+);
 exports.setKirariCreatorMute = onCall(
   { region: "us-central1" },
   kirariDomain.setCreatorMute,
