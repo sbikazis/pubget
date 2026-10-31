@@ -800,74 +800,36 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const snap = await db.collection("kirariModerationQueue")
       .where("status", "==", "pending")
       .orderBy("queuedAt", "asc").limit(limit).get();
-    return { items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
-  }
-
-  async function getReel(request) {
-    const uid = auth(request);
-    const reelId = inputString(request.data?.reelId, 128, "reelId");
-    const snap = await reelRef(reelId).get();
-    if (!snap.exists || snap.data()?.status !== "published" ||
-        snap.data()?.moderationStatus !== "approved" ||
-        await isBlockedPair(uid, snap.data()?.creatorId)) {
-      fail("not-found", "Kirari video not found.");
-    }
-    return { id: snap.id, ...snap.data() };
-  }
-
-  async function publishAudioTrack(request) {
-    if (!request.auth || request.auth.token?.admin !== true) {
-      fail("permission-denied", "Administrator access is required.");
-    }
-    const audioId = inputId(request.data?.audioId, "audioId");
-    const title = inputString(request.data?.title, 100, "title");
-    const artist = inputString(request.data?.artist || "Unknown artist", 100, "artist");
-    const license = inputString(request.data?.license, 120, "license");
-    const attribution = inputString(request.data?.attribution, 300, "attribution");
-    const audioPath = inputString(request.data?.audioPath, 300, "audioPath");
-    const allowedAudioPaths = ["mp3", "m4a", "aac", "ogg"]
-      .map((extension) => "kirari-audio/" + audioId + "/audio." + extension);
-    if (!allowedAudioPaths.includes(audioPath)) {
-      fail("invalid-argument", "Audio assets must use the approved filename in their own Kirari audio folder.");
-    }
-    const file = bucket.file(audioPath);
-    const [exists] = await file.exists();
-    if (!exists) fail("not-found", "The uploaded audio asset was not found.");
-    const [metadata] = await file.getMetadata();
-    if (request.data?.approved !== true || !metadata.metadata?.firebaseStorageDownloadTokens) {
-      await file.setMetadata({
-        metadata: {
-          ...(metadata.metadata || {}),
-          firebaseStorageDownloadTokens: randomUUID(),
-        },
-      });
-    }
-    const contentType = String(metadata.contentType || "");
-    const size = Number(metadata.size || 0);
-    if (!contentType.startsWith("audio/") || size <= 0 || size > 25 * 1024 * 1024) {
-      fail("invalid-argument", "Audio must be a supported file no larger than 25 MB.");
-    }
-    await db.collection("kirariAudio").doc(audioId).set({
-      title, artist, license, attribution, audioPath,
-      creatorId: request.data?.creatorId || null,
-      allowReuse: request.data?.allowReuse === true,
-      status: request.data?.approved === true ? "approved" : "pending",
-      contentType, sizeBytes: size,
-      updatedAt: FieldValue.serverTimestamp(),
-      ...(request.data?.approved === true ? { approvedAt: FieldValue.serverTimestamp() } : {}),
-    }, { merge: true });
-    return { ok: true, status: request.data?.approved === true ? "approved" : "pending" };
-  }
-
-  async function getAudioLibrary(request) {
-    auth(request);
-    const limit = Math.round(clamp(request.data?.limit || 30, 1, 50));
-    const snap = await db.collection("kirariAudio")
-      .where("status", "==", "approved").limit(limit).get();
-    return {
-      items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((item) => item.allowReuse === true && item.audioPath),
-    };
+    const items = await Promise.all(snap.docs.map(async (doc) => {
+      const queue = { id: doc.id, ...doc.data() };
+      if (queue.contentType === "comment") {
+        const comment = await reelRef(queue.reelId).collection("comments").doc(queue.commentId).get();
+        return { ...queue, content: comment.exists ? comment.data()?.text || "" : "[Comment unavailable]" };
+      }
+      const reel = await reelRef(queue.reelId).get();
+      if (!reel.exists) return { ...queue, content: "[Video unavailable]" };
+      const data = reel.data();
+      const firstRendition = data.renditions?.["540"] || data.renditions?.["360"] || data.renditions?.["720"];
+      const videoPath = firstRendition?.path;
+      const previewPath = data.coverPath;
+      const [videoPreviewUrl, coverPreviewUrl] = await Promise.all([
+        videoPath ? bucket.file(videoPath).getSignedUrl({
+          action: "read", expires: Date.now() + 5 * 60 * 1000,
+        }).then(([url]) => url).catch(() => null) : null,
+        previewPath ? bucket.file(previewPath).getSignedUrl({
+          action: "read", expires: Date.now() + 5 * 60 * 1000,
+        }).then(([url]) => url).catch(() => null) : null,
+      ]);
+      return {
+        ...queue,
+        content: data.caption || "",
+        creatorId: data.creatorId,
+        videoPreviewUrl,
+        coverPreviewUrl,
+        durationSeconds: data.durationSeconds,
+      };
+    }));
+    return { items };
   }
 
   async function getCreatorReels(request) {
