@@ -143,6 +143,21 @@ function createKirariPipeline({ db, bucket }) {
     }
     if (!["uploading", "processing"].includes(reel.status)) return null;
 
+    const leaseId = String(object.generation || object.metageneration || Date.now());
+    const leaseAcquired = await db.runTransaction(async (tx) => {
+      const current = await tx.get(ref);
+      if (!current.exists || !["uploading", "processing"].includes(current.data()?.status)) return false;
+      const leaseUntil = current.data()?.processingLeaseUntil?.toMillis?.() || 0;
+      if (leaseUntil > Date.now()) return false;
+      tx.update(ref, {
+        status: "processing",
+        processingLeaseId: leaseId,
+        processingLeaseUntil: new Date(Date.now() + 10 * 60 * 1000),
+      });
+      return true;
+    });
+    if (!leaseAcquired) return null;
+
     const lockRef = db.collection("kirariUploadLocks").doc(uid);
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "kirari-"));
     const source = path.join(dir, "source.mp4");
@@ -161,6 +176,8 @@ function createKirariPipeline({ db, bucket }) {
           failureReason: "duration",
           moderationReason: "Kirari videos must be between 3 and 60 seconds.",
           rejectedAt: new Date(),
+          processingLeaseId: null,
+          processingLeaseUntil: new Date(0),
         });
         await lockRef.delete().catch(() => {});
         return null;
@@ -256,6 +273,8 @@ function createKirariPipeline({ db, bucket }) {
         publishedAt: new Date(),
         processedAt: new Date(),
         failureReason: null,
+        processingLeaseId: null,
+        processingLeaseUntil: new Date(0),
       });
       await lockRef.delete().catch(() => {});
       return null;
@@ -265,6 +284,8 @@ function createKirariPipeline({ db, bucket }) {
         failureReason: "processing-failed",
         processingErrorCode: "KIRARI_PROCESSING_FAILED",
         failedAt: new Date(),
+        processingLeaseId: null,
+        processingLeaseUntil: new Date(0),
       }).catch(() => {});
       await lockRef.delete().catch(() => {});
       console.error("Kirari processing failed", {
