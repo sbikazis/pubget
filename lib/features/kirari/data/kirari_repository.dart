@@ -15,6 +15,8 @@ class KirariReel {
     required this.durationSeconds,
     required this.likesCount,
     required this.commentsCount,
+    this.audioId,
+    this.audioAttribution = const <String, dynamic>{},
   });
 
   final String id;
@@ -25,6 +27,8 @@ class KirariReel {
   final double durationSeconds;
   final int likesCount;
   final int commentsCount;
+  final String? audioId;
+  final Map<String, dynamic> audioAttribution;
 
   factory KirariReel.fromMap(Map<dynamic, dynamic> map) {
     return KirariReel(
@@ -36,6 +40,10 @@ class KirariReel {
       durationSeconds: (map['durationSeconds'] as num?)?.toDouble() ?? 0,
       likesCount: (map['likesCount'] as num?)?.toInt() ?? 0,
       commentsCount: (map['commentsCount'] as num?)?.toInt() ?? 0,
+      audioId: map['audioId'] as String?,
+      audioAttribution: map['audioAttribution'] is Map
+          ? Map<String, dynamic>.from(map['audioAttribution'] as Map)
+          : const <String, dynamic>{},
     );
   }
 }
@@ -80,6 +88,8 @@ abstract interface class KirariRepository {
   Future<KirariFeedPageResult> getFeed({String type = 'forYou', int limit = 8, Map<String, dynamic>? cursor});
   Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8});
   Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30});
+  Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24});
+  Future<void> giveCreatorRespect({required String creatorId, required int value});
   Future<List<Map<String, dynamic>>> getComments(String reelId, {String? before, int limit = 30});
   Future<void> addComment(String reelId, String text, {String? parentId});
   Future<void> commentAction(String reelId, String commentId, String kind);
@@ -380,6 +390,10 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8}) async => throw _unavailable();
   @override
   Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30}) async => throw _unavailable();
+  @override
+  Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24}) async => throw _unavailable();
+  @override
+  Future<void> giveCreatorRespect({required String creatorId, required int value}) async => throw _unavailable();
   @override
   Future<List<Map<String, dynamic>>> getComments(String reelId, {String? before, int limit = 30}) async => throw _unavailable();
   @override
