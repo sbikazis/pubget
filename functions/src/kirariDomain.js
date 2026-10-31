@@ -586,6 +586,16 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     };
   }
 
+  async function getReelsByAudio(request) {
+    auth(request);
+    const audioId = inputString(request.data?.audioId, 128, "audioId");
+    const limit = Math.round(clamp(request.data?.limit || 24, 1, 50));
+    const snap = await reels().where("status", "==", "published")
+      .where("audioId", "==", audioId)
+      .orderBy("publishedAt", "desc").limit(limit).get();
+    return { items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
+  }
+
   async function getComments(request) {
     auth(request);
     const reelId = inputString(request.data?.reelId, 128, "reelId");
@@ -712,7 +722,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   return {
     startUpload, finalizeUpload, retryProcessing, cancelUpload, deleteReel, action, addComment, commentAction,
-    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, getComments, setCreatorMute, setProcessingState,
+    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, getComments, getReelsByAudio, setCreatorMute, setProcessingState,
   };
 }
 
