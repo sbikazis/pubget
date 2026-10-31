@@ -84,9 +84,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       }
       final file = File(path);
       final controller = VideoPlayerController.file(file);
-      await controller.initialize();
-      await controller.setLooping(true);
-      controller.addListener(_previewLoop);
+      await controller!.initialize();
+      await controller!.setLooping(true);
+      controller!.addListener(_previewLoop);
       final seconds = controller.value.duration.inMilliseconds / 1000;
       if (!mounted) {
         await controller.dispose();
@@ -165,7 +165,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         return;
       }
       durableFile = await _keepLocalCopy(picked);
-      controller = VideoPlayerController.file(durableFile);
+      controller = VideoPlayerController.file(durableFile!);
       await controller.initialize();
       await controller.setLooping(true);
       controller.addListener(_previewLoop);
