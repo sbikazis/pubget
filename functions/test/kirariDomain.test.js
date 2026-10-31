@@ -63,7 +63,11 @@ test("all Kirari callables reject unauthenticated requests before touching Fires
   for (const [name, data] of [
     ["startUpload", {}],
     ["finalizeUpload", { reelId: "r1" }],
+    ["retryProcessing", { reelId: "r1" }],
+    ["cancelUpload", { reelId: "r1" }],
     ["deleteReel", { reelId: "r1" }],
+    ["setCreatorMute", { creatorId: "bob" }],
+    ["getHashtagFeed", { hashtag: "anime" }],
     ["action", { reelId: "r1", kind: "like" }],
     ["addComment", { reelId: "r1", text: "hi" }],
     ["commentAction", { reelId: "r1", commentId: "c1", kind: "like" }],
