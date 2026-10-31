@@ -322,6 +322,10 @@ exports.getKirariReelsByAudio = onCall(
   { region: "us-central1" },
   kirariDomain.getReelsByAudio,
 );
+exports.getKirariReel = onCall(
+  { region: "us-central1" },
+  kirariDomain.getReel,
+);
 exports.setKirariCreatorMute = onCall(
   { region: "us-central1" },
   kirariDomain.setCreatorMute,
