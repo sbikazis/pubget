@@ -237,8 +237,8 @@ function createKirariPipeline({ db, bucket }) {
             "-map", "[aout]");
         } else if (audioSource) {
           args.push("-map", "1:a:0", "-af", "atempo=" + speed);
-        } else {
-          args.push("-map", "0:a?", "-af", "atempo=" + speed);
+        } else if (metadata.hasAudio) {
+          args.push("-map", "0:a:0", "-af", "atempo=" + speed);
         }
         args.push("-vf", editorVideoFilter(width, height, { ...settings, speed }));
         args.push("-c:v", "libx264", "-preset", "veryfast", "-b:v", bitrate,
