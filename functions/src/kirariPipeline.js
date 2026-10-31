@@ -171,10 +171,15 @@ function createKirariPipeline({ db, bucket }) {
       });
       if (decision.flagged) {
         await ref.update({
-          status: "rejected", moderationStatus: "rejected",
+          status: "rejected", moderationStatus: "review_pending",
           moderationReason: decision.reason || "Content did not pass moderation.",
           rejectedAt: new Date(),
         });
+        await db.collection("kirariModerationQueue").doc("reel_" + reelId).set({
+          contentType: "reel", reelId, status: "pending",
+          reason: decision.reason || "Automated text moderation flagged this upload.",
+          queuedAt: new Date(),
+        }, { merge: true });
         await lockRef.delete().catch(() => {});
         return null;
       }
