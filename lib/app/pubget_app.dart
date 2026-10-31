@@ -196,6 +196,13 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<NotificationRepository>.value(value: repositories.$9),
         provider.Provider<HomeRepository>.value(value: repositories.$10),
         provider.Provider<EditsRepository>.value(value: repositories.$11),
+        provider.Provider<KirariRepository>(
+          create: (_) => firebaseState.isReady
+              ? FirebaseKirariRepository()
+              : UnavailableKirariRepository(
+                  firebaseState.message ?? 'Firebase is unavailable in this build.',
+                ),
+        ),
         provider.Provider<PrivateChatRepository>.value(value: repositories.$12),
         provider.Provider<EventRepository>.value(value: repositories.$13),
         provider.Provider<AnimeRepository>(
