@@ -779,6 +779,14 @@ exports.onRespectReceived = onDocumentCreated(
   "respects/{respectId}",
   notificationTriggers.respectReceived,
 );
+exports.onKirariPublished = onDocumentUpdated(
+  "kirari/{reelId}",
+  notificationTriggers.kirariPublished,
+);
+exports.onKirariComment = onDocumentCreated(
+  "kirari/{reelId}/comments/{commentId}",
+  notificationTriggers.kirariComment,
+);
 exports.unblockUser = onCall(
   { region: "us-central1" },
   socialGraph.unblockUser,
