@@ -1068,6 +1068,64 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
     }
+
+    // Kirari is an independent video domain. All mutations and counters are
+    // server-authoritative; clients can only read published content (or their
+    // own drafts) and their own private interaction/session records.
+    match /kirari/{reelId} {
+      allow read: if signedIn() &&
+        (resource.data.creatorId == request.auth.uid ||
+         (resource.data.status == 'published' &&
+          resource.data.moderationStatus == 'approved'));
+      allow create, update, delete: if false;
+
+      match /comments/{commentId} {
+        allow read: if signedIn() &&
+          get(/databases/$(database)/documents/kirari/$(reelId)).data.status == 'published';
+        allow create, update, delete: if false;
+        match /likes/{uid} {
+          allow read: if self(uid);
+          allow write: if false;
+        }
+        match /reports/{uid} {
+          allow read: if self(uid);
+          allow write: if false;
+        }
+      }
+      match /actions/{actionId} {
+        allow read: if signedIn() && resource.data.uid == request.auth.uid;
+        allow write: if false;
+      }
+      match /playbackSessions/{sessionId} {
+        allow read: if signedIn() && resource.data.viewerId == request.auth.uid;
+        allow write: if false;
+        match /events/{eventId} {
+          allow read: if signedIn() &&
+            get(/databases/$(database)/documents/kirari/$(reelId)/playbackSessions/$(sessionId)).data.viewerId == request.auth.uid;
+          allow write: if false;
+        }
+      }
+    }
+    match /kirariUploadLocks/{uid} {
+      allow read, write: if false;
+    }
+    match /kirariUploadQuotas/{quotaId} {
+      allow read, write: if false;
+    }
+    match /kirariUploadKeys/{keyId} {
+      allow read, write: if false;
+    }
+    match /users/{uid}/kirariSeen/{reelId} {
+      allow read: if self(uid);
+      allow create, update, delete: if self(uid) &&
+        request.resource.data.keys().hasOnly(['seenAt']);
+    }
+    match /users/{uid}/kirariInterests/{interestId} {
+      allow read: if self(uid);
+      allow create, update, delete: if self(uid) &&
+        request.resource.data.keys().hasOnly(['createdAt']);
+    }
+
     match /mafia_history/{gameId} {
       allow read: if signedIn() && request.auth.uid in resource.data.players;
       allow write: if false;
