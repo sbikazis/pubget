@@ -235,13 +235,22 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const snap = await ref.get();
     if (!snap.exists) return { ok: true };
     if (snap.data().creatorId !== uid) fail("permission-denied", "Only the creator can delete this video.");
-    if (snap.data().status !== "deleted") {
-      assertTransition(snap.data().status, "deleted");
+    const reel = snap.data();
+    if (reel.status !== "deleted") {
+      assertTransition(reel.status, "deleted");
       await ref.update({ status: "deleted", deletedAt: FieldValue.serverTimestamp() });
     }
     const lockRef = db.collection("kirariUploadLocks").doc(uid);
     const lock = await lockRef.get();
     if (lock.exists && lock.data()?.reelId === reelId) await lockRef.delete();
+    const paths = [
+      reel.originalStoragePath || reel.storagePath,
+      reel.coverPath,
+      ...Object.values(reel.renditions || {}).map((item) => item && item.path),
+    ].filter((value) => typeof value === "string" && value.length > 0);
+    await Promise.all(paths.map((value) =>
+      bucket.file(value).delete({ ignoreNotFound: true }).catch(() => {}),
+    ));
     return { ok: true };
   }
 
