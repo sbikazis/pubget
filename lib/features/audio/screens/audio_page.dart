@@ -168,7 +168,7 @@ class _AudioPageState extends State<AudioPage> {
             return ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.verified_outlined),
-              title: Text(title.isEmpty ? copy.originalAudio : title),
+              title: Text(title.isEmpty ? KirariCopy.of(context).originalAudio : title),
               subtitle: Text([artist, license].where((value) => value.isNotEmpty).join(' · ')),
               onTap: sourceCreatorId == null
                   ? null
