@@ -139,6 +139,18 @@ test.beforeEach(async () => {
     await admin.doc("fanWorks/fw-public/comments/c1").set({
       authorId: "bob", text: "nice", likesCount: 0,
     });
+    await admin.doc("kirari/reel-public").set({
+      creatorId: "alice", status: "published", moderationStatus: "approved",
+    });
+    await admin.doc("kirari/reel-review").set({
+      creatorId: "alice", status: "published", moderationStatus: "review_pending",
+    });
+    await admin.doc("kirariAudio/track-approved").set({
+      status: "approved", allowReuse: true, audioPath: "kirari-audio/track-approved/audio.mp3",
+    });
+    await admin.doc("kirariAudio/track-pending").set({
+      status: "pending", allowReuse: false, audioPath: "kirari-audio/track-pending/audio.mp3",
+    });
   });
 });
 test.after(() => env.cleanup());
@@ -1245,5 +1257,20 @@ test("Kirari seen markers are owner-scoped and field-limited", async () => {
   }));
   await assertFails(db("alice").doc("users/alice/kirariSeen/r3").set({
     seenAt: serverTimestamp(), forgedScore: 100000,
+  }));
+});
+
+test("Kirari exposes only approved public reels and approved audio metadata", async () => {
+  await assertSucceeds(db("bob").doc("kirari/reel-public").get());
+  await assertFails(db("bob").doc("kirari/reel-review").get());
+  await assertSucceeds(db("alice").doc("kirari/reel-review").get());
+  await assertFails(db("bob").doc("kirari/reel-public").update({ likesCount: 999 }));
+  await assertFails(db("bob").doc("kirari/reel-public/comments/c1").set({
+    authorId: "bob", text: "forged", status: "published",
+  }));
+  await assertSucceeds(db("bob").doc("kirariAudio/track-approved").get());
+  await assertFails(db("bob").doc("kirariAudio/track-pending").get());
+  await assertFails(db("alice").doc("kirariAudio/track-approved").update({
+    status: "approved", allowReuse: true,
   }));
 });
