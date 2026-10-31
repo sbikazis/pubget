@@ -845,6 +845,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/notifications': const NotificationInboxPage(),
         '/edits': const AppShell(),
         '/reels': const AppShell(),
+        '/reels/upload': const KirariUploadPage(),
         '/edits/upload': const EditUploadPage(),
         '/groups': const AppShell(),
         '/joined': const AppShell(),
