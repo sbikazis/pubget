@@ -318,6 +318,10 @@ exports.getKirariComments = onCall(
   { region: "us-central1" },
   kirariDomain.getComments,
 );
+exports.getKirariReelsByAudio = onCall(
+  { region: "us-central1" },
+  kirariDomain.getReelsByAudio,
+);
 exports.setKirariCreatorMute = onCall(
   { region: "us-central1" },
   kirariDomain.setCreatorMute,
