@@ -421,14 +421,14 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 var end = value.end;
                 if (end - start < 3) {
                   if (start != _trim.start) {
-                    start = (end - 3).clamp(0, _duration - 3);
+                    start = (end - 3).clamp(0, _duration - 3).toDouble();
                   } else {
-                    end = (start + 3).clamp(3, _duration);
+                    end = (start + 3).clamp(3, _duration).toDouble();
                   }
                 }
                 setState(() {
                   _trim = RangeValues(start, end);
-                  _coverTime = _coverTime.clamp(start, end);
+                  _coverTime = _coverTime.clamp(start, end).toDouble();
                 });
                 _savePendingUpload();
               },
