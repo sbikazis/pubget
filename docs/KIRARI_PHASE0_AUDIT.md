@@ -164,3 +164,23 @@ Implemented on `feat/kirari-system-rebuild` after this audit:
 - Moderation currently reuses text moderation; there is no full visual/audio moderation review queue or creator appeal flow.
 - The current Flutter upload can retry the same object while the screen remains alive, but upload task continuation after process death is not yet implemented.
 - No Flutter analyze/test/build, Functions tests, or emulator rules suite has been executed in this environment. GitHub Actions workflows on this repository currently run on pushes to `main`; a test PR has deliberately not been opened because the user requested a single PR only after the whole system is ready.
+
+## 8. Follow-up implementation (current branch)
+
+The follow-up pass now adds:
+- A working editor settings path from Flutter to the server renderer: trim range, speed, text overlay, color preset and cover timestamp. FFmpeg applies these settings to all three renditions.
+- A curated, admin-managed audio catalog, track preview in the upload UI, track reuse, original-audio mixing and persisted attribution metadata.
+- Comment list/create/reply/like/report surfaces and server-side text moderation + rate limiting.
+- Creator profile video rail, Home trending rail, canonical reel/audio/hashtag destinations, profile navigation and Respect interaction.
+- Central-builder notifications for newly approved published videos and new comments.
+- Measured-bandwidth rendition selection, five-minute estimate cache and one-item next-video prefetch.
+- Durable local upload copy and persisted idempotency/session metadata so a killed upload can be retried against the same server session.
+- Report-count moderation queue, admin review callables, creator mute/not-interested feedback, block filtering, server-side impression dedupe and bounded seen history.
+- Initial tests for editor filter contracts, settings validation, audio Storage permissions, Kirari Firestore visibility and notification trigger behavior.
+
+**Still not proven:** no Flutter/Node/emulator command has been executed in this chat environment. The branch still needs CI verification. The following limitations are explicit rather than hidden:
+- Upload recovery after process death restarts from the saved local file; it is not byte-offset continuation or background transfer.
+- Automated moderation is text-based. Visual/audio classification, a moderator dashboard and creator appeals remain future work.
+- Ranking remains a deterministic heuristic, not a trained personalization model.
+- Adaptive quality uses a bounded range request estimate and selects one rendition; it is not HLS/segment-level adaptive streaming.
+- The audio catalog is curated by an admin using the documented callable; no self-service creator audio publishing flow exists.
