@@ -60,6 +60,8 @@ abstract interface class KirariRepository {
   Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey});
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress});
   Future<void> finalizeUpload(String reelId);
+  Future<void> retryProcessing(String reelId);
+  Future<void> cancelUpload(String reelId);
   Future<void> action(String reelId, String kind);
   Future<String> startPlayback(String reelId);
   Future<void> recordPlayback({required String reelId, required String sessionId, required String eventId, required double watchSeconds, required double percent});
@@ -167,6 +169,16 @@ class FirebaseKirariRepository implements KirariRepository {
   }
 
   @override
+  Future<void> retryProcessing(String reelId) async {
+    await _call('retryKirariProcessing', {'reelId': reelId});
+  }
+
+  @override
+  Future<void> cancelUpload(String reelId) async {
+    await _call('cancelKirariUpload', {'reelId': reelId});
+  }
+
+  @override
   Future<void> action(String reelId, String kind) async {
     await _call('kirariAction', {'reelId': reelId, 'kind': kind});
   }
@@ -266,6 +278,10 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress}) async => throw _unavailable();
   @override
   Future<void> finalizeUpload(String reelId) async => throw _unavailable();
+  @override
+  Future<void> retryProcessing(String reelId) async => throw _unavailable();
+  @override
+  Future<void> cancelUpload(String reelId) async => throw _unavailable();
   @override
   Future<void> action(String reelId, String kind) async => throw _unavailable();
   @override
