@@ -1,6 +1,7 @@
 "use strict";
 
 const { moderateEditCopy } = require("./contentFilter");
+const { randomUUID } = require("node:crypto");
 
 const KIRARI = Object.freeze({
   schemaVersion: 1,
@@ -794,6 +795,14 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const [exists] = await file.exists();
     if (!exists) fail("not-found", "The uploaded audio asset was not found.");
     const [metadata] = await file.getMetadata();
+    if (!metadata.metadata?.firebaseStorageDownloadTokens) {
+      await file.setMetadata({
+        metadata: {
+          ...(metadata.metadata || {}),
+          firebaseStorageDownloadTokens: randomUUID(),
+        },
+      });
+    }
     const contentType = String(metadata.contentType || "");
     const size = Number(metadata.size || 0);
     if (!contentType.startsWith("audio/") || size <= 0 || size > 25 * 1024 * 1024) {
