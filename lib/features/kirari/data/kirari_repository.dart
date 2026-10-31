@@ -257,6 +257,10 @@ class UnavailableKirariRepository implements KirariRepository {
   @override
   Future<KirariFeedPageResult> getFeed({String type = 'forYou', int limit = 8, Map<String, dynamic>? cursor}) async => throw _unavailable();
   @override
+  Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8}) async => throw _unavailable();
+  @override
+  Future<void> setCreatorMute({required String creatorId, required bool muted}) async => throw _unavailable();
+  @override
   Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey}) async => throw _unavailable();
   @override
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress}) async => throw _unavailable();
