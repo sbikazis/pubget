@@ -271,7 +271,7 @@ exports.finalizeKirariUpload = onCall(
   kirariDomain.finalizeUpload,
 );
 exports.retryKirariProcessing = onCall(
-  { region: "europe-west3", timeoutSeconds: 540, memory: "2GiB" },
+  { region: "us-central1", timeoutSeconds: 540, memory: "2GiB" },
   kirariDomain.retryProcessing,
 );
 exports.deleteKirariReel = onCall(
