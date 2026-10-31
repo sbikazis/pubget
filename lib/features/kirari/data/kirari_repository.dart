@@ -182,7 +182,7 @@ class FirebaseKirariRepository implements KirariRepository {
         final map = Map<dynamic, dynamic>.from(value);
         final variants = map['renditions'];
         final paths = variants is Map ? variants : const <dynamic, dynamic>{};
-        final preferred = paths['720'] ?? paths['540'] ?? paths['360'];
+        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
         final videoPath = preferred is Map ? preferred['path'] as String? : null;
         final coverPath = map['coverPath'] as String?;
         if (videoPath == null || videoPath.isEmpty) continue;
