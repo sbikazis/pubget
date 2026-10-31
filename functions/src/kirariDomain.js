@@ -279,6 +279,27 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return { status: latest.data()?.status || "processing", reelId };
   }
 
+  async function cancelUpload(request) {
+    const uid = auth(request);
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
+    const ref = reelRef(reelId);
+    const snap = await ref.get();
+    if (!snap.exists) return { ok: true };
+    const reel = snap.data();
+    if (reel.creatorId !== uid) fail("permission-denied", "You do not own this upload.");
+    if (!["uploading", "failed"].includes(reel.status)) {
+      fail("failed-precondition", "This upload can no longer be canceled.");
+    }
+    assertTransition(reel.status, "deleted");
+    await ref.update({ status: "deleted", deletedAt: FieldValue.serverTimestamp() });
+    const lockRef = db.collection("kirariUploadLocks").doc(uid);
+    const lock = await lockRef.get();
+    if (lock.exists && lock.data()?.reelId === reelId) await lockRef.delete();
+    const storagePath = reel.originalStoragePath || reel.storagePath;
+    if (storagePath) await bucket.file(storagePath).delete({ ignoreNotFound: true }).catch(() => {});
+    return { ok: true };
+  }
+
   async function action(request) {
     const uid = auth(request);
     const reelId = inputString(request.data?.reelId, 128, "reelId");
@@ -619,7 +640,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
   }
 
   return {
-    startUpload, finalizeUpload, retryProcessing, deleteReel, action, addComment, commentAction,
+    startUpload, finalizeUpload, retryProcessing, cancelUpload, deleteReel, action, addComment, commentAction,
     startPlayback, recordPlayback, getFeed, getHashtagFeed, setCreatorMute, setProcessingState,
   };
 }
