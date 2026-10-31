@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -23,11 +24,13 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   final _caption = TextEditingController();
   final _hashtags = TextEditingController();
   final _overlayText = TextEditingController();
+  final AudioPlayer _audioPreview = AudioPlayer();
   XFile? _video;
   VideoPlayerController? _preview;
   KirariUploadSession? _session;
   List<KirariAudioTrack> _audioTracks = const [];
   String? _audioId;
+  String? _previewingAudioId;
   String? _idempotencyKey;
   RangeValues _trim = const RangeValues(0, 3);
   double _speed = 1;
@@ -52,6 +55,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     _caption.dispose();
     _hashtags.dispose();
     _overlayText.dispose();
+    _audioPreview.dispose();
     _preview?.dispose();
     super.dispose();
   }
@@ -282,36 +286,59 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
 
   Future<void> _chooseAudio() async {
     final copy = KirariCopy.of(context);
-    final selected = await showModalBottomSheet<KirariAudioTrack?>(
+    final selectedId = await showModalBottomSheet<String?>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            ListTile(title: Text(copy.audioLibrary), subtitle: Text(copy.originalAudio)),
-            ListTile(
-              leading: const Icon(Icons.music_off_outlined),
-              title: Text(copy.originalAudio),
-              onTap: () => Navigator.pop(sheetContext, null),
-            ),
-            for (final track in _audioTracks)
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, updateSheet) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(title: Text(copy.audioLibrary), subtitle: Text(copy.originalAudio)),
               ListTile(
-                leading: const Icon(Icons.music_note),
-                title: Text(track.title),
-                subtitle: Text('${track.artist} · ${track.license}'),
-                onTap: () => Navigator.pop(sheetContext, track),
+                leading: const Icon(Icons.music_off_outlined),
+                title: Text(copy.originalAudio),
+                onTap: () async {
+                  await _audioPreview.stop();
+                  if (sheetContext.mounted) Navigator.pop(sheetContext, '');
+                },
               ),
-            if (_audioTracks.isEmpty)
-              const ListTile(title: Text('No approved reusable audio is available yet.')),
-          ],
+              for (final track in _audioTracks)
+                ListTile(
+                  leading: const Icon(Icons.music_note),
+                  title: Text(track.title),
+                  subtitle: Text(track.artist + ' · ' + track.license),
+                  trailing: IconButton(
+                    tooltip: 'Preview audio',
+                    icon: Icon(_previewingAudioId == track.id ? Icons.stop : Icons.play_arrow),
+                    onPressed: () async {
+                      if (_previewingAudioId == track.id) {
+                        await _audioPreview.stop();
+                        updateSheet(() => _previewingAudioId = null);
+                      } else {
+                        await _audioPreview.stop();
+                        await _audioPreview.play(UrlSource(track.audioUrl));
+                        updateSheet(() => _previewingAudioId = track.id);
+                      }
+                    },
+                  ),
+                  onTap: () async {
+                    await _audioPreview.stop();
+                    if (sheetContext.mounted) Navigator.pop(sheetContext, track.id);
+                  },
+                ),
+              if (_audioTracks.isEmpty)
+                const ListTile(title: Text('No approved reusable audio is available yet.')),
+            ],
+          ),
         ),
       ),
     );
-    if (!mounted) return;
-    setState(() => _audioId = selected?.id);
+    if (!mounted || selectedId == null) return;
+    setState(() => _audioId = selectedId.isEmpty ? null : selectedId);
     await _savePendingUpload();
   }
+
 
   ColorFilter? _previewFilter() {
     switch (_filter) {
