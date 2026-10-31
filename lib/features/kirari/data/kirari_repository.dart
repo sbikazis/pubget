@@ -98,6 +98,7 @@ abstract interface class KirariRepository {
   Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8});
   Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30});
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24});
+  Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20});
   Future<KirariReel> getReel(String reelId);
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality});
   Future<void> giveCreatorRespect({required String creatorId, required int value});
@@ -457,6 +458,8 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30}) async => throw _unavailable();
   @override
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality}) async => throw _unavailable();
+  @override
+  Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20}) async => throw _unavailable();
   @override
   Future<KirariReel> getReel(String reelId) async => throw _unavailable();
   @override
