@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../data/kirari_repository.dart';
+import '../l10n/kirari_copy.dart';
 import 'kirari_upload_page.dart';
 
 class KirariFeedPage extends StatefulWidget {
@@ -169,15 +170,16 @@ class _KirariFeedPageState extends State<KirariFeedPage>
 
   @override
   Widget build(BuildContext context) {
+    final copy = KirariCopy.of(context);
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: const Text('Kirari'),
+        title: Text(copy.title),
         actions: [
           IconButton(
-            tooltip: 'Create video',
+            tooltip: copy.create,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => const KirariUploadPage(),
@@ -195,7 +197,11 @@ class _KirariFeedPageState extends State<KirariFeedPage>
               return TextButton(
                 onPressed: () => _switchFeed(entry.value),
                 child: Text(
-                  entry.key,
+                  switch (entry.value) {
+                    'forYou' => copy.forYou,
+                    'following' => copy.following,
+                    _ => copy.trending,
+                  },
                   style: TextStyle(
                     color: selected ? Colors.white : Colors.white60,
                     fontWeight: selected ? FontWeight.bold : FontWeight.normal,
@@ -216,7 +222,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save that action. Please retry.')),
+        SnackBar(content: Text(KirariCopy.of(context).uploadError)),
       );
     }
   }
@@ -234,7 +240,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
             const SizedBox(height: 12),
             FilledButton(
               onPressed: () => _load(reset: true),
-              child: const Text('Retry'),
+              child: Text(KirariCopy.of(context).retry),
             ),
           ],
         ),
