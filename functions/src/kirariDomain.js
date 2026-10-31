@@ -95,6 +95,13 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (!request.auth || !request.auth.uid) fail("unauthenticated", "Sign in to continue.");
     return request.auth.uid;
   }
+  function inputString(value, max, field) {
+    try {
+      return cleanString(value, max, field);
+    } catch (error) {
+      fail("invalid-argument", error.message);
+    }
+  }
   function reelRef(id) { return reels().doc(id); }
   function assertTransition(from, to) {
     if (!transitionStatus(from, to)) {
@@ -111,7 +118,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     } catch (error) {
       fail("invalid-argument", error.message);
     }
-    const idempotencyKey = cleanString(request.data?.idempotencyKey || "", 128, "idempotencyKey");
+    const idempotencyKey = inputString(request.data?.idempotencyKey || "", 128, "idempotencyKey");
     if (!idempotencyKey) fail("invalid-argument", "An upload idempotency key is required.");
     const day = new Date().toISOString().slice(0, 10);
     const lockRef = db.collection("kirariUploadLocks").doc(uid);
@@ -172,7 +179,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   async function finalizeUpload(request) {
     const uid = auth(request);
-    const reelId = cleanString(request.data?.reelId, 128, "reelId");
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
     const ref = reelRef(reelId);
     const snap = await ref.get();
     if (!snap.exists) fail("not-found", "Kirari video not found.");
@@ -223,7 +230,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   async function deleteReel(request) {
     const uid = auth(request);
-    const reelId = cleanString(request.data?.reelId, 128, "reelId");
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
     const ref = reelRef(reelId);
     const snap = await ref.get();
     if (!snap.exists) return { ok: true };
@@ -240,7 +247,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   async function retryProcessing(request) {
     const uid = auth(request);
-    const reelId = cleanString(request.data?.reelId, 128, "reelId");
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
     const ref = reelRef(reelId);
     const snap = await ref.get();
     if (!snap.exists) fail("not-found", "Kirari video not found.");
@@ -268,7 +275,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   async function action(request) {
     const uid = auth(request);
-    const reelId = cleanString(request.data?.reelId, 128, "reelId");
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
     const kind = request.data?.kind;
     const allowed = new Set(["like", "unlike", "save", "unsave", "share", "not_interested", "report"]);
     if (!allowed.has(kind)) fail("invalid-argument", "Unsupported Kirari action.");
@@ -279,7 +286,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       if (!reel.exists || reel.data().status !== "published") fail("not-found", "Kirari video not found.");
       if (kind === "report") {
         if (!existing.exists) tx.create(actionRef, {
-          uid, kind, reason: cleanString(request.data?.reason || "unspecified", 200, "reason"),
+          uid, kind, reason: inputString(request.data?.reason || "unspecified", 200, "reason"),
           createdAt: FieldValue.serverTimestamp(),
         });
         return;
@@ -308,13 +315,13 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   async function addComment(request) {
     const uid = auth(request);
-    const reelId = cleanString(request.data?.reelId, 128, "reelId");
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
     let text;
-    try { text = cleanString(request.data?.text, KIRARI.maxComment, "text"); }
+    try { text = inputString(request.data?.text, KIRARI.maxComment, "text"); }
     catch (error) { fail("invalid-argument", error.message); }
     if (!text) fail("invalid-argument", "A comment cannot be empty.");
     const parentId = request.data?.parentId
-      ? cleanString(request.data.parentId, 128, "parentId") : null;
+      ? inputString(request.data.parentId, 128, "parentId") : null;
     const ref = reelRef(reelId);
     const reel = await ref.get();
     if (!reel.exists || reel.data().status !== "published") fail("not-found", "Kirari video not found.");
@@ -344,8 +351,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   async function commentAction(request) {
     const uid = auth(request);
-    const reelId = cleanString(request.data?.reelId, 128, "reelId");
-    const commentId = cleanString(request.data?.commentId, 128, "commentId");
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
+    const commentId = inputString(request.data?.commentId, 128, "commentId");
     const kind = request.data?.kind;
     if (!["like", "unlike", "delete", "pin", "report"].includes(kind)) {
       fail("invalid-argument", "Unsupported comment action.");
@@ -387,7 +394,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   async function startPlayback(request) {
     const uid = auth(request);
-    const reelId = cleanString(request.data?.reelId, 128, "reelId");
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
     const ref = reelRef(reelId);
     const snap = await ref.get();
     if (!snap.exists || snap.data().status !== "published") fail("not-found", "Kirari video not found.");
@@ -420,11 +427,11 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   async function recordPlayback(request) {
     const uid = auth(request);
-    const reelId = cleanString(request.data?.reelId, 128, "reelId");
-    const sessionId = cleanString(request.data?.sessionId, 128, "sessionId");
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
+    const sessionId = inputString(request.data?.sessionId, 128, "sessionId");
     const watchSeconds = clamp(request.data?.watchSeconds, 0, KIRARI.maxWatchEventSeconds);
     const clientPercent = clamp(request.data?.percent, 0, 100);
-    const eventId = cleanString(request.data?.eventId, 128, "eventId");
+    const eventId = inputString(request.data?.eventId, 128, "eventId");
     if (!eventId) fail("invalid-argument", "Playback event id is required.");
     const ref = reelRef(reelId);
     const sessionRef = ref.collection("playbackSessions").doc(sessionId);
