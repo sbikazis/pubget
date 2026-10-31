@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../../../core/constants/rank_colors.dart';
 import '../../../core/l10n/app_strings.dart';
@@ -12,7 +11,6 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../data/sticker_catalog.dart';
 import '../models/chat_models.dart';
 import '../models/group_models.dart';
-import '../providers/chat_provider.dart';
 import 'chat_contrast_theme.dart';
 import 'chat_special_cards.dart';
 
@@ -25,6 +23,7 @@ class ChatMessageBubble extends StatelessWidget {
     required this.onLongPress,
     this.onSwipeReply,
     this.onAvatarTap,
+    this.onReplyQuoteTap,
     required this.onMediaTap,
     this.onStickerTap,
     this.onEventTap,
@@ -37,6 +36,8 @@ class ChatMessageBubble extends StatelessWidget {
     this.showAvatar = true,
     this.showHeader = true,
     this.isStarred = false,
+    this.mediaHost,
+    this.onRetryMedia,
     super.key,
   });
 
@@ -48,6 +49,9 @@ class ChatMessageBubble extends StatelessWidget {
   final ValueChanged<Rect> onLongPress;
   final VoidCallback? onSwipeReply;
   final VoidCallback? onAvatarTap;
+
+  /// Tapping the quote of a replied-to message reveals the original.
+  final ValueChanged<String>? onReplyQuoteTap;
   final VoidCallback? onMediaTap;
   final VoidCallback? onStickerTap;
   final VoidCallback? onEventTap;
@@ -60,6 +64,12 @@ class ChatMessageBubble extends StatelessWidget {
   final bool showAvatar;
   final bool showHeader;
   final bool isStarred;
+
+  /// Owning conversation's upload surface (optimistic preview + progress) and
+  /// the retry action for a failed media send. Injected by the screen that owns
+  /// the conversation so a 1:1 bubble never reads the group provider.
+  final ChatMediaUploadHost? mediaHost;
+  final ValueChanged<ChatMessage>? onRetryMedia;
 
   static const double maxWidthFraction = 0.78;
   static const double avatarSize = 32;
@@ -189,8 +199,12 @@ class ChatMessageBubble extends StatelessWidget {
                                           showSenderRole: showSenderRole,
                                           showHeader: showHeader,
                                           isStarred: isStarred,
+                                          maxWidth: bubbleMax,
                                           onMediaTap: onMediaTap,
+                                          onReplyQuoteTap: onReplyQuoteTap,
                                           onStickerTap: onStickerTap,
+                                          mediaHost: mediaHost,
+                                          onRetryMedia: onRetryMedia,
                                         )
                                       : _BubbleChrome(
                                           isMine: isMine,
@@ -203,9 +217,13 @@ class ChatMessageBubble extends StatelessWidget {
                                             showSenderRole: showSenderRole,
                                             showHeader: showHeader,
                                             isStarred: isStarred,
+                                            maxWidth: bubbleMax,
+                                            onReplyQuoteTap: onReplyQuoteTap,
                                             replyPreview: replyPreview,
                                             onMediaTap: onMediaTap,
                                             onAudioTap: onAudioTap,
+                                            mediaHost: mediaHost,
+                                            onRetryMedia: onRetryMedia,
                                           ),
                                         ),
                                 ),
@@ -336,9 +354,13 @@ class _BubbleBody extends StatelessWidget {
     required this.showSenderRole,
     required this.showHeader,
     required this.isStarred,
+    required this.maxWidth,
+    this.onReplyQuoteTap,
     required this.replyPreview,
     required this.onMediaTap,
     required this.onAudioTap,
+    this.mediaHost,
+    this.onRetryMedia,
   });
 
   final ChatMessage message;
@@ -347,19 +369,25 @@ class _BubbleBody extends StatelessWidget {
   final bool showSenderRole;
   final bool showHeader;
   final bool isStarred;
+
+  /// Bubble's own max width, already net of the avatar gutter. Media uses it to
+  /// resolve an exact box instead of relying on an intrinsic pass.
+  final double maxWidth;
+  final ValueChanged<String>? onReplyQuoteTap;
   final String? replyPreview;
   final VoidCallback? onMediaTap;
   final VoidCallback? onAudioTap;
+  final ChatMediaUploadHost? mediaHost;
+  final ValueChanged<ChatMessage>? onRetryMedia;
 
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
-    return IntrinsicWidth(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          if (showHeader)
+    final column = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (showHeader)
             _SenderHeader(
               name: message.senderName,
               role: message.senderRole,
@@ -384,25 +412,36 @@ class _BubbleBody extends StatelessWidget {
               text: replyPreview ?? message.replyPreview!,
               textColor: textColor,
               isMine: isMine,
+              onTap: message.replyToMessageId == null
+                  ? null
+                  : () => onReplyQuoteTap?.call(message.replyToMessageId!),
             ),
             const SizedBox(height: 4),
           ],
-          _MessageContent(
-            message: message,
-            textColor: textColor,
-            onMediaTap: onMediaTap,
-            onAudioTap: onAudioTap,
-          ),
-          const SizedBox(height: 2),
-          _TimeStatusRow(
-            message: message,
-            isMine: isMine,
-            textColor: textColor,
-            isStarred: isStarred,
-          ),
-        ],
-      ),
+        _MessageContent(
+          message: message,
+          textColor: textColor,
+          maxWidth: maxWidth,
+          onMediaTap: onMediaTap,
+          onAudioTap: onAudioTap,
+          mediaHost: mediaHost,
+          onRetryMedia: onRetryMedia,
+        ),
+        const SizedBox(height: 2),
+        _TimeStatusRow(
+          message: message,
+          isMine: isMine,
+          textColor: textColor,
+          isStarred: isStarred,
+        ),
+      ],
     );
+    // IntrinsicWidth costs a second layout pass over everything inside it, and
+    // with an image that meant intrinsifying the raster as well. Media now
+    // resolves a concrete box up front, so only text/sticker rows — cheap
+    // children — still need the shrink-wrap pass.
+    if (message.hasDisplayMedia) return column;
+    return IntrinsicWidth(child: column);
   }
 }
 
@@ -414,8 +453,12 @@ class _StickerColumn extends StatelessWidget {
     required this.showSenderRole,
     required this.showHeader,
     required this.isStarred,
+    required this.maxWidth,
     required this.onMediaTap,
+    this.onReplyQuoteTap,
     this.onStickerTap,
+    this.mediaHost,
+    this.onRetryMedia,
   });
 
   final ChatMessage message;
@@ -424,8 +467,12 @@ class _StickerColumn extends StatelessWidget {
   final bool showSenderRole;
   final bool showHeader;
   final bool isStarred;
+  final double maxWidth;
   final VoidCallback? onMediaTap;
+  final ValueChanged<String>? onReplyQuoteTap;
   final VoidCallback? onStickerTap;
+  final ChatMediaUploadHost? mediaHost;
+  final ValueChanged<ChatMessage>? onRetryMedia;
 
   @override
   Widget build(BuildContext context) {
@@ -448,12 +495,15 @@ class _StickerColumn extends StatelessWidget {
           _MessageContent(
             message: message,
             textColor: textColor,
+            maxWidth: maxWidth,
             onMediaTap: onMediaTap,
             onStickerTap: onStickerTap,
             onAudioTap: null,
+            mediaHost: mediaHost,
+            onRetryMedia: onRetryMedia,
           ),
           Padding(
-            padding: const EdgeInsets.only(top: 2, left: 4),
+            padding: const EdgeInsetsDirectional.only(top: 2, start: 4),
             child: _TimeStatusRow(
               message: message,
               isMine: isMine,
@@ -658,15 +708,17 @@ class _ReplyQuote extends StatelessWidget {
     required this.text,
     required this.textColor,
     required this.isMine,
+    this.onTap,
   });
 
   final String text;
   final Color textColor;
   final bool isMine;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final quote = Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       decoration: BoxDecoration(
@@ -689,6 +741,25 @@ class _ReplyQuote extends StatelessWidget {
           color: textColor.withValues(alpha: 0.85),
           fontSize: 12.5,
           height: 1.3,
+        ),
+      ),
+    );
+    if (onTap == null) return quote;
+    // The quote is a link to the original message, so it needs a hover/press
+    // affordance and a semantics label — otherwise it reads as decoration.
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: Semantics(
+        button: true,
+        label: AppStrings.of(context).pick(
+          'Go to replied message',
+          'الانتقال إلى الرسالة الأصلية',
+        ),
+        child: InkWell(
+          key: const Key('reply-quote-jump'),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(6),
+          child: quote,
         ),
       ),
     );
@@ -797,16 +868,22 @@ class _MessageContent extends StatelessWidget {
   const _MessageContent({
     required this.message,
     required this.textColor,
+    required this.maxWidth,
     required this.onMediaTap,
     this.onStickerTap,
     this.onAudioTap,
+    this.mediaHost,
+    this.onRetryMedia,
   });
 
   final ChatMessage message;
   final Color textColor;
+  final double maxWidth;
   final VoidCallback? onMediaTap;
   final VoidCallback? onStickerTap;
   final VoidCallback? onAudioTap;
+  final ChatMediaUploadHost? mediaHost;
+  final ValueChanged<ChatMessage>? onRetryMedia;
 
   @override
   Widget build(BuildContext context) {
@@ -838,7 +915,12 @@ class _MessageContent extends StatelessWidget {
         child: SizedBox(
           width: 140,
           height: 140,
-          child: _OptimisticMediaFrame(message: message, fit: BoxFit.contain),
+          child: _OptimisticMediaFrame(
+            message: message,
+            mediaHost: mediaHost,
+            onRetryMedia: onRetryMedia,
+            fit: BoxFit.contain,
+          ),
         ),
       );
     }
@@ -848,55 +930,12 @@ class _MessageContent extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          InkWell(
+          _ChatMediaTile(
+            message: message,
+            maxWidth: maxWidth,
             onTap: onMediaTap,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: AspectRatio(
-                aspectRatio: 4 / 3,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    _OptimisticMediaFrame(message: message, fit: BoxFit.cover),
-                    if (message.type == ChatMessageType.video)
-                      const Center(
-                        child: CircleAvatar(
-                          radius: 22,
-                          backgroundColor: Color(0x99000000),
-                          child: Icon(
-                            Icons.play_arrow_rounded,
-                            color: Colors.white,
-                            size: 28,
-                          ),
-                        ),
-                      ),
-                    if (message.type == ChatMessageType.video)
-                      Positioned(
-                        left: 8,
-                        bottom: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'VIDEO',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
+            mediaHost: mediaHost,
+            onRetryMedia: onRetryMedia,
           ),
           if ((message.text ?? '').trim().isNotEmpty) ...[
             const SizedBox(height: 6),
@@ -1166,17 +1205,133 @@ class _SwipeReplyDetector extends StatelessWidget {
   }
 }
 
-/// Local preview + per-message upload overlay. Progress ticks use
-/// [ValueListenableBuilder] only — never rebuild the chat page.
-class _OptimisticMediaFrame extends StatelessWidget {
-  const _OptimisticMediaFrame({required this.message, this.fit = BoxFit.cover});
+/// Raster/stream frame inside a chat bubble, sized from the media's real
+/// intrinsic dimensions.
+///
+/// Two problems this resolves, both reported as "the image at the bottom looks
+/// blurry and cramped":
+///
+/// * **A hardcoded 4:3 box** cropped every photo to the same frame, so a 9:16
+///   screenshot was cut off and a panorama was shrunk to a sliver. The box now
+///   follows `mediaAspectRatio` (measured from the file header on send, and
+///   reconciled with the server-measured value once processing finishes).
+/// * **No decode budget.** The frame handed its loader no logical size, so
+///   `AppImageLoader` could not pick a `cacheWidth` and decoded the full sensor
+///   image into a ~250px box — soft on screen and enormous in the image cache.
+///   Passing the resolved size lets it decode at physical-pixel resolution.
+///
+/// The size is pure arithmetic on values already in hand, so there is no
+/// [LayoutBuilder] and no intrinsic pass: the box is correct on the very first
+/// layout, which is what stops the list from jumping when a message arrives.
+class _ChatMediaTile extends StatelessWidget {
+  const _ChatMediaTile({
+    required this.message,
+    required this.maxWidth,
+    required this.onTap,
+    this.mediaHost,
+    this.onRetryMedia,
+  });
+
+  /// Tallest a frame may render, so a 9:16 photo does not dominate the screen.
+  static const double maxFrameHeight = 420;
+
+  /// Shortest a frame may render, so a wide panorama stays legible.
+  static const double minFrameHeight = 132;
 
   final ChatMessage message;
-  final BoxFit fit;
+  final double maxWidth;
+  final VoidCallback? onTap;
+  final ChatMediaUploadHost? mediaHost;
+  final ValueChanged<ChatMessage>? onRetryMedia;
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.read<ChatProvider>();
+    final available = maxWidth.isFinite && maxWidth > 0
+        ? maxWidth
+        : MediaQuery.sizeOf(context).width *
+              ChatMessageBubble.maxWidthFraction;
+    // Clamp the ratio so a corrupt 1x4000 dimension cannot collapse the frame.
+    final ratio = message.hasMediaSize
+        ? message.mediaAspectRatio.clamp(0.2, 5.0)
+        : 4 / 3;
+
+    var width = available;
+    var height = width / ratio;
+    if (height > maxFrameHeight) {
+      height = maxFrameHeight;
+      width = math.min(available, height * ratio);
+    } else if (height < minFrameHeight) {
+      height = minFrameHeight;
+      width = math.min(available, height * ratio);
+    }
+
+    final isVideo = message.type == ChatMessageType.video;
+    return InkWell(
+      key: ValueKey<String>('media-${message.id}'),
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: width,
+          height: height,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              _OptimisticMediaFrame(
+                message: message,
+                mediaHost: mediaHost,
+                onRetryMedia: onRetryMedia,
+                fit: BoxFit.cover,
+                width: width,
+                height: height,
+              ),
+              if (isVideo)
+                const Center(
+                  child: CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Color(0x99000000),
+                    child: Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Local preview + per-message upload overlay. Progress ticks use
+/// [ValueListenableBuilder] only — never rebuild the chat page.
+class _OptimisticMediaFrame extends StatelessWidget {
+  const _OptimisticMediaFrame({
+    required this.message,
+    this.mediaHost,
+    this.onRetryMedia,
+    this.fit = BoxFit.cover,
+    this.width,
+    this.height,
+  });
+
+  final ChatMessage message;
+
+  /// Injected by the owning screen. Absent means "this conversation has no
+  /// upload surface here" (e.g. the long-press preview card), and the frame
+  /// then renders without progress rather than guessing a provider.
+  final ChatMediaUploadHost? mediaHost;
+  final ValueChanged<ChatMessage>? onRetryMedia;
+  final BoxFit fit;
+
+  /// Resolved render box, forwarded to the loader as the decode budget.
+  final double? width;
+  final double? height;
+
+  @override
+  Widget build(BuildContext context) {
     final remote = () {
       final thumb = message.thumbnailUrl?.trim();
       if (thumb != null && thumb.isNotEmpty) return thumb;
@@ -1184,7 +1339,7 @@ class _OptimisticMediaFrame extends StatelessWidget {
       if (media != null && media.isNotEmpty) return media;
       return null;
     }();
-    final local = chat.localPreviewBytes(message.id);
+    final local = mediaHost?.localPreviewBytes(message.id);
     final isVideo = message.type == ChatMessageType.video;
     // Video bytes are not a displayable raster; keep a solid placeholder.
     final Uint8List? preview = (!isVideo && local != null && local.isNotEmpty)
@@ -1196,11 +1351,27 @@ class _OptimisticMediaFrame extends StatelessWidget {
       media = AppImageLoader(
         imageUrl: remote,
         fit: fit,
+        // Giving the loader the resolved box is what enables decode sizing: it
+        // turns a 4000x3000 sensor image into a ~250px raster instead of ~48 MB.
+        width: width,
+        height: height,
         placeholder: preview != null
-            ? Image.memory(preview, fit: fit, gaplessPlayback: true)
+            ? Image.memory(
+                preview,
+                fit: fit,
+                width: width,
+                height: height,
+                gaplessPlayback: true,
+              )
             : null,
         errorWidget: preview != null
-            ? Image.memory(preview, fit: fit, gaplessPlayback: true)
+            ? Image.memory(
+                preview,
+                fit: fit,
+                width: width,
+                height: height,
+                gaplessPlayback: true,
+              )
             : ColoredBox(
                 color: const Color(0xFF1A1A22),
                 child: Icon(
@@ -1212,7 +1383,13 @@ class _OptimisticMediaFrame extends StatelessWidget {
               ),
       );
     } else if (preview != null) {
-      media = Image.memory(preview, fit: fit, gaplessPlayback: true);
+      media = Image.memory(
+        preview,
+        fit: fit,
+        width: width,
+        height: height,
+        gaplessPlayback: true,
+      );
     } else {
       media = ColoredBox(
         color: const Color(0xFF1A1A22),
@@ -1223,7 +1400,7 @@ class _OptimisticMediaFrame extends StatelessWidget {
       );
     }
 
-    final listenable = chat.uploadUiListenable(message.id);
+    final listenable = mediaHost?.uploadUiListenable(message.id);
     if (listenable == null && message.sendState != ChatSendState.failed) {
       return media;
     }
@@ -1238,26 +1415,26 @@ class _OptimisticMediaFrame extends StatelessWidget {
             builder: (context, ui, _) => _MediaUploadOverlay(state: ui),
           ),
         if (message.sendState == ChatSendState.failed)
-          _MediaRetryOverlay(message: message),
+          _MediaRetryOverlay(message: message, onRetry: onRetryMedia),
       ],
     );
   }
 }
 
 class _MediaRetryOverlay extends StatelessWidget {
-  const _MediaRetryOverlay({required this.message});
+  const _MediaRetryOverlay({required this.message, this.onRetry});
 
   final ChatMessage message;
+  final ValueChanged<ChatMessage>? onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.read<ChatProvider>();
     return ColoredBox(
       color: const Color(0xAA1A1A22),
       child: Center(
         child: TextButton.icon(
           key: const Key('media-retry'),
-          onPressed: () => chat.retry(message),
+          onPressed: () => onRetry?.call(message),
           icon: const Icon(Icons.refresh, color: Colors.white),
           label: Text(
             AppStrings.of(context).pick('Try again', 'إعادة المحاولة'),
