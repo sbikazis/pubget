@@ -178,7 +178,10 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket }) {
     if (!snap.exists) fail("not-found", "Kirari video not found.");
     const reel = snap.data();
     if (reel.creatorId !== uid) fail("permission-denied", "You do not own this upload.");
-    if (reel.status === "published") return { status: "published", reelId };
+    if (reel.status === "published" || reel.status === "processing" ||
+        reel.status === "preparing") {
+      return { status: reel.status, reelId };
+    }
     if (reel.status !== "uploading" && reel.status !== "failed") {
       fail("failed-precondition", "This upload cannot be finalized in its current state.");
     }
