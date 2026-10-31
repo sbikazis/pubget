@@ -575,6 +575,44 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return { ok: true };
   }
 
+  async function getAudioLibrary(request) {
+    auth(request);
+    const limit = Math.round(clamp(request.data?.limit || 30, 1, 50));
+    const snap = await db.collection("kirariAudio")
+      .where("status", "==", "approved").limit(limit).get();
+    return {
+      items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((item) => item.allowReuse === true && item.audioPath),
+    };
+  }
+
+  async function getComments(request) {
+    auth(request);
+    const reelId = inputString(request.data?.reelId, 128, "reelId");
+    const limit = Math.round(clamp(request.data?.limit || 30, 1, 50));
+    const ref = reelRef(reelId);
+    const reel = await ref.get();
+    if (!reel.exists || reel.data()?.status !== "published") {
+      fail("not-found", "Kirari video not found.");
+    }
+    let query = ref.collection("comments")
+      .where("status", "==", "published")
+      .orderBy("createdAt", "desc").limit(limit + 1);
+    if (request.data?.before) {
+      const before = await ref.collection("comments").doc(
+        inputString(request.data.before, 128, "before"),
+      ).get();
+      if (before.exists) query = query.startAfter(before);
+    }
+    const snap = await query.get();
+    const docs = snap.docs.slice(0, limit);
+    return {
+      items: docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+      hasMore: snap.docs.length > limit,
+      nextCursor: docs.length ? docs[docs.length - 1].id : null,
+    };
+  }
+
   async function setCreatorMute(request) {
     const uid = auth(request);
     const creatorId = inputString(request.data?.creatorId, 128, "creatorId");
@@ -674,7 +712,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   return {
     startUpload, finalizeUpload, retryProcessing, cancelUpload, deleteReel, action, addComment, commentAction,
-    startPlayback, recordPlayback, getFeed, getHashtagFeed, setCreatorMute, setProcessingState,
+    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, getComments, setCreatorMute, setProcessingState,
   };
 }
 
