@@ -409,7 +409,10 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         return;
       }
       if (kind === "undo_not_interested") {
-        if (existing.exists) tx.delete(actionRef);
+        if (existing.exists) {
+          tx.delete(actionRef);
+          tx.update(ref, { negativeFeedbackCount: FieldValue.increment(-1) });
+        }
         tx.delete(db.collection("users").doc(uid).collection("kirariNotInterested").doc(reelId));
         return;
       }
