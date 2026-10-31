@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
-  KIRARI, TRANSITIONS, transitionStatus, normalizeTags, rankKirari,
+  KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings, rankKirari,
   createKirariDomain,
 } = require("../src/kirariDomain");
 
@@ -68,6 +68,10 @@ test("all Kirari callables reject unauthenticated requests before touching Fires
     ["deleteReel", { reelId: "r1" }],
     ["setCreatorMute", { creatorId: "bob" }],
     ["getHashtagFeed", { hashtag: "anime" }],
+    ["getAudioLibrary", {}],
+    ["getComments", { reelId: "r1" }],
+    ["getReelsByAudio", { audioId: "a1" }],
+    ["getReel", { reelId: "r1" }],
     ["action", { reelId: "r1", kind: "like" }],
     ["addComment", { reelId: "r1", text: "hi" }],
     ["commentAction", { reelId: "r1", commentId: "c1", kind: "like" }],
@@ -80,4 +84,22 @@ test("all Kirari callables reject unauthenticated requests before touching Fires
       (error) => error.code === "unauthenticated",
     );
   }
+});
+
+test("editor settings are bounded and unsafe filter values fall back to original", () => {
+  assert.deepEqual(normalizeEditSettings({
+    trimStartSeconds: -10,
+    trimEndSeconds: 999,
+    speed: 9,
+    filter: "arbitrary",
+    overlayText: "x".repeat(100),
+    coverTimeSeconds: -5,
+  }), {
+    trimStartSeconds: 0,
+    trimEndSeconds: 60,
+    speed: 2,
+    filter: "none",
+    overlayText: "x".repeat(80),
+    coverTimeSeconds: 0,
+  });
 });
