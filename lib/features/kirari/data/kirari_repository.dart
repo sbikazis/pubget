@@ -55,7 +55,7 @@ class KirariFeedPageResult {
 }
 
 abstract interface class KirariRepository {
-  Future<KirariFeedPageResult> getFeed({String type = 'forYou', int limit = 8});
+  Future<KirariFeedPageResult> getFeed({String type = 'forYou', int limit = 8, Map<String, dynamic>? cursor});
   Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey});
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress});
   Future<void> finalizeUpload(String reelId);
@@ -84,8 +84,12 @@ class FirebaseKirariRepository implements KirariRepository {
   }
 
   @override
-  Future<KirariFeedPageResult> getFeed({String type = 'forYou', int limit = 8}) async {
-    final result = await _call('getKirariFeed', {'type': type, 'limit': limit});
+  Future<KirariFeedPageResult> getFeed({String type = 'forYou', int limit = 8, Map<String, dynamic>? cursor}) async {
+    final result = await _call('getKirariFeed', {
+      'type': type,
+      'limit': limit,
+      if (cursor != null) ...cursor,
+    });
     final raw = result['items'];
     final reels = <KirariReel>[];
     if (raw is List) {
