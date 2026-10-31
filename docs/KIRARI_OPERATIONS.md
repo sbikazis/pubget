@@ -49,7 +49,7 @@ The callable verifies the object exists and its MIME/size. The public catalog re
 
 ## Server-managed moderation and audio operations
 
-Both `publishKirariAudioTrack`, `getKirariModerationQueue` and `reviewKirariContent` require the Firebase Auth custom claim `admin: true`. Grant that claim only to trusted operators. The functions do not provide an admin dashboard or grant admin privileges themselves.
+The `/admin/kirari-moderation` route provides the review screen. Queue previews use five-minute signed URLs returned only to an admin caller. Both `publishKirariAudioTrack`, `getKirariModerationQueue` and `reviewKirariContent` require the Firebase Auth custom claim `admin: true`. Grant that claim only to trusted operators. The functions do not grant admin privileges themselves.
 
 ## Verification commands
 
