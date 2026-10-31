@@ -47,6 +47,22 @@ function normalizeTags(value) {
   ).filter(Boolean))];
 }
 
+function normalizeEditSettings(value) {
+  const input = value && typeof value === "object" ? value : {};
+  const speed = clamp(input.speed ?? 1, 0.5, 2);
+  const filter = ["none", "warm", "cool", "mono", "vivid"].includes(input.filter)
+    ? input.filter : "none";
+  const overlayText = typeof input.overlayText === "string"
+    ? input.overlayText.trim().slice(0, 80) : "";
+  const trimStartSeconds = clamp(input.trimStartSeconds ?? 0, 0, 60);
+  const trimEndSeconds = clamp(input.trimEndSeconds ?? 60, 3, 60);
+  const coverTimeSeconds = clamp(input.coverTimeSeconds ?? trimStartSeconds, 0, 60);
+  return {
+    trimStartSeconds, trimEndSeconds, speed, filter,
+    overlayText, coverTimeSeconds,
+  };
+}
+
 function transitionStatus(current, next) {
   if (current === next) return true;
   return Boolean(TRANSITIONS[current] && TRANSITIONS[current].has(next));
@@ -119,6 +135,14 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       fail("invalid-argument", error.message);
     }
     const idempotencyKey = inputString(request.data?.idempotencyKey || "", 128, "idempotencyKey");
+    const editSettings = normalizeEditSettings(request.data?.editSettings);
+    const audioId = request.data?.audioId == null ? null : inputString(request.data.audioId, 128, "audioId");
+    if (audioId) {
+      const audioSnap = await db.collection("kirariAudio").doc(audioId).get();
+      if (!audioSnap.exists || audioSnap.data()?.status !== "approved" || audioSnap.data()?.allowReuse !== true) {
+        fail("failed-precondition", "This audio track is not available for reuse.");
+      }
+    }
     if (!idempotencyKey) fail("invalid-argument", "An upload idempotency key is required.");
     const day = new Date().toISOString().slice(0, 10);
     const lockRef = db.collection("kirariUploadLocks").doc(uid);
@@ -145,7 +169,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         fail("resource-exhausted", "You have reached today's Kirari upload limit.");
       }
       tx.create(ref, {
-        creatorId: uid, caption, hashtags, status: "uploading",
+        creatorId: uid, caption, hashtags, audioId, editSettings, status: "uploading",
         schemaVersion: KIRARI.schemaVersion,
         storagePath, originalStoragePath: storagePath,
         createdAt: FieldValue.serverTimestamp(),
@@ -655,6 +679,6 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 }
 
 module.exports = {
-  KIRARI, TRANSITIONS, transitionStatus, normalizeTags, rankKirari,
+  KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings, rankKirari,
   createKirariDomain,
 };
