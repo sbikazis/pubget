@@ -147,38 +147,43 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   Future<void> _pick() async {
     final picked = await context.read<KirariRepository>().pickGalleryVideo();
     if (picked == null || !mounted) return;
+    File? durableFile;
+    VideoPlayerController? controller;
     try {
-      final file = File(picked.path);
-      final size = await file.length();
+      final sourceFile = File(picked.path);
+      final size = await sourceFile.length();
       if (size > 500 * 1024 * 1024) {
         setState(() => _error = KirariCopy.of(context).videoLimits);
         return;
       }
-      final controller = VideoPlayerController.file(file);
-      await controller.initialize();
-      final duration = controller.value.duration.inMilliseconds / 1000;
+      final sourceController = VideoPlayerController.file(sourceFile);
+      await sourceController.initialize();
+      final duration = sourceController.value.duration.inMilliseconds / 1000;
+      await sourceController.dispose();
       if (duration < 3 || duration > 60) {
-        await controller.dispose();
         setState(() => _error = KirariCopy.of(context).videoLimits);
         return;
       }
+      durableFile = await _keepLocalCopy(picked);
+      controller = VideoPlayerController.file(durableFile);
+      await controller.initialize();
       await controller.setLooping(true);
       controller.addListener(_previewLoop);
-      final durableFile = await _keepLocalCopy(picked);
       _preview?.removeListener(_previewLoop);
       await _preview?.dispose();
       if (!mounted) {
         await controller.dispose();
+        await durableFile.delete().catchError((_) => durableFile!);
         return;
       }
       setState(() {
-        _video = XFile(durableFile.path);
+        _video = XFile(durableFile!.path);
         _preview = controller;
         _duration = duration;
         _trim = RangeValues(0, duration);
         _coverTime = 0;
         _session = null;
-        _idempotencyKey = 'kirari-${DateTime.now().microsecondsSinceEpoch}';
+        _idempotencyKey = 'kirari-' + DateTime.now().microsecondsSinceEpoch.toString();
         _progress = 0;
         _error = null;
         _status = null;
@@ -186,6 +191,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       });
       await _savePendingUpload();
     } catch (_) {
+      if (controller != null) await controller.dispose();
+      if (durableFile != null) await durableFile.delete().catchError((_) => durableFile!);
       if (mounted) setState(() => _error = KirariCopy.of(context).playbackError);
     }
   }
