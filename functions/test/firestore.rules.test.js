@@ -1200,3 +1200,50 @@ test("mafia history is participant-read only and never client-writable (SEC-H-01
   }));
 });
 
+
+test("Kirari documents and interactions are read-only to clients with publication privacy", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("kirari/r1").set({
+      creatorId: "alice", status: "published", moderationStatus: "approved",
+    });
+    await admin.doc("kirari/r2").set({
+      creatorId: "alice", status: "uploading", moderationStatus: "pending",
+    });
+    await admin.doc("kirari/r1/comments/c1").set({
+      authorId: "alice", text: "hello", status: "published",
+    });
+    await admin.doc("kirari/r1/actions/alice_like").set({ uid: "alice", kind: "like" });
+    await admin.doc("kirari/r1/playbackSessions/s1").set({ viewerId: "alice" });
+    await admin.doc("kirariUploadLocks/alice").set({ reelId: "r2" });
+  });
+  await assertSucceeds(db("bob").doc("kirari/r1").get());
+  await assertFails(db("bob").doc("kirari/r2").get());
+  await assertSucceeds(db("alice").doc("kirari/r2").get());
+  await assertFails(db("alice").doc("kirari/r1").update({ likesCount: 999 }));
+  await assertFails(db("alice").doc("kirari/r3").set({
+    creatorId: "alice", status: "published",
+  }));
+  await assertSucceeds(db("bob").doc("kirari/r1/comments/c1").get());
+  await assertFails(db("bob").doc("kirari/r1/comments/c2").set({
+    authorId: "bob", text: "forged",
+  }));
+  await assertSucceeds(db("alice").doc("kirari/r1/actions/alice_like").get());
+  await assertFails(db("bob").doc("kirari/r1/actions/alice_like").get());
+  await assertSucceeds(db("alice").doc("kirari/r1/playbackSessions/s1").get());
+  await assertFails(db("bob").doc("kirari/r1/playbackSessions/s1").get());
+  await assertFails(db("alice").doc("kirariUploadLocks/alice").get());
+  await assertFails(db("alice").doc("kirariUploadLocks/alice").set({ reelId: "r3" }));
+});
+
+test("Kirari seen markers are owner-scoped and field-limited", async () => {
+  await assertSucceeds(db("alice").doc("users/alice/kirariSeen/r1").set({
+    seenAt: serverTimestamp(),
+  }));
+  await assertFails(db("bob").doc("users/alice/kirariSeen/r2").set({
+    seenAt: serverTimestamp(),
+  }));
+  await assertFails(db("alice").doc("users/alice/kirariSeen/r3").set({
+    seenAt: serverTimestamp(), forgedScore: 100000,
+  }));
+});
