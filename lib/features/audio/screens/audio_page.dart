@@ -157,6 +157,25 @@ class _AudioPageState extends State<AudioPage> {
           icon: Icons.movie_outlined,
           highlighted: true,
         ),
+        if (_kirariReels.isNotEmpty) ...<Widget>[
+          const SizedBox(height: AppSpacing.md),
+          Builder(builder: (context) {
+            final attribution = _kirariReels.first.audioAttribution;
+            final title = attribution['title'] as String? ?? '';
+            final artist = attribution['artist'] as String? ?? '';
+            final license = attribution['license'] as String? ?? '';
+            final sourceCreatorId = attribution['sourceCreatorId'] as String?;
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.verified_outlined),
+              title: Text(title.isEmpty ? copy.originalAudio : title),
+              subtitle: Text([artist, license].where((value) => value.isNotEmpty).join(' · ')),
+              onTap: sourceCreatorId == null
+                  ? null
+                  : () => AppNavigation.go(context, PubgetLinks.profilePath(sourceCreatorId)),
+            );
+          }),
+        ],
         if (_originalReel != null) ...<Widget>[
           const SizedBox(height: AppSpacing.md),
           InkWell(
