@@ -202,15 +202,16 @@ const processEditVideo = createEditPipeline({
   achievements: achievementsDomain,
   notifications: notificationBuilder,
 });
+const processKirariVideo = createKirariPipeline({
+  db: getFirestore(),
+  bucket: getStorage().bucket(),
+});
 const kirariDomain = createKirariDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
   bucket: getStorage().bucket(),
-});
-const processKirariVideo = createKirariPipeline({
-  db: getFirestore(),
-  bucket: getStorage().bucket(),
+  processVideo: processKirariVideo,
 });
 const editsDomain = createEditsDomain({
   db: getFirestore(),
@@ -268,6 +269,10 @@ exports.startKirariUpload = onCall(
 exports.finalizeKirariUpload = onCall(
   { region: "us-central1", timeoutSeconds: 60 },
   kirariDomain.finalizeUpload,
+);
+exports.retryKirariProcessing = onCall(
+  { region: "europe-west3", timeoutSeconds: 540, memory: "2GiB" },
+  kirariDomain.retryProcessing,
 );
 exports.deleteKirariReel = onCall(
   { region: "us-central1" },
