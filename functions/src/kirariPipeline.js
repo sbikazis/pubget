@@ -262,7 +262,7 @@ function createKirariPipeline({ db, bucket }) {
       const coverTime = Math.max(trimStart, Math.min(Number(settings.coverTimeSeconds) || trimStart, trimEnd - 0.1));
       await run(ffmpeg, [
         "-ss", String(coverTime), "-i", source, "-frames:v", "1",
-        "-vf", "scale=404:720:force_original_aspect_ratio=increase,crop=404:720",
+        "-vf", editorVideoFilter(404, 720, { ...settings, speed: 1 }),
         "-q:v", "3", "-y", cover,
       ]);
       const coverPath = `kirari-processed/${uid}/${reelId}/cover.jpg`;
