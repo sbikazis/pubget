@@ -409,6 +409,27 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return { ok: true };
   }
 
+  async function revokeReelDownloadTokens(reel) {
+    const paths = [
+      reel.coverPath,
+      ...Object.values(reel.renditions || {}).map((item) => item && item.path),
+    ].filter((value) => typeof value === "string" && value.length > 0);
+    await Promise.all(paths.map(async (storagePath) => {
+      const file = bucket.file(storagePath);
+      try {
+        const [metadata] = await file.getMetadata();
+        await file.setMetadata({
+          metadata: {
+            ...(metadata.metadata || {}),
+            firebaseStorageDownloadTokens: randomUUID(),
+          },
+        });
+      } catch (_) {
+        // A missing rendition does not block moderation or deletion.
+      }
+    }));
+  }
+
   async function action(request) {
     const uid = auth(request);
     const reelId = inputString(request.data?.reelId, 128, "reelId");
@@ -476,6 +497,12 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         velocityScore: FieldValue.increment(kind === "like" ? 2 : kind === "save" ? 4 : kind === "share" ? 3 : -2),
       });
     });
+    if (kind === "report") {
+      const updated = await ref.get();
+      if (updated.exists && updated.data()?.moderationStatus === "review_pending") {
+        await revokeReelDownloadTokens(updated.data());
+      }
+    }
     return { ok: true };
   }
 
@@ -731,6 +758,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       });
     } else {
       const queueRef = db.collection("kirariModerationQueue").doc("reel_" + reelId);
+      let reviewedReel = null;
       await db.runTransaction(async (tx) => {
         const reel = await tx.get(reelRefValue);
         if (!reel.exists) fail("not-found", "Reported video not found.");
@@ -738,6 +766,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
             reel.data()?.moderationStatus !== "review_pending") {
           fail("failed-precondition", "This video is not awaiting moderation review.");
         }
+        reviewedReel = reel.data();
         tx.update(reelRefValue, {
           status: decision === "approved" ? "published" : "rejected",
           moderationStatus: decision,
@@ -749,6 +778,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
           resolvedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
       });
+      if (decision === "rejected" && reviewedReel) {
+        await revokeReelDownloadTokens(reviewedReel);
+      }
     }
     return { ok: true, decision };
   }
