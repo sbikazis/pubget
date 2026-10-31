@@ -537,13 +537,17 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (!snap.exists || snap.data().status !== "published") fail("not-found", "Kirari video not found.");
     const sessionRef = ref.collection("playbackSessions").doc();
     const viewerRef = ref.collection("viewers").doc(uid);
-    const viewer = await viewerRef.get();
-    const replaySession = viewer.exists && viewer.data()?.completed === true;
     await db.runTransaction(async (tx) => {
-      const current = await tx.get(ref);
-      if (!current.exists || current.data().status !== "published") {
+      const [current, viewer] = await Promise.all([tx.get(ref), tx.get(viewerRef)]);
+      if (!current.exists || current.data().status !== "published" ||
+          current.data().moderationStatus !== "approved") {
         fail("not-found", "Kirari video not found.");
       }
+      const viewerData = viewer.data() || {};
+      const replaySession = viewerData.completed === true;
+      const lastImpressionAt = viewerData.lastImpressionAt?.toMillis?.() || 0;
+      const countImpression = current.data().creatorId !== uid &&
+        Date.now() - lastImpressionAt >= 24 * 60 * 60 * 1000;
       tx.create(sessionRef, {
         viewerId: uid,
         startedAt: FieldValue.serverTimestamp(),
@@ -552,11 +556,12 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         creditedSeconds: 0, qualified: false, completed: false,
         replaySession, replayCounted: false, viewCounted: false,
       });
-      if (current.data().creatorId !== uid) {
+      if (countImpression) {
         tx.update(ref, {
           impressionsCount: FieldValue.increment(1),
           "counters.impressions": FieldValue.increment(1),
         });
+        tx.set(viewerRef, { lastImpressionAt: FieldValue.serverTimestamp() }, { merge: true });
       }
     });
     return { sessionId: sessionRef.id };
@@ -733,6 +738,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const audioId = inputString(request.data?.audioId, 128, "audioId");
     const limit = Math.round(clamp(request.data?.limit || 24, 1, 50));
     const snap = await reels().where("status", "==", "published")
+      .where("moderationStatus", "==", "approved")
       .where("audioId", "==", audioId)
       .orderBy("publishedAt", "desc").limit(limit).get();
     return { items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
@@ -782,6 +788,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (!hashtag) fail("invalid-argument", "Hashtag is required.");
     const limit = Math.round(clamp(request.data?.limit || KIRARI.feedPageSize, 1, 12));
     const snap = await reels().where("status", "==", "published")
+      .where("moderationStatus", "==", "approved")
       .where("hashtags", "array-contains", hashtag)
       .orderBy("rankingScore", "desc").orderBy("publishedAt", "desc")
       .limit(limit + 1).get();
@@ -819,6 +826,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       ...(Array.isArray(profile.favoriteAnimeIds) ? profile.favoriteAnimeIds : []),
     ])];
     const query = reels().where("status", "==", "published")
+      .where("moderationStatus", "==", "approved")
       .orderBy(type === "trending" ? "velocityScore" : "rankingScore", "desc")
       .orderBy("publishedAt", "desc").limit(100);
     const snap = await query.get();
@@ -832,14 +840,28 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const profileData = { interests: interestIds, creatorIds: [...creatorIds] };
       items = items.map((item) => ({ ...item, _rank: rankKirari(item, profileData, now) }))
         .sort((a, b) => b._rank - a._rank);
-      const seenSnap = await db.collection("users").doc(uid).collection("kirariSeen").limit(500).get();
+      const seenSnap = await db.collection("users").doc(uid).collection("kirariSeen")
+        .orderBy("seenAt", "asc").limit(550).get();
       const seen = new Set(seenSnap.docs.map((doc) => doc.id));
+      if (seenSnap.docs.length > 500) {
+        const prune = db.batch();
+        for (const doc of seenSnap.docs.slice(0, seenSnap.docs.length - 500)) prune.delete(doc.ref);
+        await prune.commit();
+      }
       const fresh = items.filter((item) => !seen.has(item.id));
-      const explored = fresh.filter((item) => !interestIds.some((tag) => (item.hashtags || []).includes(tag)));
-      const relevant = fresh.filter((item) => !explored.includes(item));
-      const exploreCount = Math.max(1, Math.round(limit * KIRARI.explorationRatio));
-      items = [...relevant.slice(0, limit - exploreCount), ...explored.slice(0, exploreCount)]
-        .sort((a, b) => b._rank - a._rank);
+      if (interestIds.length === 0) {
+        items = fresh;
+      } else {
+        const relevant = fresh.filter((item) =>
+          interestIds.some((tag) => (item.hashtags || []).includes(tag) ||
+            item.animeId === tag || item.audioId === tag));
+        const explored = fresh.filter((item) => !relevant.includes(item));
+        const exploreCount = Math.max(1, Math.round(limit * KIRARI.explorationRatio));
+        items = [
+          ...relevant.slice(0, limit - exploreCount),
+          ...explored.slice(0, exploreCount),
+        ].sort((a, b) => b._rank - a._rank);
+      }
     }
     if (Number.isFinite(afterScore) && afterId) {
       const index = items.findIndex((item) => item.id === afterId);
