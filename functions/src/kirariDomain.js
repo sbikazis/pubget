@@ -286,7 +286,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const allowed = new Set(["like", "unlike", "save", "unsave", "share", "not_interested", "undo_not_interested", "report"]);
     if (!allowed.has(kind)) fail("invalid-argument", "Unsupported Kirari action.");
     const ref = reelRef(reelId);
-    const actionRef = ref.collection("actions").doc(`${uid}_${kind === "unlike" ? "like" : kind === "unsave" ? "save" : kind}`);
+    const actionRef = ref.collection("actions").doc(`${uid}_${kind === "unlike" ? "like" : kind === "unsave" ? "save" : kind === "undo_not_interested" ? "not_interested" : kind}`);
     await db.runTransaction(async (tx) => {
       const [reel, existing] = await Promise.all([tx.get(ref), tx.get(actionRef)]);
       if (!reel.exists || reel.data().status !== "published") fail("not-found", "Kirari video not found.");
