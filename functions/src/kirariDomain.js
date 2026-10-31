@@ -441,7 +441,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       ? inputString(request.data.parentId, 128, "parentId") : null;
     const ref = reelRef(reelId);
     const reel = await ref.get();
-    if (!reel.exists || reel.data().status !== "published") fail("not-found", "Kirari video not found.");
+    if (!reel.exists || reel.data().status !== "published" || reel.data().moderationStatus !== "approved") fail("not-found", "Kirari video not found.");
     const commentRef = ref.collection("comments").doc();
     const rateRef = db.collection("kirariCommentRateLimits").doc(uid);
     await db.runTransaction(async (tx) => {
@@ -488,7 +488,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const [reel, comment, like] = await Promise.all([
         tx.get(ref), tx.get(commentRef), tx.get(actionRef),
       ]);
-      if (!reel.exists || !comment.exists) fail("not-found", "Comment not found.");
+      if (!reel.exists || reel.data()?.status !== "published" || reel.data()?.moderationStatus !== "approved" || !comment.exists) fail("not-found", "Comment not found.");
       const data = comment.data();
       if (kind === "delete") {
         if (data.authorId !== uid && reel.data().creatorId !== uid) {
@@ -583,7 +583,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const [reel, session, event, viewer] = await Promise.all([
         tx.get(ref), tx.get(sessionRef), tx.get(eventRef), tx.get(viewerRef),
       ]);
-      if (!reel.exists || reel.data().status !== "published") fail("not-found", "Kirari video not found.");
+      if (!reel.exists || reel.data().status !== "published" || reel.data().moderationStatus !== "approved") fail("not-found", "Kirari video not found.");
       if (!session.exists || session.data().viewerId !== uid) fail("permission-denied", "Playback session is invalid.");
       if (event.exists) return;
       const data = session.data();
@@ -752,7 +752,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const limit = Math.round(clamp(request.data?.limit || 30, 1, 50));
     const ref = reelRef(reelId);
     const reel = await ref.get();
-    if (!reel.exists || reel.data()?.status !== "published") {
+    if (!reel.exists || reel.data()?.status !== "published" || reel.data()?.moderationStatus !== "approved") {
       fail("not-found", "Kirari video not found.");
     }
     let query = ref.collection("comments")
@@ -808,16 +808,22 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const profileSnap = await db.collection("users").doc(uid).get();
     const profile = profileSnap.data() || {};
     const userRef = db.collection("users").doc(uid);
-    const [blocked, interests, follows, muted, notInterested] = await Promise.all([
+    const [blockedByA, blockedByB, blockedByLegacy, interests, follows, muted, notInterested] = await Promise.all([
+      db.collection("friendships").where("userA", "==", uid).get().catch(() => ({ docs: [] })),
+      db.collection("friendships").where("userB", "==", uid).get().catch(() => ({ docs: [] })),
       db.collection("friendships").where("userIds", "array-contains", uid).get().catch(() => ({ docs: [] })),
       userRef.collection("kirariInterests").get().catch(() => ({ docs: [] })),
       db.collection("respects").where("fromUserId", "==", uid).get().catch(() => ({ docs: [] })),
       userRef.collection("kirariMutedCreators").get().catch(() => ({ docs: [] })),
       userRef.collection("kirariNotInterested").get().catch(() => ({ docs: [] })),
     ]);
-    const blockedIds = new Set((blocked.docs || [])
+    const blockedDocs = [...(blockedByA.docs || []), ...(blockedByB.docs || []), ...(blockedByLegacy.docs || [])];
+    const blockedIds = new Set(blockedDocs
       .filter((doc) => doc.data()?.status === "blocked")
-      .flatMap((doc) => (doc.data()?.userIds || []).filter((id) => id !== uid)));
+      .flatMap((doc) => {
+        const data = doc.data() || {};
+        return (data.userIds || [data.userA, data.userB]).filter((id) => id && id !== uid);
+      }));
     const mutedIds = new Set((muted.docs || []).map((doc) => doc.id));
     const notInterestedIds = new Set((notInterested.docs || []).map((doc) => doc.id));
     const creatorIds = new Set((follows.docs || [])
