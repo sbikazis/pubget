@@ -102,7 +102,7 @@ function escapeDrawtext(value) {
 
 function editorVideoFilter(width, height, settings) {
   const filters = [
-    "scale=" + width + ":" + height + ":force_original_aspect_ratio=increase,
+    "scale=" + width + ":" + height + ":force_original_aspect_ratio=increase",
     "crop=" + width + ":" + height,
   ];
   switch (settings.filter) {
