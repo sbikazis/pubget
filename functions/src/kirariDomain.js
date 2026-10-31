@@ -359,13 +359,28 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket }) {
     const snap = await ref.get();
     if (!snap.exists || snap.data().status !== "published") fail("not-found", "Kirari video not found.");
     const sessionRef = ref.collection("playbackSessions").doc();
-    await sessionRef.create({
-      viewerId: uid,
-      startedAt: FieldValue.serverTimestamp(),
-      lastHeartbeatAt: FieldValue.serverTimestamp(),
-      expiresAt: new Date(Date.now() + KIRARI.playbackSessionMs),
-      creditedSeconds: 0, qualified: false, completed: false,
-      replayCounted: false, viewCounted: false,
+    const viewerRef = ref.collection("viewers").doc(uid);
+    const viewer = await viewerRef.get();
+    const replaySession = viewer.exists && viewer.data()?.completed === true;
+    await db.runTransaction(async (tx) => {
+      const current = await tx.get(ref);
+      if (!current.exists || current.data().status !== "published") {
+        fail("not-found", "Kirari video not found.");
+      }
+      tx.create(sessionRef, {
+        viewerId: uid,
+        startedAt: FieldValue.serverTimestamp(),
+        lastHeartbeatAt: FieldValue.serverTimestamp(),
+        expiresAt: new Date(Date.now() + KIRARI.playbackSessionMs),
+        creditedSeconds: 0, qualified: false, completed: false,
+        replaySession, replayCounted: false, viewCounted: false,
+      });
+      if (current.data().creatorId !== uid) {
+        tx.update(ref, {
+          impressionsCount: FieldValue.increment(1),
+          "counters.impressions": FieldValue.increment(1),
+        });
+      }
     });
     return { sessionId: sessionRef.id };
   }
@@ -375,15 +390,16 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket }) {
     const reelId = cleanString(request.data?.reelId, 128, "reelId");
     const sessionId = cleanString(request.data?.sessionId, 128, "sessionId");
     const watchSeconds = clamp(request.data?.watchSeconds, 0, KIRARI.maxWatchEventSeconds);
-    const percent = clamp(request.data?.percent, 0, 100);
+    const clientPercent = clamp(request.data?.percent, 0, 100);
     const eventId = cleanString(request.data?.eventId, 128, "eventId");
     if (!eventId) fail("invalid-argument", "Playback event id is required.");
     const ref = reelRef(reelId);
     const sessionRef = ref.collection("playbackSessions").doc(sessionId);
     const eventRef = sessionRef.collection("events").doc(eventId);
+    const viewerRef = ref.collection("viewers").doc(uid);
     await db.runTransaction(async (tx) => {
-      const [reel, session, event] = await Promise.all([
-        tx.get(ref), tx.get(sessionRef), tx.get(eventRef),
+      const [reel, session, event, viewer] = await Promise.all([
+        tx.get(ref), tx.get(sessionRef), tx.get(eventRef), tx.get(viewerRef),
       ]);
       if (!reel.exists || reel.data().status !== "published") fail("not-found", "Kirari video not found.");
       if (!session.exists || session.data().viewerId !== uid) fail("permission-denied", "Playback session is invalid.");
@@ -392,15 +408,28 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket }) {
       if (data.expiresAt?.toMillis?.() < Date.now()) fail("failed-precondition", "Playback session expired.");
       const last = data.lastHeartbeatAt?.toMillis?.() || Date.now();
       const elapsed = clamp((Date.now() - last) / 1000, 0, KIRARI.maxWatchEventSeconds);
+      const duration = Math.max(3, Number(reel.data().durationSeconds) || 60);
       const credited = Math.min(
         Number(data.creditedSeconds || 0) + Math.min(watchSeconds, elapsed + 1),
-        Math.max(3, Number(reel.data().durationSeconds) || 60),
+        duration,
       );
-      const qualified = !data.qualified && credited >= KIRARI.qualifiedViewSeconds;
-      const completed = !data.completed && percent >= KIRARI.completionPercent;
-      const changes = { lastHeartbeatAt: FieldValue.serverTimestamp(), creditedSeconds: credited };
+      const verifiedPercent = Math.min(clientPercent, credited / duration * 100);
+      const viewerData = viewer.data() || {};
+      const lastQualifiedAt = viewerData.lastQualifiedAt?.toMillis?.() || 0;
+      const qualified = reel.data().creatorId !== uid &&
+        !data.qualified && verifiedPercent >= 100 * KIRARI.qualifiedViewSeconds / duration &&
+        Date.now() - lastQualifiedAt >= 24 * 60 * 60 * 1000;
+      const completed = !data.completed && verifiedPercent >= KIRARI.completionPercent;
+      const replayed = data.replaySession === true &&
+        data.replayCounted !== true && verifiedPercent >= KIRARI.completionPercent;
+      tx.update(sessionRef, {
+        lastHeartbeatAt: FieldValue.serverTimestamp(),
+        creditedSeconds: credited,
+        qualified: data.qualified === true || qualified,
+        completed: data.completed === true || completed,
+        replayCounted: data.replayCounted === true || replayed,
+      });
       if (qualified) {
-        changes.qualified = true;
         tx.update(ref, {
           qualifiedViewsCount: FieldValue.increment(1),
           viewsCount: FieldValue.increment(1),
@@ -409,15 +438,26 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket }) {
         });
       }
       if (completed) {
-        changes.completed = true;
         tx.update(ref, {
           completionCount: FieldValue.increment(1),
           "counters.completions": FieldValue.increment(1),
         });
       }
-      tx.update(sessionRef, changes);
+      if (replayed) {
+        tx.update(ref, {
+          replayCount: FieldValue.increment(1),
+          "counters.replays": FieldValue.increment(1),
+        });
+      }
+      if (qualified || completed) {
+        tx.set(viewerRef, {
+          ...(qualified ? { lastQualifiedAt: FieldValue.serverTimestamp() } : {}),
+          ...(completed ? { completed: true, lastCompletedAt: FieldValue.serverTimestamp() } : {}),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
       tx.create(eventRef, {
-        viewerId: uid, watchSeconds, percent,
+        viewerId: uid, watchSeconds, verifiedPercent,
         createdAt: FieldValue.serverTimestamp(),
       });
     });
@@ -434,11 +474,13 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket }) {
     const profileSnap = await db.collection("users").doc(uid).get();
     const profile = profileSnap.data() || {};
     const [blocked, interests, follows] = await Promise.all([
-      db.collection("users").doc(uid).collection("blockedUsers").get().catch(() => ({ docs: [] })),
+      db.collection("friendships").where("userIds", "array-contains", uid).get().catch(() => ({ docs: [] })),
       db.collection("users").doc(uid).collection("kirariInterests").get().catch(() => ({ docs: [] })),
       db.collection("respects").where("fromUserId", "==", uid).get().catch(() => ({ docs: [] })),
     ]);
-    const blockedIds = new Set((blocked.docs || []).map((doc) => doc.id));
+    const blockedIds = new Set((blocked.docs || [])
+      .filter((doc) => doc.data()?.status === "blocked")
+      .flatMap((doc) => (doc.data()?.userIds || []).filter((id) => id !== uid)));
     const creatorIds = new Set((follows.docs || [])
       .filter((doc) => Number(doc.data()?.value || 0) >= 5)
       .map((doc) => doc.data()?.toUserId).filter(Boolean));
