@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -30,7 +31,10 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   String _feedType = 'forYou';
   final List<KirariReel> _items = <KirariReel>[];
   VideoPlayerController? _controller;
+  VideoPlayerController? _prefetchController;
+  int? _prefetchIndex;
   KirariPlaybackReporter? _reporter;
+  static double? _measuredMbps;
   Timer? _reportTimer;
   int _activeIndex = 0;
   bool _loading = true;
@@ -74,6 +78,9 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     final controller = _controller;
     _controller = null;
     if (controller != null) unawaited(controller.dispose());
+    final prefetch = _prefetchController;
+    _prefetchController = null;
+    if (prefetch != null) unawaited(prefetch.dispose());
     super.dispose();
   }
 
@@ -104,7 +111,11 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         _loading = false;
         _loadingMore = false;
       });
-      if (_items.isNotEmpty) await _activate(_activeIndex);
+      if (reset && _items.isNotEmpty) {
+        await _activate(_activeIndex);
+      } else if (_items.isNotEmpty) {
+        unawaited(_prefetchNext(_activeIndex + 1));
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -112,6 +123,62 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         _loadingMore = false;
         _error = KirariCopy.of(context).loadError;
       });
+    }
+  }
+
+  Future<int> _adaptiveQuality(KirariReel reel) async {
+    if (_measuredMbps == null) {
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+      final watch = Stopwatch()..start();
+      try {
+        final request = await client.getUrl(Uri.parse(reel.videoUrl))
+            .timeout(const Duration(seconds: 4));
+        request.headers.set(HttpHeaders.rangeHeader, 'bytes=0-131071');
+        final response = await request.close().timeout(const Duration(seconds: 5));
+        var bytes = 0;
+        await for (final chunk in response.timeout(const Duration(seconds: 5))) {
+          bytes += chunk.length;
+          if (bytes >= 131072) break;
+        }
+        watch.stop();
+        _measuredMbps = response.statusCode == HttpStatus.partialContent && watch.elapsedMilliseconds > 0
+            ? (bytes * 8 / (watch.elapsedMilliseconds / 1000)) / 1000000
+            : 1.8;
+      } catch (_) {
+        _measuredMbps = 1.8;
+      } finally {
+        client.close(force: true);
+      }
+    }
+    final speed = _measuredMbps ?? 1.8;
+    if (speed < 1.5) return 360;
+    if (speed > 5.0) return 720;
+    return 540;
+  }
+
+  Future<VideoPlayerController> _makeController(KirariReel reel) async {
+    final quality = await _adaptiveQuality(reel);
+    final url = await _repository.getPlaybackUrl(reel, quality: quality);
+    return VideoPlayerController.networkUrl(Uri.parse(url));
+  }
+
+  Future<void> _prefetchNext(int index) async {
+    if (index < 0 || index >= _items.length ||
+        _prefetchController != null || index == _activeIndex) return;
+    final reel = _items[index];
+    try {
+      final controller = await _makeController(reel);
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.pause();
+      if (!mounted || index == _activeIndex) {
+        await controller.dispose();
+        return;
+      }
+      _prefetchController = controller;
+      _prefetchIndex = index;
+    } catch (_) {
+      // Prefetch is opportunistic; the active item still has its own retry path.
     }
   }
 
@@ -123,12 +190,23 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     _reporter = null;
     if (previous != null) await previous.dispose();
     if (!mounted) return;
+    VideoPlayerController? controller;
+    if (_prefetchIndex == index) {
+      controller = _prefetchController;
+      _prefetchController = null;
+      _prefetchIndex = null;
+    } else {
+      final unused = _prefetchController;
+      _prefetchController = null;
+      _prefetchIndex = null;
+      if (unused != null) await unused.dispose();
+    }
     final reel = _items[index];
-    final controller = VideoPlayerController.networkUrl(Uri.parse(reel.videoUrl));
+    controller ??= await _makeController(reel);
     _controller = controller;
     setState(() => _activeIndex = index);
     try {
-      await controller.initialize();
+      if (!controller.value.isInitialized) await controller.initialize();
       await controller.setLooping(true);
       await controller.play();
       final reporter = KirariPlaybackReporter(_repository, reel.id);
@@ -140,9 +218,10 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       _reporter = reporter;
       _startReporter();
       setState(() {});
+      unawaited(_prefetchNext(index + 1));
     } catch (_) {
       if (identical(_controller, controller)) {
-        setState(() => _error = 'This video could not be played. Swipe to continue.');
+        setState(() => _error = KirariCopy.of(context).playbackError);
       }
       await controller.dispose();
     }
@@ -167,6 +246,10 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     _reporter = null;
     _reportTimer?.cancel();
     if (current != null) await current.dispose();
+    final prefetch = _prefetchController;
+    _prefetchController = null;
+    _prefetchIndex = null;
+    if (prefetch != null) await prefetch.dispose();
     if (!mounted) return;
     await _load(reset: true);
   }
