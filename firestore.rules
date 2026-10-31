@@ -1081,7 +1081,9 @@ service cloud.firestore {
 
       match /comments/{commentId} {
         allow read: if signedIn() &&
-          get(/databases/$(database)/documents/kirari/$(reelId)).data.status == 'published';
+          resource.data.status == 'published' &&
+          get(/databases/$(database)/documents/kirari/$(reelId)).data.status == 'published' &&
+          get(/databases/$(database)/documents/kirari/$(reelId)).data.moderationStatus == 'approved';
         allow create, update, delete: if false;
         match /likes/{uid} {
           allow read: if self(uid);
@@ -1107,7 +1109,7 @@ service cloud.firestore {
       }
     }
     match /kirariAudio/{audioId} {
-      allow read: if signedIn() && resource.data.status == 'approved';
+      allow read: if signedIn() && resource.data.status == 'approved' && resource.data.allowReuse == true;
       allow create, update, delete: if false;
     }
 
