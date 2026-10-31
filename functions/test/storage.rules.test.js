@@ -292,3 +292,18 @@ test("fan work media is owner-writable and public only when the work is publishe
     bob.storage().ref("fan_works/alice/w-public/page.jpg").getDownloadURL(),
   );
 });
+test("Kirari source uploads are owner-only and processed renditions are server-write-only", async () => {
+  const owner = env.authenticatedContext("alice");
+  const outsider = env.authenticatedContext("mallory");
+  const source = "kirari/alice/reel-1/source.mp4";
+  await assertSucceeds(upload(owner, source, "video/mp4", 32));
+  await assertFails(upload(outsider, "kirari/alice/reel-2/source.mp4", "video/mp4", 32));
+  await assertFails(upload(owner, "kirari/alice/reel-3/source.mp4", "image/jpeg", 32));
+  await assertFails(upload(owner, "kirari-processed/alice/reel-1/720.mp4", "video/mp4", 32));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.storage().ref("kirari-processed/alice/reel-1/720.mp4")
+      .put(bytes(32), { contentType: "video/mp4" });
+  });
+  await assertSucceeds(owner.storage().ref("kirari-processed/alice/reel-1/720.mp4").getDownloadURL());
+  await assertSucceeds(outsider.storage().ref("kirari-processed/alice/reel-1/720.mp4").getDownloadURL());
+});
