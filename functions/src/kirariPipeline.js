@@ -192,19 +192,14 @@ function createKirariPipeline({ db, bucket }) {
       });
       if (decision.flagged) {
         await ref.update({
-          status: "rejected", moderationStatus: "review_pending",
+          moderationStatus: "review_pending",
           moderationReason: decision.reason || "Content did not pass moderation.",
-          rejectedAt: new Date(),
-          processingLeaseId: null,
-          processingLeaseUntil: new Date(0),
         });
         await db.collection("kirariModerationQueue").doc("reel_" + reelId).set({
           contentType: "reel", reelId, status: "pending",
           reason: decision.reason || "Automated text moderation flagged this upload.",
           queuedAt: new Date(),
         }, { merge: true });
-        await lockRef.delete().catch(() => {});
-        return null;
       }
       await ref.update({
         status: "preparing",
@@ -279,7 +274,7 @@ function createKirariPipeline({ db, bucket }) {
       });
       await ref.update({
         status: "published",
-        moderationStatus: "approved",
+        moderationStatus: decision.flagged ? "review_pending" : "approved",
         rankingScore: 20,
         velocityScore: 0,
         renditions: variants,
