@@ -184,6 +184,8 @@ function createKirariPipeline({ db, bucket }) {
       await ref.update({
         status: "published",
         moderationStatus: "approved",
+        rankingScore: 20,
+        velocityScore: 0,
         renditions: variants,
         coverPath,
         publishedAt: new Date(),
