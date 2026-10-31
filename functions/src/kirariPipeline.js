@@ -86,7 +86,7 @@ function renditionArgs(source, output, height, bitrate) {
   const width = Math.floor((height * 9 / 16) / 2) * 2;
   return [
     "-i", source, "-map", "0:v:0", "-map", "0:a?",
-    "-vf", "scale=" + width + ":" + height + ":force_original_aspect_ratio=increase,crop=" + width + ":" + height,
+    "-vf", "scale=" + width + ":" + height + ":force_original_aspect_ratio=increase",crop=" + width + ":" + height,
     "-c:v", "libx264", "-preset", "veryfast", "-b:v", bitrate,
     "-maxrate", bitrate, "-bufsize", bitrate,
     "-c:a", "aac", "-b:a", "96k",
