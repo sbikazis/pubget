@@ -222,6 +222,31 @@ class FirebaseKirariRepository implements KirariRepository {
   }
 
   @override
+  Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20}) async {
+    final result = await _call('getKirariCreatorReels', {'creatorId': creatorId, 'limit': limit});
+    final raw = result['items'];
+    final items = <KirariReel>[];
+    if (raw is List) {
+      for (final value in raw.whereType<Map>()) {
+        final map = Map<dynamic, dynamic>.from(value);
+        final variants = map['renditions'];
+        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
+        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
+        final videoPath = preferred is Map ? preferred['path'] as String? : null;
+        final coverPath = map['coverPath'] as String?;
+        if (videoPath == null || videoPath.isEmpty) continue;
+        items.add(KirariReel.fromMap({
+          ...map,
+          'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+          'coverUrl': coverPath == null || coverPath.isEmpty
+              ? '' : await _storage.ref(coverPath).getDownloadURL(),
+        }));
+      }
+    }
+    return items;
+  }
+
+  @override
   Future<KirariReel> getReel(String reelId) async {
     final map = await _call('getKirariReel', {'reelId': reelId});
     final variants = map['renditions'];
