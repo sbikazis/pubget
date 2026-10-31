@@ -1,5 +1,7 @@
 "use strict";
 
+const { moderateEditCopy } = require("./contentFilter");
+
 const KIRARI = Object.freeze({
   schemaVersion: 1,
   minDurationSeconds: 3,
@@ -135,6 +137,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       fail("invalid-argument", error.message);
     }
     const idempotencyKey = inputString(request.data?.idempotencyKey || "", 128, "idempotencyKey");
+    if (!/^[A-Za-z0-9_-]{8,128}$/.test(idempotencyKey)) {
+      fail("invalid-argument", "The upload idempotency key has an invalid format.");
+    }
     const editSettings = normalizeEditSettings(request.data?.editSettings);
     const audioId = request.data?.audioId == null ? null : inputString(request.data.audioId, 128, "audioId");
     if (audioId) {
@@ -170,6 +175,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       }
       tx.create(ref, {
         creatorId: uid, caption, hashtags, audioId, editSettings, status: "uploading",
+        idempotencyKey, quotaDay: day,
         schemaVersion: KIRARI.schemaVersion,
         storagePath, originalStoragePath: storagePath,
         createdAt: FieldValue.serverTimestamp(),
@@ -316,19 +322,47 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const uid = auth(request);
     const reelId = inputString(request.data?.reelId, 128, "reelId");
     const ref = reelRef(reelId);
-    const snap = await ref.get();
-    if (!snap.exists) return { ok: true };
-    const reel = snap.data();
-    if (reel.creatorId !== uid) fail("permission-denied", "You do not own this upload.");
-    if (!["uploading", "failed"].includes(reel.status)) {
+    const lockRef = db.collection("kirariUploadLocks").doc(uid);
+    const initial = await ref.get();
+    if (!initial.exists) return { ok: true };
+    const initialData = initial.data();
+    if (initialData.creatorId !== uid) fail("permission-denied", "You do not own this upload.");
+    if (!["uploading", "failed"].includes(initialData.status)) {
       fail("failed-precondition", "This upload can no longer be canceled.");
     }
-    assertTransition(reel.status, "deleted");
-    await ref.update({ status: "deleted", deletedAt: FieldValue.serverTimestamp() });
-    const lockRef = db.collection("kirariUploadLocks").doc(uid);
-    const lock = await lockRef.get();
-    if (lock.exists && lock.data()?.reelId === reelId) await lockRef.delete();
-    const storagePath = reel.originalStoragePath || reel.storagePath;
+    const quotaRef = initialData.quotaDay
+      ? db.collection("kirariUploadQuotas").doc(uid + "_" + initialData.quotaDay) : null;
+    const keyRef = initialData.idempotencyKey
+      ? db.collection("kirariUploadKeys").doc(uid + "_" + initialData.idempotencyKey) : null;
+    await db.runTransaction(async (tx) => {
+      const reads = [tx.get(ref), tx.get(lockRef)];
+      if (quotaRef) reads.push(tx.get(quotaRef));
+      if (keyRef) reads.push(tx.get(keyRef));
+      const snapshots = await Promise.all(reads);
+      const current = snapshots[0];
+      if (!current.exists || current.data().creatorId !== uid) {
+        fail("not-found", "Kirari upload not found.");
+      }
+      if (!["uploading", "failed"].includes(current.data().status)) {
+        fail("failed-precondition", "This upload can no longer be canceled.");
+      }
+      assertTransition(current.data().status, "deleted");
+      tx.update(ref, { status: "deleted", deletedAt: FieldValue.serverTimestamp() });
+      const lock = snapshots[1];
+      if (lock.exists && lock.data()?.reelId === reelId) tx.delete(lockRef);
+      let cursor = 2;
+      if (quotaRef) {
+        const quota = snapshots[cursor++];
+        if (quota.exists) {
+          tx.update(quotaRef, {
+            count: Math.max(0, Number(quota.data()?.count || 0) - 1),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
+      }
+      if (keyRef && snapshots[cursor]?.exists) tx.delete(keyRef);
+    });
+    const storagePath = initialData.originalStoragePath || initialData.storagePath;
     if (storagePath) await bucket.file(storagePath).delete({ ignoreNotFound: true }).catch(() => {});
     return { ok: true };
   }
