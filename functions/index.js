@@ -38,6 +38,8 @@ const { createAnimeListsDomain } = require("./src/animeListsDomain");
 const { createAnimeHubDomain } = require("./src/animeHubDomain");
 const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
+const { createKirariDomain } = require("./src/kirariDomain");
+const { createKirariPipeline } = require("./src/kirariPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createFanWorksDomain } = require("./src/fanWorksDomain");
@@ -200,6 +202,16 @@ const processEditVideo = createEditPipeline({
   achievements: achievementsDomain,
   notifications: notificationBuilder,
 });
+const kirariDomain = createKirariDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  bucket: getStorage().bucket(),
+});
+const processKirariVideo = createKirariPipeline({
+  db: getFirestore(),
+  bucket: getStorage().bucket(),
+});
 const editsDomain = createEditsDomain({
   db: getFirestore(),
   FieldValue,
@@ -249,6 +261,47 @@ exports.reportAnimeReview = onCall(
   { region: "us-central1" },
   animeHubDomain.reportAnimeReview,
 );
+exports.startKirariUpload = onCall(
+  { region: "us-central1" },
+  kirariDomain.startUpload,
+);
+exports.finalizeKirariUpload = onCall(
+  { region: "us-central1", timeoutSeconds: 60 },
+  kirariDomain.finalizeUpload,
+);
+exports.deleteKirariReel = onCall(
+  { region: "us-central1" },
+  kirariDomain.deleteReel,
+);
+exports.kirariAction = onCall(
+  { region: "us-central1" },
+  kirariDomain.action,
+);
+exports.addKirariComment = onCall(
+  { region: "us-central1" },
+  kirariDomain.addComment,
+);
+exports.kirariCommentAction = onCall(
+  { region: "us-central1" },
+  kirariDomain.commentAction,
+);
+exports.startKirariPlayback = onCall(
+  { region: "us-central1" },
+  kirariDomain.startPlayback,
+);
+exports.recordKirariPlayback = onCall(
+  { region: "us-central1" },
+  kirariDomain.recordPlayback,
+);
+exports.getKirariFeed = onCall(
+  { region: "us-central1" },
+  kirariDomain.getFeed,
+);
+exports.processKirariVideo = onObjectFinalized(
+  { region: "europe-west3", memory: "2GiB", timeoutSeconds: 540 },
+  processKirariVideo,
+);
+
 exports.startEditUpload = onCall(
   { region: "us-central1" },
   editsDomain.startUpload,
