@@ -769,6 +769,23 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     };
   }
 
+  async function getCreatorReels(request) {
+    const uid = auth(request);
+    const creatorId = inputString(request.data?.creatorId || uid, 128, "creatorId");
+    if (creatorId !== uid) {
+      const profile = await db.collection("public_profiles").doc(creatorId).get();
+      if (!profile.exists || profile.data()?.sectionPrivacy?.works === false) {
+        fail("permission-denied", "This creator's works are private.");
+      }
+    }
+    const limit = Math.round(clamp(request.data?.limit || 20, 1, 40));
+    const snap = await reels().where("creatorId", "==", creatorId)
+      .where("status", "==", "published")
+      .where("moderationStatus", "==", "approved")
+      .orderBy("publishedAt", "desc").limit(limit).get();
+    return { items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
+  }
+
   async function getReelsByAudio(request) {
     auth(request);
     const audioId = inputString(request.data?.audioId, 128, "audioId");
@@ -928,7 +945,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   return {
     startUpload, finalizeUpload, retryProcessing, cancelUpload, deleteReel, action, addComment, commentAction,
-    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, publishAudioTrack, getComments, getReelsByAudio, getReel, reviewContent, getModerationQueue, setCreatorMute, setProcessingState,
+    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, publishAudioTrack, getComments, getReelsByAudio, getCreatorReels, getReel, reviewContent, getModerationQueue, setCreatorMute, setProcessingState,
   };
 }
 
