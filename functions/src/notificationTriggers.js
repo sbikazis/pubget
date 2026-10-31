@@ -185,6 +185,14 @@ function createNotificationTriggers({ db, builder }) {
       ...(creatorBlocksB.docs || []).filter((doc) => doc.data()?.status === "blocked").map((doc) => doc.data()?.userA),
     ]);
     recipientIds = recipientIds.filter((uid) => !excluded.has(uid));
+    const blockedByRecipient = await Promise.all(recipientIds.map(async (fanId) => {
+      const [userA, userB] = [creatorId, fanId].sort();
+      const pairId = userA.length + ":" + userA + userB.length + ":" + userB;
+      const pair = await db.collection("friendships").doc(pairId).get().catch(() => null);
+      return pair && pair.exists && pair.data()?.status === "blocked" ? fanId : null;
+    }));
+    const blockedIds = new Set(blockedByRecipient.filter(Boolean));
+    recipientIds = recipientIds.filter((uid) => !blockedIds.has(uid));
     if (!recipientIds.length) return;
     return builder.build({
       id: "kirari_published_" + reelId, recipientIds, type: "kirari_published",
@@ -203,6 +211,15 @@ function createNotificationTriggers({ db, builder }) {
     if (!reel.exists) return;
     const creatorId = reel.data()?.creatorId;
     if (!creatorId || creatorId === comment.authorId) return;
+    const [blockedPair, mutedAuthor] = await Promise.all([
+      db.collection("friendships").doc(
+        [creatorId, comment.authorId].sort().map((id) => id.length + ":" + id).join(""),
+      ).get().catch(() => null),
+      db.collection("users").doc(creatorId).collection("kirariMutedCreators")
+        .doc(comment.authorId).get().catch(() => null),
+    ]);
+    if ((blockedPair && blockedPair.exists && blockedPair.data()?.status === "blocked") ||
+        (mutedAuthor && mutedAuthor.exists)) return;
     return builder.build({
       id: "kirari_comment_" + event.params.commentId, recipientIds: [creatorId],
       type: "kirari_comment", actorId: comment.authorId, targetId: reelId,
