@@ -94,6 +94,29 @@ function renditionArgs(source, output, height, bitrate) {
   ];
 }
 
+function escapeDrawtext(value) {
+  return String(value).replace(/\\/g, "\\\\\\\\")
+    .replace(/:/g, "\\\\:").replace(/'/g, "\\\\'")
+    .replace(/%/g, "\\\\%");
+}
+
+function editorVideoFilter(width, height, settings) {
+  const filters = [
+    "scale=" + width + ":" + height + ":force_original_aspect_ratio=increase,
+    "crop=" + width + ":" + height,
+  ];
+  switch (settings.filter) {
+    case "warm": filters.push("eq=saturation=1.15:contrast=1.05", "colorbalance=rs=.08:gs=.02"); break;
+    case "cool": filters.push("eq=saturation=1.1", "colorbalance=bs=.10"); break;
+    case "mono": filters.push("hue=s=0"); break;
+    case "vivid": filters.push("eq=saturation=1.35:contrast=1.1"); break;
+    default: break;
+  }
+  if (settings.overlayText) filters.push("drawtext=text='" + escapeDrawtext(settings.overlayText) +
+    "':fontcolor=white:fontsize=42:borderw=3:bordercolor=black@0.7:x=(w-text_w)/2:y=h*0.78");
+  filters.push("setpts=PTS/" + settings.speed);
+  return filters.join(",");
+}
 function createKirariPipeline({ db, bucket }) {
   return async (event) => {
     const object = event.data || event;
@@ -162,10 +185,30 @@ function createKirariPipeline({ db, bucket }) {
         sourceHeight: metadata.height,
         preparingAt: new Date(),
       });
+      const settings = reel.editSettings || {};
+      const trimStart = Math.max(0, Math.min(Number(settings.trimStartSeconds) || 0, Math.max(0, metadata.durationSeconds - 3)));
+      const requestedEnd = Number(settings.trimEndSeconds);
+      const trimEnd = Math.min(metadata.durationSeconds, Math.max(trimStart + 3, requestedEnd > trimStart ? requestedEnd : metadata.durationSeconds));
+      const clipDuration = trimEnd - trimStart;
+      const speed = Math.max(0.5, Math.min(2, Number(settings.speed) || 1));
+      const audioTrack = reel.audioId ? await db.collection("kirariAudio").doc(reel.audioId).get() : null;
+      const audioData = audioTrack && audioTrack.exists ? audioTrack.data() : null;
+      const audioSource = audioData && audioData.status === "approved" && audioData.allowReuse === true && audioData.audioPath
+        ? path.join(dir, "selected-audio") : null;
+      if (audioSource) await bucket.file(audioData.audioPath).download({ destination: audioSource });
       const variants = {};
       for (const [height, bitrate] of [[360, "650k"], [540, "1200k"], [720, "2500k"]]) {
-        const output = path.join(dir, `${height}.mp4`);
-        await run(ffmpeg, renditionArgs(source, output, height, bitrate));
+        const output = path.join(dir, String(height) + ".mp4");
+        const width = Math.floor((height * 9 / 16) / 2) * 2;
+        const args = ["-ss", String(trimStart), "-i", source];
+        if (audioSource) args.push("-stream_loop", "-1", "-i", audioSource);
+        args.push("-t", String(clipDuration), "-map", "0:v:0");
+        if (audioSource) args.push("-map", "1:a:0"); else args.push("-map", "0:a?");
+        args.push("-vf", editorVideoFilter(width, height, { ...settings, speed }));
+        args.push("-c:v", "libx264", "-preset", "veryfast", "-b:v", bitrate,
+          "-maxrate", bitrate, "-bufsize", bitrate, "-c:a", "aac", "-b:a", "128k",
+          "-af", "atempo=" + speed, "-movflags", "+faststart", "-shortest", "-y", output);
+        await run(ffmpeg, args);
         const destination = `kirari-processed/${uid}/${reelId}/${height}.mp4`;
         await bucket.upload(output, {
           destination, resumable: false,
@@ -182,8 +225,9 @@ function createKirariPipeline({ db, bucket }) {
         };
       }
       const cover = path.join(dir, "cover.jpg");
+      const coverTime = Math.max(trimStart, Math.min(Number(settings.coverTimeSeconds) || trimStart, trimEnd - 0.1));
       await run(ffmpeg, [
-        "-ss", "0.5", "-i", source, "-frames:v", "1",
+        "-ss", String(coverTime), "-i", source, "-frames:v", "1",
         "-vf", "scale=404:720:force_original_aspect_ratio=increase,crop=404:720",
         "-q:v", "3", "-y", cover,
       ]);
@@ -202,6 +246,8 @@ function createKirariPipeline({ db, bucket }) {
         velocityScore: 0,
         renditions: variants,
         coverPath,
+        editSettings: { ...settings, trimStartSeconds: trimStart, trimEndSeconds: trimEnd, speed, coverTimeSeconds: coverTime },
+        audioAttribution: audioData ? { audioId: reel.audioId, title: audioData.title || "Original audio", artist: audioData.artist || "", license: audioData.license || "unknown", sourceCreatorId: audioData.creatorId || null } : null,
         publishedAt: new Date(),
         processedAt: new Date(),
         failureReason: null,
@@ -226,4 +272,4 @@ function createKirariPipeline({ db, bucket }) {
   };
 }
 
-module.exports = { createKirariPipeline, probeVideo, renditionArgs };
+module.exports = { createKirariPipeline, probeVideo, renditionArgs, editorVideoFilter };
