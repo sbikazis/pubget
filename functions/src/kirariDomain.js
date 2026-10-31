@@ -526,7 +526,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       ? inputId(request.data.parentId, "parentId") : null;
     const ref = reelRef(reelId);
     const reel = await ref.get();
-    if (!reel.exists || reel.data().status !== "published" || reel.data().moderationStatus !== "approved") fail("not-found", "Kirari video not found.");
+    if (!reel.exists || reel.data().status !== "published" || reel.data().moderationStatus !== "approved" || await isBlockedPair(uid, reel.data().creatorId)) fail("not-found", "Kirari video not found.");
     const commentRef = ref.collection("comments").doc();
     const rateRef = db.collection("kirariCommentRateLimits").doc(uid);
     await db.runTransaction(async (tx) => {
@@ -619,7 +619,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const reelId = inputString(request.data?.reelId, 128, "reelId");
     const ref = reelRef(reelId);
     const snap = await ref.get();
-    if (!snap.exists || snap.data().status !== "published") fail("not-found", "Kirari video not found.");
+    if (!snap.exists || snap.data().status !== "published" || snap.data().moderationStatus !== "approved" || await isBlockedPair(uid, snap.data().creatorId)) fail("not-found", "Kirari video not found.");
     const sessionRef = ref.collection("playbackSessions").doc();
     const viewerRef = ref.collection("viewers").doc(uid);
     await db.runTransaction(async (tx) => {
@@ -867,12 +867,12 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
   }
 
   async function getComments(request) {
-    auth(request);
+    const uid = auth(request);
     const reelId = inputString(request.data?.reelId, 128, "reelId");
     const limit = Math.round(clamp(request.data?.limit || 30, 1, 50));
     const ref = reelRef(reelId);
     const reel = await ref.get();
-    if (!reel.exists || reel.data()?.status !== "published" || reel.data()?.moderationStatus !== "approved") {
+    if (!reel.exists || reel.data()?.status !== "published" || reel.data()?.moderationStatus !== "approved" || await isBlockedPair(uid, reel.data()?.creatorId)) {
       fail("not-found", "Kirari video not found.");
     }
     let query = ref.collection("comments")
