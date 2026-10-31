@@ -354,6 +354,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   }
 
   Widget _body() {
+    final copy = KirariCopy.of(context);
     if (_loading && _items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
