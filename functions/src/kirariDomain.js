@@ -839,7 +839,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
   }
 
   async function getReelsByAudio(request) {
-    auth(request);
+    const uid = auth(request);
     const audioId = inputString(request.data?.audioId, 128, "audioId");
     const limit = Math.round(clamp(request.data?.limit || 24, 1, 50));
     const snap = await reels().where("status", "==", "published")
@@ -890,7 +890,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
   }
 
   async function getHashtagFeed(request) {
-    auth(request);
+    const uid = auth(request);
     const hashtag = inputString(request.data?.hashtag, 40, "hashtag").replace(/^#/, "").toLowerCase();
     if (!hashtag) fail("invalid-argument", "Hashtag is required.");
     const limit = Math.round(clamp(request.data?.limit || KIRARI.feedPageSize, 1, 12));
