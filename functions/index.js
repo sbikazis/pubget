@@ -314,6 +314,10 @@ exports.getKirariAudioLibrary = onCall(
   { region: "us-central1" },
   kirariDomain.getAudioLibrary,
 );
+exports.publishKirariAudioTrack = onCall(
+  { region: "us-central1" },
+  kirariDomain.publishAudioTrack,
+);
 exports.getKirariComments = onCall(
   { region: "us-central1" },
   kirariDomain.getComments,
