@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../app/app_router.dart';
+import '../../../core/links/pubget_links.dart';
+
 import '../data/kirari_repository.dart';
 import '../l10n/kirari_copy.dart';
 import 'kirari_upload_page.dart';
@@ -227,6 +230,40 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     }
   }
 
+  Future<void> _giveRespect(String creatorId) async {
+    var value = 5.0;
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('Give Respect'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(value.round().toString(), style: Theme.of(context).textTheme.headlineMedium),
+              Slider(
+                min: 0, max: 7, divisions: 7, value: value,
+                onChanged: (next) => update(() => value = next),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, value.round()), child: const Text('Give')),
+          ],
+        ),
+      ),
+    );
+    if (selected == null) return;
+    try {
+      await _repository.giveCreatorRespect(creatorId: creatorId, value: selected);
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(KirariCopy.of(context).actionError)),
+      );
+    }
+  }
+
   Widget _body() {
     if (_loading && _items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -247,10 +284,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       );
     }
     if (_items.isEmpty) {
-      return const Center(
-        child: Text('No videos yet. Be the first to create one.',
-            style: TextStyle(color: Colors.white)),
-      );
+      return Center(child: Text(KirariCopy.of(context).noVideos, style: const TextStyle(color: Colors.white)));
     }
     return PageView.builder(
       key: ValueKey(_feedType),
@@ -292,8 +326,11 @@ class _KirariFeedPageState extends State<KirariFeedPage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('@${reel.creatorId}',
+                  InkWell(
+                    onTap: () => AppNavigation.go(context, PubgetLinks.profilePath(reel.creatorId)),
+                    child: Text('@${reel.creatorId}',
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
                   const SizedBox(height: 8),
                   Text(reel.caption,
                       maxLines: 4,
@@ -323,9 +360,42 @@ class _KirariFeedPageState extends State<KirariFeedPage>
                   const SizedBox(height: 16),
                   IconButton(
                     color: Colors.white,
-                    onPressed: () => _runAction(reel.id, 'not_interested'),
-                    icon: const Icon(Icons.visibility_off_outlined, size: 26),
+                    tooltip: copy.comments,
+                    onPressed: () => showModalBottomSheet<void>(
+                      context: context, isScrollControlled: true,
+                      builder: (_) => KirariCommentsSheet(reel: reel, repository: _repository),
+                    ),
+                    icon: const Icon(Icons.mode_comment_outlined, size: 26),
                   ),
+                  Text('${reel.commentsCount}', style: const TextStyle(color: Colors.white)),
+                  IconButton(
+                    color: Colors.white,
+                    tooltip: 'Respect',
+                    onPressed: () => _giveRespect(reel.creatorId),
+                    icon: const Icon(Icons.volunteer_activism_outlined, size: 26),
+                  ),
+                  PopupMenuButton<String>(
+                    iconColor: Colors.white,
+                    onSelected: (value) async {
+                      if (value == 'mute') {
+                        await _repository.setCreatorMute(creatorId: reel.creatorId, muted: true);
+                      } else {
+                        await _runAction(reel.id, value);
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      PopupMenuItem(value: 'not_interested', child: Text(copy.notInterested)),
+                      PopupMenuItem(value: 'mute', child: Text(copy.muteCreator)),
+                      PopupMenuItem(value: 'report', child: Text(copy.report)),
+                    ],
+                  ),
+                  if (reel.audioId != null && reel.audioId!.isNotEmpty)
+                    IconButton(
+                      color: Colors.white,
+                      tooltip: copy.audioLibrary,
+                      onPressed: () => AppNavigation.go(context, PubgetLinks.audioPath(reel.audioId!)),
+                      icon: const Icon(Icons.music_note, size: 26),
+                    ),
                 ],
               ),
             ),
@@ -334,6 +404,115 @@ class _KirariFeedPageState extends State<KirariFeedPage>
           ],
         );
       },
+    );
+  }
+}
+
+class KirariCommentsSheet extends StatefulWidget {
+  const KirariCommentsSheet({required this.reel, required this.repository, super.key});
+  final KirariReel reel;
+  final KirariRepository repository;
+
+  @override
+  State<KirariCommentsSheet> createState() => _KirariCommentsSheetState();
+}
+
+class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
+  final _controller = TextEditingController();
+  List<Map<String, dynamic>> _comments = const [];
+  bool _loading = true;
+  bool _sending = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final comments = await widget.repository.getComments(widget.reel.id);
+      if (mounted) setState(() { _comments = comments; _loading = false; _error = null; });
+    } catch (_) {
+      if (mounted) setState(() { _loading = false; _error = 'Could not load comments.'; });
+    }
+  }
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    try {
+      await widget.repository.addComment(widget.reel.id, text);
+      _controller.clear();
+      await _load();
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not send comment. Please retry.');
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = KirariCopy.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * .72,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(children: [
+                  Expanded(child: Text(copy.comments, style: Theme.of(context).textTheme.titleLarge)),
+                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+                ]),
+              ),
+              Expanded(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _comments.isEmpty
+                        ? const Center(child: Text('No comments yet.'))
+                        : ListView.builder(
+                            itemCount: _comments.length,
+                            itemBuilder: (context, index) {
+                              final item = _comments[index];
+                              final deleted = item['status'] == 'deleted';
+                              return ListTile(
+                                title: Text(deleted ? 'Comment removed' : item['text'] as String? ?? ''),
+                                subtitle: Text('@${item['authorId'] ?? ''}'),
+                                trailing: Text('${item['likesCount'] ?? 0}'),
+                              );
+                            },
+                          ),
+              ),
+              if (_error != null) Padding(padding: const EdgeInsets.all(8), child: Text(_error!)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                child: Row(children: [
+                  Expanded(child: TextField(
+                    controller: _controller,
+                    maxLength: 500,
+                    decoration: InputDecoration(hintText: copy.addComment, counterText: ''),
+                  )),
+                  IconButton(onPressed: _sending ? null : _send, icon: _sending
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.send)),
+                ]),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
