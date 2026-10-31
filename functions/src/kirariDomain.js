@@ -804,7 +804,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
   }
 
   async function getReel(request) {
-    auth(request);
+    const uid = auth(request);
     const reelId = inputString(request.data?.reelId, 128, "reelId");
     const snap = await reelRef(reelId).get();
     if (!snap.exists || snap.data()?.status !== "published" ||
