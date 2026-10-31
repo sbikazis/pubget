@@ -445,6 +445,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (!allowed.has(kind)) fail("invalid-argument", "Unsupported Kirari action.");
     const ref = reelRef(reelId);
     const actionRef = ref.collection("actions").doc(`${uid}_${kind === "unlike" ? "like" : kind === "unsave" ? "save" : kind === "undo_not_interested" ? "not_interested" : kind}`);
+    const parent = await ref.get();
+    if (!parent.exists || parent.data()?.status !== "published" || parent.data()?.moderationStatus !== "approved" || (kind !== "report" && await isBlockedPair(uid, parent.data()?.creatorId))) fail("not-found", "Kirari video not found.");
     await db.runTransaction(async (tx) => {
       const [reel, existing] = await Promise.all([tx.get(ref), tx.get(actionRef)]);
       if (!reel.exists || reel.data().status !== "published") fail("not-found", "Kirari video not found.");
@@ -569,6 +571,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const ref = reelRef(reelId);
     const commentRef = ref.collection("comments").doc(commentId);
     const actionRef = commentRef.collection("likes").doc(uid);
+    const parent = await ref.get();
+    if (!parent.exists || parent.data()?.status !== "published" || parent.data()?.moderationStatus !== "approved" || await isBlockedPair(uid, parent.data()?.creatorId)) fail("not-found", "Comment not found.");
     await db.runTransaction(async (tx) => {
       const [reel, comment, like] = await Promise.all([
         tx.get(ref), tx.get(commentRef), tx.get(actionRef),
