@@ -259,6 +259,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const file = bucket.file(storagePath);
     const [exists] = await file.exists();
     if (!exists) fail("failed-precondition", "The original video is missing. Upload it again.");
+    const [metadata] = await file.getMetadata();
     assertTransition("failed", "processing");
     await ref.update({
       status: "processing",
@@ -268,7 +269,12 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (typeof processVideo !== "function") {
       fail("unavailable", "Kirari processing is temporarily unavailable.");
     }
-    await processVideo({ data: { name: storagePath, bucket: bucket.name } });
+    await processVideo({ data: {
+      name: storagePath,
+      bucket: bucket.name,
+      size: Number(metadata.size || 0),
+      contentType: metadata.contentType || "video/mp4",
+    } });
     const latest = await ref.get();
     return { status: latest.data()?.status || "processing", reelId };
   }
