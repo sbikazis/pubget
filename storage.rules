@@ -324,6 +324,24 @@ service firebase.storage {
           fanWorkDocument(workId).data.moderationStatus == 'approved';
     }
 
+
+    // Kirari source upload is owner-only and supports Firebase resumable PUTs.
+    // The backend alone can publish processed renditions and cover images.
+    match /kirari/{userId}/{reelId}/source.mp4 {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.contentType.matches('video/mp4.*') &&
+        request.resource.size <= 500 * 1024 * 1024;
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /kirari-processed/{userId}/{reelId}/{fileName} {
+      allow read: if signedIn() &&
+        (fileName.matches('(360|540|720)\\.mp4') || fileName == 'cover.jpg');
+      allow write: if false;
+    }
+
     match /fan_works/{userId}/{workId}/{fileName} {
       allow read: if signedIn() &&
           (request.auth.uid == userId || fanWorkPublic(workId));
