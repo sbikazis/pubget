@@ -127,6 +127,32 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     }
   }
 
+  async function isBlockedPair(uid, otherUid) {
+    if (!otherUid || uid === otherUid) return false;
+    const [userA, userB] = [uid, otherUid].sort();
+    const refs = [
+      db.collection("friendships").doc(userA.length + ":" + userA + userB.length + ":" + userB),
+      db.collection("friendships").doc(userA + "_" + userB),
+    ];
+    const docs = await Promise.all(refs.map((ref) => ref.get().catch(() => null)));
+    return docs.some((doc) => doc && doc.exists && doc.data()?.status === "blocked");
+  }
+
+  async function excludedCreatorIds(uid) {
+    const [blockedByA, blockedByB, blockedLegacy, muted] = await Promise.all([
+      db.collection("friendships").where("userA", "==", uid).get().catch(() => ({ docs: [] })),
+      db.collection("friendships").where("userB", "==", uid).get().catch(() => ({ docs: [] })),
+      db.collection("friendships").where("userIds", "array-contains", uid).get().catch(() => ({ docs: [] })),
+      db.collection("users").doc(uid).collection("kirariMutedCreators").get().catch(() => ({ docs: [] })),
+    ]);
+    const docs = [...(blockedByA.docs || []), ...(blockedByB.docs || []), ...(blockedLegacy.docs || [])];
+    const blocked = docs.filter((doc) => doc.data()?.status === "blocked").flatMap((doc) => {
+      const data = doc.data() || {};
+      return (data.userIds || [data.userA, data.userB]).filter((id) => id && id !== uid);
+    });
+    return new Set([...blocked, ...(muted.docs || []).map((doc) => doc.id)]);
+  }
+
   async function startUpload(request) {
     const uid = auth(request);
     let caption, hashtags;
@@ -742,7 +768,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const reelId = inputString(request.data?.reelId, 128, "reelId");
     const snap = await reelRef(reelId).get();
     if (!snap.exists || snap.data()?.status !== "published" ||
-        snap.data()?.moderationStatus !== "approved") {
+        snap.data()?.moderationStatus !== "approved" ||
+        await isBlockedPair(uid, snap.data()?.creatorId)) {
       fail("not-found", "Kirari video not found.");
     }
     return { id: snap.id, ...snap.data() };
@@ -801,6 +828,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       if (!profile.exists || profile.data()?.sectionPrivacy?.works === false) {
         fail("permission-denied", "This creator's works are private.");
       }
+      if (await isBlockedPair(uid, creatorId)) fail("not-found", "Creator not found.");
     }
     const limit = Math.round(clamp(request.data?.limit || 20, 1, 40));
     const snap = await reels().where("creatorId", "==", creatorId)
@@ -818,7 +846,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       .where("moderationStatus", "==", "approved")
       .where("audioId", "==", audioId)
       .orderBy("publishedAt", "desc").limit(limit).get();
-    return { items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
+    const excluded = await excludedCreatorIds(uid);
+    return { items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter((item) => !excluded.has(item.creatorId)) };
   }
 
   async function getComments(request) {
@@ -869,7 +899,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       .where("hashtags", "array-contains", hashtag)
       .orderBy("rankingScore", "desc").orderBy("publishedAt", "desc")
       .limit(limit + 1).get();
-    const items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const excluded = await excludedCreatorIds(uid);
+    const items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter((item) => !excluded.has(item.creatorId));
     return { items: items.slice(0, limit), hasMore: items.length > limit };
   }
 
