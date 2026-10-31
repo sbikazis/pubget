@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../data/kirari_repository.dart';
+import '../l10n/kirari_copy.dart';
 
 class KirariUploadPage extends StatefulWidget {
   const KirariUploadPage({super.key});
@@ -107,15 +108,15 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         },
       );
       if (!mounted) return;
-      setState(() => _status = 'Processing video and creating quality versions…');
+      setState(() => _status = KirariCopy.of(context).processing);
       await repository.finalizeUpload(session.reelId);
       if (!mounted) return;
       setState(() {
-        _status = 'Upload received. Processing continues in the background.';
+        _status = KirariCopy.of(context).received;
         _submitted = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kirari upload received.')),
+        SnackBar(content: Text(KirariCopy.of(context).uploadReceived)),
       );
     } catch (_) {
       if (mounted) {
@@ -129,8 +130,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   @override
   Widget build(BuildContext context) {
     final preview = _preview;
+    final copy = KirariCopy.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Create on Kirari')),
+      appBar: AppBar(title: Text(copy.create)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -167,7 +169,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             maxLength: 2200,
             maxLines: 3,
             decoration: const InputDecoration(
-              labelText: 'Caption',
+              labelText: copy.caption,
               border: OutlineInputBorder(),
             ),
           ),
@@ -175,7 +177,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
           TextField(
             controller: _hashtags,
             decoration: const InputDecoration(
-              labelText: 'Hashtags',
+              labelText: copy.hashtags,
               hintText: 'anime, one_piece, edits',
               helperText: 'Separate tags with spaces or commas.',
               border: OutlineInputBorder(),
@@ -213,14 +215,14 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                   if (mounted) setState(() => _error = 'Could not cancel this upload. Try again.');
                 }
               },
-              child: const Text('Cancel upload'),
+              child: Text(copy.cancelUpload),
             ),
           FilledButton.icon(
             onPressed: _busy || _video == null || _submitted ? null : _publish,
             icon: _busy
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.cloud_upload_outlined),
-            label: Text(_busy ? 'Uploading…' : _submitted ? 'Submitted' : 'Publish video'),
+            label: Text(_busy ? copy.uploading : _submitted ? copy.received : copy.publish),
           ),
         ],
       ),
