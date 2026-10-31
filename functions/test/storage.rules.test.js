@@ -42,6 +42,8 @@ test.before(async () => {
       db.doc("groups/group-owner/members/owner").set({ userId: "owner" }),
       db.doc("groups/group-owner/members/member").set({ userId: "member" }),
       db.doc("privateChats/private-1").set({ userA: "alice", userB: "bob" }),
+      db.doc("kirariAudio/track-1").set({ status: "approved", allowReuse: true }),
+      db.doc("kirariAudio/track-pending").set({ status: "pending", allowReuse: true }),
     ]);
   });
 });
@@ -309,4 +311,18 @@ test("Kirari source uploads are owner-only and processed renditions are server-w
   });
   await assertSucceeds(owner.storage().ref("kirari-processed/alice/reel-1/720.mp4").getDownloadURL());
   await assertSucceeds(outsider.storage().ref("kirari-processed/alice/reel-1/720.mp4").getDownloadURL());
+});
+
+test("licensed Kirari audio is readable only after approval and writable only by admins", async () => {
+  const admin = env.authenticatedContext("admin", { admin: true });
+  const alice = env.authenticatedContext("alice");
+  const audioPath = "kirari-audio/track-1/audio.mp3";
+  await assertSucceeds(upload(admin, audioPath, "audio/mpeg", 128));
+  await assertFails(upload(alice, "kirari-audio/track-2/audio.mp3", "audio/mpeg", 128));
+  await assertSucceeds(alice.storage().ref(audioPath).getDownloadURL());
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.storage().ref("kirari-audio/track-pending/audio.mp3")
+      .put(bytes(128), { contentType: "audio/mpeg" });
+  });
+  await assertFails(alice.storage().ref("kirari-audio/track-pending/audio.mp3").getDownloadURL());
 });
