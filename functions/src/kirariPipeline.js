@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const { randomUUID } = require("node:crypto");
 const { spawn } = require("node:child_process");
 const { KIRARI } = require("./kirariDomain");
 const { moderateEditCopy } = require("./contentFilter");
@@ -247,7 +248,7 @@ function createKirariPipeline({ db, bucket }) {
           destination, resumable: false,
           metadata: {
             contentType: "video/mp4",
-            metadata: { ownerUid: uid, reelId, renditionHeight: String(height) },
+            metadata: { ownerUid: uid, reelId, renditionHeight: String(height), firebaseStorageDownloadTokens: randomUUID() },
           },
         });
         const [meta] = await bucket.file(destination).getMetadata();
@@ -269,7 +270,7 @@ function createKirariPipeline({ db, bucket }) {
         destination: coverPath, resumable: false,
         metadata: {
           contentType: "image/jpeg",
-          metadata: { ownerUid: uid, reelId, generatedBy: "kirari-pipeline-v1" },
+          metadata: { ownerUid: uid, reelId, generatedBy: "kirari-pipeline-v1", firebaseStorageDownloadTokens: randomUUID() },
         },
       });
       await ref.update({
