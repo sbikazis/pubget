@@ -175,7 +175,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       fail("invalid-argument", "The upload idempotency key has an invalid format.");
     }
     const editSettings = normalizeEditSettings(request.data?.editSettings);
-    const audioId = request.data?.audioId == null ? null : inputString(request.data.audioId, 128, "audioId");
+    const audioId = request.data?.audioId == null ? null : inputId(request.data.audioId, "audioId");
     if (audioId) {
       const audioSnap = await db.collection("kirariAudio").doc(audioId).get();
       if (!audioSnap.exists || audioSnap.data()?.status !== "approved" || audioSnap.data()?.allowReuse !== true) {
@@ -561,7 +561,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
   async function commentAction(request) {
     const uid = auth(request);
     const reelId = inputString(request.data?.reelId, 128, "reelId");
-    const commentId = inputString(request.data?.commentId, 128, "commentId");
+    const commentId = inputId(request.data?.commentId, "commentId");
     const kind = request.data?.kind;
     if (!["like", "unlike", "delete", "pin", "report"].includes(kind)) {
       fail("invalid-argument", "Unsupported comment action.");
@@ -655,10 +655,10 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
   async function recordPlayback(request) {
     const uid = auth(request);
     const reelId = inputString(request.data?.reelId, 128, "reelId");
-    const sessionId = inputString(request.data?.sessionId, 128, "sessionId");
+    const sessionId = inputId(request.data?.sessionId, "sessionId");
     const watchSeconds = clamp(request.data?.watchSeconds, 0, KIRARI.maxWatchEventSeconds);
     const clientPercent = clamp(request.data?.percent, 0, 100);
-    const eventId = inputString(request.data?.eventId, 128, "eventId");
+    const eventId = inputId(request.data?.eventId, "eventId");
     if (!eventId) fail("invalid-argument", "Playback event id is required.");
     const ref = reelRef(reelId);
     const sessionRef = ref.collection("playbackSessions").doc(sessionId);
@@ -890,7 +890,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   async function getReelsByAudio(request) {
     const uid = auth(request);
-    const audioId = inputString(request.data?.audioId, 128, "audioId");
+    const audioId = inputId(request.data?.audioId, "audioId");
     const limit = Math.round(clamp(request.data?.limit || 24, 1, 50));
     const snap = await reels().where("status", "==", "published")
       .where("moderationStatus", "==", "approved")
