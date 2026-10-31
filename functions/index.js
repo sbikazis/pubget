@@ -302,6 +302,14 @@ exports.getKirariFeed = onCall(
   { region: "us-central1" },
   kirariDomain.getFeed,
 );
+exports.getKirariHashtagFeed = onCall(
+  { region: "us-central1" },
+  kirariDomain.getHashtagFeed,
+);
+exports.setKirariCreatorMute = onCall(
+  { region: "us-central1" },
+  kirariDomain.setCreatorMute,
+);
 exports.processKirariVideo = onObjectFinalized(
   { region: "europe-west3", memory: "2GiB", timeoutSeconds: 540 },
   processKirariVideo,
