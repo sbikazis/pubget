@@ -300,6 +300,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         [counter]: FieldValue.increment(amount),
         [`counters.${counter.replace("Count", "").toLowerCase()}`]: FieldValue.increment(amount),
         rankingScore: FieldValue.increment(kind === "like" ? 2 : kind === "save" ? 4 : kind === "share" ? 3 : -2),
+        velocityScore: FieldValue.increment(kind === "like" ? 2 : kind === "save" ? 4 : kind === "share" ? 3 : -2),
       });
     });
     return { ok: true };
@@ -335,6 +336,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         commentsCount: FieldValue.increment(1),
         "counters.comments": FieldValue.increment(1),
         rankingScore: FieldValue.increment(3),
+        velocityScore: FieldValue.increment(3),
       });
     });
     return { commentId: commentRef.id };
@@ -466,18 +468,21 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
           viewsCount: FieldValue.increment(1),
           "counters.qualifiedViews": FieldValue.increment(1),
           "counters.views": FieldValue.increment(1),
+          velocityScore: FieldValue.increment(1),
         });
       }
       if (completed) {
         tx.update(ref, {
           completionCount: FieldValue.increment(1),
           "counters.completions": FieldValue.increment(1),
+          velocityScore: FieldValue.increment(2),
         });
       }
       if (replayed) {
         tx.update(ref, {
           replayCount: FieldValue.increment(1),
           "counters.replays": FieldValue.increment(1),
+          velocityScore: FieldValue.increment(1),
         });
       }
       if (qualified || completed) {
