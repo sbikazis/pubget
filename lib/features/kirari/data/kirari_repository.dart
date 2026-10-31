@@ -63,6 +63,7 @@ abstract interface class KirariRepository {
   Future<String> startPlayback(String reelId);
   Future<void> recordPlayback({required String reelId, required String sessionId, required String eventId, required double watchSeconds, required double percent});
   Future<void> deleteReel(String reelId);
+  Future<XFile?> pickGalleryVideo();
 }
 
 class FirebaseKirariRepository implements KirariRepository {
@@ -199,6 +200,7 @@ class FirebaseKirariRepository implements KirariRepository {
     await _call('deleteKirariReel', {'reelId': reelId});
   }
 
+  @override
   Future<XFile?> pickGalleryVideo() => _picker.pickVideo(
     source: ImageSource.gallery,
     maxDuration: const Duration(seconds: 60),
