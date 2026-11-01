@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
@@ -48,10 +49,14 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
         _error = null;
       });
       await controller.play();
-    } catch (_) {
-      if (mounted) setState(() {
+    } catch (error) {
+      if (!mounted) return;
+      final copy = KirariCopy.of(context);
+      final unavailable = error is FirebaseFunctionsException &&
+          error.code == 'not-found';
+      setState(() {
         _loading = false;
-        _error = KirariCopy.of(context).loadError;
+        _error = unavailable ? copy.reelUnavailable : copy.loadError;
       });
     }
   }
