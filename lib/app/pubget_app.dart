@@ -58,6 +58,8 @@ import '../features/edits/repositories/edits_repository.dart';
 import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
 import '../features/edits/screens/edit_upload_page.dart';
+import '../features/kirari/data/kirari_repository.dart';
+import '../features/kirari/screens/kirari_upload_page.dart';
 import '../features/notifications/widgets/notification_deep_link_binder.dart';
 import '../features/edits/l10n/edit_copy.dart';
 import '../features/edits/widgets/global_edit_upload_bar.dart';
