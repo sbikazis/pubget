@@ -51,6 +51,10 @@ The callable verifies the object exists and its MIME/size. The public catalog re
 
 The `/admin/kirari-moderation` route provides the review screen. Queue previews use five-minute signed URLs returned only to an admin caller. Both `publishKirariAudioTrack`, `getKirariModerationQueue` and `reviewKirariContent` require the Firebase Auth custom claim `admin: true`. Grant that claim only to trusted operators. The functions do not grant admin privileges themselves.
 
+## CI scope and known repository baseline
+
+The Kirari workflow requires the Kirari-scoped Flutter analysis and integration test, Functions checks/unit tests, and Kirari Firestore/Storage emulator tests to pass. The repository-wide Android debug build is still executed as a visible, non-blocking baseline check because the current branch inherits compile errors in legacy chat/groups files outside Kirari. This does not mean the Android build passed; the unrelated baseline errors must be resolved in their separately scoped workstream before claiming a clean full-application build.
+
 ## Verification commands
 
 From the repository root:
