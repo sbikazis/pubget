@@ -25,6 +25,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'test/**'
       - 'lib/features/kirari/**'
       - 'lib/features/reels/**'
       - 'lib/features/audio/**'
