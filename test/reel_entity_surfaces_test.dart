@@ -179,7 +179,7 @@ void main() {
           creatorId: 'creator-1',
           caption: 'Kirari audio use',
           videoUrl: '',
-          coverUrl: 'https://example.com/cover.jpg',
+          coverUrl: '',
           durationSeconds: 12,
           likesCount: 2,
           commentsCount: 1,
