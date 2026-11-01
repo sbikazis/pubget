@@ -14,7 +14,6 @@ import '../l10n/group_copy.dart';
 import '../models/group_models.dart';
 import '../providers/group_members_provider.dart';
 import '../providers/group_provider.dart';
-import '../widgets/group_entry_hub.dart';
 import 'group_join_sheet.dart';
 
 class GroupDetailsPage extends StatefulWidget {
@@ -128,7 +127,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
                 : provider.isFounder
                     ? _FounderPanel(group: group)
                     : provider.hasEntryHub
-                        ? GroupEntryHub(group: group)
+                        ? _GroupEntryHub(group: group)
                         : _VisitorDetails(group: group),
           ),
         ),
@@ -142,6 +141,62 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     await context.read<GroupProvider>().load(
       groupId: widget.groupId,
       userId: userId,
+    );
+  }
+}
+
+
+/// Compact management entry surface for trusted group ranks. This widget is
+/// intentionally kept beside the details page so its route contract cannot
+/// drift from the group screen.
+class _GroupEntryHub extends StatelessWidget {
+  const _GroupEntryHub({required this.group});
+
+  final Group group;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final provider = context.watch<GroupProvider>();
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _IdentityHeader(group: group),
+          const SizedBox(height: AppSpacing.lg),
+          Text('Entry Hub', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: AppSpacing.sm),
+          Text(copy.membersCount(group.membersCount)),
+          const SizedBox(height: AppSpacing.lg),
+          PubgetCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(copy.groupInformation,
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: AppSpacing.sm),
+                Text(group.description.isEmpty
+                    ? copy.communityFallback
+                    : group.description),
+                const SizedBox(height: AppSpacing.md),
+                PubgetButton(
+                  label: copy.openChat,
+                  onPressed: () => AppNavigation.go(
+                    context, '/group-chat?groupId=${group.id}'),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                if (provider.canManageMembers)
+                  PubgetButton(
+                    label: copy.manageMembers,
+                    onPressed: () => AppNavigation.go(
+                      context, '/group-members?groupId=${group.id}'),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
