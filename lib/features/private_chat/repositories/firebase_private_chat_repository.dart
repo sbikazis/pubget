@@ -11,6 +11,8 @@ import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/storage/media_upload_service.dart';
 import '../../../core/storage/r2_storage_service.dart';
+import '../../groups/models/chat_models.dart';
+import '../../groups/services/chat_send_reliability.dart';
 import '../models/private_chat_models.dart';
 import 'private_chat_repository.dart';
 
