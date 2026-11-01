@@ -598,7 +598,6 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                                           PubgetLinks.profilePath(authorId),
                                         ),
                                 trailing: deleted ? null : Wrap(
-                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     IconButton(
                                       tooltip: 'Like comment',
