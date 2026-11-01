@@ -37,7 +37,7 @@ The callable verifies the object exists and its MIME/size. The public catalog re
 - A user can mute creators or mark videos not interested. Blocked creators, muted creators and negative-feedback videos are excluded from For You.
 - Three unique reports queue a reel or comment for review. Admin-only `getKirariModerationQueue` and `reviewKirariContent` support approve/reject decisions. Storage playback is gated on approved publication.
 
-**Moderation limitation:** the current automated moderation is text-based. The report queue supports human review, but there is not yet automated visual/audio classification, a moderator dashboard UI, or a creator appeal workflow. The admin callables are the review interface for now.
+**Moderation limitation:** the current automated moderation is text-based. The admin route provides a basic manual review queue, but there is not yet automated visual/audio classification or a creator appeal workflow.
 
 ## Playback and upload recovery
 
