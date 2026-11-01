@@ -103,6 +103,12 @@ function renditionArgs(source, output, height, bitrate) {
   ];
 }
 
+function outputDurationSeconds(clipDuration, speed) {
+  const duration = Math.max(0, Number(clipDuration) || 0);
+  const rate = Math.max(0.5, Math.min(2, Number(speed) || 1));
+  return duration / rate;
+}
+
 function escapeDrawtext(value) {
   return String(value).replace(/\\/g, "\\\\")
     .replace(/:/g, "\\:").replace(/'/g, "\\'")
@@ -219,7 +225,7 @@ function createKirariPipeline({ db, bucket }) {
       const trimEnd = Math.min(metadata.durationSeconds, Math.max(trimStart + 3, requestedEnd > trimStart ? requestedEnd : metadata.durationSeconds));
       const clipDuration = trimEnd - trimStart;
       const speed = Math.max(0.5, Math.min(2, Number(settings.speed) || 1));
-      const outputDuration = clipDuration / speed;
+      const outputDuration = outputDurationSeconds(clipDuration, speed);
       const audioTrack = reel.audioId ? await db.collection("kirariAudio").doc(reel.audioId).get() : null;
       const audioData = audioTrack && audioTrack.exists ? audioTrack.data() : null;
       const audioSource = audioData && audioData.status === "approved" && audioData.allowReuse === true && audioData.audioPath
@@ -315,4 +321,4 @@ function createKirariPipeline({ db, bucket }) {
   };
 }
 
-module.exports = { createKirariPipeline, probeVideo, renditionArgs, editorVideoFilter };
+module.exports = { createKirariPipeline, probeVideo, renditionArgs, editorVideoFilter, outputDurationSeconds };
