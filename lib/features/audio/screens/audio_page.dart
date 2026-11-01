@@ -13,6 +13,8 @@ import '../../edits/l10n/edit_copy.dart';
 import '../../edits/models/edit_models.dart';
 import '../../edits/repositories/edits_repository.dart';
 import '../../edits/widgets/reel_metadata.dart';
+import '../../kirari/data/kirari_repository.dart';
+import '../../kirari/l10n/kirari_copy.dart';
 import '../../social/models/public_profile.dart';
 import '../../social/repositories/profile_repository.dart';
 
@@ -34,6 +36,7 @@ class AudioPage extends StatefulWidget {
 
 class _AudioPageState extends State<AudioPage> {
   List<Edit> _reels = const <Edit>[];
+  List<KirariReel> _kirariReels = const <KirariReel>[];
   PublicProfile? _creator;
   Edit? _originalReel;
   var _loading = true;
@@ -46,9 +49,13 @@ class _AudioPageState extends State<AudioPage> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final result = await context.read<EditsRepository>().getEditsByAudio(
-      widget.audioId,
-    );
+    final results = await Future.wait([
+      context.read<EditsRepository>().getEditsByAudio(widget.audioId),
+      context.read<KirariRepository>().getReelsByAudio(widget.audioId)
+          .catchError((_) => <KirariReel>[]),
+    ]);
+    final result = results[0] as dynamic;
+    final kirariReels = results[1] as List<KirariReel>;
     if (!mounted) return;
     final reels = result.valueOrNull ?? const <Edit>[];
     final original = _oldest(reels);
@@ -66,6 +73,7 @@ class _AudioPageState extends State<AudioPage> {
     if (!mounted) return;
     setState(() {
       _reels = reels;
+      _kirariReels = kirariReels;
       _originalReel = original;
       _creator = creator;
       _loading = false;
@@ -101,7 +109,7 @@ class _AudioPageState extends State<AudioPage> {
               children: <Widget>[
                 _header(copy),
                 const SizedBox(height: AppSpacing.lg),
-                if (_reels.isEmpty)
+                if (_reels.isEmpty && _kirariReels.isEmpty)
                   PubgetEmptyState(
                     title: copy.noAudioReels,
                     message: copy.noAudioReelsBody,
@@ -118,6 +126,50 @@ class _AudioPageState extends State<AudioPage> {
                     runSpacing: AppSpacing.sm,
                     children: <Widget>[
                       for (final reel in _reels) ReelThumbnailTile(edit: reel),
+                      for (final reel in _kirariReels)
+                        InkWell(
+                          key: ValueKey('kirari-audio-${reel.id}'),
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => AppNavigation.go(
+                            context,
+                            PubgetLinks.reelPath(reel.id),
+                          ),
+                          child: SizedBox(
+                            width: 112,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: AspectRatio(
+                                    aspectRatio: 9 / 16,
+                                    child: reel.coverUrl.isEmpty
+                                        ? const ColoredBox(
+                                            color: Colors.black12,
+                                            child: Icon(Icons.movie_outlined),
+                                          )
+                                        : Image.network(
+                                            reel.coverUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) =>
+                                                const ColoredBox(
+                                              color: Colors.black12,
+                                              child: Icon(Icons.movie_outlined),
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  reel.caption.isEmpty ? KirariCopy.of(context).title : reel.caption,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ],
@@ -146,10 +198,30 @@ class _AudioPageState extends State<AudioPage> {
         const SizedBox(height: AppSpacing.sm),
         ReelChip(
           key: const Key('audio-usage'),
-          label: copy.usedInReels(_reels.length),
+          label: copy.usedInReels(_reels.length + _kirariReels.length),
           icon: Icons.movie_outlined,
           highlighted: true,
         ),
+        if (_kirariReels.isNotEmpty) ...<Widget>[
+          const SizedBox(height: AppSpacing.md),
+          Builder(builder: (context) {
+            final attribution = _kirariReels.first.audioAttribution;
+            final title = attribution['title'] as String? ?? '';
+            final artist = attribution['artist'] as String? ?? '';
+            final license = attribution['license'] as String? ?? '';
+            final credit = attribution['attribution'] as String? ?? '';
+            final sourceCreatorId = attribution['sourceCreatorId'] as String?;
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.verified_outlined),
+              title: Text(title.isEmpty ? KirariCopy.of(context).originalAudio : title),
+              subtitle: Text([artist, license, credit].where((value) => value.isNotEmpty).join(' · ')),
+              onTap: sourceCreatorId == null
+                  ? null
+                  : () => AppNavigation.go(context, PubgetLinks.profilePath(sourceCreatorId)),
+            );
+          }),
+        ],
         if (_originalReel != null) ...<Widget>[
           const SizedBox(height: AppSpacing.md),
           InkWell(
