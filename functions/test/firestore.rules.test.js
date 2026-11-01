@@ -139,6 +139,29 @@ test.beforeEach(async () => {
     await admin.doc("fanWorks/fw-public/comments/c1").set({
       authorId: "bob", text: "nice", likesCount: 0,
     });
+    await admin.doc("kirari/reel-public").set({
+      creatorId: "alice", status: "published", moderationStatus: "approved",
+    });
+    await admin.doc("kirari/reel-review").set({
+      creatorId: "alice", status: "published", moderationStatus: "review_pending",
+    });
+    await admin.doc("kirari/reel-public/comments/comment-public").set({
+      authorId: "bob", text: "Nice edit", status: "published",
+    });
+    await admin.doc("kirari/reel-review/comments/comment-review").set({
+      authorId: "bob", text: "Hidden comment", status: "published",
+    });
+    await admin.doc("kirariAudio/track-approved").set({
+      status: "approved", allowReuse: true, rightsVerified: true, audioPath: "kirari-audio/track-approved/audio.mp3",
+    });
+    await admin.doc("kirariAudio/track-pending").set({
+      status: "pending", allowReuse: false, rightsVerified: false,
+      audioPath: "kirari-audio/track-pending/audio.mp3",
+    });
+    await admin.doc("kirariAudio/track-unverified").set({
+      status: "approved", allowReuse: true, rightsVerified: false,
+      audioPath: "kirari-audio/track-unverified/audio.mp3",
+    });
   });
 });
 test.after(() => env.cleanup());
@@ -1200,3 +1223,71 @@ test("mafia history is participant-read only and never client-writable (SEC-H-01
   }));
 });
 
+
+test("Kirari documents and interactions are read-only to clients with publication privacy", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("kirari/r1").set({
+      creatorId: "alice", status: "published", moderationStatus: "approved",
+    });
+    await admin.doc("kirari/r2").set({
+      creatorId: "alice", status: "uploading", moderationStatus: "pending",
+    });
+    await admin.doc("kirari/r1/comments/c1").set({
+      authorId: "alice", text: "hello", status: "published",
+    });
+    await admin.doc("kirari/r1/actions/alice_like").set({ uid: "alice", kind: "like" });
+    await admin.doc("kirari/r1/playbackSessions/s1").set({ viewerId: "alice" });
+    await admin.doc("kirariUploadLocks/alice").set({ reelId: "r2" });
+    await admin.doc("kirariReportRateLimits/alice").set({ day: "2026-11-01", count: 1 });
+  });
+  await assertSucceeds(db("bob").doc("kirari/r1").get());
+  await assertFails(db("bob").doc("kirari/r2").get());
+  await assertSucceeds(db("alice").doc("kirari/r2").get());
+  await assertFails(db("alice").doc("kirari/r1").update({ likesCount: 999 }));
+  await assertFails(db("alice").doc("kirari/r3").set({
+    creatorId: "alice", status: "published",
+  }));
+  await assertSucceeds(db("bob").doc("kirari/r1/comments/c1").get());
+  await assertFails(db("bob").doc("kirari/r1/comments/c2").set({
+    authorId: "bob", text: "forged",
+  }));
+  await assertSucceeds(db("alice").doc("kirari/r1/actions/alice_like").get());
+  await assertFails(db("bob").doc("kirari/r1/actions/alice_like").get());
+  await assertSucceeds(db("alice").doc("kirari/r1/playbackSessions/s1").get());
+  await assertFails(db("bob").doc("kirari/r1/playbackSessions/s1").get());
+  await assertFails(db("alice").doc("kirariUploadLocks/alice").get());
+  await assertFails(db("alice").doc("kirariUploadLocks/alice").set({ reelId: "r3" }));
+  await assertFails(db("alice").doc("kirariReportRateLimits/alice").get());
+  await assertFails(db("alice").doc("kirariReportRateLimits/alice").set({ day: "2026-11-01", count: 99 }));
+});
+
+test("Kirari seen markers are owner-scoped and field-limited", async () => {
+  await assertSucceeds(db("alice").doc("users/alice/kirariSeen/r1").set({
+    seenAt: serverTimestamp(),
+  }));
+  await assertFails(db("bob").doc("users/alice/kirariSeen/r2").set({
+    seenAt: serverTimestamp(),
+  }));
+  await assertFails(db("alice").doc("users/alice/kirariSeen/r3").set({
+    seenAt: serverTimestamp(), forgedScore: 100000,
+  }));
+});
+
+test("Kirari exposes only approved public reels and approved audio metadata", async () => {
+  await assertSucceeds(db("bob").doc("kirari/reel-public").get());
+  await assertFails(db("bob").doc("kirari/reel-review").get());
+  await assertSucceeds(db("alice").doc("kirari/reel-review").get());
+  await assertSucceeds(db("bob").doc("kirari/reel-public/comments/comment-public").get());
+  await assertFails(db("bob").doc("kirari/reel-review/comments/comment-review").get());
+  await assertFails(db("bob").doc("kirari/reel-public").update({ likesCount: 999 }));
+  await assertFails(db("bob").doc("kirari/reel-public/comments/c1").set({
+    authorId: "bob", text: "forged", status: "published",
+  }));
+  await assertSucceeds(db("bob").doc("kirariAudio/track-approved").get());
+  await assertFails(db("bob").doc("kirariAudio/track-pending").get());
+  await assertFails(db("bob").doc("kirariAudio/track-unverified").get());
+  await assertFails(db("alice").doc("kirariAudio/track-approved").update({
+    status: "approved", allowReuse: true,
+  }));
+});

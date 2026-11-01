@@ -22,6 +22,9 @@ import '../../events/widgets/home_event_card.dart';
 import '../../fan_works/providers/fan_work_providers.dart';
 import '../../fan_works/widgets/home_fan_work_card.dart';
 import '../../notifications/providers/unread_engine.dart';
+import '../../kirari/data/kirari_repository.dart';
+import '../../kirari/l10n/kirari_copy.dart';
+import '../../../core/links/pubget_links.dart';
 import '../models/home_models.dart';
 import '../providers/home_provider.dart';
 import '../widgets/home_luxury_tiles.dart';
@@ -79,7 +82,7 @@ class _HomePageState extends State<HomePage> {
                 kind: HomeSectionKind.promotedGroups,
                 finish: HomeGroupFinish.gold,
               ),
-              const SliverToBoxAdapter(child: _EditsSection()),
+              const SliverToBoxAdapter(child: _KirariDiscoverySection()),
               _peopleSliver(),
               if (economy != null)
                 const SliverToBoxAdapter(child: _HomeAdSlot()),
@@ -657,3 +660,96 @@ class _SkeletonSection extends StatelessWidget {
     ),
   );
 }
+
+class _KirariDiscoverySection extends StatefulWidget {
+  const _KirariDiscoverySection();
+
+  @override
+  State<_KirariDiscoverySection> createState() => _KirariDiscoverySectionState();
+}
+
+class _KirariDiscoverySectionState extends State<_KirariDiscoverySection> {
+  late Future<KirariFeedPageResult> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = context.read<KirariRepository>().getFeed(type: 'trending', limit: 6);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = KirariCopy.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(child: Text(copy.title, style: Theme.of(context).textTheme.titleLarge)),
+            TextButton(
+              onPressed: () => AppNavigation.go(context, '/reels'),
+              child: Text(copy.trending),
+            ),
+          ]),
+          SizedBox(
+            height: 190,
+            child: FutureBuilder<KirariFeedPageResult>(
+              future: _future,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text(copy.loadError));
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final reels = snapshot.data!.items;
+                if (reels.isEmpty) {
+                  return Center(child: Text(copy.noVideos));
+                }
+                return ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: reels.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+                  itemBuilder: (context, index) {
+                    final reel = reels[index];
+                    return SizedBox(
+                      width: 118,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => AppNavigation.go(context, PubgetLinks.reelPath(reel.id)),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Stack(fit: StackFit.expand, children: [
+                            if (reel.coverUrl.isNotEmpty)
+                              Image.network(reel.coverUrl, fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.black12)),
+                            if (reel.coverUrl.isEmpty)
+                              const ColoredBox(color: Colors.black12),
+                            Align(
+                              alignment: Alignment.bottomCenter,
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(8),
+                                color: Colors.black54,
+                                child: Text(reel.caption.isEmpty ? '@${reel.creatorId}' : reel.caption,
+                                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white)),
+                              ),
+                            ),
+                            const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 34)),
+                          ]),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

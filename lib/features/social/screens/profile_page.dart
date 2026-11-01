@@ -20,6 +20,8 @@ import '../../economy/providers/economy_provider.dart';
 import '../../economy/widgets/economy_widgets.dart';
 import '../../edits/models/edit_models.dart';
 import '../../edits/repositories/edits_repository.dart';
+import '../../kirari/data/kirari_repository.dart';
+import '../../kirari/l10n/kirari_copy.dart';
 import '../../fan_works/models/fan_work_lifecycle.dart';
 import '../../fan_works/models/fan_work_models.dart';
 import '../../fan_works/repositories/fan_work_repository.dart';
@@ -373,6 +375,9 @@ class _ProfileLifeReport extends StatelessWidget {
               if (profile.isOwner || data.privacy.works) ...[
                 const SizedBox(height: AppSpacing.xl),
                 _CreatorEdits(profileId: profileId, isOwner: profile.isOwner),
+                if (!profile.isOwner) _CreatorMuteButton(creatorId: profileId),
+                const SizedBox(height: AppSpacing.xl),
+                _CreatorKirari(profileId: profileId),
                 const SizedBox(height: AppSpacing.xl),
                 _CreatorFanWorks(
                   profileId: profileId,
@@ -1481,6 +1486,144 @@ class _FriendAction extends StatelessWidget {
       semanticLabel: 'Send friend request',
       leadingIcon: Icons.person_add_alt_1_outlined,
       child: const Text('Add friend'),
+    );
+  }
+}
+
+
+class _CreatorKirari extends StatefulWidget {
+  const _CreatorKirari({required this.profileId});
+  final String profileId;
+
+  @override
+  State<_CreatorKirari> createState() => _CreatorKirariState();
+}
+
+class _CreatorKirariState extends State<_CreatorKirari> {
+  late Future<List<KirariReel>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = context.read<KirariRepository>().getCreatorReels(widget.profileId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = KirariCopy.of(context);
+    return FutureBuilder<List<KirariReel>>(
+      future: _future,
+      builder: (context, snapshot) {
+        final reels = snapshot.data ?? const <KirariReel>[];
+        if (snapshot.hasError || (snapshot.connectionState == ConnectionState.done && reels.isEmpty)) {
+          return const SizedBox.shrink();
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(copy.title, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: AppSpacing.md),
+            if (!snapshot.hasData)
+              const Center(child: CircularProgressIndicator())
+            else
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: [
+                  for (final reel in reels)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () => AppNavigation.go(context, PubgetLinks.reelPath(reel.id)),
+                      child: SizedBox(
+                        width: 104,
+                        height: 156,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: Stack(fit: StackFit.expand, children: [
+                            if (reel.coverUrl.isNotEmpty)
+                              Image.network(reel.coverUrl, fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.black12)),
+                            if (reel.coverUrl.isEmpty) const ColoredBox(color: Colors.black12),
+                            const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 34)),
+                            Align(
+                              alignment: Alignment.bottomCenter,
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(6),
+                                color: Colors.black54,
+                                child: Text(reel.caption, maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white, fontSize: 11)),
+                              ),
+                            ),
+                          ]),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+
+class _CreatorMuteButton extends StatefulWidget {
+  const _CreatorMuteButton({required this.creatorId});
+  final String creatorId;
+
+  @override
+  State<_CreatorMuteButton> createState() => _CreatorMuteButtonState();
+}
+
+class _CreatorMuteButtonState extends State<_CreatorMuteButton> {
+  late Future<bool> _future;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = context.read<KirariRepository>().getCreatorMuteStatus(widget.creatorId);
+  }
+
+  Future<void> _toggle(bool muted) async {
+    setState(() => _busy = true);
+    try {
+      await context.read<KirariRepository>().setCreatorMute(
+        creatorId: widget.creatorId,
+        muted: !muted,
+      );
+      if (mounted) setState(() => _future = Future<bool>.value(!muted));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(KirariCopy.of(context).actionError)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = KirariCopy.of(context);
+    return FutureBuilder<bool>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.hasError || !snapshot.hasData) return const SizedBox.shrink();
+        final muted = snapshot.data == true;
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _busy ? null : () => _toggle(muted),
+            icon: Icon(muted ? Icons.volume_up_outlined : Icons.volume_off_outlined),
+            label: Text(muted ? copy.unmuteCreator : copy.muteCreator),
+          ),
+        );
+      },
     );
   }
 }

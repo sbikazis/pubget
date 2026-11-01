@@ -52,12 +52,15 @@ import '../features/groups/screens/group_media_page.dart';
 import '../features/groups/screens/group_settings_page.dart';
 import '../features/groups/screens/join_requests_page.dart';
 import '../features/groups/screens/roleplay_character_page.dart';
+import '../features/kirari/data/kirari_repository.dart';
+import '../features/kirari/screens/kirari_upload_page.dart';
 import '../features/edits/providers/edits_provider.dart';
 import '../features/edits/providers/edit_upload_manager.dart';
 import '../features/edits/repositories/edits_repository.dart';
 import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
 import '../features/edits/screens/edit_upload_page.dart';
+import '../features/edits/screens/edit_feed_page.dart';
 import '../features/notifications/widgets/notification_deep_link_binder.dart';
 import '../features/edits/l10n/edit_copy.dart';
 import '../features/edits/widgets/global_edit_upload_bar.dart';
@@ -196,6 +199,13 @@ class PubgetApp extends StatelessWidget {
         provider.Provider<NotificationRepository>.value(value: repositories.$9),
         provider.Provider<HomeRepository>.value(value: repositories.$10),
         provider.Provider<EditsRepository>.value(value: repositories.$11),
+        provider.Provider<KirariRepository>(
+          create: (_) => firebaseState.isReady
+              ? FirebaseKirariRepository()
+              : UnavailableKirariRepository(
+                  firebaseState.message ?? 'Firebase is unavailable in this build.',
+                ),
+        ),
         provider.Provider<PrivateChatRepository>.value(value: repositories.$12),
         provider.Provider<EventRepository>.value(value: repositories.$13),
         provider.Provider<AnimeRepository>(
@@ -836,8 +846,9 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/profile/edit': const EditProfilePage(),
         '/friend-requests': const FriendRequestsPage(),
         '/notifications': const NotificationInboxPage(),
-        '/edits': const AppShell(),
+        '/edits': const EditFeedPage(),
         '/reels': const AppShell(),
+        '/reels/upload': const KirariUploadPage(),
         '/edits/upload': const EditUploadPage(),
         '/groups': const AppShell(),
         '/joined': const AppShell(),

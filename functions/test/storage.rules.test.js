@@ -42,6 +42,9 @@ test.before(async () => {
       db.doc("groups/group-owner/members/owner").set({ userId: "owner" }),
       db.doc("groups/group-owner/members/member").set({ userId: "member" }),
       db.doc("privateChats/private-1").set({ userA: "alice", userB: "bob" }),
+      db.doc("kirariAudio/track-1").set({ status: "approved", allowReuse: true, rightsVerified: true }),
+      db.doc("kirariAudio/track-pending").set({ status: "pending", allowReuse: true, rightsVerified: true }),
+       db.doc("kirariAudio/track-unverified").set({ status: "approved", allowReuse: true, rightsVerified: false }),
     ]);
   });
 });
@@ -291,4 +294,41 @@ test("fan work media is owner-writable and public only when the work is publishe
   await assertSucceeds(
     bob.storage().ref("fan_works/alice/w-public/page.jpg").getDownloadURL(),
   );
+});
+test("Kirari source uploads are owner-only and processed renditions are server-write-only", async () => {
+  const owner = env.authenticatedContext("alice");
+  const outsider = env.authenticatedContext("mallory");
+  const source = "kirari/alice/reel-1/source.mp4";
+  await assertSucceeds(upload(owner, source, "video/mp4", 32));
+  await assertFails(upload(outsider, "kirari/alice/reel-2/source.mp4", "video/mp4", 32));
+  await assertFails(upload(owner, "kirari/alice/reel-3/source.mp4", "image/jpeg", 32));
+  await assertFails(upload(owner, "kirari-processed/alice/reel-1/720.mp4", "video/mp4", 32));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("kirari/reel-1").set({
+      creatorId: "alice", status: "published", moderationStatus: "approved",
+    });
+    await context.storage().ref("kirari-processed/alice/reel-1/720.mp4")
+      .put(bytes(32), { contentType: "video/mp4" });
+  });
+  await assertSucceeds(owner.storage().ref("kirari-processed/alice/reel-1/720.mp4").getDownloadURL());
+  await assertSucceeds(outsider.storage().ref("kirari-processed/alice/reel-1/720.mp4").getDownloadURL());
+});
+
+test("licensed Kirari audio is readable only after approval and writable only by admins", async () => {
+  const admin = env.authenticatedContext("admin", { admin: true });
+  const alice = env.authenticatedContext("alice");
+  const audioPath = "kirari-audio/track-1/audio.mp3";
+  await assertSucceeds(upload(admin, audioPath, "audio/mpeg", 128));
+  await assertFails(upload(alice, "kirari-audio/track-2/audio.mp3", "audio/mpeg", 128));
+  await assertSucceeds(alice.storage().ref(audioPath).getDownloadURL());
+  await env.withSecurityRulesDisabled(async (context) => {
+    await Promise.all([
+      context.storage().ref("kirari-audio/track-pending/audio.mp3")
+        .put(bytes(128), { contentType: "audio/mpeg" }),
+      context.storage().ref("kirari-audio/track-unverified/audio.mp3")
+        .put(bytes(128), { contentType: "audio/mpeg" }),
+    ]);
+  });
+  await assertFails(alice.storage().ref("kirari-audio/track-pending/audio.mp3").getDownloadURL());
+  await assertFails(alice.storage().ref("kirari-audio/track-unverified/audio.mp3").getDownloadURL());
 });

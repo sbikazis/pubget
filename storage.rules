@@ -38,6 +38,22 @@ service firebase.storage {
           /databases/(default)/documents/groups/$(groupId));
     }
 
+    function kirariAudioPublished(audioId) {
+      return firestore.exists(/databases/(default)/documents/kirariAudio/$(audioId)) &&
+        firestore.get(/databases/(default)/documents/kirariAudio/$(audioId)).data.status == 'approved' &&
+        firestore.get(/databases/(default)/documents/kirariAudio/$(audioId)).data.allowReuse == true &&
+        firestore.get(/databases/(default)/documents/kirariAudio/$(audioId)).data.rightsVerified == true;
+    }
+
+    function kirariPublished(reelId) {
+      return firestore.exists(
+          /databases/(default)/documents/kirari/$(reelId)) &&
+          firestore.get(
+            /databases/(default)/documents/kirari/$(reelId)).data.status == 'published' &&
+          firestore.get(
+            /databases/(default)/documents/kirari/$(reelId)).data.moderationStatus == 'approved';
+    }
+
     // founderId is the field written by the Flutter app. ownerId is retained
     // only for existing groups created by older server/client code.
     function isGroupOwner(groupId) {
@@ -322,6 +338,34 @@ service firebase.storage {
       return firestore.exists(/databases/(default)/documents/fanWorks/$(workId)) &&
           fanWorkDocument(workId).data.status == 'published' &&
           fanWorkDocument(workId).data.moderationStatus == 'approved';
+    }
+
+
+    // Kirari source upload is owner-only and supports Firebase resumable PUTs.
+    // The backend alone can publish processed renditions and cover images.
+    match /kirari/{userId}/{reelId}/source.mp4 {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.contentType.matches('video/mp4.*') &&
+        request.resource.size <= 500 * 1024 * 1024;
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /kirari-audio/{audioId}/{fileName} {
+      allow read: if signedIn() && kirariAudioPublished(audioId) &&
+        fileName.matches('audio\\.(mp3|m4a|aac|ogg)');
+      allow create, update: if signedIn() && request.auth.token.admin == true &&
+        fileName.matches('audio\\.(mp3|m4a|aac|ogg)') &&
+        request.resource.contentType.matches('audio/.*') &&
+        request.resource.size <= 25 * 1024 * 1024;
+      allow delete: if signedIn() && request.auth.token.admin == true;
+    }
+
+    match /kirari-processed/{userId}/{reelId}/{fileName} {
+      allow read: if signedIn() && kirariPublished(reelId) &&
+        (fileName.matches('(360|540|720)\\.mp4') || fileName == 'cover.jpg');
+      allow write: if false;
     }
 
     match /fan_works/{userId}/{workId}/{fileName} {
