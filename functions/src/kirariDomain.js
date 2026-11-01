@@ -857,6 +857,66 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return { items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
   }
 
+  async function getAudioLibrary(request) {
+    auth(request);
+    const limit = Math.round(clamp(request.data?.limit || 30, 1, 50));
+    const snap = await db.collection("kirariAudio")
+      .where("status", "==", "approved")
+      .where("allowReuse", "==", true)
+      .orderBy("publishedAt", "desc")
+      .limit(limit).get();
+    return {
+      items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    };
+  }
+
+  async function publishAudioTrack(request) {
+    if (!request.auth || request.auth.token?.admin !== true) {
+      fail("permission-denied", "Administrator access is required.");
+    }
+    const audioId = inputId(request.data?.audioId, "audioId");
+    const title = inputString(request.data?.title, 120, "title");
+    const artist = inputString(request.data?.artist || "Unknown artist", 120, "artist");
+    const license = inputString(request.data?.license, 160, "license");
+    const attribution = inputString(request.data?.attribution, 500, "attribution");
+    const creatorId = request.data?.creatorId
+      ? inputId(request.data.creatorId, "creatorId") : null;
+    const audioPath = inputString(request.data?.audioPath, 300, "audioPath");
+    if (!title || !license || !attribution) {
+      fail("invalid-argument", "Title, license and attribution are required.");
+    }
+    if (request.data?.approved !== true || request.data?.allowReuse !== true) {
+      fail("failed-precondition", "Audio must be explicitly approved for reuse.");
+    }
+    const expectedPath = new RegExp(
+      "^kirari-audio/" + audioId.replace(/[.*+?^${}()|[\]\\]/g, "\\  async function getReelsByAudio(request) {") +
+      "/audio\\.(mp3|m4a|aac|ogg)$",
+    );
+    if (!expectedPath.test(audioPath)) {
+      fail("invalid-argument", "Audio path must use the approved Kirari audio location.");
+    }
+    let metadata;
+    try {
+      [metadata] = await bucket.file(audioPath).getMetadata();
+    } catch (_) {
+      fail("not-found", "Audio file was not found in Storage.");
+    }
+    const size = Number(metadata.size || 0);
+    const contentType = String(metadata.contentType || "");
+    if (size <= 0 || size > 25 * 1024 * 1024 || !contentType.startsWith("audio/")) {
+      fail("invalid-argument", "Audio must be a valid audio file no larger than 25 MB.");
+    }
+    await db.collection("kirariAudio").doc(audioId).set({
+      title, artist, license, attribution, creatorId, audioPath,
+      allowReuse: true, status: "approved",
+      approvedBy: request.auth.uid,
+      approvedAt: FieldValue.serverTimestamp(),
+      publishedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { ok: true, audioId };
+  }
+
   async function getReelsByAudio(request) {
     const uid = auth(request);
     const audioId = inputId(request.data?.audioId, "audioId");
