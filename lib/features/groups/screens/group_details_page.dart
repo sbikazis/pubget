@@ -180,17 +180,17 @@ class _GroupEntryHub extends StatelessWidget {
                     ? copy.communityFallback
                     : group.description),
                 const SizedBox(height: AppSpacing.md),
-                PubgetButton(
-                  label: copy.openChat,
+                FilledButton(
                   onPressed: () => AppNavigation.go(
                     context, '/group-chat?groupId=${group.id}'),
+                  child: Text(copy.openChat),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 if (provider.canManageMembers)
-                  PubgetButton(
-                    label: copy.manageMembers,
+                  OutlinedButton(
                     onPressed: () => AppNavigation.go(
                       context, '/group-members?groupId=${group.id}'),
+                    child: Text(copy.manageMembers),
                   ),
               ],
             ),
