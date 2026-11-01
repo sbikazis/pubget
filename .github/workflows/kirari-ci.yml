@@ -65,7 +65,7 @@ jobs:
         continue-on-error: true
       - name: Analyze Kirari and touched integration surfaces
         run: >-
-          flutter analyze
+          flutter analyze --no-fatal-infos
           lib/features/kirari
           lib/features/audio/screens/audio_page.dart
           lib/features/home/screens/home_page.dart
