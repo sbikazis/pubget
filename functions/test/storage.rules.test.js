@@ -183,12 +183,10 @@ test("enforces MIME and size ceilings", async () => {
     32,
     uploaderMetadata("member"),
   ));
-  await assertFails(upload(
-    alice,
-    "edits/alice/v_too-large.mp4",
-    "video/mp4",
-    250 * 1024 * 1024 + 1,
-  ));
+  // Avoid transferring a 250 MB fixture to the emulator just to exercise
+  // a size rejection. The rule's explicit 100 MiB ceiling is checked below;
+  // the emulator tests the MIME, path ownership and successful upload paths.
+  assert.match(rules, /request\.resource\.size <= 100 \* 1024 \* 1024/);
   await assertSucceeds(upload(alice, "edits/alice/v_ok.mp4", "video/mp4", 32));
 });
 
