@@ -3,9 +3,8 @@
  * FIREBASE_STORAGE_EMULATOR_HOST=127.0.0.1:9199 \
  * FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node --test test/storage.rules.test.js
  *
- * This test intentionally is not wired into package.json: the application
- * package does not currently include @firebase/rules-unit-testing. Install it
- * as a development dependency in CI before running this file.
+ * The test is run by the CI script test:storage-rules. Both Firestore and
+ * Storage emulators must be running because Storage rules consult Firestore.
  */
 const fs = require("node:fs");
 const path = require("node:path");
