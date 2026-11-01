@@ -915,6 +915,19 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return { ok: true, audioId };
   }
 
+  async function getReel(request) {
+    const uid = auth(request);
+    const reelId = inputId(request.data?.reelId, "reelId");
+    const snap = await reelRef(reelId).get();
+    if (!snap.exists) fail("not-found", "Kirari video not found.");
+    const reel = snap.data();
+    if (reel.status !== "published" || reel.moderationStatus !== "approved" ||
+        await isBlockedPair(uid, reel.creatorId)) {
+      fail("not-found", "Kirari video not found.");
+    }
+    return { id: snap.id, ...reel };
+  }
+
   async function getReelsByAudio(request) {
     const uid = auth(request);
     const audioId = inputId(request.data?.audioId, "audioId");
