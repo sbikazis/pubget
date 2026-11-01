@@ -89,6 +89,7 @@ jobs:
       # block the Kirari-scoped acceptance checks on unrelated legacy code.
       - name: Android debug build (legacy repository baseline; non-blocking)
         run: flutter build apk --debug
+        timeout-minutes: 10
         continue-on-error: true
 
   functions:
