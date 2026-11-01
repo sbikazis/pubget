@@ -1,3 +1,4 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +10,7 @@ import 'package:pubget/features/audio/screens/audio_page.dart';
 import 'package:pubget/features/edits/models/edit_models.dart';
 import 'package:pubget/features/edits/repositories/edits_repository.dart';
 import 'package:pubget/features/hashtags/screens/hashtag_page.dart';
+import 'package:pubget/features/kirari/data/kirari_repository.dart';
 import 'package:pubget/features/reels/screens/reel_details_page.dart';
 
 import 'edits_test_support.dart';
@@ -16,8 +18,9 @@ import 'edits_test_support.dart';
 Future<void> pumpRoute(
   WidgetTester tester,
   EditsRepository repository,
-  String path,
-) async {
+  String path, {
+  KirariRepository? kirariRepository,
+}) async {
   tester.binding.platformDispatcher.defaultRouteNameTestValue = path;
   addTearDown(
     tester.binding.platformDispatcher.clearDefaultRouteNameTestValue,
@@ -34,11 +37,14 @@ Future<void> pumpRoute(
     initialRoute: AppRouter.routeFromString(path),
   );
   await tester.pumpWidget(
-    Provider<EditsRepository>.value(
-      value: repository,
-      child: MaterialApp.router(
+    Provider<KirariRepository>.value(
+      value: kirariRepository ?? UnavailableKirariRepository('Not used by this test.'),
+      child: Provider<EditsRepository>.value(
+        value: repository,
+        child: MaterialApp.router(
         routerDelegate: delegate,
         routeInformationParser: AppRouteInformationParser(),
+        ),
       ),
     ),
   );
@@ -166,6 +172,41 @@ void main() {
     expect(find.text('No Reels use this audio yet'), findsOneWidget);
   });
 
+  testWidgets('audio surface lists Kirari videos and keeps attribution', (tester) async {
+    final kirariRepository = _FakeKirariRepository(
+      audioReels: <KirariReel>[
+        KirariReel(
+          id: 'k1',
+          creatorId: 'creator-1',
+          caption: 'Kirari audio use',
+          videoUrl: '',
+          coverUrl: '',
+          durationSeconds: 12,
+          likesCount: 2,
+          commentsCount: 1,
+          audioId: 'a0',
+          audioAttribution: const <String, dynamic>{
+            'title': 'Opening theme',
+            'artist': 'Artist',
+            'license': 'CC BY 4.0',
+            'sourceCreatorId': 'creator-1',
+          },
+        ),
+      ],
+    );
+
+    await pumpRoute(
+      tester,
+      FakeEditsRepository(feed: <Edit>[]),
+      '/audio/a0',
+      kirariRepository: kirariRepository,
+    );
+
+    expect(find.byKey(const ValueKey<String>('kirari-audio-k1')), findsOneWidget);
+    expect(find.text('Used in 1 Reel'), findsOneWidget);
+    expect(find.text('Opening theme'), findsOneWidget);
+  });
+
   testWidgets('reel share uses the canonical /reel/:id link', (tester) async {
     String? shared;
     PubgetLinks.debugNativeShare = (text, subject) async {
@@ -188,8 +229,39 @@ void main() {
     final repository = FakeEditsRepository()
       ..getEditFailure = const NotFoundError('Reel not found.');
 
-    await pumpRoute(tester, repository, '/reel/nope');
+    await pumpRoute(
+      tester,
+      repository,
+      '/reel/nope',
+      kirariRepository: _FakeKirariRepository(
+        reelFailure: FirebaseFunctionsException(
+          code: 'not-found',
+          message: 'Kirari video not found.',
+        ),
+      ),
+    );
 
     expect(find.text('This Reel is not available'), findsOneWidget);
   });
+}
+
+
+class _FakeKirariRepository extends Fake implements KirariRepository {
+  _FakeKirariRepository({
+    this.audioReels = const <KirariReel>[],
+    this.reelFailure,
+  });
+
+  final List<KirariReel> audioReels;
+  final Object? reelFailure;
+
+  @override
+  Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24}) async =>
+      audioReels;
+
+  @override
+  Future<KirariReel> getReel(String reelId) async {
+    if (reelFailure != null) throw reelFailure!;
+    throw StateError('No reel fixture configured for $reelId.');
+  }
 }

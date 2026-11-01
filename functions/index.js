@@ -38,6 +38,8 @@ const { createAnimeListsDomain } = require("./src/animeListsDomain");
 const { createAnimeHubDomain } = require("./src/animeHubDomain");
 const { createEditsDomain } = require("./src/editsDomain");
 const { createEditPipeline } = require("./src/editPipeline");
+const { createKirariDomain } = require("./src/kirariDomain");
+const { createKirariPipeline } = require("./src/kirariPipeline");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createFanWorksDomain } = require("./src/fanWorksDomain");
@@ -200,6 +202,17 @@ const processEditVideo = createEditPipeline({
   achievements: achievementsDomain,
   notifications: notificationBuilder,
 });
+const processKirariVideo = createKirariPipeline({
+  db: getFirestore(),
+  bucket: getStorage().bucket(),
+});
+const kirariDomain = createKirariDomain({
+  db: getFirestore(),
+  FieldValue,
+  HttpsError,
+  bucket: getStorage().bucket(),
+  processVideo: processKirariVideo,
+});
 const editsDomain = createEditsDomain({
   db: getFirestore(),
   FieldValue,
@@ -249,6 +262,95 @@ exports.reportAnimeReview = onCall(
   { region: "us-central1" },
   animeHubDomain.reportAnimeReview,
 );
+exports.startKirariUpload = onCall(
+  { region: "us-central1" },
+  kirariDomain.startUpload,
+);
+exports.finalizeKirariUpload = onCall(
+  { region: "us-central1", timeoutSeconds: 60 },
+  kirariDomain.finalizeUpload,
+);
+exports.retryKirariProcessing = onCall(
+  { region: "us-central1", timeoutSeconds: 540, memory: "2GiB" },
+  kirariDomain.retryProcessing,
+);
+exports.cancelKirariUpload = onCall(
+  { region: "us-central1" },
+  kirariDomain.cancelUpload,
+);
+exports.deleteKirariReel = onCall(
+  { region: "us-central1" },
+  kirariDomain.deleteReel,
+);
+exports.kirariAction = onCall(
+  { region: "us-central1" },
+  kirariDomain.action,
+);
+exports.addKirariComment = onCall(
+  { region: "us-central1" },
+  kirariDomain.addComment,
+);
+exports.kirariCommentAction = onCall(
+  { region: "us-central1" },
+  kirariDomain.commentAction,
+);
+exports.startKirariPlayback = onCall(
+  { region: "us-central1" },
+  kirariDomain.startPlayback,
+);
+exports.recordKirariPlayback = onCall(
+  { region: "us-central1" },
+  kirariDomain.recordPlayback,
+);
+exports.getKirariFeed = onCall(
+  { region: "us-central1" },
+  kirariDomain.getFeed,
+);
+exports.getKirariHashtagFeed = onCall(
+  { region: "us-central1" },
+  kirariDomain.getHashtagFeed,
+);
+exports.getKirariAudioLibrary = onCall(
+  { region: "us-central1" },
+  kirariDomain.getAudioLibrary,
+);
+exports.publishKirariAudioTrack = onCall(
+  { region: "us-central1" },
+  kirariDomain.publishAudioTrack,
+);
+exports.getKirariComments = onCall(
+  { region: "us-central1" },
+  kirariDomain.getComments,
+);
+exports.getKirariReelsByAudio = onCall(
+  { region: "us-central1" },
+  kirariDomain.getReelsByAudio,
+);
+exports.getKirariCreatorReels = onCall(
+  { region: "us-central1" },
+  kirariDomain.getCreatorReels,
+);
+exports.getKirariReel = onCall(
+  { region: "us-central1" },
+  kirariDomain.getReel,
+);
+exports.reviewKirariContent = onCall(
+  { region: "us-central1" },
+  kirariDomain.reviewContent,
+);
+exports.getKirariModerationQueue = onCall(
+  { region: "us-central1" },
+  kirariDomain.getModerationQueue,
+);
+exports.setKirariCreatorMute = onCall(
+  { region: "us-central1" },
+  kirariDomain.setCreatorMute,
+);
+exports.processKirariVideo = onObjectFinalized(
+  { region: "europe-west3", memory: "2GiB", timeoutSeconds: 540 },
+  processKirariVideo,
+);
+
 exports.startEditUpload = onCall(
   { region: "us-central1" },
   editsDomain.startUpload,
@@ -696,6 +798,14 @@ exports.onFriendRequest = onDocumentCreated(
 exports.onRespectReceived = onDocumentCreated(
   "respects/{respectId}",
   notificationTriggers.respectReceived,
+);
+exports.onKirariPublished = onDocumentUpdated(
+  "kirari/{reelId}",
+  notificationTriggers.kirariPublished,
+);
+exports.onKirariComment = onDocumentCreated(
+  "kirari/{reelId}/comments/{commentId}",
+  notificationTriggers.kirariComment,
 );
 exports.unblockUser = onCall(
   { region: "us-central1" },

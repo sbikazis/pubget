@@ -141,7 +141,7 @@ void main() {
 
   test('entity registry maps every canonical path', () {
     final pages = EntityRoutes.pages();
-    expect(pages.keys, containsAll(<String>['/reel', '/audio', '/hashtag']));
+    expect(pages.keys, containsAll(<String>['/reel', '/audio', '/hashtag', '/admin/kirari-moderation']));
     expect(
       pages['/audio']!(<String, String>{'audioId': 'a1'}),
       isA<AudioPage>(),

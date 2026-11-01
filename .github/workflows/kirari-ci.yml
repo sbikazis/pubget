@@ -1,0 +1,137 @@
+name: Kirari CI
+
+on:
+  push:
+    branches: [feat/kirari-system-rebuild]
+    paths:
+      - 'test/**'
+      - 'lib/features/kirari/**'
+      - 'lib/features/reels/**'
+      - 'lib/features/audio/**'
+      - 'lib/features/hashtags/**'
+      - 'lib/features/home/**'
+      - 'lib/features/social/**'
+      - 'lib/features/notifications/**'
+      - 'lib/core/links/**'
+      - 'lib/app/**'
+      - 'functions/**'
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'storage.rules'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'firebase.json'
+      - '.github/workflows/kirari-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'test/**'
+      - 'lib/features/kirari/**'
+      - 'lib/features/reels/**'
+      - 'lib/features/audio/**'
+      - 'lib/features/hashtags/**'
+      - 'lib/features/home/**'
+      - 'lib/features/social/**'
+      - 'lib/features/notifications/**'
+      - 'lib/core/links/**'
+      - 'lib/app/**'
+      - 'functions/**'
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'storage.rules'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'firebase.json'
+      - '.github/workflows/kirari-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kirari-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    name: Flutter analyze, tests and Android debug build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve packages
+        run: flutter pub get
+      - name: Full repository analyze (baseline)
+        id: full_analyze
+        run: flutter analyze
+        continue-on-error: true
+      - name: Analyze Kirari and touched integration surfaces
+        run: >-
+          flutter analyze --no-fatal-infos
+          lib/features/kirari
+          lib/features/audio/screens/audio_page.dart
+          lib/features/home/screens/home_page.dart
+          lib/features/social/screens/profile_page.dart
+          lib/app/pubget_app.dart
+          lib/app/entity_routes.dart
+          lib/core/links/pubget_deep_link.dart
+          test/reel_entity_surfaces_test.dart
+      - name: Kirari integration tests
+        run: flutter test test/reel_entity_surfaces_test.dart
+      - name: Full Flutter test suite (repository baseline; bounded)
+        run: flutter test
+        timeout-minutes: 10
+        continue-on-error: true
+
+  functions:
+    name: Functions checks and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+      - name: Syntax and wiring checks
+        working-directory: functions
+        run: npm run check
+      - name: Functions unit tests
+        working-directory: functions
+        run: npm test
+
+  firebase-rules:
+    name: Firestore and Storage emulator rules tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+      - name: Kirari Firestore rules tests
+        working-directory: functions
+        run: npx firebase --config ../firebase.json emulators:exec --only firestore --project demo-pubget-security "node --test --test-name-pattern=Kirari test/firestore.rules.test.js"
+      - name: Full Firestore rules suite (repository baseline)
+        working-directory: functions
+        run: npx firebase --config ../firebase.json emulators:exec --only firestore --project demo-pubget-security "npm run test:rules"
+        continue-on-error: true
+      - name: Storage rules tests
+        if: always()
+        timeout-minutes: 5
+        working-directory: functions
+        run: npx firebase --config ../firebase.json emulators:exec --only firestore,storage --project demo-pubget-security "npm run test:storage-rules"
