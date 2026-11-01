@@ -1,6 +1,8 @@
 name: Validate Flutter Builds
 
 on:
+  push:
+    branches: [ fix/chat-groups-build-stabilization ]
   pull_request:
     branches: [ main ]
     paths:
