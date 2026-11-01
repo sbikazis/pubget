@@ -105,6 +105,109 @@ test("editor settings are bounded and unsafe filter values fall back to original
   });
 });
 
+test("audio catalog returns only approved reusable tracks with a bounded page size", async () => {
+  const filters = [];
+  let requestedLimit = 0;
+  const docs = [{
+    id: "theme_1",
+    data: () => ({
+      title: "Opening theme", artist: "Artist", license: "CC BY 4.0",
+      attribution: "Artist / label", audioPath: "kirari-audio/theme_1/audio.mp3",
+      status: "approved", allowReuse: true,
+    }),
+  }];
+  const query = {
+    where(field, operator, value) { filters.push([field, operator, value]); return this; },
+    orderBy(field, direction) { filters.push([field, direction]); return this; },
+    limit(value) { requestedLimit = value; return this; },
+    async get() { return { docs }; },
+  };
+  const domain = createKirariDomain({
+    db: { collection: () => query },
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+    bucket: {},
+  });
+  const result = await domain.getAudioLibrary({
+    auth: { uid: "viewer" }, data: { limit: 500 },
+  });
+  assert.equal(requestedLimit, 50);
+  assert.deepEqual(filters.slice(0, 2), [
+    ["status", "==", "approved"],
+    ["allowReuse", "==", true],
+  ]);
+  assert.equal(result.items[0].id, "theme_1");
+});
+
+test("audio publishing requires explicit reuse approval and preserves attribution", async () => {
+  let saved = null;
+  const domain = createKirariDomain({
+    db: {
+      collection: () => ({
+        doc: () => ({
+          set: async (data) => { saved = data; },
+        }),
+      }),
+    },
+    FieldValue: { serverTimestamp: () => "server-time" },
+    HttpsError: TestHttpsError,
+    bucket: {
+      file: (path) => ({
+        getMetadata: async () => [{
+          size: "2048",
+          contentType: path.endsWith(".mp3") ? "audio/mpeg" : "application/octet-stream",
+        }],
+      }),
+    },
+  });
+  const result = await domain.publishAudioTrack({
+    auth: { uid: "admin", token: { admin: true } },
+    data: {
+      audioId: "theme_1", title: "Opening theme", artist: "Artist",
+      license: "CC BY 4.0", attribution: "Artist / label",
+      creatorId: "source_creator",
+      audioPath: "kirari-audio/theme_1/audio.mp3",
+      approved: true, allowReuse: true,
+    },
+  });
+  assert.deepEqual(result, { ok: true, audioId: "theme_1" });
+  assert.equal(saved.status, "approved");
+  assert.equal(saved.allowReuse, true);
+  assert.equal(saved.license, "CC BY 4.0");
+  assert.equal(saved.attribution, "Artist / label");
+  assert.equal(saved.creatorId, "source_creator");
+});
+
+test("audio publishing rejects missing rights approval and oversized files", async () => {
+  const makeDomain = (size) => createKirariDomain({
+    db: { collection() { throw new Error("database must not be written"); } },
+    FieldValue: { serverTimestamp: () => "server-time" },
+    HttpsError: TestHttpsError,
+    bucket: { file: () => ({
+      getMetadata: async () => [{ size: String(size), contentType: "audio/mpeg" }],
+    }) },
+  });
+  const request = {
+    auth: { uid: "admin", token: { admin: true } },
+    data: {
+      audioId: "theme_1", title: "Opening theme", artist: "Artist",
+      license: "CC BY 4.0", attribution: "Artist / label",
+      audioPath: "kirari-audio/theme_1/audio.mp3",
+      approved: true, allowReuse: true,
+    },
+  };
+  await assert.rejects(
+    makeDomain(1024).publishAudioTrack({
+      ...request, data: { ...request.data, approved: false },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+  await assert.rejects(
+    makeDomain(26 * 1024 * 1024).publishAudioTrack(request),
+    (error) => error.code === "invalid-argument",
+  );
+});
+
 test("admin moderation and audio catalog endpoints require the admin claim", async () => {
   const domain = createKirariDomain({
     db: { collection() { throw new Error("database must not be touched"); } },
