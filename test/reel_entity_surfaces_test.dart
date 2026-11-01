@@ -1,3 +1,4 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -228,7 +229,17 @@ void main() {
     final repository = FakeEditsRepository()
       ..getEditFailure = const NotFoundError('Reel not found.');
 
-    await pumpRoute(tester, repository, '/reel/nope');
+    await pumpRoute(
+      tester,
+      repository,
+      '/reel/nope',
+      kirariRepository: _FakeKirariRepository(
+        reelFailure: FirebaseFunctionsException(
+          code: 'not-found',
+          message: 'Kirari video not found.',
+        ),
+      ),
+    );
 
     expect(find.text('This Reel is not available'), findsOneWidget);
   });
@@ -236,11 +247,21 @@ void main() {
 
 
 class _FakeKirariRepository extends Fake implements KirariRepository {
-  _FakeKirariRepository({this.audioReels = const <KirariReel>[]});
+  _FakeKirariRepository({
+    this.audioReels = const <KirariReel>[],
+    this.reelFailure,
+  });
 
   final List<KirariReel> audioReels;
+  final Object? reelFailure;
 
   @override
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24}) async =>
       audioReels;
+
+  @override
+  Future<KirariReel> getReel(String reelId) async {
+    if (reelFailure != null) throw reelFailure!;
+    throw StateError('No reel fixture configured for $reelId.');
+  }
 }
