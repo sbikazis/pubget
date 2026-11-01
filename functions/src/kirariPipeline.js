@@ -130,7 +130,7 @@ function createKirariPipeline({ db, bucket }) {
   return async (event) => {
     const object = event.data || event;
     const objectName = object.name || "";
-    const match = /^kirari\\/([^/]+)\\/([^/]+)\\/source\\.mp4$/.exec(objectName);
+    const match = /^kirari\/([^/]+)\/([^/]+)\/source\.mp4$/.exec(objectName);
     if (!match || !object.bucket || object.bucket !== bucket.name) return null;
     const [, uid, reelId] = match;
     const ref = db.collection("kirari").doc(reelId);
