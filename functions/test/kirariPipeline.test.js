@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { renditionArgs, editorVideoFilter, outputDurationSeconds } = require("../src/kirariPipeline");
+const { renditionArgs, editorVideoFilter, outputDurationSeconds, buildAudioAttribution } = require("../src/kirariPipeline");
 
 test("Kirari rendition ladder always outputs vertical 9:16 dimensions", () => {
   const expected = new Map([[360, 202], [540, 302], [720, 404]]);
@@ -33,4 +33,23 @@ test("Kirari speed changes preserve the selected source interval", () => {
   assert.equal(outputDurationSeconds(12, 1), 12);
   assert.equal(outputDurationSeconds(12, 2), 6);
   assert.equal(outputDurationSeconds(12, 9), 6);
+});
+
+
+test("Kirari reel attribution preserves the license and required credit text", () => {
+  assert.deepEqual(buildAudioAttribution("track-1", {
+    title: "Opening Theme",
+    artist: "Creator",
+    license: "CC BY 4.0",
+    attribution: "Music by Creator, used under CC BY 4.0",
+    creatorId: "creator-1",
+  }), {
+    audioId: "track-1",
+    title: "Opening Theme",
+    artist: "Creator",
+    license: "CC BY 4.0",
+    attribution: "Music by Creator, used under CC BY 4.0",
+    sourceCreatorId: "creator-1",
+  });
+  assert.equal(buildAudioAttribution(null, { title: "unused" }), null);
 });
