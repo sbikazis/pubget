@@ -209,12 +209,13 @@ class _AudioPageState extends State<AudioPage> {
             final title = attribution['title'] as String? ?? '';
             final artist = attribution['artist'] as String? ?? '';
             final license = attribution['license'] as String? ?? '';
+            final credit = attribution['attribution'] as String? ?? '';
             final sourceCreatorId = attribution['sourceCreatorId'] as String?;
             return ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.verified_outlined),
               title: Text(title.isEmpty ? KirariCopy.of(context).originalAudio : title),
-              subtitle: Text([artist, license].where((value) => value.isNotEmpty).join(' · ')),
+              subtitle: Text([artist, license, credit].where((value) => value.isNotEmpty).join(' · ')),
               onTap: sourceCreatorId == null
                   ? null
                   : () => AppNavigation.go(context, PubgetLinks.profilePath(sourceCreatorId)),
