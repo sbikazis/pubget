@@ -86,7 +86,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       final controller = VideoPlayerController.file(file);
       await controller.initialize();
       await controller.setLooping(true);
-      controller!.addListener(_previewLoop);
+      controller.addListener(_previewLoop);
       final seconds = controller.value.duration.inMilliseconds / 1000;
       if (!mounted) {
         await controller.dispose();
