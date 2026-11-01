@@ -126,6 +126,50 @@ class _AudioPageState extends State<AudioPage> {
                     runSpacing: AppSpacing.sm,
                     children: <Widget>[
                       for (final reel in _reels) ReelThumbnailTile(edit: reel),
+                      for (final reel in _kirariReels)
+                        InkWell(
+                          key: ValueKey('kirari-audio-${reel.id}'),
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => AppNavigation.go(
+                            context,
+                            PubgetLinks.reelPath(reel.id),
+                          ),
+                          child: SizedBox(
+                            width: 112,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: AspectRatio(
+                                    aspectRatio: 9 / 16,
+                                    child: reel.coverUrl.isEmpty
+                                        ? const ColoredBox(
+                                            color: Colors.black12,
+                                            child: Icon(Icons.movie_outlined),
+                                          )
+                                        : Image.network(
+                                            reel.coverUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) =>
+                                                const ColoredBox(
+                                              color: Colors.black12,
+                                              child: Icon(Icons.movie_outlined),
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  reel.caption.isEmpty ? KirariCopy.of(context).title : reel.caption,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ],
@@ -154,7 +198,7 @@ class _AudioPageState extends State<AudioPage> {
         const SizedBox(height: AppSpacing.sm),
         ReelChip(
           key: const Key('audio-usage'),
-          label: copy.usedInReels(_reels.length),
+          label: copy.usedInReels(_reels.length + _kirariReels.length),
           icon: Icons.movie_outlined,
           highlighted: true,
         ),
