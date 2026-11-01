@@ -1,6 +1,26 @@
 name: Kirari CI
 
 on:
+  push:
+    branches: [feat/kirari-system-rebuild]
+    paths:
+      - 'lib/features/kirari/**'
+      - 'lib/features/reels/**'
+      - 'lib/features/audio/**'
+      - 'lib/features/hashtags/**'
+      - 'lib/features/home/**'
+      - 'lib/features/social/**'
+      - 'lib/features/notifications/**'
+      - 'lib/core/links/**'
+      - 'lib/app/**'
+      - 'functions/**'
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'storage.rules'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'firebase.json'
+      - '.github/workflows/kirari-ci.yml'
   pull_request:
     branches: [main]
     paths:
@@ -10,6 +30,8 @@ on:
       - 'lib/features/hashtags/**'
       - 'lib/features/home/**'
       - 'lib/features/social/**'
+      - 'lib/features/notifications/**'
+      - 'lib/core/links/**'
       - 'lib/app/**'
       - 'functions/**'
       - 'firestore.rules'
