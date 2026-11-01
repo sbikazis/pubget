@@ -591,6 +591,12 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                               return ListTile(
                                 title: Text(deleted ? 'Comment removed' : item['text'] as String? ?? ''),
                                 subtitle: Text('@' + authorId),
+                                onTap: deleted || authorId.isEmpty
+                                    ? null
+                                    : () => AppNavigation.go(
+                                          context,
+                                          PubgetLinks.profilePath(authorId),
+                                        ),
                                 trailing: deleted ? null : Wrap(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
