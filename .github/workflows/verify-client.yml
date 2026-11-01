@@ -1,0 +1,47 @@
+name: Verify Client
+
+# Gate for the Flutter client: analyzer + full test suite on every
+# push and PR. Deploys must not be the first place a breakage surfaces.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          # Keep in lockstep with build.yml — the pinned pdfrx_engine
+          # 0.1.13 rejects newer Dart compilers.
+          flutter-version: '3.32.8'
+          channel: 'stable'
+          cache: true
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      # Goldens are rasterized per-platform: the committed PNGs were produced
+      # on macOS, so this Linux runner renders text differently and the
+      # comparison fails. Match ci.yml — exclude the `golden` tag here and
+      # run those locally on macOS.
+      - name: Test
+        run: flutter test --exclude-tags golden

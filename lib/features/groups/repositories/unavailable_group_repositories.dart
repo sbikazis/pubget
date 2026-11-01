@@ -187,7 +187,7 @@ final class UnavailableRoleplayRepository implements RoleplayRepository {
     required String characterKey,
   }) async => _fail();
   @override
-  Future<Result<List<RoleplayCharacter>>> getAvailableCharacters(
+  Future<Result<RoleplayGroupContext>> roleplayContext(
     String groupId,
   ) async => _fail();
 }

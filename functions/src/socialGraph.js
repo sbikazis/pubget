@@ -254,6 +254,38 @@ function createSocialGraph({ db, FieldValue, HttpsError, achievements }) {
     return { ok: true, ...outcome };
   }
 
+  async function cancelFriendRequest(request) {
+    const uid = authenticated(request);
+    const otherUserId = targetFrom(request, "otherUserId");
+    preventSelf(uid, otherUserId);
+    const relationRef = db.collection("friendships").doc(pairId(uid, otherUserId));
+    const legacyRef = db.collection("friendships")
+      .doc(legacyPairId(uid, otherUserId));
+    await db.runTransaction(async (transaction) => {
+      const [relation, legacy] = await Promise.all([
+        transaction.get(relationRef),
+        transaction.get(legacyRef),
+      ]);
+      const [userA, userB] = [uid, otherUserId].sort();
+      const matchingLegacy = legacy.exists &&
+          matchesLegacyFriendship(legacy.data(), userA, userB)
+        ? legacy
+        : null;
+      const existing = relation.exists ? relation : matchingLegacy;
+      if (!existing || !existing.exists ||
+          existing.data().status !== "pending" ||
+          existing.data().requestedBy !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          "Only the requester can cancel this friend request.",
+        );
+      }
+      transaction.delete(relationRef);
+      if (matchingLegacy) transaction.delete(legacyRef);
+    });
+    return { ok: true };
+  }
+
   async function respondToFriendRequest(request) {
     const uid = authenticated(request);
     const otherUserId = targetFrom(request, "otherUserId");
@@ -435,6 +467,7 @@ function createSocialGraph({ db, FieldValue, HttpsError, achievements }) {
   return {
     giveRespect,
     sendFriendRequest,
+    cancelFriendRequest,
     respondToFriendRequest,
     removeFriend,
     blockUser,

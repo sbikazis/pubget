@@ -3,6 +3,15 @@ import 'package:flutter/material.dart';
 /// Official Pubget torii mark (user-supplied brand asset).
 abstract final class PubgetLogo {
   static const asset = 'assets/branding/pubget_torii.png';
+
+  /// The same torii artwork with the background removed.
+  ///
+  /// [asset] is the full-bleed artwork: the torii is painted onto a purple
+  /// square, so using it in chrome paints a square where a mark belongs. This
+  /// is byte-identical to the launcher / notification artwork the app already
+  /// ships, so the shape, palette and proportions are the user's own — nothing
+  /// here is redrawn, recoloured or cropped.
+  static const mark = 'assets/branding/pubget_torii_mark.png';
   static const settingsAsset = 'assets/branding/pubget_settings.png';
   static const coinAsset = 'assets/branding/pubget_coin.png';
 }
@@ -23,7 +32,7 @@ class PubgetLogoMark extends StatelessWidget {
       label: semanticLabel,
       image: true,
       child: Image.asset(
-        PubgetLogo.asset,
+        PubgetLogo.mark,
         width: size,
         height: size,
         fit: BoxFit.contain,

@@ -40,4 +40,8 @@ final class UnavailableEconomyRepository implements EconomyRepository {
 
   @override
   Future<Result<void>> claimReferral() async => FailureResult(_failure);
+
+  @override
+  Future<Result<PremiumEntitlement>> redeemPremiumCode(String code) async =>
+      FailureResult(_failure);
 }

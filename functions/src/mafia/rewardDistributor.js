@@ -11,7 +11,7 @@ const { HttpsError } = require("firebase-functions/v2/https");
 const { createEconomyDomain } = require("../economyDomain");
 const { createAchievementsDomain } = require("../achievementsDomain");
 
-const db = admin.firestore();
+const db = require("../lazyAdmin").firestore;
 
 let economy;
 function economyService() {

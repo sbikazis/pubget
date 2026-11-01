@@ -9,6 +9,11 @@ abstract interface class ChatRepository {
     int limit = 40,
   });
 
+  Future<Result<List<ChatMessage>>> getRecentMessages({
+    required String groupId,
+    int limit = 40,
+  });
+
   Future<Result<List<ChatMessage>>> getOlderMessages({
     required String groupId,
     required ChatMessage before,
@@ -89,5 +94,13 @@ abstract interface class ChatRepository {
     required String contentType,
     required void Function(double progress) onProgress,
     void Function()? onBytesUploaded,
+  });
+
+  /// Returns the already-prepared media doc when a previous attempt produced
+  /// ready output (e.g. the client timed out waiting in [uploadMedia]), so
+  /// retries skip re-uploading bytes. Returns null when no ready doc exists.
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
   });
 }

@@ -4,10 +4,12 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/media/image_dimensions.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../models/chat_models.dart';
 import '../repositories/chat_repository.dart';
+import '../services/chat_pending_mutations.dart';
 import '../services/chat_send_reliability.dart';
 import '../services/pending_chat_outbox.dart';
 
@@ -38,6 +40,8 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
   final Map<String, int> _autoRetryAttempt = <String, int>{};
   final Map<String, Timer> _autoRetryTimers = <String, Timer>{};
   final Set<String> _autoRetryInFlight = <String>{};
+  /// Reaction toggles and deletes applied on the device and not yet answered.
+  final ChatPendingMutations _pending = ChatPendingMutations();
   StreamSubscription<Result<List<ChatMessage>>>? _subscription;
   LoadingState _state = LoadingState.initial;
   Failure? _failure;
@@ -106,13 +110,13 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     _subscription = null;
     unawaited(oldSubscription?.cancel());
     _cancelAllAutoRetries();
+    _pending.clear();
     _groupId = groupId;
     _currentUserId = currentUserId;
     _messages.clear();
     _messageIndex.clear();
     _deliveredMessageIds.clear();
     _readMessageIds.clear();
-    _pendingReadIds.clear();
     _pendingReadIds.clear();
     _hasMore = true;
     _loadingMore = false;
@@ -138,7 +142,12 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
   }
 
   /// Detach the live session while durable uploads/outbox entries continue.
-  Future<void> leaveGroup() async {
+  ///
+  /// When [groupId] is provided this only detaches if the caller still owns the
+  /// active session. This prevents a stacked/hidden chat page (whose dispose
+  /// runs on pop) from tearing down another page's session.
+  Future<void> leaveGroup({String? groupId}) async {
+    if (groupId != null && _groupId != groupId) return;
     final generation = ++_sessionGeneration;
     final subscription = _subscription;
     _subscription = null;
@@ -146,9 +155,11 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     if (generation != _sessionGeneration) return;
     _cancelAllAutoRetries();
     _pendingReadIds.clear();
+    _pending.clear();
     _groupId = null;
     _currentUserId = null;
     _replyTarget = null;
+    _failure = null;
   }
 
   Future<void> loadMore() async {
@@ -344,6 +355,11 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
       type: type,
       text: null,
       mediaId: mediaId,
+      // Measure from the header so the bubble is laid out at its true shape from
+      // the first frame. Guessing a ratio here and correcting it when the server
+      // answers is what made sent images visibly resize and shove the list.
+      mediaWidth: _localMediaSize(bytes, type)?.width,
+      mediaHeight: _localMediaSize(bytes, type)?.height,
       replyToMessageId: replyId,
       replyPreview: replyPreview,
     );
@@ -366,6 +382,17 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     }
     unawaited(_persistPending(pending, groupId: groupId));
     await _performMediaUpload(mediaId, generation: generation);
+  }
+
+  /// Intrinsic size of locally picked bytes, or null when it is not a raster
+  /// image or the header cannot be read (e.g. HEIC on iOS).
+  ({int width, int height})? _localMediaSize(Uint8List bytes, ChatMessageType type) {
+    if (type != ChatMessageType.image && type != ChatMessageType.gif) return null;
+    try {
+      return readImageDimensions(bytes);
+    } catch (_) {
+      return null;
+    }
   }
 
   void _beginLocalMediaPreview(String mediaId, Uint8List bytes) {
@@ -415,6 +442,18 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     final payload = _pendingUploads[mediaId];
     if (payload == null) return;
     if (!_isSession(payload.groupId, generation)) return;
+    // A previous attempt may already have produced a ready media doc (e.g. the
+    // client timed out inside uploadMedia while the server kept processing).
+    // Reuse it instead of re-uploading the raw bytes.
+    final existing = await _repository.findReadyMedia(
+      groupId: payload.groupId,
+      mediaId: mediaId,
+    );
+    if (_disposed) return;
+    if (existing.isSuccess && existing.valueOrNull != null) {
+      await _completeMediaSend(mediaId, existing.valueOrNull!, payload, generation);
+      return;
+    }
     _setUploadProgress(mediaId, 0);
     final upload = await _repository.uploadMedia(
       groupId: payload.groupId,
@@ -436,43 +475,7 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     if (_disposed) return;
     upload.fold(
       onSuccess: (media) async {
-        final type = payload.forceType ?? media.type;
-        final pending = ChatMessage.optimistic(
-          id: mediaId,
-          senderId: payload.senderId,
-          senderName: payload.senderName,
-          senderAvatar: payload.senderAvatar,
-          senderRole: payload.senderRole,
-          type: type,
-          text: null,
-          mediaUrl: media.mediaUrl,
-          thumbnailUrl: media.thumbnailUrl,
-          mediaId: media.mediaId,
-          stickerCreatorId: payload.stickerCreatorId,
-          stickerCreatorName: payload.stickerCreatorName,
-          replyToMessageId: payload.replyToMessageId,
-          replyPreview: payload.replyPreview,
-        );
-        // Drop progress overlay; keep local bytes as AppImageLoader placeholder
-        // until the remote frame paints (avoids empty-bubble flicker).
-        final isActiveGroup = _isSession(payload.groupId, generation);
-        _clearUploadUi(mediaId, clearPreview: false);
-        if (isActiveGroup) _upsert(pending);
-        unawaited(_persistPending(pending, groupId: payload.groupId));
-        final result = await _repository.sendMessage(
-          groupId: payload.groupId,
-          messageId: mediaId,
-          type: type,
-          mediaUrl: media.mediaUrl,
-          thumbnailUrl: media.thumbnailUrl,
-          mediaId: media.mediaId,
-          replyToMessageId: pending.replyToMessageId,
-          stickerCreatorId: payload.stickerCreatorId,
-          stickerCreatorName: payload.stickerCreatorName,
-        );
-        if (result.isSuccess) clearReplyTarget();
-        _finishSendForGroup(mediaId, result, payload.groupId, generation);
-        if (result.isSuccess) _pendingUploads.remove(mediaId);
+        await _completeMediaSend(mediaId, media, payload, generation);
       },
       onFailure: (failure) {
         // Keep local preview so failed/retry bubbles stay visible.
@@ -503,12 +506,64 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     );
   }
 
+  Future<void> _completeMediaSend(
+    String mediaId,
+    ChatMediaUpload media,
+    _PendingMediaUpload payload,
+    int generation,
+  ) async {
+    final type = payload.forceType ?? media.type;
+    final pending = ChatMessage.optimistic(
+      id: mediaId,
+      senderId: payload.senderId,
+      senderName: payload.senderName,
+      senderAvatar: payload.senderAvatar,
+      senderRole: payload.senderRole,
+      type: type,
+      text: null,
+      mediaUrl: media.mediaUrl,
+      thumbnailUrl: media.thumbnailUrl,
+      mediaId: media.mediaId,
+      // Server-measured dimensions win: they cover the formats the local header
+      // reader does not understand (HEIC/HEIF on iOS).
+      mediaWidth: media.width ?? _localMediaSize(payload.bytes, type)?.width,
+      mediaHeight: media.height ?? _localMediaSize(payload.bytes, type)?.height,
+      stickerCreatorId: payload.stickerCreatorId,
+      stickerCreatorName: payload.stickerCreatorName,
+      replyToMessageId: payload.replyToMessageId,
+      replyPreview: payload.replyPreview,
+    );
+    // Drop progress overlay; keep local bytes as AppImageLoader placeholder
+    // until the remote frame paints (avoids empty-bubble flicker).
+    final isActiveGroup = _isSession(payload.groupId, generation);
+    _clearUploadUi(mediaId, clearPreview: false);
+    if (isActiveGroup) _upsert(pending);
+    unawaited(_persistPending(pending, groupId: payload.groupId));
+    final result = await _repository.sendMessage(
+      groupId: payload.groupId,
+      messageId: mediaId,
+      type: type,
+      mediaUrl: media.mediaUrl,
+      thumbnailUrl: media.thumbnailUrl,
+      mediaId: media.mediaId,
+      replyToMessageId: pending.replyToMessageId,
+      stickerCreatorId: payload.stickerCreatorId,
+      stickerCreatorName: payload.stickerCreatorName,
+    );
+    if (result.isSuccess) clearReplyTarget();
+    _finishSendForGroup(mediaId, result, payload.groupId, generation);
+    if (result.isSuccess) _pendingUploads.remove(mediaId);
+  }
+
   Future<void> retry(ChatMessage message) async {
     if (message.isDeleted) return;
     if (message.sendState != ChatSendState.failed &&
         message.sendState != ChatSendState.pending) {
       return;
     }
+    // Never race an in-flight automatic retry for the same messageId —
+    // both would send the same id and duplicate the server write.
+    if (_autoRetryInFlight.contains(message.id)) return;
     final groupId = _groupId;
     final generation = _sessionGeneration;
     if (groupId == null) return;
@@ -595,6 +650,9 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     _messageIndex.remove(messageId);
     _reindexFrom(index);
     _pendingUploads.remove(messageId);
+    // The chrome Selector rebuilds on the revision only, so a removal that
+    // skipped it left the failed bubble on screen.
+    _contentRevision++;
     final groupId = _groupId;
     if (groupId != null) {
       unawaited(_outbox.remove(groupId, messageId));
@@ -604,13 +662,100 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
 
   Future<Result<void>> deleteMessage(String messageId) async {
     final groupId = _groupId;
+    final generation = _sessionGeneration;
     if (groupId == null) return const FailureResult(UnknownError());
+    // The bubble goes on the confirmation tap, not on the server's answer: the
+    // round trip is the whole delay the user was feeling. The server keeps a
+    // tombstone rather than removing the document, so the watch stream confirms
+    // the same state idempotently instead of bringing the message back.
+    final before = messageById(messageId);
+    final stamp = DateTime.now();
+    final tombstoned = before != null && !before.isDeleted
+        ? _applyDeleted(messageId, stamp)
+        : null;
     final result = await _repository.deleteMessage(
       groupId: groupId,
       messageId: messageId,
     );
-    if (result.isSuccess) _removeOrMarkDeleted(messageId);
+    if (result.isSuccess) return result;
+    if (!_isSession(groupId, generation)) return result;
+    _pending.confirmDelete(messageId);
+    // Put the message back the way the server last described it, unless the
+    // stream already answered with something newer than this attempt.
+    if (tombstoned != null) {
+      final current = messageById(messageId);
+      if (current != null && current.deletedAt == stamp) {
+        _replaceMessage(messageId, before!);
+      }
+    }
     return result;
+  }
+
+  Future<Result<void>> addReaction(String messageId, String reaction) async {
+    final groupId = _groupId;
+    final uid = _currentUserId;
+    final generation = _sessionGeneration;
+    if (groupId == null || uid == null || uid.isEmpty) {
+      return const FailureResult(UnknownError());
+    }
+    // The server toggles, so the direction comes from the last answer it gave
+    // in `reactionUsers`. A second tap while the first is on the wire is
+    // dropped rather than toggled twice into the opposite state.
+    if (_pending.reactionInFlight(messageId, reaction)) {
+      return const Success(null);
+    }
+    final before = messageById(messageId);
+    if (before == null || before.isDeleted) {
+      return const FailureResult(UnknownError());
+    }
+    final optimistic = before.withReactionToggled(reaction, uid);
+    _pending.expectReaction(messageId, reaction, optimistic);
+    _replaceMessage(messageId, optimistic);
+    final result = await _repository.addReaction(
+      groupId: groupId,
+      messageId: messageId,
+      reaction: reaction,
+    );
+    if (result.isSuccess || !_isSession(groupId, generation)) return result;
+    _pending.confirmReaction(messageId, reaction);
+    // The call failed, so the emoji goes back to what the server last said —
+    // unless the stream has already described this message since, in which case
+    // that answer is newer than this attempt and stays.
+    final current = messageById(messageId);
+    if (current != null &&
+        current.reactions[reaction] == optimistic.reactions[reaction] &&
+        current.hasReacted(reaction, uid) == optimistic.hasReacted(reaction, uid)) {
+      _replaceMessage(messageId, before);
+    }
+    return result;
+  }
+
+  /// Writes a local answer over a message the server has already described.
+  ///
+  /// The revision moves with it: both chat lists memoise their rows against
+  /// [contentRevision], so a patch without it leaves the previous bubble
+  /// painting.
+  void _replaceMessage(String messageId, ChatMessage message) {
+    final index = _messageIndex[messageId];
+    if (index == null) return;
+    _messages[index] = message;
+    _contentRevision++;
+    notifyListeners();
+  }
+
+  /// Applies the tombstone a confirmed delete shows immediately.
+  ChatMessage? _applyDeleted(String messageId, DateTime stamp) {
+    final index = _messageIndex[messageId];
+    if (index == null) return null;
+    final tombstoned = _messages[index].copyWith(
+      sendState: ChatSendState.sent,
+      deletedAt: stamp,
+    );
+    _messages[index] = tombstoned;
+    _pending.expectDelete(messageId, stamp);
+    _contentRevision++;
+    notifyListeners();
+    return tombstoned;
   }
 
   Future<Result<ChatMessage>> editMessage({
@@ -642,18 +787,6 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     );
   }
 
-  Future<Result<void>> addReaction(String messageId, String reaction) {
-    final groupId = _groupId;
-    if (groupId == null) {
-      return Future.value(const FailureResult(UnknownError()));
-    }
-    return _repository.addReaction(
-      groupId: groupId,
-      messageId: messageId,
-      reaction: reaction,
-    );
-  }
-
   Future<void> markAsRead(List<ChatMessage> visibleMessages) async {
     final groupId = _groupId;
     final uid = _currentUserId;
@@ -661,14 +794,14 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     if (groupId == null || uid == null) return;
     _pendingReadIds.addAll(
       visibleMessages
-        .where(
-          (message) =>
-              message.senderId != uid &&
-              !message.isOptimistic &&
-              !_readMessageIds.contains(message.id),
-        )
-        .map((message) => message.id)
-        .toList(),
+          .where(
+            (message) =>
+                message.senderId != uid &&
+                !message.isOptimistic &&
+                !_readMessageIds.contains(message.id),
+          )
+          .map((message) => message.id)
+          .toList(),
     );
     await _drainReadReceipts(groupId: groupId, generation: generation);
   }
@@ -763,12 +896,16 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
         }
         // Keep local createdAt so serverTimestamp reconcile does not reshuffle
         // the bubble and yank the scroll position.
-        final reconciled = local.createdAt != null
+        var reconciled = local.createdAt != null
             ? message.copyWith(
                 createdAt: local.createdAt,
                 sendState: ChatSendState.sent,
               )
             : message.copyWith(sendState: ChatSendState.sent);
+        // A reaction or a delete this device has already shown stays on top
+        // until the server's own copy catches up, so a snapshot that predates
+        // the commit cannot make the emoji or the deleted bubble blink back.
+        reconciled = _pending.overlay(message.id, reconciled);
         _clearUploadUi(message.id);
         _replaceOrdered(index, reconciled);
         continue;
@@ -846,7 +983,10 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     result.fold(
       onSuccess: (message) {
         _cancelAutoRetry(id);
-        _clearUploadUi(id);
+        // Keep the local preview bytes until the watching stream reconciles the
+        // server document (that paint already has the remote frame). Clearing
+        // them here caused a white flash on successful media sends.
+        _clearUploadUi(id, clearPreview: false);
         final groupId = _groupId;
         if (groupId != null) {
           unawaited(_outbox.remove(groupId, id));
@@ -950,6 +1090,9 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
           sendState: ChatSendState.failed,
           failureMessage: ChatFailureCodes.network,
         );
+        // Bump the chrome revision so the Selector slice changes and the
+        // pending->failed flip actually repaints (previously it didn't).
+        _contentRevision++;
         _safeNotify();
       }
       return;
@@ -976,6 +1119,7 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
           sendState: ChatSendState.failed,
           failureMessage: ChatFailureCodes.network,
         );
+        _contentRevision++;
         _safeNotify();
       }
       return;
@@ -1033,17 +1177,6 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
 
   bool _isSession(String groupId, int generation) =>
       !_disposed && _sessionGeneration == generation && _groupId == groupId;
-
-  void _removeOrMarkDeleted(String messageId) {
-    final index = _messageIndex[messageId];
-    if (index != null) {
-      _messages[index] = _messages[index].copyWith(
-        sendState: ChatSendState.sent,
-        deletedAt: DateTime.now(),
-      );
-      notifyListeners();
-    }
-  }
 
   String? _previewFor(ChatMessage? message) {
     if (message == null) return null;

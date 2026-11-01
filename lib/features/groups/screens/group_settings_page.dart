@@ -6,6 +6,7 @@ import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
+import '../l10n/group_copy.dart';
 import '../models/group_models.dart';
 import '../providers/group_provider.dart';
 import '../repositories/group_repository.dart';
@@ -62,6 +63,7 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<GroupProvider>();
+    final copy = GroupCopy.of(context);
     final group = provider.group;
     if (group != null && group.id == widget.groupId) {
       _hydrate(group);
@@ -70,22 +72,20 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text('Group settings')),
+        title: Text(copy.settingsTitle)),
       body: PubgetLoadingStateView(
         state: provider.state,
         onRetry: () => _reload(context),
-        empty: const PubgetEmptyState(title: 'Group unavailable'),
+        empty: PubgetEmptyState(title: copy.settingsUnavailable),
         error: PubgetErrorState(
-          message: provider.failure?.message ?? 'Settings could not load.',
+          message: provider.failure?.message ?? copy.settingsLoadFailed,
           onRetry: () => _reload(context),
         ),
         offline: PubgetOfflineState(onRetry: () => _reload(context)),
         child: !allowed
-            ? const PubgetEmptyState(
-                title: 'You cannot manage group settings',
-                message:
-                    'Only MIKADO or a role with manageSettings can '
-                    'edit these fields.',
+            ? PubgetEmptyState(
+                title: copy.settingsNotAllowed,
+                message: copy.settingsNotAllowedMessage,
                 icon: Icons.lock_outline,
               )
             : ListView(
@@ -94,19 +94,19 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
                   PubgetTextField(
                     key: const Key('group-settings-name'),
                     controller: _name,
-                    label: 'Group name',
+                    label: copy.name,
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   PubgetTextArea(
                     key: const Key('group-settings-description'),
                     controller: _description,
-                    label: 'Description',
+                    label: copy.description,
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   PubgetTextArea(
                     key: const Key('group-settings-rules'),
                     controller: _rules,
-                    label: 'Rules',
+                    label: copy.rules,
                     minLines: 5,
                   ),
                   const SizedBox(height: AppSpacing.md),
@@ -125,13 +125,13 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
                       if (value == null) return;
                       setState(() => _joinPolicy = value);
                     },
-                    decoration: const InputDecoration(labelText: 'Join policy'),
+                    decoration: InputDecoration(labelText: copy.joinPolicy),
                   ),
                   SwitchListTile(
                     key: const Key('group-settings-searchable'),
                     value: _isSearchable,
                     onChanged: (value) => setState(() => _isSearchable = value),
-                    title: const Text('Show in search and Discover'),
+                    title: Text(copy.showInSearchToggle),
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   PubgetPrimaryButton(
@@ -139,9 +139,9 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
                     onPressed: provider.state == LoadingState.refreshing
                         ? null
                         : () => _save(provider),
-                    semanticLabel: 'Save group settings',
+                    semanticLabel: copy.saveSettingsSemantic,
                     loading: provider.state == LoadingState.refreshing,
-                    child: const Text('Save settings'),
+                    child: Text(copy.saveSettings),
                   ),
                 ],
               ),

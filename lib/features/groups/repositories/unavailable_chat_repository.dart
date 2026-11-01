@@ -19,6 +19,12 @@ final class UnavailableChatRepository implements ChatRepository {
   }) => Stream<Result<List<ChatMessage>>>.value(_fail());
 
   @override
+  Future<Result<List<ChatMessage>>> getRecentMessages({
+    required String groupId,
+    int limit = 40,
+  }) async => _fail();
+
+  @override
   Future<Result<List<ChatMessage>>> getOlderMessages({
     required String groupId,
     required ChatMessage before,
@@ -110,5 +116,11 @@ final class UnavailableChatRepository implements ChatRepository {
     required String contentType,
     required void Function(double progress) onProgress,
     void Function()? onBytesUploaded,
+  }) async => _fail();
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
   }) async => _fail();
 }

@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/event_models.dart';
 import 'event_repository.dart';
 
@@ -98,14 +100,24 @@ final class FirebaseEventRepository implements EventRepository {
   }
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) => _query(
-    _events
+  Future<Result<List<PubgetEvent>>> getActiveEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) => _guard(() async {
+    var query = _events
         .where('scope', isEqualTo: 'global')
         .where('status', isEqualTo: 'ACTIVE')
         .orderBy('participantsCount', descending: true)
         .orderBy('endAt')
-        .limit(limit),
-  );
+        .limit(limit);
+    if (after != null) {
+      query = query.startAfterDocument(await _events.doc(after.id).get());
+    }
+    final snapshot = await query.get();
+    return snapshot.docs
+        .map((doc) => PubgetEvent.fromMap(doc.data(), id: doc.id))
+        .toList(growable: false);
+  });
 
   @override
   Future<Result<List<PubgetEvent>>> getUpcomingEvents({int limit = 20}) =>
@@ -119,13 +131,23 @@ final class FirebaseEventRepository implements EventRepository {
       );
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) => _query(
-    _events
+  Future<Result<List<PubgetEvent>>> getRecentEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) => _guard(() async {
+    var query = _events
         .where('scope', isEqualTo: 'global')
         .where('status', whereIn: <String>['ENDED', 'ARCHIVED'])
         .orderBy('endAt', descending: true)
-        .limit(limit),
-  );
+        .limit(limit);
+    if (after != null) {
+      query = query.startAfterDocument(await _events.doc(after.id).get());
+    }
+    final snapshot = await query.get();
+    return snapshot.docs
+        .map((doc) => PubgetEvent.fromMap(doc.data(), id: doc.id))
+        .toList(growable: false);
+  });
 
   @override
   Future<Result<List<PubgetEvent>>> getGroupEvents({
@@ -133,7 +155,12 @@ final class FirebaseEventRepository implements EventRepository {
     int limit = 20,
   }) => _query(
     _events
-        .where('groupId', isEqualTo: groupId)
+        .where(
+          Filter.or(
+            Filter('groupId', isEqualTo: groupId),
+            Filter('groupIds', arrayContains: groupId),
+          ),
+        )
         .where('status', whereIn: <String>['ACTIVE', 'ENDED'])
         .orderBy('startAt', descending: true)
         .limit(limit),
@@ -177,6 +204,17 @@ final class FirebaseEventRepository implements EventRepository {
   }
 
   @override
+  Future<Result<List<PubgetEvent>>> getEventsByAnime({
+    required String animeId,
+    int limit = 20,
+  }) => _query(
+    _events
+        .where('animeIds', arrayContains: animeId)
+        .where('status', whereIn: <String>['ACTIVE', 'ENDED'])
+        .limit(limit),
+  );
+
+  @override
   Future<Result<EventResponse?>> getMyResponse({
     required String eventId,
     required String userId,
@@ -186,9 +224,150 @@ final class FirebaseEventRepository implements EventRepository {
         .collection('responses')
         .doc(userId)
         .get();
-    if (!snapshot.exists || snapshot.data() == null) return null;
-    return EventResponse.fromMap(snapshot.data()!, userId: userId);
+    final data = snapshot.data();
+    if (!snapshot.exists || data == null) return null;
+    return EventResponse.fromMap(data, userId: userId);
   });
+
+  @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) => _guard(() async {
+    final snapshot = await _events
+        .doc(eventId)
+        .collection('reactions')
+        .doc(userId)
+        .get();
+    if (!snapshot.exists) return null;
+    final reaction = snapshot.data()?['reaction'];
+    return reaction is String ? reaction : null;
+  });
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() => _guard(() async {
+    final result = await _functions
+        .httpsCallable('getEventCreationQuota')
+        .call(<String, dynamic>{});
+    return EventCreationQuota.fromMap(
+      Map<String, dynamic>.from(result.data as Map),
+    );
+  });
+
+  @override
+  Future<Result<void>> crosspost({
+    required String eventId,
+    List<String> groupIds = const <String>[],
+    bool toGlobal = false,
+  }) => _call('crosspostEvent', {
+    'eventId': eventId,
+    if (toGlobal) 'toGlobal': true,
+    if (groupIds.isNotEmpty) 'groupIds': groupIds,
+  });
+
+  @override
+  Future<Result<EventPreview>> preview({required String eventId}) =>
+      _guard(() async {
+        final result = await _functions
+            .httpsCallable('previewEvent')
+            .call(<String, dynamic>{'eventId': eventId});
+        return EventPreview.fromMap(
+          Map<String, dynamic>.from(result.data as Map),
+        );
+      });
+
+  @override
+  Future<Result<void>> reportEvent({
+    required String eventId,
+    required String category,
+    String detail = '',
+  }) => _call('reportEvent', {
+    'eventId': eventId,
+    'category': category,
+    if (detail.trim().isNotEmpty) 'detail': detail.trim(),
+  });
+
+  @override
+  Future<Result<EventResult>> resolve({
+    required String eventId,
+    String? winnerOptionId,
+    List<String>? winnerIds,
+  }) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('resolveEvent')
+        .call(<String, dynamic>{
+          'eventId': eventId,
+          ...?winnerOptionId == null
+              ? null
+              : <String, dynamic>{'winnerOptionId': winnerOptionId},
+          ...?winnerIds == null || winnerIds.isEmpty
+              ? null
+              : <String, dynamic>{'winnerIds': winnerIds},
+      });
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return EventResult.fromMap(data['result'] is Map
+        ? Map<String, dynamic>.from(data['result'] as Map)
+        : null);
+  });
+
+  @override
+  Future<Result<EventAnalytics>> getAnalytics(String eventId) =>
+      _guard(() async {
+        final result = await _functions
+            .httpsCallable('getEventAnalytics')
+            .call(<String, dynamic>{'eventId': eventId});
+        return EventAnalytics.fromMap(
+          Map<String, dynamic>.from(result.data as Map),
+        );
+      });
+
+  @override
+  Future<Result<String>> addComment({
+    required String eventId,
+    required String text,
+  }) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('addEventComment')
+        .call(<String, dynamic>{'eventId': eventId, 'text': text});
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return data['commentId'] as String? ?? '';
+  });
+
+  @override
+  Future<Result<void>> react({
+    required String eventId,
+    required String reaction,
+  }) => _call('reactToEvent', {
+    'eventId': eventId,
+    'reaction': reaction,
+  });
+
+  @override
+  Stream<Result<List<EventComment>>> watchComments(String eventId) {
+    return _events
+        .doc(eventId)
+        .collection('comments')
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots()
+        .map(
+          (snapshot) => Success<List<EventComment>>(
+            snapshot.docs
+                .where((doc) => doc.data()['deletedAt'] == null)
+                .map(
+                  (doc) => EventComment.fromMap(
+                    doc.data(),
+                    id: doc.id,
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        )
+        .handleError(
+          (Object error) =>
+              FailureResult<List<EventComment>>(_eventFailure(error)),
+        );
+  }
 
   Future<Result<List<PubgetEvent>>> _query(Query<Map<String, dynamic>> query) =>
       _guard(() async {
@@ -205,7 +384,9 @@ final class FirebaseEventRepository implements EventRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(
+        await runWithRetry(action, mapError: _eventFailure),
+      );
     } on Object catch (error) {
       return FailureResult<T>(_eventFailure(error));
     }
@@ -219,18 +400,16 @@ Failure _eventFailure(Object error) {
         error.message ?? "You don't have permission.",
       ),
       'not-found' => NotFoundError(error.message ?? 'Event not found.'),
-      'unavailable' || 'resource-exhausted' => NetworkError(
+      'unavailable' ||
+      'resource-exhausted' ||
+      'deadline-exceeded' => NetworkError(
         error.message ?? 'Check your connection and try again.',
       ),
       'already-exists' => ValidationError(
         error.message ?? 'You already submitted a response.',
       ),
-      _ => ValidationError(error.message ?? 'This event action failed.'),
+      _ => mapFirebaseFailure(error, message: 'This event action failed.'),
     };
   }
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError('Check your connection and try again.');
-  }
-  return UnknownError(error.toString());
+  return mapFirebaseFailure(error);
 }

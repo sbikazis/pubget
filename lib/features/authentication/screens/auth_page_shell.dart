@@ -197,7 +197,9 @@ class AuthBackButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PubgetIconButton(
-      icon: Icons.arrow_back,
+      icon: Directionality.of(context) == TextDirection.rtl
+          ? Icons.arrow_forward
+          : Icons.arrow_back,
       tooltip: tooltip ?? AppStrings.of(context).back,
       onPressed: onPressed,
     );

@@ -164,7 +164,9 @@ class _PrimaryBar extends StatelessWidget {
                   ),
                   if (queueCount > 1)
                     Padding(
-                      padding: const EdgeInsets.only(right: AppSpacing.sm),
+                      padding: const EdgeInsetsDirectional.only(
+                        end: AppSpacing.sm,
+                      ),
                       child: Text(
                         copy.queueCount(queueCount),
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(

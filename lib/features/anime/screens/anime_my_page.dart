@@ -15,6 +15,7 @@ import '../models/anime_models.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_library_provider.dart';
 import '../widgets/anime_widgets.dart';
+import 'anime_custom_list_page.dart';
 
 class AnimeMyPage extends StatefulWidget {
   const AnimeMyPage({this.userId, super.key});
@@ -54,13 +55,13 @@ class _AnimeMyPageState extends State<AnimeMyPage> {
                 ? AnimeCopy.of(context).myAnimeTitle
                 : AnimeCopy.of(context).theirAnimeTitle,
           ),
-          bottom: const TabBar(
+          bottom: TabBar(
             isScrollable: true,
             tabs: <Widget>[
-              Tab(text: 'Favorite characters'),
-              Tab(text: 'Favorite anime'),
-              Tab(text: 'Lists'),
-              Tab(text: 'Ratings'),
+              Tab(text: AnimeCopy.of(context).favoriteCharactersTab),
+              Tab(text: AnimeCopy.of(context).favoriteAnimeTab),
+              Tab(text: AnimeCopy.of(context).listsTab),
+              Tab(text: AnimeCopy.of(context).ratingsTab),
             ],
           ),
         ),
@@ -68,7 +69,7 @@ class _AnimeMyPageState extends State<AnimeMyPage> {
           children: <Widget>[
             _FavoriteCharactersTab(own: own),
             _FavoriteAnimeTab(own: own, userId: target),
-            _ListsTab(own: own),
+            _ListsTab(own: own, userId: target),
             _RatingsTab(),
           ],
         ),
@@ -84,6 +85,7 @@ class _FavoriteCharactersTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
     final social = maybeAnimeHubSocial(context);
     final library = maybeAnimeLibrary(context);
     final items = social?.userCharacters ?? const [];
@@ -94,8 +96,8 @@ class _FavoriteCharactersTab extends StatelessWidget {
       );
     }
     if (items.isEmpty) {
-      return const PubgetEmptyState(
-        title: 'No favorite characters yet',
+      return PubgetEmptyState(
+        title: copy.noFavoriteCharacters,
         icon: Icons.people_outline,
       );
     }
@@ -150,14 +152,15 @@ class _FavoriteAnimeTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = AnimeCopy.of(context);
     final ids = own
         ? context.watch<OnboardingProvider>().profile?.favoriteAnimeIds ??
               const <String>[]
         : context.watch<ProfileProvider>().publicProfile?.favoriteAnimeIds ??
               const <String>[];
     if (ids.isEmpty) {
-      return const PubgetEmptyState(
-        title: 'No favorite anime yet',
+      return PubgetEmptyState(
+        title: copy.noFavoriteAnime,
         icon: Icons.favorite_border,
       );
     }
@@ -177,24 +180,39 @@ class _FavoriteAnimeTab extends StatelessWidget {
 }
 
 class _ListsTab extends StatelessWidget {
-  const _ListsTab({required this.own});
+  const _ListsTab({required this.own, required this.userId});
 
   final bool own;
+  final String? userId;
 
   @override
   Widget build(BuildContext context) {
     final social = maybeAnimeHubSocial(context);
     final library = maybeAnimeLibrary(context);
-    final statuses = AnimeListStatus.values
-        .where((status) => status != AnimeListStatus.favorites)
-        .toList(growable: false);
+    final copy = AnimeCopy.of(context);
+    const statuses = AnimeListStatus.tabs;
+    final customLists = own
+        ? library?.customLists ?? const <AnimeCustomList>[]
+        : social?.userCustomLists ?? const <AnimeCustomList>[];
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: <Widget>[
         for (final status in statuses) ...<Widget>[
-          Text(status.label, style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            // The five personal states are keyed by wire value, so they go
+            // through `listStatusLabel`. Printing `AnimeListStatus.label` - the
+            // stable English source string - directly showed "plan to watch"
+            // and "dropped" to an Arabic member.
+            copy.listStatusLabel(status),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: AppSpacing.md),
-          ..._entriesFor(status, own: own, social: social, library: library).map(
+          ..._entriesFor(
+            status,
+            own: own,
+            social: social,
+            library: library,
+          ).map(
             (entry) => Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
               child: PubgetCard(
@@ -208,6 +226,34 @@ class _ListsTab extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xl),
         ],
+        Text(copy.customLists, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: AppSpacing.md),
+        if (customLists.isEmpty)
+          Text(
+            copy.customListsEmpty,
+            style: Theme.of(context).textTheme.bodyMedium,
+          )
+        else
+          for (final list in customLists)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: PubgetCard(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => AnimeCustomListPage(
+                      listId: list.id,
+                      list: list,
+                      userId: own ? null : userId,
+                      own: own,
+                    ),
+                  ),
+                ),
+                child: Text(
+                  '${list.name} · ${copy.customListItemCount(list.itemsCount)}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ),
       ],
     );
   }
@@ -254,9 +300,9 @@ class _RatingsTab extends StatelessWidget {
               ),
               Text(
                 item.overall.toStringAsFixed(1),
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: AppColors.gold,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(color: AppColors.gold),
               ),
             ],
           ),

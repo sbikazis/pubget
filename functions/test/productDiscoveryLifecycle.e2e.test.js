@@ -56,7 +56,6 @@ const MALLORY = "mallory";
 const ACTORS = [ALICE, BOB, CREATOR, GROUP_OWNER, MALLORY];
 const ACCOUNT_AGE_MS = 10 * 24 * 60 * 60 * 1000;
 const MEMBERSHIP_CLOCK_MS = 25 * 60 * 60 * 1000;
-const STORY_BODY = "A short One Piece fan story about the crew leaving port.";
 
 const firestoreRules = fs.readFileSync(path.join(__dirname, "..", "..", "firestore.rules"), "utf8");
 const storageRules = fs.readFileSync(path.join(__dirname, "..", "..", "storage.rules"), "utf8");
@@ -129,11 +128,26 @@ function run(binary, args) {
   });
 }
 
+/**
+ * The packaged `ffmpeg-static` binary when the functions dependencies are
+ * installed, otherwise the system `ffmpeg` on PATH. The production pipeline
+ * resolves the same binary, so the fixture and the pipeline agree.
+ */
+function ffmpegBinary() {
+  try {
+    const packed = require("ffmpeg-static");
+    if (packed && typeof packed === "string") return packed;
+  } catch (_) {
+    // Optional dependency; a system ffmpeg is the fallback.
+  }
+  return "ffmpeg";
+}
+
 async function generateShortMp4() {
   const destDir = await fsp.mkdtemp(path.join(os.tmpdir(), "pubget-e2e-edit-"));
   const dest = path.join(destDir, "clip.mp4");
   // 22s so one heartbeat (elapsed+2 cap) stays under the 10% qualification bar.
-  await run("ffmpeg", [
+  await run(ffmpegBinary(), [
     "-f", "lavfi", "-i", "color=c=blue:s=128x96:d=22:r=8",
     "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
     "-shortest", "-t", "22",
@@ -205,6 +219,11 @@ async function publishCreatorEdit() {
 }
 
 async function publishCreatorStory(title = "Log pose notes") {
+  // A story is document-backed since the schema rebuild: it needs a category
+  // and a PDF in the `document` slot, or publishValidationError rejects it.
+  // The draft write path stores the document slot from the payload, so the
+  // test seeds a ticket-shaped entry the same way a confirmed upload would.
+  const mediaId = `story-${title.replace(/\s+/g, "-").toLowerCase()}`;
   const draft = await fanWorks().saveFanWorkDraft({
     ...auth(CREATOR),
     data: {
@@ -213,7 +232,13 @@ async function publishCreatorStory(title = "Log pose notes") {
       description: "A credited One Piece fan story for discovery.",
       animeId: "one_piece",
       animeTitle: "One Piece",
-      body: STORY_BODY,
+      category: "adventure",
+      document: {
+        mediaId,
+        path: `fan_works/${CREATOR}/stories/${mediaId}.pdf`,
+        contentType: "application/pdf",
+        pageCount: 1,
+      },
       copyright: {
         originalWorkId: "one_piece",
         sourceTitle: "One Piece",
@@ -238,7 +263,7 @@ async function createSearchableGroup(uid, name) {
     data: {
       name,
       description: "Straw hat sailors talk strategy every week here",
-      type: "animeRoleplay",
+      type: "public",
       animeId: "one_piece",
       joinPolicy: "open",
       isSearchable: true,
@@ -477,7 +502,8 @@ test("fan work enters discovery and leaves when flagged or archived", async () =
   assert.equal(stored.moderationStatus, "approved");
   assert.equal(stored.creatorId, CREATOR);
   assert.equal(stored.copyright.originalWorkId, "one_piece");
-  assert.ok(stored.content.body.length >= 20);
+  assert.equal(stored.content.document.contentType, "application/pdf");
+  assert.match(stored.content.document.path, new RegExp(`^fan_works/${CREATOR}/`));
 
   const duplicate = await fanWorks().publishFanWork({
     ...auth(CREATOR),

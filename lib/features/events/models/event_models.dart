@@ -86,18 +86,21 @@ final class EventQuizQuestion {
     required this.prompt,
     required this.options,
     required this.correctOptionId,
+    this.seconds = 0,
   });
 
   final String id;
   final String prompt;
   final List<EventOption> options;
   final String correctOptionId;
+  final int seconds;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
     'id': id,
     'prompt': prompt,
     'options': options.map((item) => item.toMap()).toList(growable: false),
     'correctOptionId': correctOptionId,
+    if (seconds > 0) 'seconds': seconds,
   };
 
   factory EventQuizQuestion.fromMap(
@@ -112,6 +115,7 @@ final class EventQuizQuestion {
       correctOptionId:
           map['correctOptionId'] as String? ??
           (options.isEmpty ? '' : options.first.id),
+      seconds: (map['seconds'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -120,12 +124,41 @@ final class EventQuizQuestion {
     String? prompt,
     List<EventOption>? options,
     String? correctOptionId,
+    int? seconds,
   }) => EventQuizQuestion(
     id: id ?? this.id,
     prompt: prompt ?? this.prompt,
     options: options ?? this.options,
     correctOptionId: correctOptionId ?? this.correctOptionId,
+    seconds: seconds ?? this.seconds,
   );
+}
+
+final class EventAnimeLink {
+  const EventAnimeLink({
+    required this.animeId,
+    required this.title,
+    this.imageUrl = '',
+  });
+
+  final String animeId;
+  final String title;
+  final String imageUrl;
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'animeId': animeId,
+    'title': title,
+    if (imageUrl.isNotEmpty) 'imageUrl': imageUrl,
+  };
+
+  factory EventAnimeLink.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return const EventAnimeLink(animeId: '', title: '');
+    return EventAnimeLink(
+      animeId: map['animeId'] as String? ?? '',
+      title: map['title'] as String? ?? '',
+      imageUrl: map['imageUrl'] as String? ?? '',
+    );
+  }
 }
 
 final class EventConfiguration {
@@ -142,6 +175,7 @@ final class EventConfiguration {
     this.criterion = '',
     this.challengeKind = '',
     this.targetEventId = '',
+    this.anime,
   });
 
   final String question;
@@ -156,6 +190,7 @@ final class EventConfiguration {
   final String criterion;
   final String challengeKind;
   final String targetEventId;
+  final EventAnimeLink? anime;
 
   EventConfiguration copyWith({
     String? question,
@@ -170,6 +205,8 @@ final class EventConfiguration {
     String? criterion,
     String? challengeKind,
     String? targetEventId,
+    EventAnimeLink? anime,
+    bool clearAnime = false,
   }) => EventConfiguration(
     question: question ?? this.question,
     prompt: prompt ?? this.prompt,
@@ -183,6 +220,7 @@ final class EventConfiguration {
     criterion: criterion ?? this.criterion,
     challengeKind: challengeKind ?? this.challengeKind,
     targetEventId: targetEventId ?? this.targetEventId,
+    anime: clearAnime ? null : anime ?? this.anime,
   );
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -198,6 +236,7 @@ final class EventConfiguration {
     if (criterion.isNotEmpty) 'criterion': criterion,
     if (challengeKind.isNotEmpty) 'challengeKind': challengeKind,
     if (targetEventId.isNotEmpty) 'targetEventId': targetEventId,
+    if (anime != null) 'anime': anime!.toMap(),
   };
 
   factory EventConfiguration.fromMap(Map<String, dynamic>? map) {
@@ -227,6 +266,11 @@ final class EventConfiguration {
           map['criterion'] as String? ?? map['question'] as String? ?? '',
       challengeKind: map['challengeKind'] as String? ?? '',
       targetEventId: map['targetEventId'] as String? ?? '',
+      anime: EventAnimeLink.fromMap(
+        map['anime'] is Map
+            ? Map<String, dynamic>.from(map['anime'] as Map)
+            : null,
+      ),
     );
   }
 }
@@ -237,16 +281,24 @@ final class EventResult {
     required this.submissions,
     this.votes = const <String, int>{},
     this.scores = const <String, int>{},
+    this.orderedOptionIds = const <String>[],
     this.correctCounts = const <String, int>{},
     this.winnerIds = const <String>[],
+    this.winnerOptionId,
+    this.leaderboard = const <String, int>{},
+    this.stances = const <String, int>{},
   });
 
   final String kind;
   final int submissions;
   final Map<String, int> votes;
   final Map<String, int> scores;
+  final List<String> orderedOptionIds;
   final Map<String, int> correctCounts;
   final List<String> winnerIds;
+  final String? winnerOptionId;
+  final Map<String, int> leaderboard;
+  final Map<String, int> stances;
 
   factory EventResult.fromMap(Map<String, dynamic>? map) {
     if (map == null) {
@@ -257,12 +309,20 @@ final class EventResult {
       submissions: (map['submissions'] as num?)?.toInt() ?? 0,
       votes: _intMap(map['votes']),
       scores: _intMap(map['scores']),
+      orderedOptionIds:
+          (map['orderedOptionIds'] as List<Object?>?)
+              ?.whereType<String>()
+              .toList(growable: false) ??
+          const <String>[],
       correctCounts: _intMap(map['correctCounts']),
       winnerIds:
           (map['winnerIds'] as List<Object?>?)?.whereType<String>().toList(
             growable: false,
           ) ??
           const <String>[],
+      winnerOptionId: map['winnerOptionId'] as String?,
+      leaderboard: _intMap(map['leaderboard']),
+      stances: _intMap(map['stances']),
     );
   }
 }
@@ -273,12 +333,14 @@ final class EventTally {
     this.votes = const <String, int>{},
     this.scores = const <String, int>{},
     this.correctCounts = const <String, int>{},
+    this.stances = const <String, int>{},
   });
 
   final int submissions;
   final Map<String, int> votes;
   final Map<String, int> scores;
   final Map<String, int> correctCounts;
+  final Map<String, int> stances;
 
   factory EventTally.fromMap(Map<String, dynamic>? map) {
     if (map == null) return const EventTally();
@@ -287,6 +349,7 @@ final class EventTally {
       votes: _intMap(map['votes']),
       scores: _intMap(map['scores']),
       correctCounts: _intMap(map['correctCounts']),
+      stances: _intMap(map['stances']),
     );
   }
 }
@@ -314,6 +377,7 @@ final class PubgetEvent {
     this.scope = EventScope.group,
     this.groupIds = const <String>[],
     this.version = 1,
+    this.reactionCounts = const <String, int>{},
   });
 
   final String id;
@@ -337,6 +401,7 @@ final class PubgetEvent {
   final EventScope scope;
   final List<String> groupIds;
   final int version;
+  final Map<String, int> reactionCounts;
 
   bool get isOpen => status == EventStatus.active;
   bool get isHistorical =>
@@ -353,8 +418,16 @@ final class PubgetEvent {
     return !end.isAfter(now ?? DateTime.now());
   }
 
-  bool isInteractable([DateTime? now]) =>
-      status == EventStatus.active && !isExpired(now);
+  /// Whether the audience can participate right now: event must be live and
+  /// its scheduled start must have passed.
+  bool isInteractable([DateTime? now]) {
+    final moment = now ?? DateTime.now();
+    if (status != EventStatus.active) return false;
+    if (isExpired(moment)) return false;
+    final start = startAt;
+    if (start != null && start.isAfter(moment)) return false;
+    return true;
+  }
 
   Duration? remaining(DateTime now) {
     if (endAt == null) return null;
@@ -381,6 +454,7 @@ final class PubgetEvent {
       'votes': tally.votes,
       'scores': tally.scores,
       'correctCounts': tally.correctCounts,
+      'stances': tally.stances,
     },
     'result': result == null
         ? null
@@ -389,14 +463,19 @@ final class PubgetEvent {
             'submissions': result!.submissions,
             'votes': result!.votes,
             'scores': result!.scores,
+            'orderedOptionIds': result!.orderedOptionIds,
             'correctCounts': result!.correctCounts,
             'winnerIds': result!.winnerIds,
+            'winnerOptionId': result!.winnerOptionId,
+            'leaderboard': result!.leaderboard,
+            'stances': result!.stances,
           },
     'createdAt': createdAt?.toUtc().toIso8601String(),
     'updatedAt': updatedAt?.toUtc().toIso8601String(),
     'coverUrl': coverUrl,
     'templateId': templateId,
     'version': version,
+    'reactionCounts': reactionCounts,
     'searchName': title.trim().toLowerCase(),
   };
 
@@ -437,6 +516,33 @@ final class PubgetEvent {
           ) ??
           const <String>[],
       version: (map['version'] as num?)?.toInt() ?? 1,
+      reactionCounts: _intMap(map['reactionCounts']),
+    );
+  }
+}
+
+final class EventCreationQuota {
+  const EventCreationQuota({
+    required this.count,
+    required this.limit,
+    required this.remaining,
+    this.day = '',
+  });
+
+  final int count;
+  final int limit;
+  final int remaining;
+  final String day;
+
+  bool get exhausted => remaining <= 0;
+
+  factory EventCreationQuota.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return const EventCreationQuota(count: 0, limit: 2, remaining: 2);
+    return EventCreationQuota(
+      count: (map['count'] as num?)?.toInt() ?? 0,
+      limit: (map['limit'] as num?)?.toInt() ?? 2,
+      remaining: (map['remaining'] as num?)?.toInt() ?? 0,
+      day: map['day'] as String? ?? '',
     );
   }
 }
@@ -496,6 +602,118 @@ final class EventParticipant {
       displayName: map['displayName'] as String? ?? userId,
       joinedAt: _date(map['joinedAt']),
       leftAt: _date(map['leftAt']),
+    );
+  }
+}
+
+final class EventComment {
+  const EventComment({
+    required this.id,
+    required this.userId,
+    required this.text,
+    this.createdAt,
+  });
+
+  final String id;
+  final String userId;
+  final String text;
+  final DateTime? createdAt;
+
+  factory EventComment.fromMap(Map<String, dynamic> map, {required String id}) {
+    return EventComment(
+      id: id,
+      userId: map['userId'] as String? ?? '',
+      text: map['text'] as String? ?? '',
+      createdAt: _date(map['createdAt']),
+    );
+  }
+}
+
+final class EventAnalytics {
+  const EventAnalytics({
+    required this.eventId,
+    required this.status,
+    this.participants = const <EventParticipant>[],
+    this.responses = const <EventResponse>[],
+    this.tally = const EventTally(),
+    this.result,
+  });
+
+  final String eventId;
+  final String status;
+  final List<EventParticipant> participants;
+  final List<EventResponse> responses;
+  final EventTally tally;
+  final EventResult? result;
+
+  factory EventAnalytics.fromMap(Map<String, dynamic> map) {
+    final participantsRaw = (map['participants'] as List<Object?>?);
+    final responsesRaw = (map['responses'] as List<Object?>?);
+    return EventAnalytics(
+      eventId: map['eventId'] as String? ?? '',
+      status: map['status'] as String? ?? '',
+      participants: participantsRaw == null
+          ? const <EventParticipant>[]
+          : [
+              for (final item in participantsRaw)
+                if (item is Map)
+                  EventParticipant.fromMap(
+                    Map<String, dynamic>.from(item),
+                    userId: item['userId'] as String? ?? '',
+                  ),
+            ],
+      responses: responsesRaw == null
+          ? const <EventResponse>[]
+          : [
+              for (final item in responsesRaw)
+                if (item is Map)
+                  EventResponse.fromMap(
+                    Map<String, dynamic>.from(item),
+                    userId: item['userId'] as String? ?? '',
+                  ),
+            ],
+      tally: EventTally.fromMap(
+        map['tally'] is Map
+            ? Map<String, dynamic>.from(map['tally'] as Map)
+            : null,
+      ),
+      result: map['result'] is Map
+          ? EventResult.fromMap(Map<String, dynamic>.from(map['result'] as Map))
+          : null,
+    );
+  }
+}
+
+final class EventPreview {
+  const EventPreview({
+    required this.eventId,
+    this.type = EventType.poll,
+    this.scope = EventScope.group,
+    this.title = '',
+    this.description = '',
+    this.configuration = const EventConfiguration(),
+  });
+
+  final String eventId;
+  final EventType type;
+  final EventScope scope;
+  final String title;
+  final String description;
+  final EventConfiguration configuration;
+
+  factory EventPreview.fromMap(Map<String, dynamic> map) {
+    final type = _eventType(map['type']);
+    return EventPreview(
+      eventId: map['eventId'] as String? ?? '',
+      type: type,
+      scope: _eventScope(map['scope'], map['groupId']),
+      title: map['title'] as String? ?? '',
+      description: map['description'] as String? ?? '',
+      configuration: EventConfiguration.fromMap(
+        map['configuration'] is Map
+            ? Map<String, dynamic>.from(map['configuration'] as Map)
+            : null,
+      ),
     );
   }
 }

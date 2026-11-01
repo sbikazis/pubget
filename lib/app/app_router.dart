@@ -414,9 +414,36 @@ AppRoute _routeFromUri(Uri uri) {
       return ParameterizedRoute(path: '/anime', parameters: query);
     }
     final second = segments[1];
+    if (second == 'character') {
+      return segments.length >= 3
+          ? entity(
+              path: '/anime/character',
+              key: 'characterId',
+              id: segments[2],
+            )
+          : const ParameterizedRoute(path: '/unknown');
+    }
+    if (second == 'ratings' &&
+        segments.length >= 3 &&
+        segments[2] == 'pubget') {
+      return ParameterizedRoute(
+        path: '/anime/ratings/pubget',
+        parameters: query,
+      );
+    }
+    if (second == 'characters' &&
+        segments.length >= 3 &&
+        segments[2] == 'favorites') {
+      return ParameterizedRoute(
+        path: '/anime/characters/favorites',
+        parameters: query,
+      );
+    }
     if (second == 'browse' ||
         second == 'genre' ||
+        second == 'studio' ||
         second == 'season' ||
+        second == 'updated' ||
         second == 'library' ||
         second == 'ratings' ||
         second == 'characters' ||
@@ -434,8 +461,46 @@ AppRoute _routeFromUri(Uri uri) {
   if (segments.length == 2 && segments.first == 'fan-work') {
     return entity(path: '/fan-work', key: 'workId', id: segments[1]);
   }
+  if (segments.length == 2 && segments.first == 'work') {
+    return entity(path: '/fan-work', key: 'workId', id: segments[1]);
+  }
+  // §15.18 — canonical single-Reel and single-audio share links. Without these
+  // branches `/reel/{id}` and `/audio/{id}` fell through to an unregistered
+  // path and opened the unknown-link page.
+  if (segments.length == 2 && segments.first == 'reel') {
+    return entity(path: '/reel', key: 'reelId', id: segments[1]);
+  }
+  if (segments.length == 2 && segments.first == 'audio') {
+    return entity(path: '/audio', key: 'audioId', id: segments[1]);
+  }
+  // §15.11 — canonical hashtag share links. Only the query form
+  // (`/hashtag?tag=…`) was parsed before, so a path link `/hashtag/onepiece`
+  // fell through to the unknown-link page even though the page accepted the id.
+  if (segments.length == 2 && segments.first == 'hashtag') {
+    return entity(path: '/hashtag', key: 'tag', id: segments[1]);
+  }
   if (segments.length == 2 && segments.first == 'group') {
     return entity(path: '/group', key: 'groupId', id: segments[1]);
+  }
+  // §2.3 — short invite form. The web entry rewrites `/g/{id}` to `/group/{id}`
+  // before Flutter boots, but that shim only covers browsers: in-app navigation
+  // and any platform handing the raw URL to the engine bypass it, so the router
+  // has to understand the short form on its own.
+  if (segments.length == 2 && segments.first == 'g') {
+    return entity(path: '/group', key: 'groupId', id: segments[1]);
+  }
+  // Store share links (`/store/{id}`) resolve to the item screen, which is
+  // registered as `/store/item` with an `itemId`. `/store/item` itself is a
+  // real route, not an id, so it must fall through to the generic path branch.
+  if (segments.length == 2 &&
+      segments.first == 'store' &&
+      segments[1] != 'item') {
+    return entity(path: '/store/item', key: 'itemId', id: segments[1]);
+  }
+  if (segments.length == 2 &&
+      segments.first == 'profile' &&
+      segments[1] == 'edit') {
+    return const ParameterizedRoute(path: '/profile/edit');
   }
   if (segments.length == 2 && segments.first == 'profile') {
     return entity(path: '/profile', key: 'uid', id: segments[1]);
@@ -456,12 +521,12 @@ const _requiredEntityKeys = <String, String>{
   '/hashtag': 'tag',
   '/event': 'eventId',
   '/game': 'gameId',
-  '/games/waiting': 'gameId',
-  '/games/room': 'gameId',
   '/mafia': 'gameId',
   '/fan-work': 'workId',
+  '/work': 'workId',
   '/group': 'groupId',
   '/anime/details': 'animeId',
+  '/anime/character': 'characterId',
   '/store/item': 'itemId',
 };
 

@@ -32,14 +32,10 @@ final class CachedAnimeRepository implements AnimeRepository {
     final trimmed = query.trim().toLowerCase();
     final resolved = filter ?? AnimeSearchFilter(text: query);
     return _cachedPage(
-      'search:$trimmed:$page:$limit:${resolved.genreId}:${resolved.type?.name}:${resolved.season?.name}:${resolved.year}:${resolved.sort.name}',
+      'search:$trimmed:$page:$limit:${resolved.genreId}:${resolved.studioId}:${resolved.type?.name}:${resolved.season?.name}:${resolved.year}:${resolved.sort.name}:${resolved.minScore}:${resolved.maxScore}',
       AnimeCacheTtl.search,
-      () => _inner.searchAnime(
-        query,
-        page: page,
-        limit: limit,
-        filter: resolved,
-      ),
+      () =>
+          _inner.searchAnime(query, page: page, limit: limit, filter: resolved),
     );
   }
 
@@ -102,12 +98,47 @@ final class CachedAnimeRepository implements AnimeRepository {
       );
 
   @override
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) =>
+      _cachedPage(
+        'latest:$page:$limit',
+        AnimeCacheTtl.latest,
+        () => _inner.getLatest(page: page, limit: limit),
+      );
+
+  @override
   Future<Result<List<AnimeCharacter>>> getCharacters(String animeId) {
     return _cached(
       'characters:${animeId.trim()}',
       AnimeCacheTtl.characters,
       () => _inner.getCharacters(animeId),
     );
+  }
+
+  @override
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId) {
+    return _cached(
+      'staff:${animeId.trim()}',
+      AnimeCacheTtl.staff,
+      () => _inner.getStaff(animeId),
+    );
+  }
+
+  @override
+  Future<Result<List<Anime>>> getAnimeSummaries(
+    List<String> ids, {
+    int chunkSize = 100,
+  }) => _cached(
+    'summaries:${_summaryKey(ids)}',
+    AnimeCacheTtl.summaries,
+    () => _inner.getAnimeSummaries(ids, chunkSize: chunkSize),
+  );
+
+  String _summaryKey(List<String> ids) {
+    final sorted = <String>[
+      for (final id in ids)
+        if (id.trim().isNotEmpty) id.trim(),
+    ]..sort();
+    return sorted.join('_');
   }
 
   @override
@@ -134,6 +165,28 @@ final class CachedAnimeRepository implements AnimeRepository {
       'genre:${genreId.trim()}:$page:$limit',
       AnimeCacheTtl.genreList,
       () => _inner.getByGenre(genreId, page: page, limit: limit),
+    );
+  }
+
+  @override
+  Future<Result<List<AnimeStudio>>> getStudios({int limit = 25}) {
+    return _cached(
+      'studios-index:$limit',
+      AnimeCacheTtl.studiosIndex,
+      () => _inner.getStudios(limit: limit),
+    );
+  }
+
+  @override
+  Future<Result<AnimePage>> getByStudio(
+    String studioId, {
+    int page = 1,
+    int limit = 20,
+  }) {
+    return _cachedPage(
+      'studio:${studioId.trim()}:$page:$limit',
+      AnimeCacheTtl.studioList,
+      () => _inner.getByStudio(studioId, page: page, limit: limit),
     );
   }
 
@@ -195,9 +248,7 @@ final class CachedAnimeRepository implements AnimeRepository {
         final value = wrapCache?.call(existing.value) ?? existing.value;
         return Success<T>(value);
       }
-      return const FailureResult(
-        NetworkError(AnimeNetworkMessages.offline),
-      );
+      return const FailureResult(NetworkError(AnimeNetworkMessages.offline));
     }
 
     final pending = _inflight[key];

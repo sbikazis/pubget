@@ -2,10 +2,12 @@ import '../models/anime_models.dart';
 
 /// Relevance ranking for anime search results.
 ///
-/// Priority (after normalizing query + titles):
-/// 1. exact title / alias match
-/// 2. title / alias starts with the query
-/// 3. title / alias contains the query
+/// Priority (after normalizing query + titles across all title variants and
+/// aliases, forgiving Latin/Arabic/Japanese inputs):
+/// 0. exact title / alias match
+/// 1. title / alias starts with the query
+/// 2. title / alias contains the query
+/// 3. fuzzy (Levenshtein) match tolerant of spelling slips and casing
 /// Within each tier: higher score, then better (lower) MAL popularity rank.
 abstract final class AnimeSearchRanker {
   static String normalize(String value) {
@@ -33,7 +35,46 @@ abstract final class AnimeSearchRanker {
     if (title == query) return 0;
     if (title.startsWith(query)) return 1;
     if (title.contains(query)) return 2;
+    if (_fuzzyMatches(title, query)) return 3;
     return 99;
+  }
+
+  static bool _fuzzyMatches(String title, String query) {
+    if (title.length < 2 || query.length < 3) return false;
+    final maxDistance = query.length <= 4 ? 1 : 2;
+    final lengthRatio = title.length * 3 < query.length * 2;
+    if (lengthRatio) return false;
+    final distance = _levenshtein(title, query);
+    final normalized = distance * 10 <= query.length * 3;
+    return distance <= maxDistance && normalized;
+  }
+
+  static int _levenshtein(String a, String b) {
+    if (a == b) return 0;
+    if (a.isEmpty) return b.length;
+    if (b.isEmpty) return a.length;
+    final previous = List<int>.generate(b.length + 1, (index) => index, growable: false);
+    final current = List<int>.filled(b.length + 1, 0);
+    for (var i = 1; i <= a.length; i += 1) {
+      current[0] = i;
+      for (var j = 1; j <= b.length; j += 1) {
+        final substitution = previous[j - 1] + (a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1);
+        current[j] = _min3(
+          current[j - 1] + 1,
+          previous[j] + 1,
+          substitution,
+        );
+      }
+      for (var j = 0; j <= b.length; j += 1) {
+        previous[j] = current[j];
+      }
+    }
+    return previous[b.length];
+  }
+
+  static int _min3(int a, int b, int c) {
+    final lowest = a < b ? a : b;
+    return lowest < c ? lowest : c;
   }
 
   /// Stable sort: match tier → score desc → popularity asc → title.
@@ -75,9 +116,6 @@ abstract final class AnimeSearchRanker {
     final unmatched = scored
         .where((entry) => entry.tier >= 99)
         .map((entry) => entry.anime);
-    return <Anime>[
-      ...matched.map((entry) => entry.anime),
-      ...unmatched,
-    ];
+    return <Anime>[...matched.map((entry) => entry.anime), ...unmatched];
   }
 }

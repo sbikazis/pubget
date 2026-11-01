@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../app/app_router.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../l10n/anime_copy.dart';
 import '../models/anime_models.dart';
 import '../providers/anime_providers.dart';
+import '../widgets/anime_hub_drawer.dart';
 import '../widgets/anime_widgets.dart';
 
 class AnimeBrowsePage extends StatefulWidget {
@@ -14,16 +16,24 @@ class AnimeBrowsePage extends StatefulWidget {
     this.kind,
     this.genreId,
     this.genreName,
+    this.studioId,
+    this.studioName,
     this.year,
     this.season,
+    this.latest = false,
     super.key,
   });
 
   final AnimeCatalogKind? kind;
   final String? genreId;
   final String? genreName;
+  final String? studioId;
+  final String? studioName;
   final int? year;
   final AnimeSeason? season;
+
+  /// Drawer "Latest Updates": the whole catalog newest first.
+  final bool latest;
 
   @override
   State<AnimeBrowsePage> createState() => _AnimeBrowsePageState();
@@ -40,11 +50,16 @@ class _AnimeBrowsePageState extends State<AnimeBrowsePage> {
   Future<void> _open(AnimeListProvider list) {
     if (widget.genreId != null && widget.genreId!.isNotEmpty) {
       return list.openGenre(
-        AnimeGenre(
-          id: widget.genreId!,
-          name: widget.genreName ?? 'Genre',
-        ),
+        AnimeGenre(id: widget.genreId!, name: widget.genreName ?? 'Genre'),
       );
+    }
+    if (widget.studioId != null && widget.studioId!.isNotEmpty) {
+      return list.openStudio(
+        AnimeStudio(id: widget.studioId!, name: widget.studioName ?? 'Studio'),
+      );
+    }
+    if (widget.latest) {
+      return list.openLatest();
     }
     if (widget.year != null && widget.season != null) {
       return list.openSeason(year: widget.year!, season: widget.season!);
@@ -52,17 +67,52 @@ class _AnimeBrowsePageState extends State<AnimeBrowsePage> {
     return list.openCatalog(widget.kind ?? AnimeCatalogKind.trending);
   }
 
+  PreferredSizeWidget _latestAppBar(BuildContext context, AnimeCopy copy) {
+    // Search lives in `leading` and the utility actions in `actions` so the
+    // whole bar mirrors automatically in RTL.
+    return AppBar(
+      leading: IconButton(
+        key: const Key('anime-latest-search'),
+        tooltip: copy.openSearch,
+        onPressed: () => AppNavigation.go(context, '/anime/search'),
+        icon: const Icon(Icons.search_rounded),
+      ),
+      centerTitle: true,
+      title: Text(copy.latestUpdates),
+      actions: <Widget>[
+        IconButton(
+          key: const Key('anime-latest-home'),
+          tooltip: copy.hubTitle,
+          onPressed: () => AppNavigation.go(context, AnimeLinks.hubPath()),
+          icon: const Icon(Icons.home_outlined),
+        ),
+        Builder(
+          builder: (innerContext) => IconButton(
+            key: const Key('anime-latest-drawer'),
+            tooltip: MaterialLocalizations.of(innerContext).openAppDrawerTooltip,
+            onPressed: () => Scaffold.of(innerContext).openDrawer(),
+            icon: const Icon(Icons.menu_rounded),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final list = context.watch<AnimeListProvider>();
     final copy = AnimeCopy.of(context);
     return Scaffold(
-      appBar: AppBar(
-        leading: AppBackButton.maybeOf(context),
-        title: Text(copy.pageTitle(list.title)),
-      ),
+      appBar: widget.latest
+          ? _latestAppBar(context, copy)
+          : AppBar(
+              leading: AppBackButton.maybeOf(context),
+              title: Text(copy.pageTitle(list.title)),
+            ),
+      drawer: AnimeHubDrawer(current: '/anime/updated'),
       body: PubgetLoadingStateView(
-        state: list.state == LoadingState.loadingMore ||
+        state:
+            list.state == LoadingState.loadingMore ||
                 list.state == LoadingState.refreshing
             ? LoadingState.loaded
             : list.state,

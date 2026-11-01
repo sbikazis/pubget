@@ -82,7 +82,11 @@ function groupInput(request, HttpsError) {
       data.rules.length > 4000 ||
       (data.animeId !== null && data.animeId !== undefined &&
        !validString(data.animeId, 128)) ||
-      !optionalUrl(data.imageUrl, 500) || !optionalUrl(data.coverUrl, 500)) {
+      !optionalUrl(data.imageUrl, 500) || !optionalUrl(data.coverUrl, 500) ||
+      !optionalUrl(data.chatBackgroundUrl, 500) ||
+      (data.welcomeMessage !== undefined && data.welcomeMessage !== null &&
+       (typeof data.welcomeMessage !== "string" ||
+        data.welcomeMessage.length > 500))) {
     throw new HttpsError("invalid-argument", "Group details are invalid.");
   }
   if (data.type === "animeRoleplay" && !validString(data.animeId, 128)) {
@@ -95,7 +99,19 @@ function groupInput(request, HttpsError) {
   if (data.type === "public" && character) {
     throw new HttpsError("invalid-argument", "Public groups cannot reserve a character.");
   }
-  return Object.assign({}, data, { character });
+  const normalized = Object.assign({}, data, { character });
+  if (typeof normalized.welcomeMessage === "string") {
+    normalized.welcomeMessage = normalized.welcomeMessage.trim();
+    if (normalized.welcomeMessage.length === 0) normalized.welcomeMessage = null;
+  } else {
+    normalized.welcomeMessage = null;
+  }
+  if (typeof normalized.chatBackgroundUrl === "string") {
+    normalized.chatBackgroundUrl = normalized.chatBackgroundUrl.trim();
+  } else {
+    normalized.chatBackgroundUrl = null;
+  }
+  return normalized;
 }
 
 function groupPath(db, groupId) {
@@ -104,6 +120,17 @@ function groupPath(db, groupId) {
 
 function memberPath(db, groupId, uid) {
   return groupPath(db, groupId).collection("members").doc(uid);
+}
+
+function writeWelcomeSystemMessage(transaction, groupRef, text, FieldValue) {
+  transaction.set(groupRef.collection("messages").doc(), {
+    type: "system",
+    text,
+    senderId: "system",
+    senderName: "Pubget",
+    senderRole: "system",
+    createdAt: FieldValue.serverTimestamp(),
+  });
 }
 
 function rolePath(db, groupId, role) {
@@ -115,6 +142,16 @@ function entitledMaxMembers(userData) {
   const custom = Number(userData && userData.customMaxMembersLimit) || 0;
   if (!Number.isFinite(custom) || custom <= 0) return 100;
   return Math.min(Math.max(Math.trunc(custom), 2), 500);
+}
+
+// The founder may ask for a smaller group than their plan allows, never a
+// larger one. An absent or nonsensical request means "whatever I am entitled
+// to", so the wizard cannot talk the server into a bigger group.
+function resolveMaxMembers(userData, requested) {
+  const ceiling = entitledMaxMembers(userData);
+  const wanted = Number(requested);
+  if (!Number.isFinite(wanted)) return ceiling;
+  return Math.min(Math.max(Math.trunc(wanted), 2), ceiling);
 }
 
 
@@ -145,7 +182,7 @@ function memberRank(member) {
   return normalizeRole((member && (member.rankV2 || member.role)) || "ronin");
 }
 
-function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievements }) {
+function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievements, catalog }) {
   function requireGroupId(request) {
     const groupId = request.data && request.data.groupId;
     if (!validString(groupId, 128)) {
@@ -186,7 +223,10 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         }
       }
       const userSnap = await transaction.get(db.collection("users").doc(uid));
-      const maxMembers = entitledMaxMembers(userSnap.exists ? userSnap.data() : {});
+      const maxMembers = resolveMaxMembers(
+        userSnap.exists ? userSnap.data() : {},
+        data.maxMembers,
+      );
       const memberRef = memberPath(db, groupRef.id, uid);
       transaction.create(groupRef, {
         name: data.name.trim(),
@@ -205,7 +245,8 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         joinPolicy: data.joinPolicy,
         isSearchable: data.isSearchable,
         createdAt: FieldValue.serverTimestamp(),
-        chatBackgroundUrl: null,
+        chatBackgroundUrl: data.chatBackgroundUrl || null,
+        welcomeMessage: data.welcomeMessage || null,
         rules: data.rules.trim(),
         activityScore: 0,
         risingEligible: false,
@@ -323,6 +364,14 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
       transaction.update(groupRef, {
         membersCount: (data.membersCount || 0) + 1,
       });
+      if (typeof data.welcomeMessage === "string" && data.welcomeMessage.trim()) {
+        writeWelcomeSystemMessage(
+          transaction,
+          groupRef,
+          data.welcomeMessage.trim(),
+          FieldValue,
+        );
+      }
       if (inviteId) {
         transaction.update(groupRef.collection("invites").doc(inviteId), {
           usedAt: FieldValue.serverTimestamp(),
@@ -512,6 +561,14 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         }),
       );
       transaction.update(groupRef, { membersCount: (data.membersCount || 0) + 1 });
+      if (typeof data.welcomeMessage === "string" && data.welcomeMessage.trim()) {
+        writeWelcomeSystemMessage(
+          transaction,
+          groupRef,
+          data.welcomeMessage.trim(),
+          FieldValue,
+        );
+      }
       transaction.update(requestRef, {
         status: "accepted",
         decidedAt: FieldValue.serverTimestamp(),
@@ -929,7 +986,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     await db.runTransaction(async (transaction) => {
       const context = await actorContext(transaction, groupId, uid);
       const role = await transaction.get(rolePath(db, groupId, memberRank(context.data)));
-      if (!permissionFor(context.data, role.data(), "manageSettings")) {
+      if (!permissionFor(context.data, role.data(), "manageSettings", context.group.data())) {
         throw new HttpsError("permission-denied", "You cannot manage group settings.");
       }
       transaction.update(groupPath(db, groupId), updates);
@@ -1148,9 +1205,95 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     };
   }
 
+  // Master Spec 7.3: the anime a roleplay group is bound to is chosen from the
+  // whole catalog, and the cast from the whole work. Both answers come from the
+  // canonical server repository, so a phone that cannot reach an upstream
+  // provider still resolves a real title and a real roster from cache.
+  async function browseAnimeCatalog(request) {    authUid(request, HttpsError);
+    if (!catalog) {
+      throw new HttpsError("unavailable", "The anime catalog is temporarily unavailable.");
+    }
+    const input = request.data || {};
+    const page = Math.min(20, Math.max(1, Number(input.page) || 1));
+    const limit = Math.min(25, Math.max(1, Number(input.limit) || 25));
+    const query = typeof input.query === "string" ? input.query.trim() : "";
+    if (query) {
+      const items = await catalog.searchAnime(query, { page, limit });
+      return {
+        items: items.map(catalog.animeToPublicSearchItem).filter(Boolean),
+        page,
+        hasNextPage: items.length === limit,
+      };
+    }
+    const items = await catalog.browseAnime({
+      kind: input.kind,
+      page,
+      limit,
+      year: input.year,
+      season: input.season,
+      genre: input.genre,
+      type: input.type,
+    });
+    return {
+      items: items.map(catalog.animeToPublicSearchItem).filter(Boolean),
+      page,
+      hasNextPage: items.length === limit,
+    };
+  }
+
+  // The roleplay roster. A linked anime answers with its whole family of
+  // seasons, so a character who only shows up in a later season is still
+  // selectable; an open group answers with the character catalog itself.
+  async function browseRoleplayCharacters(request) {
+    authUid(request, HttpsError);
+    if (!catalog) {
+      throw new HttpsError("unavailable", "The character catalog is temporarily unavailable.");
+    }
+    const input = request.data || {};
+    const page = Math.min(20, Math.max(1, Number(input.page) || 1));
+    const limit = Math.min(25, Math.max(1, Number(input.limit) || 25));
+    const query = typeof input.query === "string" ? input.query.trim() : "";
+    const animeId = typeof input.animeId === "string" ? input.animeId.trim() : "";
+    if (animeId) {
+      return catalog.familyCharacters(animeId, { page, limit, query });
+    }
+    return catalog.searchRoleplayCharacters({ query, page, limit });
+  }
+
+  // The characters already taken in a group, so a picker can lock them without
+  // revealing who holds them.
+  async function reservedCharacterKeys(request) {
+    authUid(request, HttpsError);
+    const groupId = requireGroupId(request);
+    const snapshot = await db
+      .collection("groups")
+      .doc(groupId)
+      .collection("characters")
+      .get();
+    return { reservedKeys: snapshot.docs.map((doc) => doc.id) };
+  }
+
+  // What the signed-in account may create. The wizard renders the member limit
+  // from this answer, so the field can never offer a number the server would
+  // silently reduce.
+  async function createGroupEntitlements(request) {
+    const uid = authUid(request, HttpsError);
+    const snapshot = await db.collection("users").doc(uid).get();
+    const userData = snapshot.exists ? snapshot.data() : {};
+    return {
+      maxMembers: entitledMaxMembers(userData),
+      canCreateGroups: userData.groupsCreatedToday === undefined ||
+        Number(userData.groupsCreatedToday) < 5,
+    };
+  }
+
   return {
     acceptJoinRequest,
     banMember: (request) => removeMember(request, true),
+    browseAnimeCatalog,
+    browseRoleplayCharacters,
+    createGroupEntitlements,
+    reservedCharacterKeys,
     changeRole,
     createInvite,
     createGroup,
@@ -1308,6 +1451,7 @@ module.exports = {
   computeAutoSeatAssignments: require("./pubgetRanks").computeAutoSeatAssignments,
   createGroupsDomain,
   entitledMaxMembers,
+  resolveMaxMembers,
   groupInput,
   normalizeRole,
   parseCharacter,

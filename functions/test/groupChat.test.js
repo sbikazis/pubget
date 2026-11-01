@@ -106,6 +106,15 @@ function createFakeDb(seed = {}) {
             data: () => (data === undefined ? undefined : clone(data)),
           };
         },
+        // Phase 10 — report callables now also enqueue a moderation case with
+        // `doc().set()`, so the fake needs the same surface as Firestore.
+        async set(data, options) {
+          const merge = options && options.merge;
+          store.set(
+            path,
+            merge ? { ...clone(store.get(path) || {}), ...clone(data) } : clone(data),
+          );
+        },
       };
     },
   });

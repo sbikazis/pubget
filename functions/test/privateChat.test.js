@@ -181,8 +181,24 @@ test("cannot start a private chat without a Fan or Friend relationship", async (
   );
 });
 
-test("a Fan relationship is enough when the recipient allows related senders", async () => {
+test("a Mutual Fan relationship is required; one-way fans are rejected", async () => {
   const db = createFakeDb(seedRelatedUsers({ aliceToBobRespect: 5 }));
+  const chat = handlers(db);
+  await assert.rejects(
+    chat.startPrivateChat({
+      auth: { uid: "alice" },
+      data: { otherUserId: "bob" },
+    }),
+    (error) => error.code === "permission-denied" &&
+      /Mutual Fan/.test(error.message),
+  );
+});
+
+test("mutual fans can start a private chat when the recipient allows related senders", async () => {
+  const db = createFakeDb(seedRelatedUsers({
+    aliceToBobRespect: 5,
+    bobToAliceRespect: 6,
+  }));
   const chat = handlers(db);
   const result = await chat.startPrivateChat({
     auth: { uid: "alice" },
@@ -194,9 +210,10 @@ test("a Fan relationship is enough when the recipient allows related senders", a
   assert.ok(db.store.has(`privateChats/${result.chatId}`));
 });
 
-test("friends-only recipients reject a Fan who is not a Friend", async () => {
+test("friends-only recipients reject Mutual Fans who are not Friends", async () => {
   const db = createFakeDb(seedRelatedUsers({
     aliceToBobRespect: 7,
+    bobToAliceRespect: 7,
     whoCanMessageMe: "friends",
   }));
   const chat = handlers(db);
@@ -339,6 +356,7 @@ test("a stranger cannot send into someone else's chat", async () => {
 test("friends-only policy is re-checked on every send", async () => {
   const db = createFakeDb(seedRelatedUsers({
     aliceToBobRespect: 6,
+    bobToAliceRespect: 6,
     whoCanMessageMe: "related",
   }));
   const chat = handlers(db);

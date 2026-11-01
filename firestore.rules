@@ -5,9 +5,22 @@ service cloud.firestore {
     // opt-in custom claim; do not use a writable Firestore role as an admin bit.
     function signedIn() { return request.auth != null; }
     function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+    // Phase 10 (axis 23) — platform staff. `moderator` is a custom claim set
+    // only by the `setModeratorRole` callable through the Admin SDK. It is never
+    // derived from a Firestore document, because a client can write documents
+    // and cannot write claims.
+    function isModerator() {
+      return signedIn() &&
+        (request.auth.token.admin == true || request.auth.token.moderator == true);
+    }
     function self(uid) { return signedIn() && request.auth.uid == uid; }
     function changedOnly(keys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+    // Unified media layer (lib/core/media): the only statuses a client may
+    // write on a `media` record.
+    function validMediaStatus(value) {
+      return value in ['pending', 'uploaded', 'failed', 'deleting', 'deleted'];
     }
     function activePremium(uid) {
       let user = get(/databases/$(database)/documents/users/$(uid)).data;
@@ -387,6 +400,69 @@ service cloud.firestore {
          exists(/databases/$(database)/documents/privateChats/$(chatId)/messages/$(request.resource.data.replyToId)));
     }
 
+    // ------------------------------------------------------------------
+    // Self-owned presentation fields the Flutter app writes directly to
+    // users/{uid}. These were missing from the create/update allow-lists,
+    // which made signup, profile save and cover save fail with
+    // permission-denied. Validation mirrors the updateSocialProfile
+    // callable (functions/src/avatarPrivacy.js) so the direct-write path is
+    // never laxer than the server-authorized one.
+    // ------------------------------------------------------------------
+    function optionalShortString(data, field, max) {
+      return !data.keys().hasAny([field]) ||
+        data[field] == null ||
+        (data[field] is string && data[field].size() <= max);
+    }
+
+    function optionalHttpUrl(data, field) {
+      return !data.keys().hasAny([field]) ||
+        data[field] == null ||
+        (data[field] is string &&
+         data[field].size() <= 1024 &&
+         (data[field] == '' ||
+          data[field].matches('https://.*') ||
+          data[field].matches('http://.*')));
+    }
+
+    // Security rules cannot iterate list elements, so only the aggregate
+    // shape is enforced. Entries are self-owned presentation data.
+    function optionalSocialLinks(data) {
+      return !data.keys().hasAny(['socialLinks']) ||
+        data.socialLinks == null ||
+        (data.socialLinks is list && data.socialLinks.size() <= 20);
+    }
+
+    // The client model (ProfileSectionPrivacy.toMap) always emits all nine
+    // toggles; require exactly that set so partial writes cannot slip in.
+    function optionalSectionPrivacy(data) {
+      let keys = [
+        'favorites', 'activity', 'friends', 'fans',
+        'works', 'groups', 'ratings', 'achievements', 'lists'
+      ];
+      return !data.keys().hasAny(['sectionPrivacy']) ||
+        data.sectionPrivacy == null ||
+        (data.sectionPrivacy is map &&
+         data.sectionPrivacy.keys().hasOnly(keys) &&
+         data.sectionPrivacy.keys().hasAll(keys) &&
+         data.sectionPrivacy.favorites is bool &&
+         data.sectionPrivacy.activity is bool &&
+         data.sectionPrivacy.friends is bool &&
+         data.sectionPrivacy.fans is bool &&
+         data.sectionPrivacy.works is bool &&
+         data.sectionPrivacy.groups is bool &&
+         data.sectionPrivacy.ratings is bool &&
+         data.sectionPrivacy.achievements is bool &&
+         data.sectionPrivacy.lists is bool);
+    }
+
+    function validSelfProfilePresentation(data) {
+      return optionalShortString(data, 'favoriteQuote', 200) &&
+        optionalShortString(data, 'animeTwin', 80) &&
+        optionalHttpUrl(data, 'coverUrl') &&
+        optionalSocialLinks(data) &&
+        optionalSectionPrivacy(data);
+    }
+
     match /users/{uid} {
       // The root user document contains credentials-adjacent and account
       // state. Display data for other users lives in public_profiles.
@@ -401,7 +477,8 @@ service cloud.firestore {
           'customMaxMembersLimit','customMaxJoinedGroupsLimit',
           'customMaxCreatedGroupsLimit','hasClaimedReferral',
           'favoriteAnimeIds','profileVisibility','activityVisibility',
-          'hasSkippedOnboarding','whoCanMessageMe'
+          'hasSkippedOnboarding','whoCanMessageMe','language',
+          'coverUrl','favoriteQuote','animeTwin','socialLinks','sectionPrivacy'
         ]) &&
         request.resource.data.keys().hasAll([
           'email','createdAt','isProfileCompleted'
@@ -421,18 +498,32 @@ service cloud.firestore {
         request.resource.data.get('profileVisibility', 'public') in ['public','private'] &&
         request.resource.data.get('activityVisibility', 'public') in ['public','private'] &&
         request.resource.data.get('whoCanMessageMe', 'related') in ['related','friends'] &&
+        (!request.resource.data.keys().hasAny(['language']) ||
+         request.resource.data.language in ['ar','en']) &&
+        (!request.resource.data.keys().hasAny(['username']) ||
+         (request.resource.data.username is string &&
+          request.resource.data.username.size() <= 32)) &&
         (!request.resource.data.keys().hasAny(['displayName']) ||
          request.resource.data.displayName == null ||
          (request.resource.data.displayName is string &&
-          request.resource.data.displayName.size() <= 80));
+          request.resource.data.displayName.size() <= 80)) &&
+        validSelfProfilePresentation(request.resource.data);
       // Currency, subscription/limits, moderation, referral and social counters
       // are service-owned.  Clients can change only presentation/profile data.
       allow update: if self(uid) &&
         ((changedOnly([
-          'username','nickname','displayName','avatarUrl','bio','favoriteAnimes','age','country',
-          'favoriteAnimeIds','activityVisibility','whoCanMessageMe',
-          'isProfileCompleted','hasSkippedOnboarding','updatedAt'
+          'username','nickname','displayName','avatarUrl','coverUrl','bio',
+          'favoriteAnimes','age','country',
+          'favoriteAnimeIds','favoriteQuote','animeTwin','socialLinks',
+          'sectionPrivacy','activityVisibility',
+          'whoCanMessageMe',
+          'isProfileCompleted','hasSkippedOnboarding','updatedAt','language'
         ]) &&
+          (!request.resource.data.keys().hasAny(['username']) ||
+           (request.resource.data.username is string &&
+            request.resource.data.username.size() <= 32)) &&
+          (!request.resource.data.keys().hasAny(['language']) ||
+           request.resource.data.language in ['ar','en']) &&
           (!request.resource.data.keys().hasAny(['bio']) ||
            request.resource.data.bio == null ||
            (request.resource.data.bio is string &&
@@ -449,7 +540,8 @@ service cloud.firestore {
           request.resource.data.get('activityVisibility', 'public')
             in ['public','private'] &&
           request.resource.data.get('whoCanMessageMe', 'related')
-            in ['related','friends']) ||
+            in ['related','friends'] &&
+          validSelfProfilePresentation(request.resource.data)) ||
          false);
       allow delete: if false;
 
@@ -490,6 +582,37 @@ service cloud.firestore {
         allow read: if signedIn();
         allow create, update, delete: if false;
       }
+      match /custom_lists_meta/{id} {
+        allow read: if self(uid);
+        allow write: if false;
+      }
+      match /anime_custom_lists/{listId} {
+        allow read: if signedIn() &&
+          (resource.data.private == false || self(uid));
+        allow create, update, delete: if false;
+        match /items/{animeId} {
+          allow read: if signedIn() &&
+            (get(/databases/$(database)/documents/users/$(uid)/anime_custom_lists/$(listId)).data.private == false
+             || self(uid));
+          allow create, update, delete: if false;
+        }
+      }
+      // Durable anime catalog cache: written after a successful remote fetch
+      // and served as a graceful fallback when the catalog source is down.
+      match /anime_cache/{key} {
+        allow read: if self(uid);
+        allow create: if self(uid) &&
+          request.resource.data.keys().hasOnly([
+            'payload','savedAt','expiresAt']) &&
+          request.resource.data.payload is map &&
+          request.resource.data.payload.size() <= 200000;
+        allow update: if self(uid) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['payload','savedAt','expiresAt']) &&
+          request.resource.data.payload is map &&
+          request.resource.data.payload.size() <= 200000;
+        allow delete: if false;
+      }
       match /character_favorites/{characterId} {
         allow read: if signedIn();
         allow create, update, delete: if false;
@@ -512,7 +635,7 @@ service cloud.firestore {
         allow read: if signedIn();
         allow write: if false;
         match /reports/{reportId} {
-          allow read: if isAdmin();
+          allow read: if isAdmin() || isModerator();
           allow create: if signedIn() &&
             request.auth.uid == request.resource.data.reporterId &&
             reportId == request.auth.uid;
@@ -523,6 +646,34 @@ service cloud.firestore {
     match /character_stats/{characterId} {
       allow read: if signedIn();
       allow write: if false;
+    }
+    match /character_discussions/{characterId}/posts/{postId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    // Anime reports: one document per reporter per anime, written only by the
+    // server-side callable; clients may read their own reports.
+    match /anime_reports/{animeId}/reports/{reporterId} {
+      allow read: if isAdmin() || isModerator() || self(reporterId);
+      allow write: if false;
+    }
+    match /animeReportRate/{actor} {
+      allow read: if self(actor);
+      allow write: if false;
+    }
+    // Achievements: server-authored badges and progress are readable (profile
+    // strips show unlocked badges to any signed-in visitor) but never
+    // client-writable.
+    match /user_achievements/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+      match /items/{itemId} { allow read: if signedIn(); allow write: if false; }
+      match /unlocked/{itemId} { allow read: if signedIn(); allow write: if false; }
+    }
+    match /user_achievement_progress/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+      match /progress/{itemId} { allow read: if signedIn(); allow write: if false; }
     }
     match /economyTransactions/{transactionId} {
       allow get: if signedIn() && resource.data.userId == request.auth.uid;
@@ -544,6 +695,27 @@ service cloud.firestore {
       allow list: if signedIn();
       // This is a server-maintained projection of users/{uid}. Allowing a
       // client write would let callers forge badges and social counters.
+      allow create, update, delete: if false;
+    }
+
+    // Phase 10 (axis 23) — the flat moderation queue and its audit trail.
+    // Server-owned in both directions: no client may read another user's
+    // reports, forge a case, or erase the record of a takedown. Staff read
+    // through claims only.
+    match /moderation_cases/{caseId} {
+      allow read: if isModerator();
+      allow write: if false;
+    }
+    match /moderation_audit/{entryId} {
+      allow read: if isModerator();
+      allow write: if false;
+    }
+
+    match /usernames/{username} {
+      // Reserved-namespace registry (spec §3.2 uniqueness). Writes are only
+      // performed by server functions (reserveUsername callable + the
+      // username-reconciliation trigger). Clients can look names up.
+      allow get, list: if signedIn();
       allow create, update, delete: if false;
     }
 
@@ -693,8 +865,9 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
       match /messageReports/{reportId} {
+        // Phase 10 — staff need to read the report they are acting on.
         allow read: if signedIn() &&
-          resource.data.reporterId == request.auth.uid;
+          (isModerator() || resource.data.reporterId == request.auth.uid);
         allow create, update, delete: if false;
       }
       match /transferConfirmations/{uid} {
@@ -776,6 +949,11 @@ service cloud.firestore {
       let s = status is string ? status.lower() : '';
       return s != 'draft' && s != 'deleted' && s != 'archived';
     }
+    function eventEnded(eventId) {
+      let status = eventDoc(eventId).get('status', '');
+      let s = status is string ? status.lower() : '';
+      return s == 'ended' || s == 'archived';
+    }
     function eventGlobalScope(eventId) {
       return eventDoc(eventId).get('scope', 'group') == 'global';
     }
@@ -811,7 +989,10 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
       match /responses/{uid} {
-        allow read: if eventVisibleToUser(eventId);
+        // A participant's answer stays private until the event ends; only its
+        // owner may read it while the event is live.
+        allow read: if eventVisibleToUser(eventId) &&
+          (request.auth.uid == uid || eventEnded(eventId));
         allow create, update, delete: if false;
       }
       match /comments/{commentId} {
@@ -856,62 +1037,76 @@ service cloud.firestore {
         allow read: if gameVisible();
         allow create, update, delete: if false;
       }
-      match /secret/{docId} {
+      match /private/{uid} {
+        allow read: if gameVisible() && request.auth.uid == uid;
+        allow create, update, delete: if false;
+      }
+      match /secret/{document=**} {
         allow read, write: if false;
       }
-      match /private/{uid} {
-        allow read: if gameVisible() && self(uid);
-        allow write: if false;
-      }
-    }
-
-    match /game_history/{gameId} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-    match /achievements/{achievementId} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-    match /achievement_definitions/{achievementId} {
-      allow read: if signedIn();
-      allow write: if false;
-    }
-    match /user_achievements/{uid} {
-      // Unlocked badges are visible to signed-in profile visitors.
-      allow read: if signedIn();
-      allow write: if false;
-      match /items/{achievementId} {
-        allow read: if signedIn();
-        allow write: if false;
-      }
-      match /unlocked/{achievementId} {
-        allow read: if signedIn();
-        allow write: if false;
-      }
-    }
-    match /user_achievement_progress/{uid} {
-      allow read: if signedIn();
-      allow write: if false;
-      match /progress/{achievementId} {
-        allow read: if signedIn();
-        allow write: if false;
-      }
-    }
-    match /user_achievement_stats/{uid} {
-      allow read: if self(uid);
-      allow write: if false;
     }
 
     match /edits/{editId} {
-      allow read: if signedIn();
+      // §15.18 — a takedown must actually revoke access. `allow read: if
+      // signedIn()` let any account keep reading an unpublished, flagged, or
+      // deleted Reel document (and its comments/likes) forever, because the
+      // server only ever flips `status`; nothing was ever removed.
+      // The creator still reads their own row so the upload manager can show a
+      // real failure/review reason, and staff keeps its moderation surface.
+      function editReadable(uid) {
+        return signedIn() && (
+          isAdmin() ||
+          resource.data.creatorId == uid ||
+          (resource.data.status == 'published' &&
+            resource.data.moderationStatus == 'approved')
+        );
+      }
+      allow get: if editReadable(request.auth.uid);
+      // §15.18 — a reported/flagged Reel keeps `status: 'published'` so the
+      // takedown path can restore it, which is why the list rule must also
+      // require `moderationStatus == 'approved'`. Without it any signed-in
+      // client could query flagged, needs_review, or removed Reels directly.
+      // A collection query must carry both `where status == 'published'` and
+      // `where moderationStatus == 'approved'`; Firestore rejects a query that
+      // could return anything else.
+      allow list: if signedIn() &&
+        resource.data.status == 'published' &&
+        resource.data.moderationStatus == 'approved';
       // Edit documents and all aggregate counters are server-authoritative.
       allow create, update, delete: if false;
+      // §15.18 audit trail — written only by the server takedown path.
+      match /audit/{entryId} {
+        allow read: if signedIn() && (isAdmin() || resource.data.actorId == request.auth.uid);
+        allow write: if false;
+      }
+      // §15.18 §15.3 — real moderation reports, one document per reporter.
+      // Written only by the `reportEdit` callable, which validates the category
+      // and enforces a per-user rate limit. A client-side `create` bypassed both
+      // (any signed-in user could write an arbitrary category and flood the
+      // queue), so the reporter keeps read access but no write access.
+      match /reports/{uid} {
+        allow read: if isAdmin() || isModerator() || self(uid);
+        allow write: if false;
+      }
       match /comments/{commentId} {
-        allow read: if signedIn();
+        // Subcollection reads are not implicitly covered by the parent rule, so
+        // a takedown would otherwise still expose the whole thread to anyone
+        // who kept the old document id.
+        function parentReadable() {
+          return firestore.exists(/databases/(default)/documents/edits/$(editId)) &&
+            (isAdmin() ||
+              get(/databases/(default)/documents/edits/$(editId)).data.creatorId == request.auth.uid ||
+              (get(/databases/(default)/documents/edits/$(editId)).data.status == 'published' &&
+               get(/databases/(default)/documents/edits/$(editId)).data.moderationStatus == 'approved'));
+        }
+        allow read: if parentReadable();
         allow create, update, delete: if false;
         match /likes/{uid} { allow read: if self(uid); allow write: if false; }
-        match /reports/{uid} { allow read: if self(uid); allow write: if false; }
+        // Comment reports are written only by the `editCommentAction` callable.
+        match /reports/{uid} {
+          allow read: if isAdmin() || isModerator() || self(uid);
+          allow write: if false;
+        }
       }
       match /likes/{uid} { allow read: if self(uid); allow write: if false; }
       // Aggregate viewers/watch data is server-owned; clients must not inflate it.
@@ -924,9 +1119,49 @@ service cloud.firestore {
       match /impressions/{uid} { allow read: if self(uid); allow write: if false; }
     }
 
+    // §15 viewer mute list. The viewer's own rows only; the server writes the
+    // authoritative feed filter, so clients cannot mute on someone else's behalf
+    // nor read who else muted whom.
+    match /reelMutes/{uid} {
+      allow read: if self(uid);
+      allow write: if false;
+      match /creators/{creatorId} {
+        allow read: if self(uid);
+        allow write: if false;
+      }
+    }
+
+    // §15 saved Reels. Server-written from the save signal so the list cannot be
+    // forged; a viewer may read only their own, and nobody else's saves are
+    // visible even to signed-in users.
+    match /savedReels/{uid} {
+      allow read: if self(uid);
+      allow write: if false;
+      match /items/{editId} {
+        allow read: if self(uid);
+        allow write: if false;
+      }
+    }
+
     match /editUploadKeys/{keyId} {
       allow read: if signedIn() && resource.data.creatorId == request.auth.uid;
       allow create, update, delete: if false;
+    }
+
+    // Axis 15 §15.8 — the audio library. Without these rules the client
+    // repository could not read a single audio document, which is why the
+    // whole audio surface looked dead.
+    match /reelAudios/{audioId} {
+      // Only server-processed audio is publicly listable; drafts and failed
+      // extractions stay invisible.
+      allow read: if signedIn() &&
+        resource.data.status == 'ready';
+      // Audio documents, usage counters, and ownership are server-owned.
+      allow create, update, delete: if false;
+      match /reelAudioUsage/{reelId} {
+        allow read: if signedIn();
+        allow create, update, delete: if false;
+      }
     }
 
     match /fanWorks/{workId} {
@@ -956,9 +1191,21 @@ service cloud.firestore {
         allow read: if self(uid);
         allow create, update, delete: if false;
       }
+      // Reading progress is written by `saveFanWorkReadingProgress` /
+      // `markFanWorkAsRead` (Admin SDK, so they bypass these rules) and read
+      // back directly by the app to resume where the reader stopped.
+      //
+      // Self-read only, and never client-writable: how far someone got in a
+      // Fan Work is private to them, and it is also server-clamped, so a client
+      // forging a page number would gain nothing even if it could write.
+      match /readingProgress/{uid} {
+        allow read: if self(uid);
+        allow create, update, delete: if false;
+      }
       match /reports/{reportId} {
         allow read: if signedIn() && fanWorkExists() &&
-          (fanWorkData().creatorId == request.auth.uid ||
+          (isModerator() ||
+           fanWorkData().creatorId == request.auth.uid ||
            resource.data.reporterId == request.auth.uid);
         allow create, update, delete: if false;
       }
@@ -1136,6 +1383,45 @@ service cloud.firestore {
     match /mafia_history/{gameId} {
       allow read: if signedIn() && request.auth.uid in resource.data.players;
       allow write: if false;
+    }
+
+    // Game Center History/Recent. The server writes one history document per
+    // finished game, so a player can only read their own finished games.
+    match /game_history/{gameId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.participants;
+      allow write: if false;
+    }
+
+    // Unified media metadata (`lib/core/media`). Metadata only — bytes live
+    // in the storage backend. Contract: a signed-in user may read media
+    // records, but may only create their own (with a key that really belongs
+    // to them), may only move the transient `status`/`updatedAt` fields, and
+    // may only delete their own. The server never writes here, so no
+    // server-only branch is needed.
+    match /media/{mediaId} {
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+          request.resource.data.ownerUid == request.auth.uid &&
+          request.resource.data.mediaId == mediaId &&
+          request.resource.data.storageKey is string &&
+          request.resource.data.storageKey.matches(
+              '^(images|reels|audio)/' + request.auth.uid +
+              '/[A-Za-z0-9_-]+[.][A-Za-z0-9]+$') &&
+          request.resource.data.kind in ['image', 'reels', 'audio'] &&
+          request.resource.data.backend in ['firebase', 'r2'] &&
+          validMediaStatus(request.resource.data.status) &&
+          request.resource.data.sizeBytes is int &&
+          request.resource.data.sizeBytes > 0 &&
+          request.resource.data.sizeBytes <= 100 * 1024 * 1024;
+      allow update: if signedIn() &&
+          resource.data.ownerUid == request.auth.uid &&
+          request.resource.data.ownerUid == resource.data.ownerUid &&
+          request.resource.data.mediaId == resource.data.mediaId &&
+          request.resource.data.storageKey == resource.data.storageKey &&
+          validMediaStatus(request.resource.data.status) &&
+          changedOnly(['status', 'updatedAt']);
+      allow delete: if signedIn() &&
+          resource.data.ownerUid == request.auth.uid;
     }
 
     // Joined tab: collection-group *list* of `members` is own-uid only.

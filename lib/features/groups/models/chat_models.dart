@@ -69,6 +69,20 @@ final class MediaUploadUiState {
   );
 }
 
+/// Per-message upload surface a bubble needs, independent of which conversation
+/// owns it. Injected into the bubble rather than resolved from a global
+/// provider, so the group and the 1:1 chat share one bubble widget without
+/// either side reading the other's state.
+abstract interface class ChatMediaUploadHost {
+  /// Local camera/gallery bytes for a message whose upload has not produced a
+  /// remote URL yet, so the sender sees their own media immediately.
+  Uint8List? localPreviewBytes(String messageId);
+
+  /// Per-message upload listenable, or null when this message is not uploading.
+  /// Bubbles listen to it directly so progress ticks never rebuild the list.
+  ValueListenable<MediaUploadUiState>? uploadUiListenable(String messageId);
+}
+
 final class ChatMessage {
   const ChatMessage({
     required this.id,
@@ -81,6 +95,8 @@ final class ChatMessage {
     required this.mediaUrl,
     required this.thumbnailUrl,
     required this.mediaId,
+    this.mediaWidth,
+    this.mediaHeight,
     required this.replyToMessageId,
     this.replyPreview,
     this.stickerKey,
@@ -103,8 +119,12 @@ final class ChatMessage {
     this.senderTitle,
     this.disappearing = false,
     this.cardMeta,
+<<<<<<< HEAD
     this.mediaWidth,
     this.mediaHeight,
+=======
+    this.reactionUsers = const <String, Set<String>>{},
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
   });
 
   factory ChatMessage.optimistic({
@@ -118,6 +138,8 @@ final class ChatMessage {
     String? mediaUrl,
     String? thumbnailUrl,
     String? mediaId,
+    int? mediaWidth,
+    int? mediaHeight,
     String? replyToMessageId,
     String? replyPreview,
     String? stickerKey,
@@ -136,6 +158,8 @@ final class ChatMessage {
       mediaUrl: mediaUrl,
       thumbnailUrl: thumbnailUrl,
       mediaId: mediaId,
+      mediaWidth: mediaWidth,
+      mediaHeight: mediaHeight,
       replyToMessageId: replyToMessageId,
       replyPreview: replyPreview,
       stickerKey: stickerKey,
@@ -189,6 +213,8 @@ final class ChatMessage {
       mediaUrl: map['mediaUrl'] as String?,
       thumbnailUrl: map['thumbnailUrl'] as String?,
       mediaId: map['mediaId'] as String?,
+      mediaWidth: _positiveInt(map['mediaWidth']),
+      mediaHeight: _positiveInt(map['mediaHeight']),
       replyToMessageId:
           (map['replyToMessageId'] ?? map['replyToId']) as String?,
       replyPreview: map['replyPreview'] as String?,
@@ -201,6 +227,7 @@ final class ChatMessage {
       deletedAt: _date(map['deletedAt']),
       pinnedAt: _date(map['pinnedAt']),
       reactions: reactions,
+      reactionUsers: _reactionUsers(map['reactionUsers']),
       recipientCount: (map['recipientCount'] as num?)?.toInt() ?? 0,
       deliveredCount: (map['deliveredCount'] as num?)?.toInt() ?? 0,
       readCount: (map['readCount'] as num?)?.toInt() ?? 0,
@@ -228,6 +255,11 @@ final class ChatMessage {
   final String? mediaUrl;
   final String? thumbnailUrl;
   final String? mediaId;
+  /// Display-oriented pixel size of [mediaUrl], recorded by the media pipeline.
+  /// Null for legacy media, in which case the bubble falls back to a neutral
+  /// ratio instead of probing (which would mean a full decode per bubble).
+  final int? mediaWidth;
+  final int? mediaHeight;
   final String? replyToMessageId;
   final String? replyPreview;
   final String? stickerKey;
@@ -240,6 +272,11 @@ final class ChatMessage {
   final DateTime? deletedAt;
   final DateTime? pinnedAt;
   final Map<String, int> reactions;
+
+  /// Who reacted, per emoji. The server is the source of truth for this and
+  /// reconciles it on the watch stream; the client only reads it to know which
+  /// way a toggle goes before the round trip lands.
+  final Map<String, Set<String>> reactionUsers;
   final int recipientCount;
   final int deliveredCount;
   final int readCount;
@@ -266,6 +303,40 @@ final class ChatMessage {
       : 4 / 3;
 
   bool get isDeleted => deletedAt != null;
+
+  /// Whether [uid] already reacted with [emoji], as the last server answer said.
+  bool hasReacted(String emoji, String uid) =>
+      reactionUsers[emoji]?.contains(uid) ?? false;
+
+  /// This message with [uid]'s [emoji] reaction toggled, the way the server's
+  /// read-modify-write would leave it.
+  ///
+  /// The server toggles, so the direction has to be known before the call goes
+  /// out — applying the wrong one would visibly flip the pill twice. Documents
+  /// written before `reactionUsers` existed carry counts with no owners; those
+  /// are read as "not mine yet", which is right for a first reaction and heals
+  /// from the stream either way.
+  ChatMessage withReactionToggled(String emoji, String uid) {
+    final users = reactionUsers[emoji];
+    final removing = users?.contains(uid) ?? false;
+    final nextCounts = Map<String, int>.from(reactions);
+    final nextUsers = <String, Set<String>>{...reactionUsers};
+    if (removing) {
+      final remaining = Set<String>.from(users!)..remove(uid);
+      final count = (nextCounts[emoji] ?? 1) - 1;
+      if (remaining.isEmpty || count <= 0) {
+        nextUsers.remove(emoji);
+        nextCounts.remove(emoji);
+      } else {
+        nextUsers[emoji] = remaining;
+        nextCounts[emoji] = count;
+      }
+    } else {
+      nextUsers[emoji] = <String>{...?users, uid};
+      nextCounts[emoji] = (nextCounts[emoji] ?? 0) + 1;
+    }
+    return copyWith(reactions: nextCounts, reactionUsers: nextUsers);
+  }
   bool get isMemberJoinedCard =>
       type == ChatMessageType.system &&
       (systemKind == 'member_joined' ||
@@ -285,6 +356,28 @@ final class ChatMessage {
       type == ChatMessageType.gif ||
       (type == ChatMessageType.sticker && !isCatalogSticker);
 
+  /// True when the media pipeline recorded a usable pixel size.
+  bool get hasMediaSize => mediaWidth != null && mediaHeight != null;
+
+  /// True when the bubble renders a raster/stream frame and therefore can be
+  /// given a concrete box up front instead of an intrinsic layout pass.
+  bool get hasDisplayMedia =>
+      type == ChatMessageType.image ||
+      type == ChatMessageType.video ||
+      type == ChatMessageType.gif;
+
+  /// Aspect ratio the bubble should render at.
+  ///
+  /// Clamped so a very tall screenshot or a panorama cannot dominate the
+  /// viewport; the bubble always crops with `BoxFit.cover` inside these bounds.
+  double get mediaAspectRatio {
+    final w = mediaWidth;
+    final h = mediaHeight;
+    if (w == null || h == null || w <= 0 || h <= 0) return kChatMediaFallbackAspect;
+    final ratio = w / h;
+    return ratio.clamp(kChatMediaMinAspect, kChatMediaMaxAspect);
+  }
+
   ChatDeliveryState get deliveryState {
     if (readCount >= recipientCount && recipientCount > 0) {
       return ChatDeliveryState.read;
@@ -300,6 +393,10 @@ final class ChatMessage {
     bool clearFailureMessage = false,
     DateTime? createdAt,
     DateTime? deletedAt,
+    DateTime? pinnedAt,
+    bool clearPinnedAt = false,
+    Map<String, int>? reactions,
+    Map<String, Set<String>>? reactionUsers,
   }) {
     return ChatMessage(
       id: id,
@@ -312,6 +409,8 @@ final class ChatMessage {
       mediaUrl: mediaUrl,
       thumbnailUrl: thumbnailUrl,
       mediaId: mediaId,
+      mediaWidth: mediaWidth,
+      mediaHeight: mediaHeight,
       replyToMessageId: replyToMessageId,
       replyPreview: replyPreview,
       stickerKey: stickerKey,
@@ -321,8 +420,9 @@ final class ChatMessage {
       createdAt: createdAt ?? this.createdAt,
       editedAt: editedAt,
       deletedAt: deletedAt ?? this.deletedAt,
-      pinnedAt: pinnedAt,
-      reactions: reactions,
+      pinnedAt: clearPinnedAt ? null : (pinnedAt ?? this.pinnedAt),
+      reactions: reactions ?? this.reactions,
+      reactionUsers: reactionUsers ?? this.reactionUsers,
       recipientCount: recipientCount,
       deliveredCount: deliveredCount,
       readCount: readCount,
@@ -376,12 +476,6 @@ final class ChatGameActivity {
   bool get isStarted =>
       status == 'started' || status == 'live' || kind == 'started';
   bool get isCancelled => kind == 'cancelled' || status == 'cancelled';
-  String get actionLabel {
-    if (isCancelled) return 'Closed';
-    if (isStarted) return 'View';
-    if (isFull) return 'Full';
-    return isCreated ? 'Join' : 'View result';
-  }
 
   static ChatGameActivity? tryParse(dynamic raw) {
     if (raw is! Map) return null;
@@ -416,12 +510,32 @@ final class ChatMediaUpload {
     required this.thumbnailUrl,
     required this.mediaId,
     required this.type,
+    this.width,
+    this.height,
   });
 
   final String mediaUrl;
   final String? thumbnailUrl;
   final String mediaId;
   final ChatMessageType type;
+  final int? width;
+  final int? height;
+}
+
+/// Fallback ratio for media the pipeline never measured. Landscape-leaning so a
+/// portrait screenshot does not become a letterboxed sliver before its real size
+/// is known, and so the box does not jump when the dimensions arrive.
+const double kChatMediaFallbackAspect = 4 / 3;
+
+/// A bubble is never wider than roughly three quarters of the viewport and never
+/// taller than this, so extreme ratios stay readable.
+const double kChatMediaMinAspect = 0.5;
+const double kChatMediaMaxAspect = 2.4;
+
+int? _positiveInt(dynamic value) {
+  if (value is! num) return null;
+  final rounded = value.toInt();
+  return rounded > 0 ? rounded : null;
 }
 
 Map<String, String>? _stringMap(dynamic value) {
@@ -435,6 +549,23 @@ Map<String, String>? _stringMap(dynamic value) {
   return out.isEmpty ? null : out;
 }
 
+/// `reactionUsers` as the server writes it: emoji -> { uid: true }. Read so the
+/// client knows whether *this* account already reacted, which is what makes the
+/// server's toggle predictable enough to apply on the device first.
+Map<String, Set<String>> _reactionUsers(dynamic value) {
+  if (value is! Map) return const <String, Set<String>>{};
+  final out = <String, Set<String>>{};
+  for (final entry in value.entries) {
+    if (entry.key is! String || entry.value is! Map) continue;
+    final uids = <String>{
+      for (final uid in (entry.value as Map).keys)
+        if (uid is String) uid,
+    };
+    if (uids.isNotEmpty) out[entry.key as String] = uids;
+  }
+  return out.isEmpty ? const <String, Set<String>>{} : out;
+}
+
 DateTime? _date(dynamic value) {
   if (value is DateTime) return value;
   if (value is Timestamp) return value.toDate();
@@ -444,4 +575,20 @@ DateTime? _date(dynamic value) {
   } catch (_) {
     return null;
   }
+}
+
+/// Newest live pinned message in [messages].
+///
+/// Tombstones are skipped so a pinned banner never jumps to a deleted message,
+/// and a missing `pinnedAt` (older documents) is treated as "not pinned".
+ChatMessage? newestPinnedMessage(List<ChatMessage> messages) {
+  ChatMessage? newest;
+  for (final message in messages) {
+    final pinnedAt = message.pinnedAt;
+    if (pinnedAt == null || message.isDeleted) continue;
+    if (newest == null || pinnedAt.isAfter(newest.pinnedAt!)) {
+      newest = message;
+    }
+  }
+  return newest;
 }

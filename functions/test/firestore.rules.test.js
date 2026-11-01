@@ -52,7 +52,7 @@ test.beforeEach(async () => {
       realUserName: "Bob", realUserImageUrl: "", isPremium: false,
     });
     await admin.doc("mafia_games/m1").set({
-      groupId: "g1", status: "night", currentPhase: "night", currentNight: 1,
+      groupId: "g1", status: "NIGHT", currentPhase: "NIGHT", currentNight: 1,
       currentDay: 1, playersCount: 2, maxPlayers: 8,
     });
     await admin.doc("mafia_games/m1/players/alice").set({
@@ -88,6 +88,40 @@ test.beforeEach(async () => {
     await admin.doc("events/e1/responses/bob").set({
       userId: "bob", eventId: "e1", responseData: { optionId: "opt-1" },
     });
+    await admin.doc("events/e-global").set({
+      creatorId: "alice", scope: "global", groupId: null, type: "poll",
+      title: "Global", status: "ACTIVE", participantsCount: 1, responsesCount: 0,
+    });
+    await admin.doc("events/e-global/responses/bob").set({
+      userId: "bob", eventId: "e-global", responseData: { optionId: "opt-1" },
+    });
+    await admin.doc("events/e-ended").set({
+      creatorId: "alice", scope: "global", groupId: null, type: "poll",
+      title: "Ended global", status: "ENDED", participantsCount: 1, responsesCount: 1,
+    });
+    await admin.doc("events/e-ended/responses/bob").set({
+      userId: "bob", eventId: "e-ended", responseData: { optionId: "opt-1" },
+    });
+    await admin.doc("events/e-multi").set({
+      creatorId: "alice", scope: "multiGroup", groupId: null,
+      groupIds: ["g1", "g2"], type: "poll", title: "Multi",
+      status: "ACTIVE", participantsCount: 1, responsesCount: 0,
+    });
+    // Multi-group membership is proven loop-free through the participants
+    // subcollection (the app writes it after groupMember() passes).
+    await admin.doc("events/e-multi/participants/bob").set({
+      userId: "bob", eventId: "e-multi",
+    });
+    await admin.doc("events/e-multi/participants/charlie").set({
+      userId: "charlie", eventId: "e-multi",
+    });
+    await admin.doc("groups/g2").set({ founderId: "charlie", name: "G2" });
+    await admin.doc("groups/g2/members/charlie").set({
+      role: "founder", userId: "charlie",
+    });
+    await admin.doc("events/e-ended/comments/c1").set({
+      userId: "bob", text: "Nice", createdAt: new Date(),
+    });
     await admin.doc("games/game1").set({
       creatorId: "alice", groupId: "g1", type: "guessCharacter", title: "Guess",
       status: "waiting", participantsCount: 1,
@@ -111,11 +145,14 @@ test.beforeEach(async () => {
     await admin.doc("games/game1/private/alice").set({
       note: "alice-only",
     });
+    await admin.doc("game_history/game1").set({
+      gameId: "game1", type: "guessCharacter", groupId: "g1",
+      participants: ["alice", "bob"],
+      result: { kind: "guessCharacter", winnerIds: ["alice"], scores: { alice: 1, bob: 0 } },
+      endedAt: new Date(),
+    });
     await admin.doc("user_achievements/alice/items/first_game_win").set({
       achievementId: "first_game_win", title: "First Victory",
-    });
-    await admin.doc("game_history/game1").set({
-      gameId: "game1", type: "guessCharacter", result: { winnerIds: ["alice"] },
     });
     await admin.doc("fanWorks/fw-public").set({
       creatorId: "alice", type: "drawing", title: "Public drawing",
@@ -166,6 +203,129 @@ test("profile owner can change display data but not coins", async () => {
   await assertSucceeds(db("alice").doc("users/alice").update({ bio: "hello" }));
   await assertFails(db("alice").doc("users/alice").update({ coinsBalance: 999999 }));
   await assertFails(db("mallory").doc("users/alice").update({ bio: "pwned" }));
+});
+test("users language is constrained to ar/en and username is bounded on update", async () => {
+  await assertSucceeds(db("alice").doc("users/alice").update({ language: "en" }));
+  await assertSucceeds(db("alice").doc("users/alice").update({ language: "ar" }));
+  await assertFails(db("alice").doc("users/alice").update({ language: "fr" }));
+  await assertFails(db("mallory").doc("users/alice").update({ language: "en" }));
+  await assertSucceeds(db("alice").doc("users/alice").update({
+    username: "Alice_2024",
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    username: "x".repeat(40),
+  }));
+});
+test("users create carries the same language and username guards", async () => {
+  const base = { email: "n@example.com", createdAt: new Date(), isProfileCompleted: false };
+  await assertSucceeds(db("newbie").doc("users/newbie").set(base));
+  await assertSucceeds(db("newbie2").doc("users/newbie2").set({
+    ...base, language: "ar",
+  }));
+  await assertFails(db("newbie3").doc("users/newbie3").set({
+    ...base, language: "fr",
+  }));
+  await assertFails(db("newbie4").doc("users/newbie4").set({
+    ...base, username: "x".repeat(40),
+  }));
+  await assertFails(db("newbie").doc("users/newbie").set({
+    ...base, language: "en", username: "okname", coinsBalance: 1,
+  }));
+});
+test("self-owned presentation fields are writable on update and validated", async () => {
+  const sectionPrivacy = {
+    favorites: true, activity: false, friends: true, fans: true,
+    works: true, groups: true, ratings: true, achievements: true, lists: true,
+  };
+  await assertSucceeds(db("alice").doc("users/alice").update({
+    coverUrl: "https://firebasestorage.googleapis.com/o/cover.jpg",
+  }));
+  await assertSucceeds(db("alice").doc("users/alice").update({
+    favoriteQuote: "A quote", animeTwin: "Levi",
+  }));
+  await assertSucceeds(db("alice").doc("users/alice").update({
+    socialLinks: [{ url: "https://x.example", label: "site" }],
+  }));
+  await assertSucceeds(db("alice").doc("users/alice").update({ sectionPrivacy }));
+  // profileVisibility stays callable-only: the direct path is not part of the
+  // allow-list, so flipping privacy still goes through updateSocialProfile
+  // (which also rotates the avatar download token).
+  await assertFails(db("alice").doc("users/alice").update({
+    profileVisibility: "private",
+  }));
+  // Server-owned counters stay locked even on the widened allow-list.
+  await assertFails(db("alice").doc("users/alice").update({ totalRespect: 9999 }));
+  await assertFails(db("alice").doc("users/alice").update({ coinsBalance: 1 }));
+  // Another user still cannot touch these fields.
+  await assertFails(db("mallory").doc("users/alice").update({ favoriteQuote: "pwned" }));
+  // Value guards mirror the updateSocialProfile callable.
+  await assertFails(db("alice").doc("users/alice").update({ favoriteQuote: "x".repeat(201) }));
+  await assertFails(db("alice").doc("users/alice").update({ animeTwin: "x".repeat(81) }));
+  await assertFails(db("alice").doc("users/alice").update({ coverUrl: "not-a-url" }));
+  await assertFails(db("alice").doc("users/alice").update({ coverUrl: `https://x/${"y".repeat(1030)}` }));
+  await assertFails(db("alice").doc("users/alice").update({
+    socialLinks: Array.from({ length: 21 }, () => ({ url: "https://x.example" })),
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    sectionPrivacy: { favorites: true },
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    sectionPrivacy: { ...sectionPrivacy, fans: "no" },
+  }));
+});
+
+test("users create accepts the full self-owned presentation payload", async () => {
+  const sectionPrivacy = {
+    favorites: true, activity: true, friends: true, fans: true,
+    works: true, groups: true, ratings: true, achievements: true, lists: true,
+  };
+  const base = { email: "n@example.com", createdAt: new Date(), isProfileCompleted: false };
+  // Mirrors PubgetUser.toMap() as written by createUserProfile.
+  await assertSucceeds(db("newbie").doc("users/newbie").set({
+    ...base,
+    username: "newbie",
+    displayName: "Newbie",
+    avatarUrl: null,
+    coverUrl: "https://firebasestorage.googleapis.com/o/cover.jpg",
+    bio: null,
+    age: null,
+    country: null,
+    favoriteQuote: "Hello",
+    animeTwin: "Levi",
+    socialLinks: [{ url: "https://x.example", platform: "x" }],
+    favoriteAnimes: [],
+    favoriteAnimeIds: [],
+    profileVisibility: "public",
+    activityVisibility: "public",
+    whoCanMessageMe: "related",
+    sectionPrivacy,
+    language: "ar",
+    hasSkippedOnboarding: false,
+  }));
+  await assertFails(db("newbie2").doc("users/newbie2").set({
+    ...base, favoriteQuote: "x".repeat(201),
+  }));
+  await assertFails(db("newbie3").doc("users/newbie3").set({
+    ...base, sectionPrivacy: { favorites: true },
+  }));
+  await assertFails(db("newbie4").doc("users/newbie4").set({
+    ...base, coverUrl: "javascript:alert(1)",
+  }));
+  // Server-owned fields are still rejected at create time.
+  await assertFails(db("newbie5").doc("users/newbie5").set({
+    ...base, totalRespect: 5,
+  }));
+});
+
+test("usernames registry is signed-in readable but never client-writable", async () => {
+  await assertSucceeds(db("alice").doc("usernames/fan").get());
+  await assertSucceeds(db("mallory").collection("usernames").get());
+  await assertFails(
+    env.unauthenticatedContext().firestore().doc("usernames/fan").get(),
+  );
+  await assertFails(db("alice").doc("usernames/fan").set({ uid: "alice" }));
+  await assertFails(db("alice").doc("usernames/fan").update({ uid: "mallory" }));
+  await assertFails(db("alice").doc("usernames/fan").delete());
 });
 test("private users and server-owned public profiles are separated", async () => {
   await assertSucceeds(db("alice").doc("users/alice").get());
@@ -296,6 +456,15 @@ test("events are readable by group members and never client-writable", async () 
     responseData: { optionId: "opt-2" },
   }));
 });
+test("global and multi-group events honor scope-aware visibility", async () => {
+  await assertSucceeds(db("mallory").doc("events/e-global").get());
+  await assertSucceeds(db("charlie").doc("events/e-global").get());
+  await assertSucceeds(db("bob").doc("events/e-multi").get());
+  await assertSucceeds(db("charlie").doc("events/e-multi").get());
+  await assertFails(db("mallory").doc("events/e-global/responses/bob").get());
+  await assertSucceeds(db("bob").doc("events/e-global/responses/bob").get());
+  await assertSucceeds(db("charlie").doc("events/e-ended/responses/bob").get());
+});
 test("games are readable by group members and never client-writable", async () => {
   await assertSucceeds(db("bob").doc("games/game1").get());
   await assertFails(db("charlie").doc("games/game1").get());
@@ -334,6 +503,60 @@ test("games are readable by group members and never client-writable", async () =
     targetValue: 1,
   }));
   await assertFails(db("alice").doc("game_history/game1").set({ winner: "alice" }));
+});
+
+test("game history is readable only by the players who played it", async () => {
+  // Game Center Recent/History read the server-written history documents.
+  await assertSucceeds(db("alice").doc("game_history/game1").get());
+  await assertSucceeds(db("bob").doc("game_history/game1").get());
+  await assertFails(db("charlie").doc("game_history/game1").get());
+  await assertFails(db("mallory").doc("game_history/game1").get());
+  // A result can never be rewritten by a client.
+  await assertFails(db("bob").doc("game_history/game1").update({
+    result: { kind: "guessCharacter", winnerIds: ["bob"], scores: { bob: 99 } },
+  }));
+  await assertFails(db("bob").doc("game_history/forged").set({
+    participants: ["bob"], result: { winnerIds: ["bob"] },
+  }));
+});
+test("mafia hidden state is protected from clients", async () => {
+  // Attack 1: Player A cannot read Player B's private role.
+  await assertFails(db("alice").doc("mafia_games/m1/players/bob/private/data").get());
+  await assertSucceeds(db("alice").doc("mafia_games/m1/players/alice/private/data").get());
+  // Attack 2: Player A cannot write their own role.
+  await assertFails(db("alice").doc("mafia_games/m1/players/alice/private/data").update({
+    role: "civilian",
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1/players/alice/private/data").set({
+    role: "mafia",
+  }));
+  // Attack 3: Player A cannot write another player's role.
+  await assertFails(db("alice").doc("mafia_games/m1/players/bob/private/data").set({
+    role: "civilian",
+  }));
+  // Attack 4: Player A cannot change phase.
+  await assertFails(db("alice").doc("mafia_games/m1").update({
+    "mafia.phase": "day",
+  }));
+  await assertFails(db("alice").doc("mafia_games/m1").update({ status: "completed" }));
+  // Attack 5: Player cannot mark themselves alive after elimination.
+  await assertFails(db("bob").doc("mafia_games/m1/players/bob").update({ isAlive: true }));
+  // Attack 10: Client cannot read authoritative hidden state.
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/na1").get());
+  await assertFails(db("bob").doc("mafia_games/m1/votes/v1").get());
+  await assertFails(db("charlie").doc("mafia_games/m1/action_receipts/r1").get());
+  // Non-participants cannot read private game state.
+  await assertFails(db("charlie").doc("mafia_games/m1").get());
+  await assertFails(db("charlie").doc("mafia_games/m1/players/alice/private/data").get());
+  // Public state is readable by participants/group members.
+  await assertSucceeds(db("bob").doc("mafia_games/m1").get());
+  await assertSucceeds(db("alice").doc("mafia_games/m1/players/bob").get());
+  // Winner / vote tallies / night resolution cannot be client-written.
+  await assertFails(db("alice").doc("mafia_games/m1").update({ winner: "mafia" }));
+  await assertFails(db("alice").doc("mafia_games/m1").set({
+    groupId: "g1", status: "COMPLETED", currentPhase: "COMPLETED",
+    winner: "mafia", playersCount: 2, maxPlayers: 8, minPlayers: 4,
+  }));
 });
 test("group capacity is fixed at trusted entitlement on create and never client-updatable", async () => {
   const group = {
@@ -402,8 +625,8 @@ test("legacy fan identity documents are not client-readable", async () => {
   await assertFails(db("bob").doc("fans/alice_bob").get());
   await assertFails(db("charlie").doc("fans/alice_bob").get());
 });
-test("night actions are player intent only, never role or resolver state", async () => {
-  await assertSucceeds(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+test("night actions are server-authoritative and clients cannot forge them", async () => {
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
     playerId: "alice", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
   }));
   await assertFails(db("bob").doc("mafia_games/m1/night_actions/bob_n1").set({
@@ -418,10 +641,12 @@ test("members atomically create a waiting lobby and their own default player", a
   });
   const game = {
     groupId: "g2", createdBy: "alice", createdAt: new Date(), version: "classic",
-    status: "waiting", currentPhase: "waiting", currentDay: 0, currentNight: 0,
+    status: "WAITING", currentPhase: "WAITING", currentDay: 0, currentNight: 0,
     playersCount: 1, minPlayers: 2, maxPlayers: 8, winner: null,
-    countdownEndsAt: new Date(Date.now() + 120000), phaseEndsAt: null, isLocked: false, startedAt: null,
-    endedAt: null, rewardsDistributed: false, historyWritten: false,
+    countdownEndsAt: new Date(Date.now() + 120000), phaseEndsAt: null,
+    serverStartedAt: null, serverEndsAt: null,
+    isLocked: false, startedAt: null, endedAt: null, rewardsDistributed: false,
+    historyWritten: false,
   };
   const player = {
     userId: "alice", username: "Alice", avatar: "", isAlive: true,
@@ -434,7 +659,7 @@ test("members atomically create a waiting lobby and their own default player", a
   batch.set(firestore.doc("mafia_games/g2game"), game);
   batch.set(firestore.doc("mafia_games/g2game/players/alice"), player);
   batch.update(firestore.doc("groups/g2"), {
-    activeGameId: "g2game", gameStatus: "waiting", hasRunningGame: true,
+    activeGameId: "g2game", gameStatus: "WAITING", hasRunningGame: true,
   });
   await assertSucceeds(batch.commit());
   await assertFails(db("bob").doc("mafia_games/g2game/players/alice").set(player));
@@ -444,7 +669,7 @@ test("members atomically create a waiting lobby and their own default player", a
   second.set(firestore.doc("mafia_games/g2game2"), game);
   second.set(firestore.doc("mafia_games/g2game2/players/alice"), player);
   second.update(firestore.doc("groups/g2"), {
-    activeGameId: "g2game2", gameStatus: "waiting", hasRunningGame: true,
+    activeGameId: "g2game2", gameStatus: "WAITING", hasRunningGame: true,
   });
   await assertFails(second.commit());
 });
@@ -462,10 +687,12 @@ test("lobby bounds reject invalid player limits and expiry windows", async () =>
   };
   const baseGame = {
     groupId: "g3", createdBy: "alice", createdAt: new Date(), version: "classic",
-    status: "waiting", currentPhase: "waiting", currentDay: 0, currentNight: 0,
+    status: "WAITING", currentPhase: "WAITING", currentDay: 0, currentNight: 0,
     playersCount: 1, minPlayers: 2, maxPlayers: 8, winner: null,
-    countdownEndsAt: new Date(Date.now() + 120000), phaseEndsAt: null, isLocked: false,
-    startedAt: null, endedAt: null, rewardsDistributed: false, historyWritten: false,
+    countdownEndsAt: new Date(Date.now() + 120000), phaseEndsAt: null,
+    serverStartedAt: null, serverEndsAt: null,
+    isLocked: false, startedAt: null, endedAt: null, rewardsDistributed: false,
+    historyWritten: false,
   };
   async function attempt(id, game) {
     const firestore = db("alice");
@@ -473,7 +700,7 @@ test("lobby bounds reject invalid player limits and expiry windows", async () =>
     batch.set(firestore.doc(`mafia_games/${id}`), game);
     batch.set(firestore.doc(`mafia_games/${id}/players/alice`), player);
     batch.update(firestore.doc("groups/g3"), {
-      activeGameId: id, gameStatus: "waiting", hasRunningGame: true,
+      activeGameId: id, gameStatus: "WAITING", hasRunningGame: true,
     });
     await assertFails(batch.commit());
   }
@@ -488,7 +715,7 @@ test("join, leave, and heartbeat require the caller's paired player mutation", a
   await env.withSecurityRulesDisabled(async (context) => {
     const admin = context.firestore();
     await admin.doc("mafia_games/lobby").set({
-      groupId: "g1", status: "waiting", currentPhase: "waiting",
+      groupId: "g1", status: "WAITING", currentPhase: "WAITING",
       playersCount: 1, maxPlayers: 8,
     });
     await admin.doc("mafia_games/lobby/players/alice").set({ userId: "alice" });
@@ -528,21 +755,21 @@ test("votes, chat, and actions reject wrong phase, number, and targets", async (
     time: new Date(), type: "player",
   }));
 });
-test("a living player can submit canonical vote and chat intent in its phase", async () => {
+test("anti-cheat: clients cannot forge votes or chat in any phase", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     await context.firestore().doc("mafia_games/m1").update({
-      status: "voting", currentPhase: "voting", currentDay: 1,
+      status: "VOTING", currentPhase: "VOTING", currentDay: 1,
     });
   });
-  await assertSucceeds(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
+  await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
     voterId: "alice", targetId: "bob", dayNumber: 1, time: new Date(),
   }));
   await env.withSecurityRulesDisabled(async (context) => {
     await context.firestore().doc("mafia_games/m1").update({
-      status: "discussion", currentPhase: "discussion",
+      status: "DISCUSSION", currentPhase: "DISCUSSION",
     });
   });
-  await assertSucceeds(db("alice").doc("mafia_games/m1/chat/c1").set({
+  await assertFails(db("alice").doc("mafia_games/m1/chat/c1").set({
     senderId: "alice", sender: "Alice", senderAvatar: "", text: "hello",
     time: new Date(), type: "player",
   }));
@@ -579,7 +806,7 @@ test("mafia night and vote attacks are rejected", async () => {
   await assertFails(db("eve").doc("mafia_games/m1/night_actions/eve_n1").set({
     playerId: "eve", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
   }));
-  await assertSucceeds(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
+  await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
     playerId: "alice", targetId: "bob", nightNumber: 1, submittedAt: new Date(),
   }));
   await assertFails(db("alice").doc("mafia_games/m1/night_actions/alice_n1").set({
@@ -596,7 +823,7 @@ test("mafia night and vote attacks are rejected", async () => {
   }));
   await env.withSecurityRulesDisabled(async (context) => {
     await context.firestore().doc("mafia_games/m1").update({
-      status: "voting", currentPhase: "voting", currentDay: 1,
+      status: "VOTING", currentPhase: "VOTING", currentDay: 1,
       phaseEndsAt: new Date(Date.now() - 60 * 1000),
     });
     await context.firestore().doc("mafia_games/m1/players/bob").update({ isAlive: true });
@@ -610,8 +837,8 @@ test("mafia night and vote attacks are rejected", async () => {
   await assertFails(db("alice").doc("mafia_games/m1/votes/bob_d1").set({
     voterId: "bob", targetId: "alice", dayNumber: 1, time: new Date(),
   }));
-  await assertSucceeds(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
-    voterId: "alice", targetId: "bob", dayNumber: 1, time: new Date(),
+  await assertFails(db("alice").doc("mafia_games/m1/votes/mallory_probe").set({
+    voterId: "mallory", targetId: "bob", dayNumber: 1, time: new Date(),
   }));
   await assertFails(db("alice").doc("mafia_games/m1/votes/alice_d1").set({
     voterId: "alice", targetId: "alice", dayNumber: 1, time: new Date(),
@@ -1057,6 +1284,58 @@ test("clients cannot write anime lists, ranking scores, or edit metrics", async 
   await assertFails(db("alice").doc("fanWorks/fw-public").update({
     ratingsAverage: 10,
   }));
+
+  // Reading progress is written by callables, never by a client, and a reader
+  // may read back only their own. Seed it through the Admin SDK, exactly as
+  // `saveFanWorkReadingProgress` would.
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("fanWorks/fw-public/readingProgress/bob").set({
+      page: 7, pageCount: 20, progress: 0.35, completed: false,
+    });
+    await context.firestore().doc("fanWorks/fw-public/readingProgress/alice").set({
+      page: 2, pageCount: 20, progress: 0.1, completed: false,
+    });
+  });
+  await assertSucceeds(db("bob").doc("fanWorks/fw-public/readingProgress/bob").get());
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/alice").get());
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/bob").set({
+    page: 40, completed: true,
+  }));
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/bob").update({
+    page: 999,
+  }));
+  await assertFails(db("bob").doc("fanWorks/fw-public/readingProgress/bob").delete());
+  // Not even the work's own creator may read somebody else's progress.
+  await assertFails(db("alice").doc("fanWorks/fw-public/readingProgress/bob").get());
+});
+
+test("custom anime lists are readable per privacy and never client-writable", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("users/alice/anime_custom_lists/list-public").set({
+      ownerUid: "alice", name: "Public", private: false, itemsCount: 1,
+    });
+    await admin.doc("users/alice/anime_custom_lists/list-private").set({
+      ownerUid: "alice", name: "Private", private: true, itemsCount: 0,
+    });
+    await admin.doc("users/alice/anime_custom_lists/list-public/items/21").set({
+      animeId: "21", title: "One Piece",
+    });
+  });
+  await assertSucceeds(db("bob").doc("users/alice/anime_custom_lists/list-public").get());
+  await assertFails(db("bob").doc("users/alice/anime_custom_lists/list-private").get());
+  await assertSucceeds(db("alice").doc("users/alice/anime_custom_lists/list-private").get());
+  await assertSucceeds(db("bob").doc("users/alice/anime_custom_lists/list-public/items/21").get());
+  await assertFails(db("bob").doc("users/alice/anime_custom_lists/list-private/items/21").get());
+  await assertFails(db("bob").doc("users/alice/anime_custom_lists/list-public").set({
+    ownerUid: "alice", name: "Forged", private: false,
+  }));
+  await assertFails(db("bob").doc("users/alice/anime_custom_lists/list-public/items/22").set({
+    animeId: "22",
+  }));
+  await assertFails(db("bob").doc("users/alice/custom_lists_meta/count").set({
+    count: 99,
+  }));
 });
 
 function pubgetUserToMap(overrides = {}) {
@@ -1160,6 +1439,49 @@ test("message reports are readable by the reporter and not client-writable", asy
   }));
 });
 
+test("unapproved Reels are unreadable and reports are server-owned", async () => {
+  // §15.18 — a reported/flagged Reel keeps `status: 'published'` so moderation
+  // can restore it, but neither a direct read nor a list query may surface it.
+  // And a report doc is written only by the `reportEdit` callable: a client
+  // `create` used to bypass category validation, dedupe, and the rate limit.
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("edits/clean").set({
+      creatorId: "alice", status: "published", moderationStatus: "approved",
+      caption: "ok",
+    });
+    await admin.doc("edits/flagged").set({
+      creatorId: "alice", status: "published", moderationStatus: "flagged",
+      caption: "nope",
+    });
+    await admin.doc("edits/flagged/reports/bob").set({
+      reporterId: "bob", category: "harassment", detail: "",
+      createdAt: new Date(),
+    });
+  });
+  await assertSucceeds(db("bob").doc("edits/clean").get());
+  await assertFails(db("bob").doc("edits/flagged").get());
+  await assertFails(
+    db("bob").collection("edits").where("status", "==", "published").get(),
+  );
+  await assertSucceeds(
+    db("bob")
+      .collection("edits")
+      .where("status", "==", "published")
+      .where("moderationStatus", "==", "approved")
+      .get(),
+  );
+  await assertSucceeds(db("bob").doc("edits/flagged/reports/bob").get());
+  await assertFails(db("mallory").doc("edits/flagged/reports/bob").get());
+  await assertFails(db("bob").doc("edits/flagged/reports/bob").set({
+    reporterId: "bob", category: "spam",
+  }));
+  await assertFails(db("mallory").doc("edits/clean/reports/mallory").set({
+    reporterId: "mallory", category: "spam", detail: "x",
+    createdAt: new Date(),
+  }));
+});
+
 test("collection-group members queries only return the caller's own membership", async () => {
   await assertSucceeds(
     db("bob").collectionGroup("members").where("uid", "==", "bob").get(),
@@ -1176,6 +1498,9 @@ test("anime hub aggregates are readable but never client-writable", async () => 
     const admin = context.firestore();
     await admin.doc("anime_stats/16498").set({
       animeId: "16498", averageScore: 8.5, ratingCount: 2, scoreSum: 17,
+      listedCount: 3,
+      scoreDistribution: { "8": 1, "9": 1 },
+      statusCounts: { watching: 1, completed: 2 },
     });
     await admin.doc("anime_stats/16498/reviews/alice").set({
       userId: "alice", overall: 8.5, comment: "Great",
@@ -1205,6 +1530,65 @@ test("anime hub aggregates are readable but never client-writable", async () => 
   }));
 });
 
+test("a client cannot forge the score distribution or the five-state breakdown", async () => {
+  // The Anime Hub charts are required to read these server-side aggregates
+  // rather than inferring them, which only holds if a client cannot write a
+  // flattering number into them.
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("anime_stats/16498").set({
+      animeId: "16498",
+      ratingCount: 2,
+      listedCount: 1,
+      scoreDistribution: { "9": 1 },
+      statusCounts: { completed: 1 },
+    });
+  });
+  await assertFails(db("alice").doc("anime_stats/16498").set({
+    scoreDistribution: { "10": 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").set({
+    statusCounts: { completed: 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    scoreDistribution: { "10": 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    statusCounts: { completed: 5000 },
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    ratingCount: 5000,
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").update({
+    listedCount: 5000,
+  }));
+  await assertFails(db("alice").doc("anime_stats/16498").delete());
+  // A merge that only touches the aggregates is still a write.
+  await assertFails(db("alice").doc("anime_stats/16498").set(
+    { statusCounts: { completed: 5000 } },
+    { merge: true },
+  ));
+  // The legitimate view still works after all of those attempts.
+  const snap = await assertSucceeds(db("bob").doc("anime_stats/16498").get());
+  assert.equal(snap.data().scoreDistribution["9"], 1);
+  assert.equal(snap.data().statusCounts.completed, 1);
+});
+
+test("character discussions are readable by signed-in users and never client-writable", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("character_discussions/luffy/posts/p1").set({
+      characterId: "luffy", userId: "alice", text: "Hi",
+    });
+  });
+  await assertSucceeds(db("bob").doc("character_discussions/luffy/posts/p1").get());
+  await assertFails(
+    db("alice").doc("character_discussions/luffy/posts/p2").set({
+      characterId: "luffy", userId: "alice", text: "Spoofed",
+    }),
+  );
+  await assertFails(db("alice").doc("character_discussions/luffy/posts/p1").delete());
+});
+
 test("mafia history is participant-read only and never client-writable (SEC-H-01)", async () => {
   await assertSucceeds(db("alice").doc("mafia_history/h1").get());
   await assertSucceeds(db("bob").doc("mafia_history/h1").get());
@@ -1219,6 +1603,7 @@ test("mafia history is participant-read only and never client-writable (SEC-H-01
 });
 
 
+<<<<<<< HEAD
 test("Kirari documents and interactions are read-only to clients with publication privacy", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     const admin = context.firestore();
@@ -1281,4 +1666,85 @@ test("Kirari exposes only approved public reels and approved audio metadata", as
   await assertFails(db("alice").doc("kirariAudio/track-approved").update({
     status: "approved", allowReuse: true,
   }));
+=======
+test("ready audio is readable by signed-in users; drafts and failures are not", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("reelAudios/ready1").set({ creatorId: "alice", status: "ready", usageCount: 3 });
+    await admin.doc("reelAudios/processing1").set({ creatorId: "alice", status: "processing" });
+    await admin.doc("reelAudios/failed1").set({ creatorId: "alice", status: "failed" });
+  });
+
+  await assertSucceeds(db("alice").doc("reelAudios/ready1").get());
+  await assertFails(db("alice").doc("reelAudios/processing1").get());
+  await assertFails(db("alice").doc("reelAudios/failed1").get());
+
+  // Guests cannot read audio even when it is ready.
+  const guest = env.unauthenticatedContext().firestore();
+  await assertFails(guest.doc("reelAudios/ready1").get());
+});
+
+test("a ready-audio list query cannot smuggle out non-ready audio", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const admin = context.firestore();
+    await admin.doc("reelAudios/l1").set({ creatorId: "alice", status: "ready", usageCount: 1 });
+    await admin.doc("reelAudios/l2").set({ creatorId: "alice", status: "processing", usageCount: 9 });
+  });
+
+  // The rule is on resource.data, so Firestore rejects the query outright
+  // rather than silently filtering.
+  await assertFails(db("alice").collection("reelAudios").get());
+  await assertFails(db("alice").collection("reelAudios").orderBy("usageCount", "desc").get());
+});
+
+test("audio documents and usage counters are server-owned", async () => {
+  const alice = db("alice");
+  await assertFails(alice.doc("reelAudios/new1").set({ creatorId: "alice", status: "ready" }));
+  await assertFails(alice.doc("reelAudios/ready1").update({ usageCount: 9999 }));
+  await assertFails(alice.doc("reelAudios/ready1").delete());
+  await assertFails(
+    alice.doc("reelAudios/ready1/reelAudioUsage/r1").set({ reelId: "r1" }),
+  );
+  await assertFails(
+    alice.doc("reelAudios/ready1/reelAudioUsage/r1").update({ reelId: "r1" }),
+  );
+  await assertFails(alice.doc("reelAudios/ready1/reelAudioUsage/r1").delete());
+});
+
+test("a creator cannot promote their own audio by writing the status", async () => {
+  await assertFails(
+    db("alice").doc("reelAudios/processing1").update({ status: "ready", usageCount: 500 }),
+  );
+});
+
+// §15 saved Reels. The server writes these from the save signal, so a client
+// must not be able to forge a save list or read someone else's.
+test("saved Reels are readable only by their owner and never client-writable", async () => {
+  const alice = db("alice");
+  const bob = db("bob");
+
+  // Nobody may write their own save rows — the signal is the only entry point.
+  await assertFails(alice.doc("savedReels/alice/items/e1").set({ editId: "e1" }));
+  await assertFails(alice.doc("savedReels/alice/items/e1").update({ editId: "e2" }));
+  await assertFails(alice.doc("savedReels/alice/items/e1").delete());
+
+  // A client cannot write into someone else's save list either.
+  await assertFails(bob.doc("savedReels/alice/items/e1").set({ editId: "e1" }));
+  await assertFails(alice.doc("savedReels/alice").set({ uid: "alice" }));
+
+  // Another signed-in user must not be able to list the owner's saves.
+  await assertFails(bob.collection("savedReels/alice/items").get());
+});
+
+test("the mute list is self-scoped and server-owned", async () => {
+  const alice = db("alice");
+  const bob = db("bob");
+
+  await assertFails(alice.doc("reelMutes/alice/creators/bob").set({ creatorId: "bob" }));
+  await assertFails(alice.doc("reelMutes/alice/creators/bob").delete());
+  await assertFails(alice.doc("reelMutes/bob/creators/carol").set({ creatorId: "carol" }));
+  await assertFails(alice.doc("reelMutes/alice").set({ uid: "alice" }));
+
+  await assertFails(bob.collection("reelMutes/alice/creators").get());
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
 });

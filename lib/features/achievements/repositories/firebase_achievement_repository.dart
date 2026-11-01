@@ -4,7 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../data/achievement_catalog.dart';
 import '../models/achievement_models.dart';
 import 'achievement_repository.dart';
@@ -23,8 +25,11 @@ final class FirebaseAchievementRepository implements AchievementRepository {
   @override
   Future<Result<List<AchievementItem>>> list({String? userId}) async {
     try {
-      final result = await _functions.httpsCallable('getAchievements').call(
-        userId == null ? null : <String, dynamic>{'userId': userId},
+      final result = await runWithRetry(
+        () => _functions.httpsCallable('getAchievements').call(
+          userId == null ? null : <String, dynamic>{'userId': userId},
+        ),
+        mapError: _fail,
       );
       final data = Map<String, dynamic>.from(result.data as Map);
       final items = (data['items'] as List<Object?>? ?? const <Object?>[])
@@ -241,7 +246,15 @@ DateTime? _date(dynamic value) {
 
 Failure _fail(Object error) {
   if (error is FirebaseFunctionsException) {
-    return ValidationError(error.message ?? 'Achievements could not load.');
+    return switch (error.code) {
+      'unauthenticated' || 'permission-denied' => PermissionError(
+        error.message ?? 'Achievements require a signed-in account.',
+      ),
+      'unavailable' || 'deadline-exceeded' => const NetworkError(
+        'Check your connection and try again.',
+      ),
+      _ => mapFirebaseFailure(error, message: 'Achievements could not load.'),
+    };
   }
-  return UnknownError(error.toString());
+  return mapFirebaseFailure(error, message: 'Achievements could not load.');
 }

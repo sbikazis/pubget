@@ -12,10 +12,6 @@ abstract interface class GameRepository {
 
   Future<Result<void>> start(String gameId);
 
-  Future<Result<void>> pause(String gameId);
-
-  Future<Result<void>> resume(String gameId);
-
   Future<Result<void>> submitAction({
     required String gameId,
     required String actionType,
@@ -51,4 +47,21 @@ abstract interface class GameRepository {
   });
 
   Future<Result<List<GameParticipant>>> getParticipants(String gameId);
+
+  /// Searches the canonical catalog. Games must only ever submit these real
+  /// IDs, so this is the only way a client may name an Anime or Character.
+  Future<Result<List<AnimeSearchItem>>> searchAnime(String query, {int limit});
+
+  Future<Result<List<CharacterSearchItem>>> searchCharacters(
+    String query, {
+    String? animeId,
+    int limit,
+  });
+
+  /// The caller's finished games, newest first. The server owns these
+  /// documents, so a client can never invent a result.
+  Future<Result<List<GameHistoryEntry>>> getHistory({
+    required String userId,
+    int limit,
+  });
 }

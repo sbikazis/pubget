@@ -1,9 +1,12 @@
 name: Pubget APK
 
+
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - cursor/reels-rebirth-1
 
 jobs:
   build-apk:
@@ -21,6 +24,12 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Pinned to the version this project is developed and locked against.
+          # The floating `stable` channel moved to Flutter 3.47.x (Dart 3.13),
+          # whose compiler rejects the pinned `pdfrx_engine` 0.1.13. Upgrading
+          # past that requires `pdfrx` -> Dart >= 3.9, so bump this pin and the
+          # dependency together, not one at a time.
+          flutter-version: '3.32.8'
           channel: 'stable'
           cache: true
 
@@ -32,6 +41,9 @@ jobs:
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
           echo "storeFile=release.jks" >> android/key.properties
 
+      - name: Clean build state
+        run: flutter clean
+
       - name: Get packages
         run: flutter pub get
 
@@ -41,5 +53,5 @@ jobs:
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: pubget-apk
+          name: pubget-apk-${{ github.ref_name }}
           path: build/app/outputs/flutter-apk/*.apk

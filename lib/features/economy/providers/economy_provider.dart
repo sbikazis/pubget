@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../../../core/analytics/analytics.dart';
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
 import '../ads/ads_service.dart';
+import '../ads/ad_manager.dart';
 import '../entitlement/entitlement_service.dart';
 import '../models/economy_models.dart';
 import '../models/economy_types.dart';
@@ -40,6 +42,7 @@ final class EconomyProvider extends ChangeNotifier {
   Failure? _purchaseFailure;
   PurchasePhase _purchasePhase = PurchasePhase.idle;
   AdImpressionLog _adsLog = const AdImpressionLog();
+  AdManager? _adManager;
   bool _offlineCached = false;
   String? _boundUserId;
   bool _disposed = false;
@@ -185,6 +188,17 @@ final class EconomyProvider extends ChangeNotifier {
     if (result.isSuccess) await load(refresh: true);
   }
 
+  Future<Result<PremiumEntitlement>> redeemPremiumCode(String code) async {
+    if (_network.isOffline) {
+      return FailureResult<PremiumEntitlement>(const NetworkError('Offline'));
+    }
+    final result = await _repository.redeemPremiumCode(code);
+    if (result.isSuccess) {
+      await load(refresh: true);
+    }
+    return result;
+  }
+
   Future<void> restorePremium() async {
     if (_network.isOffline) return;
     await _repository.restorePremium();
@@ -207,6 +221,43 @@ final class EconomyProvider extends ChangeNotifier {
     );
     _notify();
     return true;
+  }
+
+  /// AdMob-backed manager for banners, interstitials, rewarded, and native.
+  /// Created lazily so unit tests and premium-only flows never touch the
+  /// MobileAds plugin until an actual ad surface is needed.
+  AdManager get adManager => _adManager ??= AdManager(
+    strategyProvider: _strategyFor,
+    isAdFree: () => isAdFree,
+    onImpressionLogged: recordAdImpression,
+  );
+
+  AdPlacementStrategy _strategyFor(AdPlacement placement) {
+    final config = _ads.configs[placement];
+    return AdPlacementStrategy(
+      placement: placement,
+      enabled: config?.enabled ?? true,
+      format: switch (placement) {
+        AdPlacement.groupEntryInterstitial => AdMobFormat.interstitial,
+        AdPlacement.reelsNativeFeed => AdMobFormat.native,
+        _ => AdMobFormat.banner,
+      },
+      frequencyPerDay: config?.frequencyPerDay ?? 3,
+      cooldown: config?.cooldown ?? const Duration(minutes: 5),
+      premiumExcluded: config?.premiumExcluded ?? true,
+    );
+  }
+
+  /// Record an ad impression without re-checking eligibility. Used by
+  /// [AdManager] callbacks after an ad is actually shown, so the legacy
+  /// frequency/cooldown log in [showAd] stays in sync with real shows.
+  void recordAdImpression(AdPlacement placement) {
+    _adsLog = _adsLog.recorded(placement, DateTime.now());
+    _analytics?.logEvent(
+      'ad_impression',
+      parameters: {'placement': placement.name},
+    );
+    _notify();
   }
 
   void openStore() {
@@ -251,6 +302,8 @@ final class EconomyProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _adManager?.dispose();
+    _adManager = null;
     _disposed = true;
     super.dispose();
   }

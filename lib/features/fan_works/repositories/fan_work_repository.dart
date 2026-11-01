@@ -1,10 +1,23 @@
 import '../../../core/errors/result.dart';
 import '../models/fan_work_models.dart';
 
+/// Progress callback for a Fan Work upload, `0..1` and monotonic. Defined here,
+/// on the contract, so the repository interface and the upload client cannot
+/// drift apart.
+typedef FanWorkUploadProgress = void Function(double value);
+
 abstract interface class FanWorkDraftStore {
   Future<void> write(String key, Map<String, dynamic> data);
   Future<Map<String, dynamic>?> read(String key);
   Future<void> delete(String key);
+}
+
+abstract interface class CharacterFanWorkRepository {
+  Future<Result<FanWorkListPage>> getCharacterFeed(
+    String characterId, {
+    FanWork? after,
+    int limit = 20,
+  });
 }
 
 abstract interface class FanWorkRepository {
@@ -16,23 +29,40 @@ abstract interface class FanWorkRepository {
 
   Future<Result<void>> archive(String workId);
 
+  /// The role travels with the request so the server can reject a PDF offered
+  /// as an artwork slot (and the reverse) before it mints a session.
+  ///
+  /// [characterId] is set only for [FanWorkMediaRole.characterPortrait]: the
+  /// server refuses to mint a ticket for a cast portrait that does not name a
+  /// member, because the bytes would land in the bucket with nothing pointing
+  /// at them.
   Future<Result<FanWorkUploadTicket>> startMediaUpload({
     required String workId,
+    required FanWorkMediaRole role,
     required String contentType,
+    String characterId = '',
   });
 
   Future<Result<void>> uploadMediaBytes({
     required FanWorkUploadTicket ticket,
     required List<int> bytes,
     required String contentType,
+    FanWorkUploadProgress? onProgress,
   });
 
+  Future<Result<void>> cancelMediaUpload();
+
+  /// [characterId] is set only for [FanWorkMediaRole.characterPortrait], so the
+  /// server can attach the file to one cast entry instead of the work itself.
+  /// [pageCount] is set only for a PDF document.
   Future<Result<void>> confirmMedia({
     required String workId,
     required String mediaId,
     required String path,
     required FanWorkMediaRole role,
     String caption = '',
+    String characterId = '',
+    int? pageCount,
   });
 
   Future<Result<void>> like({required String workId, required bool like});
@@ -82,10 +112,26 @@ abstract interface class FanWorkRepository {
     List<String>? tags,
   });
 
-  Future<Result<void>> requestRemoval({
+  Future<Result<void>> requestRemoval({required String workId, String details});
+
+  /// Mints the short-lived grant the in-app reader streams a PDF with. It is
+  /// the only way a document byte leaves the platform, and it is refused for a
+  /// work the caller may not read.
+  Future<Result<FanWorkDocumentAccess>> getDocumentAccess({
     required String workId,
-    String details,
   });
+
+  Future<Result<FanWorkReadingProgress>> getReadingProgress({
+    required String workId,
+    required String userId,
+  });
+
+  Future<Result<void>> saveReadingProgress({
+    required String workId,
+    required FanWorkReadingProgress progress,
+  });
+
+  Future<Result<void>> markAsRead({required String workId});
 
   Stream<Result<FanWork>> watchWork(String workId);
 
@@ -117,4 +163,8 @@ abstract interface class FanWorkRepository {
     required String workId,
     required String userId,
   });
+
+  Future<Result<List<FanWorkRevision>>> getRevisions(String workId);
+
+  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId);
 }

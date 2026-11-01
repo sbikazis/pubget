@@ -1,39 +1,34 @@
-// functions/src/mafia/roleAssigner.js
-//
-// ✅ التعديل الجوهري: الأدوار تُكتب الآن على الوثيقة الخاصة
-// (players/{id}/private/data) بدل وثيقة اللاعب العامة مباشرة.
-// الوثيقة الخاصة موجودة أصلاً من لحظة الانضمام (بقيمة citizen)،
-// لذلك هذا تحديث (update) وليس إنشاء.
+"use strict";
 
 const admin = require("firebase-admin");
 const { ALL_ABILITIES } = require("./abilities");
 const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
 
-const db = admin.firestore();
+const db = require("../lazyAdmin").firestore;
 
 const FIRST_NIGHT_DURATION_SECONDS = 8;
-const MIN_PLAYERS = 4;
-const MAX_PLAYERS = 8;
+// Master Spec 13.2: a Mafia game holds 7-15 players. Start is refused below
+// the minimum, and joining is closed for good once the game starts.
+const MIN_PLAYERS = 7;
+const MAX_PLAYERS = 15;
 
 async function cancelInvalidStartingGame(gameId, owner) {
   const gameRef = db.collection("mafia_games").doc(gameId);
   return db.runTransaction(async (tx) => {
     const game = await tx.get(gameRef);
-    if (!game.exists || game.data().status !== "starting" ||
+    if (!game.exists || game.data().status !== "STARTING" ||
         game.data().roleAssignmentClaim?.owner !== owner) return false;
 
     tx.update(gameRef, {
-      status: "cancelled",
-      currentPhase: "cancelled",
+      status: "CANCELLED",
+      currentPhase: "CANCELLED",
       roleAssignmentClaim: admin.firestore.FieldValue.delete(),
     });
     const groupId = game.data().groupId;
     if (typeof groupId === "string" && groupId) {
       const groupRef = db.collection("groups").doc(groupId);
       const group = await tx.get(groupRef);
-      // Never clear a newer game's marker when a stale starting game is
-      // eventually cleaned up.
       if (group.exists && group.data().activeGameId === gameId) {
         tx.update(groupRef, {
           activeGameId: admin.firestore.FieldValue.delete(),
@@ -46,15 +41,31 @@ async function cancelInvalidStartingGame(gameId, owner) {
   });
 }
 
+// Master Spec 13.3 fixes the registry and demands a deterministic, server-side
+// distribution per player count with no re-distribution after the start. It does
+// not tabulate counts per size, so this is the minimal allocation consistent with
+// the spec's own rules:
+//
+//   - every one of the five closed roles is always present;
+//   - the Don, Detective and Doctor are single-slot roles;
+//   - the rest split evenly between Mafia and Citizen, so the town always holds
+//     at least as many players as the mafia team, which is what makes the
+//     "mafia alive >= town alive" win condition reachable rather than decided at
+//     the start.
+//
+// The result is a pure function of the count, so two servers assign identically.
 function computeRoleDistribution(playersCount) {
   if (!Number.isInteger(playersCount) || playersCount < MIN_PLAYERS ||
       playersCount > MAX_PLAYERS) return [];
-  // Pubget's existing Mafia contract is 4–8 players. Don replaces the
-  // second Mafia slot and both belong to the same hidden team.
-  const roles = playersCount === 4
-    ? ["mafia", "doctor", "detective", "citizen"]
-    : ["don", "mafia", "doctor", "detective"];
-  while (roles.length < playersCount) roles.push("citizen");
+  const roles = ["don", "detective", "doctor"];
+  let remaining = playersCount - roles.length;
+  const mafiaCount = Math.max(1, Math.floor(remaining / 2));
+  remaining -= mafiaCount;
+  for (let index = 0; index < mafiaCount; index += 1) roles.push("mafia");
+  while (remaining > 0) {
+    roles.push("citizen");
+    remaining -= 1;
+  }
   return roles;
 }
 
@@ -101,20 +112,15 @@ async function assignRoles(gameId, gameData) {
   const phaseEndsAt = admin.firestore.Timestamp.fromMillis(
     Date.now() + FIRST_NIGHT_DURATION_SECONDS * 1000
   );
-  // A transaction claims the starting lobby exactly once.  The private
-  // documents are created with merge because older lobbies may not have
-  // pre-created them; no client supplied role is ever trusted.
   const assignment = await db.runTransaction(async (tx) => {
     const current = await tx.get(gameRef);
-    if (!current.exists || current.data().status !== "starting" ||
+    if (!current.exists || current.data().status !== "STARTING" ||
         current.data().rolesAssigned === true ||
         current.data().roleAssignmentClaim?.owner !== gameData.roleAssignmentOwner ||
         typeof current.data().roleAssignmentClaim?.expiresAt?.toMillis !== "function" ||
         current.data().roleAssignmentClaim.expiresAt.toMillis() <= Date.now()) {
       return { assigned: false, invalid: false };
     }
-    // Read the player documents in the transaction so a join/leave concurrent
-    // with assignment retries the transaction instead of assigning stale data.
     const currentPlayers = await tx.get(playersRef);
     const currentActive = currentPlayers.docs.filter((snap) => snap.data().hasLeft !== true);
     const currentMin = current.data().minPlayers;
@@ -143,9 +149,11 @@ async function assignRoles(gameId, gameData) {
       tx.update(playerDoc.ref, { revealedRole: false });
     });
     tx.update(gameRef, {
-      status: "role_reveal", currentPhase: "role_reveal", currentNight: 0,
+      status: "ROLE_REVEAL", currentPhase: "ROLE_REVEAL", currentNight: 0,
       rolesAssigned: true, countdownEndsAt: admin.firestore.FieldValue.delete(),
       phaseStartedAt: admin.firestore.FieldValue.serverTimestamp(), phaseEndsAt,
+      serverStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      serverEndsAt: phaseEndsAt,
       roleAssignmentClaim: admin.firestore.FieldValue.delete(),
     });
     tx.set(gameRef.collection("events").doc("roles-assigned"), {

@@ -1,5 +1,11 @@
 "use strict";
 
+// Offline snapshot of real catalog entries. It is never the source of truth:
+// live data always comes from the canonical repository
+// (`animeCatalogDomain`, Master Spec 16.2). The snapshot exists so a provider
+// outage degrades a game into a still-playable round instead of a crash.
+const snapshot = require("../gameCatalog");
+
 function clampInt(value, fallback, min, max) {
   const n = Number.isInteger(value) ? value : Number.parseInt(value, 10);
   if (!Number.isFinite(n)) return fallback;
@@ -108,6 +114,112 @@ function bumpVersion(game) {
   return (Number(game.stateVersion) || 0) + 1;
 }
 
+// The engines must never decide from their own tables: a submitted ID is only
+// accepted when the canonical repository resolves it. `catalog` is resolved
+// outside the Firestore transaction by the domain, so a network call never
+// happens while transaction locks are held.
+function requireCatalog(ctx) {
+  const catalog = ctx && ctx.catalog;
+  if (!catalog || typeof catalog.getCharacter !== "function") {
+    throw new Error("catalog_unavailable");
+  }
+  return catalog;
+}
+
+async function resolveCharacter(ctx, value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const id = value.trim();
+  const catalog = requireCatalog(ctx);
+  try {
+    const live = await catalog.getCharacter(id);
+    if (live) return live;
+  } catch (_) {
+    // Fall through to the snapshot below.
+  }
+  const fallback = snapshot.characterById(id);
+  if (!fallback) return null;
+  return {
+    id: fallback.id,
+    name: fallback.name,
+    animeIds: fallback.animeId ? [fallback.animeId] : [],
+    source: "snapshot",
+  };
+}
+
+async function resolveAnime(ctx, value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const id = value.trim();
+  const catalog = requireCatalog(ctx);
+  try {
+    const live = await catalog.getAnime(id);
+    if (live) return live;
+  } catch (_) {
+    // Fall through to the snapshot below.
+  }
+  const fallback = snapshot.byAnimeId(id);
+  if (!fallback) return null;
+  return {
+    ...fallback,
+    id: fallback.id,
+    source: "snapshot",
+    relations: [],
+  };
+}
+
+// A player may submit either a catalog ID (from the search UI) or a title they
+// typed. The repository resolves the text — including alternative titles — and
+// an exact match is required, so a fuzzy hit can never silently become a
+// different title and fail a chain rule the player actually satisfied.
+async function resolveAnimeByText(ctx, text) {
+  if (typeof text !== "string" || !text.trim()) return null;
+  const catalog = requireCatalog(ctx);
+  const needle = normalizeText(text);
+  const matches = await catalog.searchAnime(text, { limit: 8 });
+  const exact = (Array.isArray(matches) ? matches : []).find((anime) => {
+    const titles = [anime.title, ...(anime.alternativeTitles || [])];
+    return titles.some((title) => normalizeText(title) === needle);
+  });
+  return exact || null;
+}
+
+function animeIdFromPayload(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const value = payload.animeId || payload.selection || payload.value;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function animeTextFromPayload(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const value = payload.title;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function characterIdFromPayload(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const value = payload.characterId || payload.value;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeText(value) {
+  if (typeof value !== "string") return "";
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\u064b-\u065f]/g, "")
+    .replace(/[!?.:,'"\u2019()\[\]]/g, "")
+    .replace(/&/g, "and")
+    .replace(/\s+/g, " ");
+}
+
+async function loadAnimePool(ctx, limit) {
+  const catalog = requireCatalog(ctx);
+  const size = Number.isInteger(limit) ? limit : 24;
+  const pool = await catalog.animePool({ limit: size });
+  if (Array.isArray(pool) && pool.length >= 2) return pool;
+  // Degraded mode: keep the round playable with the offline snapshot.
+  return snapshot.ANIME.slice(0, size);
+}
+
 module.exports = {
   clampInt,
   toMillis,
@@ -123,4 +235,14 @@ module.exports = {
   assertActiveParticipant,
   rejectStale,
   bumpVersion,
+  requireCatalog,
+  resolveCharacter,
+  resolveAnime,
+  resolveAnimeByText,
+  animeIdFromPayload,
+  animeTextFromPayload,
+  characterIdFromPayload,
+  normalizeText,
+  loadAnimePool,
+  snapshot,
 };

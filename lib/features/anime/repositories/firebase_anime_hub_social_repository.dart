@@ -3,7 +3,9 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/anime_list_models.dart';
 import '../models/anime_rating_models.dart';
 import 'anime_hub_social_repository.dart';
@@ -23,7 +25,10 @@ final class FirebaseAnimeHubSocialRepository
   @override
   Future<Result<AnimeCommunityStats?>> getAnimeStats(String animeId) =>
       _guard(() async {
-        final snap = await _firestore.collection('anime_stats').doc(animeId).get();
+        final snap = await _firestore
+            .collection('anime_stats')
+            .doc(animeId)
+            .get();
         if (!snap.exists || snap.data() == null) return null;
         return AnimeCommunityStats.fromMap(snap.data()!, id: snap.id);
       });
@@ -67,15 +72,15 @@ final class FirebaseAnimeHubSocialRepository
     String? imageUrl,
     String comment = '',
   }) => _guard(() async {
-    final result = await _functions.httpsCallable('upsertAnimeRating').call(
-      <String, dynamic>{
-        'animeId': animeId,
-        'criteria': criteria.toMap(),
-        'title': title,
-        'imageUrl': ?imageUrl,
-        'comment': comment,
-      },
-    );
+    final result = await _functions
+        .httpsCallable('upsertAnimeRating')
+        .call(<String, dynamic>{
+          'animeId': animeId,
+          'criteria': criteria.toMap(),
+          'title': title,
+          'imageUrl': ?imageUrl,
+          'comment': comment,
+        });
     final data = Map<String, dynamic>.from(result.data as Map);
     return AnimeReview(
       animeId: data['animeId'] as String? ?? animeId,
@@ -94,9 +99,9 @@ final class FirebaseAnimeHubSocialRepository
 
   @override
   Future<Result<void>> deleteRating(String animeId) => _guard(() async {
-    await _functions.httpsCallable('deleteAnimeRating').call(
-      <String, dynamic>{'animeId': animeId},
-    );
+    await _functions.httpsCallable('deleteAnimeRating').call(<String, dynamic>{
+      'animeId': animeId,
+    });
   });
 
   @override
@@ -106,14 +111,25 @@ final class FirebaseAnimeHubSocialRepository
     required String reason,
     String details = '',
   }) => _guard(() async {
-    await _functions.httpsCallable('reportAnimeReview').call(
-      <String, dynamic>{
-        'animeId': animeId,
-        'targetUserId': targetUserId,
-        'reason': reason,
-        'details': details,
-      },
-    );
+    await _functions.httpsCallable('reportAnimeReview').call(<String, dynamic>{
+      'animeId': animeId,
+      'targetUserId': targetUserId,
+      'reason': reason,
+      'details': details,
+    });
+  });
+
+  @override
+  Future<Result<void>> reportAnime({
+    required String animeId,
+    required String reason,
+    String details = '',
+  }) => _guard(() async {
+    await _functions.httpsCallable('reportAnime').call(<String, dynamic>{
+      'animeId': animeId,
+      'category': reason,
+      'detail': details,
+    });
   });
 
   @override
@@ -132,6 +148,43 @@ final class FirebaseAnimeHubSocialRepository
       });
 
   @override
+  Future<Result<List<AnimeCommunityStats>>> listMostListed({int limit = 40}) =>
+      _guard(() async {
+        final snap = await _firestore
+            .collection('anime_stats')
+            .orderBy('listedCount', descending: true)
+            .limit(limit)
+            .get();
+        return snap.docs
+            .map((doc) => AnimeCommunityStats.fromMap(doc.data(), id: doc.id))
+            .where((item) => item.listedCount > 0)
+            .toList(growable: false);
+      });
+
+  @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) => _guard(() async {
+    final ids = {
+      for (final raw in animeIds)
+        if (raw.trim().isNotEmpty) raw.trim(),
+    }.toList(growable: false);
+    if (ids.isEmpty) return const <AnimeCommunityStats>[];
+    final result = await _functions
+        .httpsCallable('getAnimeCommunityStats')
+        .call(<String, dynamic>{'animeIds': ids});
+    final data = Map<String, dynamic>.from(result.data as Map);
+    final raw = data['stats'] as Map? ?? const <String, dynamic>{};
+    return <AnimeCommunityStats>[
+      for (final entry in raw.entries)
+        AnimeCommunityStats.fromMap(
+          Map<String, dynamic>.from(entry.value as Map),
+          id: entry.key,
+        ),
+    ];
+  });
+
+  @override
   Future<Result<List<CharacterCommunityStats>>> listPopularCharacters({
     int limit = 40,
   }) => _guard(() async {
@@ -141,9 +194,7 @@ final class FirebaseAnimeHubSocialRepository
         .limit(limit)
         .get();
     return snap.docs
-        .map(
-          (doc) => CharacterCommunityStats.fromMap(doc.data(), id: doc.id),
-        )
+        .map((doc) => CharacterCommunityStats.fromMap(doc.data(), id: doc.id))
         .where((item) => item.favoritesCount > 0)
         .toList(growable: false);
   });
@@ -189,6 +240,23 @@ final class FirebaseAnimeHubSocialRepository
       });
 
   @override
+  Future<Result<List<AnimeCustomList>>> listUserCustomAnimeLists(
+    String userId,
+  ) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('getCustomAnimeLists')
+        .call(<String, dynamic>{'userId': userId});
+    final data = Map<String, dynamic>.from(result.data as Map);
+    final raw = data['items'] as List<Object?>? ?? const <Object?>[];
+    return raw
+        .whereType<Map>()
+        .map(
+          (item) => AnimeCustomList.fromMap(Map<String, dynamic>.from(item)),
+        )
+        .toList(growable: false);
+  });
+
+  @override
   Future<Result<List<CharacterFavorite>>> listUserCharacterFavorites(
     String userId,
   ) => _guard(() async {
@@ -203,11 +271,70 @@ final class FirebaseAnimeHubSocialRepository
         .toList(growable: false);
   });
 
+  @override
+  Future<Result<List<CharacterDiscussion>>> listCharacterDiscussions(
+    String characterId, {
+    int limit = 30,
+  }) => _guard(() async {
+    final snap = await _firestore
+        .collection('character_discussions')
+        .doc(characterId)
+        .collection('posts')
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .get();
+    return snap.docs
+        .map(
+          (doc) =>
+              CharacterDiscussion.fromMap(_withDate(doc.data()), id: doc.id),
+        )
+        .toList(growable: false);
+  });
+
+  @override
+  Future<Result<CharacterDiscussion>> postCharacterDiscussion({
+    required String characterId,
+    required String text,
+  }) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('postCharacterDiscussion')
+        .call(<String, dynamic>{'characterId': characterId, 'text': text});
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return CharacterDiscussion(
+      id: data['id'] as String? ?? '',
+      characterId: data['characterId'] as String? ?? characterId,
+      userId: data['userId'] as String? ?? _uid ?? '',
+      username: data['username'] as String? ?? '',
+      text: data['text'] as String? ?? text,
+      createdAt: DateTime.now(),
+    );
+  });
+
+  @override
+  Future<Result<void>> deleteCharacterDiscussion({
+    required String characterId,
+    required String postId,
+  }) => _guard(() async {
+    await _functions.httpsCallable('deleteCharacterDiscussion').call(
+      <String, dynamic>{'characterId': characterId, 'postId': postId},
+    );
+  });
+
+  Map<String, dynamic> _withDate(Map<String, dynamic> data) {
+    final raw = data['createdAt'];
+    if (raw is Timestamp) {
+      return <String, dynamic>{...data, 'createdAt': raw.toDate()};
+    }
+    return data;
+  }
+
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success(await action());
+      return Success(
+        await runWithRetry(action, mapError: _fail),
+      );
     } on Object catch (error) {
       return FailureResult(_fail(error));
     }
@@ -229,8 +356,8 @@ Failure _fail(Object error) {
       'invalid-argument' => ValidationError(
         error.message ?? 'That rating is not valid.',
       ),
-      _ => UnknownError(error.message ?? 'Anime rating update failed.'),
+      _ => mapFirebaseFailure(error, message: 'Anime rating update failed.'),
     };
   }
-  return const UnknownError('Anime rating update failed.');
+  return mapFirebaseFailure(error, message: 'Anime rating update failed.');
 }

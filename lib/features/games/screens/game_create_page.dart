@@ -6,7 +6,9 @@ import '../../../app/app_router.dart';
 import '../../../core/analytics/analytics.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../mafia/models/mafia_models.dart';
 import '../../mafia/providers/mafia_provider.dart';
+import '../l10n/game_copy.dart';
 import '../models/game_models.dart';
 import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
@@ -15,11 +17,15 @@ class GameCreatePage extends StatefulWidget {
   const GameCreatePage({
     this.groupId,
     this.creationSource = 'unknown',
+    this.initialType,
     super.key,
   });
 
   final String? groupId;
   final String creationSource;
+
+  /// Set when the Game Center "Available Games" list opens a specific game.
+  final GameType? initialType;
 
   @override
   State<GameCreatePage> createState() => _GameCreatePageState();
@@ -39,12 +45,11 @@ class _GameCreatePageState extends State<GameCreatePage> {
     _started = true;
     final creator = context.read<GameCreateProvider>();
     final groupId = widget.groupId;
-    Future<void>.microtask(
-      () => creator.start(
-        groupId: groupId,
-        creationSource: widget.creationSource,
-      ),
-    );
+    final type = widget.initialType;
+    Future<void>.microtask(() {
+      creator.start(groupId: groupId, creationSource: widget.creationSource);
+      if (type != null) creator.selectType(type);
+    });
   }
 
   @override
@@ -57,20 +62,27 @@ class _GameCreatePageState extends State<GameCreatePage> {
   @override
   Widget build(BuildContext context) {
     final creator = context.watch<GameCreateProvider>();
-    // Hub for playable types. Trivia goes through createGame; Mafia
-    // branches to createMafiaGame below and is excluded from genericCreate.
-    final types = GameTypeRegistry.implemented;
+    final copy = GameCopy.of(context);
+    // Every implemented type is offered (Spec 12.1 lists all four games as
+    // always available). Mafia branches to createMafiaGame in _submit
+    // instead of the generic createGame, which is why its card carries
+    // genericCreate: false while still being listed here.
+    final types = GameTypeRegistry.all;
     final spec = GameTypeRegistry.of(creator.draft.type);
     final quiz = spec.capabilities.usesRounds && spec.capabilities.usesScoring;
     final isMafia = creator.draft.type == GameType.mafia;
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text(GameStrings.create)),
+        title: Text(copy.createGame),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: <Widget>[
-          Text('Game type', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            copy.gameTypeTitle,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: AppSpacing.sm),
           Wrap(
             spacing: AppSpacing.sm,
@@ -87,33 +99,48 @@ class _GameCreatePageState extends State<GameCreatePage> {
           const SizedBox(height: AppSpacing.sm),
           Text(spec.description),
           Text(
-            '${spec.capabilities.minPlayers}–${spec.capabilities.maxPlayers} players',
+            copy.playerRange(
+              spec.capabilities.minPlayers,
+              spec.capabilities.maxPlayers,
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           PubgetTextField(
             controller: _title,
-            label: 'Title',
+            label: copy.titleLabel,
             onChanged: (value) =>
                 creator.update(creator.draft.copyWith(title: value)),
           ),
           const SizedBox(height: AppSpacing.md),
           PubgetTextArea(
             controller: _description,
-            label: 'Description',
+            label: copy.descriptionLabel,
             onChanged: (value) =>
                 creator.update(creator.draft.copyWith(description: value)),
           ),
           if (quiz) ...[
             const SizedBox(height: AppSpacing.md),
-            Text('Rules', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              copy.rulesTitle,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: AppSpacing.sm),
             DropdownButtonFormField<String>(
               value: creator.draft.configuration.difficulty,
-              decoration: const InputDecoration(labelText: 'Difficulty'),
-              items: const [
-                DropdownMenuItem(value: 'easy', child: Text('Easy')),
-                DropdownMenuItem(value: 'normal', child: Text('Normal')),
-                DropdownMenuItem(value: 'hard', child: Text('Hard')),
+              decoration: InputDecoration(labelText: copy.difficultyTitle),
+              items: [
+                DropdownMenuItem(
+                  value: 'easy',
+                  child: Text(copy.difficulty('easy')),
+                ),
+                DropdownMenuItem(
+                  value: 'normal',
+                  child: Text(copy.difficulty('normal')),
+                ),
+                DropdownMenuItem(
+                  value: 'hard',
+                  child: Text(copy.difficulty('hard')),
+                ),
               ],
               onChanged: (value) {
                 if (value == null) return;
@@ -134,11 +161,13 @@ class _GameCreatePageState extends State<GameCreatePage> {
             const SizedBox(height: AppSpacing.sm),
             DropdownButtonFormField<int>(
               value: creator.draft.configuration.roundCount,
-              decoration: const InputDecoration(labelText: 'Rounds'),
-              items: const [
-                DropdownMenuItem(value: 3, child: Text('3 rounds')),
-                DropdownMenuItem(value: 5, child: Text('5 rounds')),
-                DropdownMenuItem(value: 7, child: Text('7 rounds')),
+              decoration: InputDecoration(labelText: copy.roundsLabel),
+              items: [
+                for (final rounds in const [3, 5, 7])
+                  DropdownMenuItem(
+                    value: rounds,
+                    child: Text(copy.roundsOption(rounds)),
+                  ),
               ],
               onChanged: (value) {
                 if (value == null) return;
@@ -159,11 +188,13 @@ class _GameCreatePageState extends State<GameCreatePage> {
             const SizedBox(height: AppSpacing.sm),
             DropdownButtonFormField<int>(
               value: creator.draft.configuration.timerSeconds,
-              decoration: const InputDecoration(labelText: 'Timer'),
-              items: const [
-                DropdownMenuItem(value: 15, child: Text('15 seconds')),
-                DropdownMenuItem(value: 20, child: Text('20 seconds')),
-                DropdownMenuItem(value: 30, child: Text('30 seconds')),
+              decoration: InputDecoration(labelText: copy.timerLabel),
+              items: [
+                for (final seconds in const [15, 20, 30])
+                  DropdownMenuItem(
+                    value: seconds,
+                    child: Text(copy.secondsOption(seconds)),
+                  ),
               ],
               onChanged: (value) {
                 if (value == null) return;
@@ -184,13 +215,23 @@ class _GameCreatePageState extends State<GameCreatePage> {
           ],
           if (isMafia) ...[
             const SizedBox(height: AppSpacing.md),
-            Text('Lobby', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              copy.lobbyTitle,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: AppSpacing.sm),
             DropdownButtonFormField<int>(
-              value: creator.draft.configuration.minPlayers.clamp(4, 16),
-              decoration: const InputDecoration(labelText: 'Minimum players'),
+              value: creator.draft.configuration.minPlayers.clamp(
+                MafiaLimits.minPlayers,
+                MafiaLimits.maxPlayers,
+              ),
+              decoration: InputDecoration(labelText: copy.minPlayersLabel),
               items: [
-                for (var n = 4; n <= 16; n++)
+                for (
+                  var n = MafiaLimits.minPlayers;
+                  n <= MafiaLimits.maxPlayers;
+                  n++
+                )
                   DropdownMenuItem(value: n, child: Text('$n')),
               ],
               onChanged: (value) {
@@ -202,7 +243,10 @@ class _GameCreatePageState extends State<GameCreatePage> {
                   creator.draft.copyWith(
                     configuration: GameConfiguration(
                       minPlayers: value,
-                      maxPlayers: max.clamp(4, 16),
+                      maxPlayers: max.clamp(
+                        MafiaLimits.minPlayers,
+                        MafiaLimits.maxPlayers,
+                      ),
                       usesRounds: true,
                     ),
                   ),
@@ -211,10 +255,17 @@ class _GameCreatePageState extends State<GameCreatePage> {
             ),
             const SizedBox(height: AppSpacing.sm),
             DropdownButtonFormField<int>(
-              value: creator.draft.configuration.maxPlayers.clamp(4, 16),
-              decoration: const InputDecoration(labelText: 'Maximum players'),
+              value: creator.draft.configuration.maxPlayers.clamp(
+                MafiaLimits.minPlayers,
+                MafiaLimits.maxPlayers,
+              ),
+              decoration: InputDecoration(labelText: copy.maxPlayersLabel),
               items: [
-                for (var n = 4; n <= 16; n++)
+                for (
+                  var n = MafiaLimits.minPlayers;
+                  n <= MafiaLimits.maxPlayers;
+                  n++
+                )
                   DropdownMenuItem(value: n, child: Text('$n')),
               ],
               onChanged: (value) {
@@ -225,7 +276,10 @@ class _GameCreatePageState extends State<GameCreatePage> {
                 creator.update(
                   creator.draft.copyWith(
                     configuration: GameConfiguration(
-                      minPlayers: min.clamp(4, 16),
+                      minPlayers: min.clamp(
+                        MafiaLimits.minPlayers,
+                        MafiaLimits.maxPlayers,
+                      ),
                       maxPlayers: value,
                       usesRounds: true,
                     ),
@@ -240,10 +294,12 @@ class _GameCreatePageState extends State<GameCreatePage> {
           ],
           const SizedBox(height: AppSpacing.lg),
           PubgetPrimaryButton(
-            onPressed: creator.saving || _saving ? null : () => _submit(context),
-            semanticLabel: GameStrings.create,
+            onPressed: creator.saving || _saving
+                ? null
+                : () => _submit(context),
+            semanticLabel: copy.createGame,
             child: Text(
-              creator.saving || _saving ? 'Creating…' : GameStrings.create,
+              creator.saving || _saving ? copy.creating : copy.createGame,
             ),
           ),
         ],
@@ -257,7 +313,7 @@ class _GameCreatePageState extends State<GameCreatePage> {
     if (creator.draft.type == GameType.mafia) {
       final groupId = (widget.groupId ?? creator.draft.groupId ?? '').trim();
       if (groupId.isEmpty) {
-        setState(() => _localError = 'Mafia must be created from a group.');
+        setState(() => _localError = GameCopy.of(context).mafiaNeedsGroup);
         return;
       }
       setState(() => _saving = true);
@@ -279,7 +335,8 @@ class _GameCreatePageState extends State<GameCreatePage> {
       }
       setState(
         () => _localError =
-            result.failureOrNull?.message ?? 'Could not create Mafia.',
+            result.failureOrNull?.message ??
+            GameCopy.of(context).mafiaCreateFailed,
       );
       return;
     }

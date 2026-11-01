@@ -2,7 +2,35 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum GameType { guessCharacter, animeChain, emojiAnimeGuess, mafia }
 
-enum GameStatus { draft, waiting, active, paused, completed, cancelled }
+/// Master Spec 12.2: CREATED → WAITING → STARTING → IN_PROGRESS → COMPLETED /
+/// CANCELLED. There is no paused state — a game cannot be suspended and picked
+/// up later, so there is nothing to resume.
+///
+/// The wire names are uppercase and are parsed case-insensitively. The previous
+/// lowercase names (`draft`, `active`, `paused`) matched no document the server
+/// ever wrote, so every game parsed as `draft`: nothing was joinable, playable,
+/// or terminal in the live app.
+enum GameStatus { created, waiting, starting, inProgress, completed, cancelled }
+
+extension GameStatusWire on GameStatus {
+  String get wireName => switch (this) {
+    GameStatus.created => 'CREATED',
+    GameStatus.waiting => 'WAITING',
+    GameStatus.starting => 'STARTING',
+    GameStatus.inProgress => 'IN_PROGRESS',
+    GameStatus.completed => 'COMPLETED',
+    GameStatus.cancelled => 'CANCELLED',
+  };
+
+  static GameStatus parse(Object? raw) {
+    if (raw is GameStatus) return raw;
+    final key = raw is String ? raw.trim().toUpperCase() : '';
+    for (final status in GameStatus.values) {
+      if (status.wireName == key) return status;
+    }
+    return GameStatus.created;
+  }
+}
 
 enum ParticipantStatus { active, left }
 
@@ -13,13 +41,19 @@ enum GameEventType {
   playerJoined,
   playerLeft,
   gameStarted,
-  gamePaused,
-  gameResumed,
   actionSubmitted,
   roundStarted,
   roundCompleted,
   gameCompleted,
   gameCancelled,
+  mafiaGameStarted,
+  mafiaNightStarted,
+  mafiaNightResolved,
+  mafiaDayStarted,
+  mafiaVotingStarted,
+  mafiaVoteResolved,
+  mafiaPlayerEliminated,
+  mafiaGameCompleted,
 }
 
 /// Generic action type names. Meaning belongs to the specific game.
@@ -30,6 +64,10 @@ abstract final class GameActionTypes {
   static const choose = 'choose';
   static const submit = 'submit';
   static const pass = 'pass';
+  // Guess Character asks and answers in fixed turns rather than scoring a
+  // prompt, so these two names are part of the engine contract.
+  static const ask = 'ask';
+  static const answer = 'answer';
 }
 
 final class GameConfiguration {
@@ -70,13 +108,16 @@ final class GameConfiguration {
       minPlayers: (map['minPlayers'] as num?)?.toInt() ?? 1,
       maxPlayers: (map['maxPlayers'] as num?)?.toInt() ?? 16,
       usesRounds: map['usesRounds'] == true,
-      roundCount: (map['roundCount'] as num?)?.toInt() ??
+      roundCount:
+          (map['roundCount'] as num?)?.toInt() ??
           (extra['roundCount'] as num?)?.toInt() ??
           5,
-      timerSeconds: (map['timerSeconds'] as num?)?.toInt() ??
+      timerSeconds:
+          (map['timerSeconds'] as num?)?.toInt() ??
           (extra['timerSeconds'] as num?)?.toInt() ??
           20,
-      difficulty: map['difficulty'] as String? ??
+      difficulty:
+          map['difficulty'] as String? ??
           extra['difficulty'] as String? ??
           'normal',
       extra: extra,
@@ -145,6 +186,7 @@ final class PubgetGame {
     this.currentPhase,
     this.stateVersion = 0,
     this.deadlineAt,
+    this.waitingDeadlineAt,
   });
 
   final String id;
@@ -168,8 +210,13 @@ final class PubgetGame {
   final int stateVersion;
   final DateTime? deadlineAt;
 
+  /// When the server closes a lobby that never filled: gamesDomain writes a
+  /// 15-minute deadline when a game enters WAITING (WAITING_ROOM_TIMEOUT).
+  final DateTime? waitingDeadlineAt;
+
   bool get isJoinable => status == GameStatus.waiting;
-  bool get isPlayable => status == GameStatus.active;
+  bool get isPlayable =>
+      status == GameStatus.starting || status == GameStatus.inProgress;
   bool get isTerminal =>
       status == GameStatus.completed || status == GameStatus.cancelled;
   bool get isHistorical => isTerminal;
@@ -179,7 +226,7 @@ final class PubgetGame {
     'title': title,
     'description': description,
     'version': version,
-    'status': status.name,
+    'status': status.wireName,
     'creatorId': creatorId,
     'groupId': groupId,
     'configuration': configuration.toMap(),
@@ -194,6 +241,7 @@ final class PubgetGame {
     'currentPhase': currentPhase,
     'stateVersion': stateVersion,
     'deadlineAt': deadlineAt?.toUtc().toIso8601String(),
+    'waitingDeadlineAt': waitingDeadlineAt?.toUtc().toIso8601String(),
     'searchName': title.trim().toLowerCase(),
   };
 
@@ -207,10 +255,7 @@ final class PubgetGame {
       title: map['title'] as String? ?? '',
       description: map['description'] as String? ?? '',
       version: (map['version'] as num?)?.toInt() ?? 1,
-      status: GameStatus.values.firstWhere(
-        (value) => value.name == map['status'],
-        orElse: () => GameStatus.draft,
-      ),
+      status: GameStatusWire.parse(map['status']),
       creatorId: map['creatorId'] as String? ?? '',
       groupId: map['groupId'] as String?,
       configuration: GameConfiguration.fromMap(
@@ -233,6 +278,7 @@ final class PubgetGame {
       currentPhase: map['currentPhase'] as String?,
       stateVersion: (map['stateVersion'] as num?)?.toInt() ?? 0,
       deadlineAt: _date(map['deadlineAt']),
+      waitingDeadlineAt: _date(map['waitingDeadlineAt']),
     );
   }
 }
@@ -247,6 +293,7 @@ final class GameParticipant {
     this.leftAt,
     this.score,
     this.metadata = const <String, dynamic>{},
+    this.isAlive = true,
   });
 
   final String gameId;
@@ -260,6 +307,7 @@ final class GameParticipant {
   /// not by this generic model (no coins/XP/wins assumed).
   final int? score;
   final Map<String, dynamic> metadata;
+  final bool isAlive;
 
   bool get isActive => status == ParticipantStatus.active && leftAt == null;
 
@@ -269,6 +317,7 @@ final class GameParticipant {
     DateTime? leftAt,
     int? score,
     Map<String, dynamic>? metadata,
+    bool? isAlive,
     bool clearScore = false,
   }) => GameParticipant(
     gameId: gameId,
@@ -279,6 +328,7 @@ final class GameParticipant {
     leftAt: leftAt ?? this.leftAt,
     score: clearScore ? null : score ?? this.score,
     metadata: metadata ?? this.metadata,
+    isAlive: isAlive ?? this.isAlive,
   );
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -289,6 +339,7 @@ final class GameParticipant {
     'joinedAt': joinedAt?.toUtc().toIso8601String(),
     'leftAt': leftAt?.toUtc().toIso8601String(),
     if (score != null) 'score': score,
+    'isAlive': isAlive,
     'metadata': metadata,
   };
 
@@ -309,6 +360,7 @@ final class GameParticipant {
       joinedAt: _date(map['joinedAt']),
       leftAt: _date(map['leftAt']),
       score: (map['score'] as num?)?.toInt(),
+      isAlive: map['isAlive'] != false,
       metadata: map['metadata'] is Map
           ? Map<String, dynamic>.from(map['metadata'] as Map)
           : const <String, dynamic>{},
@@ -583,13 +635,19 @@ String _eventWireName(GameEventType type) {
     GameEventType.playerJoined => 'player_joined',
     GameEventType.playerLeft => 'player_left',
     GameEventType.gameStarted => 'game_started',
-    GameEventType.gamePaused => 'game_paused',
-    GameEventType.gameResumed => 'game_resumed',
     GameEventType.actionSubmitted => 'action_submitted',
     GameEventType.roundStarted => 'round_started',
     GameEventType.roundCompleted => 'round_completed',
     GameEventType.gameCompleted => 'game_completed',
     GameEventType.gameCancelled => 'game_cancelled',
+    GameEventType.mafiaGameStarted => 'mafia_game_started',
+    GameEventType.mafiaNightStarted => 'mafia_night_started',
+    GameEventType.mafiaNightResolved => 'mafia_night_resolved',
+    GameEventType.mafiaDayStarted => 'mafia_day_started',
+    GameEventType.mafiaVotingStarted => 'mafia_voting_started',
+    GameEventType.mafiaVoteResolved => 'mafia_vote_resolved',
+    GameEventType.mafiaPlayerEliminated => 'mafia_player_eliminated',
+    GameEventType.mafiaGameCompleted => 'mafia_game_completed',
   };
 }
 
@@ -599,13 +657,19 @@ GameEventType parseGameEventType(String? raw) {
     'player_joined' || 'playerJoined' => GameEventType.playerJoined,
     'player_left' || 'playerLeft' => GameEventType.playerLeft,
     'game_started' || 'gameStarted' => GameEventType.gameStarted,
-    'game_paused' || 'gamePaused' => GameEventType.gamePaused,
-    'game_resumed' || 'gameResumed' => GameEventType.gameResumed,
     'action_submitted' || 'actionSubmitted' => GameEventType.actionSubmitted,
     'round_started' || 'roundStarted' => GameEventType.roundStarted,
     'round_completed' || 'roundCompleted' => GameEventType.roundCompleted,
     'game_completed' || 'gameCompleted' => GameEventType.gameCompleted,
     'game_cancelled' || 'gameCancelled' => GameEventType.gameCancelled,
+    'mafia_game_started' => GameEventType.mafiaGameStarted,
+    'mafia_night_started' => GameEventType.mafiaNightStarted,
+    'mafia_night_resolved' => GameEventType.mafiaNightResolved,
+    'mafia_day_started' => GameEventType.mafiaDayStarted,
+    'mafia_voting_started' => GameEventType.mafiaVotingStarted,
+    'mafia_vote_resolved' => GameEventType.mafiaVoteResolved,
+    'mafia_player_eliminated' => GameEventType.mafiaPlayerEliminated,
+    'mafia_game_completed' => GameEventType.mafiaGameCompleted,
     _ => GameEventType.gameCreated,
   };
 }
@@ -629,5 +693,112 @@ DateTime? _date(dynamic value) {
     return value?.toDate() as DateTime?;
   } catch (_) {
     return null;
+  }
+}
+
+/// A catalog search hit from `searchAnimeCatalog`. The server owns IDs, so the
+/// client stores them verbatim and never invents its own.
+final class AnimeSearchItem {
+  const AnimeSearchItem({
+    required this.id,
+    required this.title,
+    this.alternativeTitles = const <String>[],
+    this.imageUrl = '',
+    this.year,
+    this.type,
+    this.genres = const <String>[],
+    this.studios = const <String>[],
+  });
+
+  final String id;
+  final String title;
+  final List<String> alternativeTitles;
+  final String imageUrl;
+  final int? year;
+  final String? type;
+  final List<String> genres;
+  final List<String> studios;
+
+  factory AnimeSearchItem.fromMap(Map<String, dynamic> map) => AnimeSearchItem(
+    id: map['id'] as String? ?? '',
+    title: map['title'] as String? ?? '',
+    alternativeTitles:
+        (map['alternativeTitles'] as List<Object?>? ?? const <Object?>[])
+            .whereType<String>()
+            .toList(),
+    imageUrl: map['imageUrl'] as String? ?? '',
+    year: (map['year'] as num?)?.toInt(),
+    type: map['type'] as String?,
+    genres: (map['genres'] as List<Object?>? ?? const <Object?>[])
+        .whereType<String>()
+        .toList(),
+    studios: (map['studios'] as List<Object?>? ?? const <Object?>[])
+        .whereType<String>()
+        .toList(),
+  );
+}
+
+/// A catalog search hit from `searchCharacterCatalog`. Guess Character only
+/// accepts these real IDs, never a typed name.
+final class CharacterSearchItem {
+  const CharacterSearchItem({
+    required this.id,
+    required this.name,
+    this.animeIds = const <String>[],
+    this.imageUrl = '',
+  });
+
+  final String id;
+  final String name;
+  final List<String> animeIds;
+  final String imageUrl;
+
+  factory CharacterSearchItem.fromMap(Map<String, dynamic> map) =>
+      CharacterSearchItem(
+        id: map['id'] as String? ?? '',
+        name: map['name'] as String? ?? '',
+        animeIds: (map['animeIds'] as List<Object?>? ?? const <Object?>[])
+            .whereType<String>()
+            .toList(),
+        imageUrl: map['imageUrl'] as String? ?? '',
+      );
+}
+
+/// A finished game from the server-written `game_history` collection, used by
+/// the Game Center Recent and History sections.
+final class GameHistoryEntry {
+  const GameHistoryEntry({
+    required this.gameId,
+    required this.type,
+    this.groupId,
+    this.participants = const <String>[],
+    this.result,
+    this.endedAt,
+  });
+
+  final String gameId;
+  final String type;
+  final String? groupId;
+  final List<String> participants;
+  final GameResult? result;
+  final DateTime? endedAt;
+
+  factory GameHistoryEntry.fromMap(
+    Map<String, dynamic> map, {
+    required String id,
+  }) {
+    final raw = map['result'];
+    return GameHistoryEntry(
+      gameId: map['gameId'] as String? ?? id,
+      type: map['type'] as String? ?? '',
+      groupId: map['groupId'] as String?,
+      participants: (map['participants'] as List<Object?>? ?? const <Object?>[])
+          .whereType<String>()
+          .toList(),
+      result: raw is Map
+          ? GameResult.fromMap(Map<String, dynamic>.from(raw))
+          : null,
+      endedAt: _date(map['endedAt']),
+    );
   }
 }

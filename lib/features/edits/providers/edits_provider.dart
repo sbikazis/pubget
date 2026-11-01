@@ -7,9 +7,27 @@ import '../models/edit_models.dart';
 import '../repositories/edits_repository.dart';
 
 final class EditsProvider extends ChangeNotifier {
-  EditsProvider({required EditsRepository repository})
-    : _repository = repository;
+  EditsProvider({
+    required EditsRepository repository,
+    this.audioId,
+    this.animeId,
+    this.characterId,
+    this.hashtag,
+    this.creatorId,
+    FeedType feedType = FeedType.forYou,
+  }) : _repository = repository,
+       _feedType = feedType;
   final EditsRepository _repository;
+
+  /// Axis 15 §15.16 — an optional scope narrows the whole feed to one
+  /// context. At most one is expected to be set by a scoped entry point.
+  final String? audioId;
+  final String? animeId;
+  final String? characterId;
+  final String? hashtag;
+  final String? creatorId;
+
+  FeedType _feedType;
   final List<Edit> _items = <Edit>[];
   final Set<String> _liked = <String>{};
   final Set<String> _saved = <String>{};
@@ -25,14 +43,45 @@ final class EditsProvider extends ChangeNotifier {
   int _activeIndex = 0;
   bool _disposed = false;
 
-  List<Edit> get items => List.unmodifiable(
+  /// Cached immutable view of the visible feed.
+  ///
+  /// The cache is what makes per-item rebuild scoping possible: a fresh
+  /// `List.unmodifiable` on every read would give `context.select` a new
+  /// identity each notification, so liking one Reel would rebuild the whole
+  /// feed. Identity changes only when the underlying rows actually change, so
+  /// `select` can tell "the feed changed" from "this Reel's like state changed".
+  List<Edit>? _itemsCache;
+
+  List<Edit> get items => _itemsCache ??= List<Edit>.unmodifiable(
     _items.where((edit) => !_skippedIds.contains(edit.id)),
   );
+
+  /// Call after any mutation of `_items` or `_skippedIds`.
+  void _touchItems() {
+    _itemsCache = null;
+  }
   LoadingState get state => _state;
   Failure? get failure => _failure;
   Failure? get lastActionFailure => _lastActionFailure;
   bool get hasMore => _hasMore;
   int get activeIndex => _activeIndex;
+  FeedType get feedType => _feedType;
+
+  /// Switch ranking strategy (For You / Following / Trending). Resets paging
+  /// and re-queries the server — the client never re-sorts a cached page.
+  void setFeedType(FeedType type) {
+    if (_feedType == type) return;
+    _feedType = type;
+    _items.clear();
+    _skippedIds.clear();
+    _touchItems();
+    _hasMore = true;
+    _activeIndex = 0;
+    _state = LoadingState.initial;
+    _failure = null;
+    notifyListeners();
+    load(refresh: true);
+  }
 
   Edit displayOf(Edit edit) {
     return edit.copyWith(
@@ -61,23 +110,33 @@ final class EditsProvider extends ChangeNotifier {
   /// Mark a broken/unplayable clip so the feed can advance past it.
   void skipBroken(String editId) {
     if (!_skippedIds.add(editId)) return;
+    _touchItems();
     notifyListeners();
   }
 
-  Future<void> load({bool refresh = false, int limit = 5}) async {
+  Future<void> load({bool refresh = false, int limit = 5, String? audioId}) async {
     if (_state == LoadingState.loading || _loadingMore) return;
     if (!refresh && _items.isNotEmpty) return;
     _state = refresh ? LoadingState.refreshing : LoadingState.loading;
     _failure = null;
     if (refresh) _skippedIds.clear();
     notifyListeners();
-    final result = await _repository.getFeed(limit: limit);
+    final result = await _repository.getFeed(
+      limit: limit,
+      audioId: audioId ?? this.audioId,
+      animeId: animeId,
+      characterId: characterId,
+      hashtag: hashtag,
+      creatorId: creatorId,
+      feedType: _feedType,
+    );
     if (_disposed) return;
     result.fold(
       onSuccess: (page) {
         _items
           ..clear()
           ..addAll(page.items);
+        _touchItems();
         _hasMore = page.hasMore;
         _state = _items.isEmpty ? LoadingState.empty : LoadingState.loaded;
       },
@@ -89,17 +148,26 @@ final class EditsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> loadMore() async {
+  Future<void> loadMore({String? audioId}) async {
     if (!_hasMore || _loadingMore || _items.isEmpty) return;
     _loadingMore = true;
     _state = LoadingState.loadingMore;
     notifyListeners();
-    final result = await _repository.getFeed(after: _items.last);
+    final result = await _repository.getFeed(
+      after: _items.last,
+      audioId: audioId ?? this.audioId,
+      animeId: animeId,
+      characterId: characterId,
+      hashtag: hashtag,
+      creatorId: creatorId,
+      feedType: _feedType,
+    );
     if (_disposed) return;
     result.fold(
       onSuccess: (page) {
         final seen = _items.map((edit) => edit.id).toSet();
         _items.addAll(page.items.where((edit) => seen.add(edit.id)));
+        _touchItems();
         _hasMore = page.hasMore;
         _state = LoadingState.loaded;
       },
@@ -126,6 +194,7 @@ final class EditsProvider extends ChangeNotifier {
     }
     _items.insert(0, edit);
     _skippedIds.remove(edit.id);
+    _touchItems();
     _state = LoadingState.loaded;
     _activeIndex = 0;
     notifyListeners();
@@ -202,11 +271,81 @@ final class EditsProvider extends ChangeNotifier {
     return result;
   }
 
+  /// Creator ids the viewer has muted, for immediate UI feedback.
+  final Set<String> _mutedCreators = <String>{};
+
+  bool isMuted(String creatorId) => _mutedCreators.contains(creatorId);
+
+  /// Mute or unmute a Reels creator.
+  ///
+  /// The server owns the durable mute row; this only makes the change visible
+  /// immediately. On mute the creator's loaded Reels leave the feed right away
+  /// rather than lingering until the next page fetch, and a failed write
+  /// re-reads the feed so the screen never keeps a lie on it.
+  Future<Result<void>> muteCreator(
+    String creatorId, {
+    required bool mute,
+  }) async {
+    if (creatorId.isEmpty) {
+      return const Success<void>(null);
+    }
+    final wasMuted = _mutedCreators.contains(creatorId);
+    if (mute == wasMuted) return const Success<void>(null);
+
+    if (mute) {
+      _mutedCreators.add(creatorId);
+      _items.removeWhere((edit) => edit.creatorId == creatorId);
+      _touchItems();
+    } else {
+      _mutedCreators.remove(creatorId);
+    }
+    notifyListeners();
+
+    final result = await _repository.muteReelCreator(
+      creatorId: creatorId,
+      mute: mute,
+    );
+    if (_disposed) return result;
+
+    if (!result.isSuccess) {
+      if (wasMuted) {
+        _mutedCreators.add(creatorId);
+      } else {
+        _mutedCreators.remove(creatorId);
+      }
+      _lastActionFailure = result.failureOrNull;
+      notifyListeners();
+      // The removed rows cannot be restored faithfully from local state alone,
+      // so re-read instead of guessing.
+      await load(refresh: true);
+    }
+    return result;
+  }
+
   Future<Result<void>> share(String editId) {
     return _repository.recordSignal(editId: editId, type: 'share');
   }
 
-  Future<Result<void>> report(String editId) {
+  /// Axis 15 §15.18 — a categorized moderation report. This is deliberately
+  /// distinct from [notInterested]: a report is a moderation action with a
+  /// category and a queue entry, while "not interested" is a private taste
+  /// signal that only softens future recommendations.
+  Future<Result<void>> report(
+    String editId, {
+    required String category,
+    String? detail,
+  }) {
+    return _repository.reportEdit(
+      editId: editId,
+      category: category,
+      detail: detail,
+    );
+  }
+
+  /// Axis 15 §15.9/§15.18 — a private negative taste signal. Hides the Reel
+  /// locally and reduces similar content; it never notifies moderation.
+  Future<Result<void>> notInterested(String editId) {
+    skipBroken(editId);
     return _repository.recordSignal(editId: editId, type: 'negative');
   }
 

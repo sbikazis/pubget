@@ -9,8 +9,10 @@
 // Reused from PROMPT 05 (socialGraph.js): pairId / respectId length-prefixed
 // identifiers, legacy `_` fallback with participant matching, FAN_THRESHOLD,
 // block status on friendships.
-// New here: Fan-or-Friend gate on start, whoCanMessageMe (related|friends),
-// Block re-checked on every send, deterministic chatId = pairId(uid, other).
+// New here: Mutual-Fan-or-Friend gate on start (Master Spec §10.1: private chat
+// requires a mutual fan relationship — I gave them 5+ AND they gave me 5+),
+// whoCanMessageMe (related|friends), Block re-checked on every send,
+// deterministic chatId = pairId(uid, other).
 
 const {
   FAN_THRESHOLD,
@@ -23,10 +25,19 @@ const {
   validUid,
 } = require("./socialGraph");
 const {
+  EDIT_WINDOW_MS,
   MEDIA_TYPES,
+  REPORT_REASONS,
+  USER_MESSAGE_TYPES,
+  expectedMediaType,
+  mediaDimensions,
+  replyPreviewFrom,
+  timestampDate,
   validString,
   validateMessage,
 } = require("./groupChat");
+
+const { enqueueModerationCase } = require("./moderationQueue");
 
 const WHO_CAN_MESSAGE = new Set(["related", "friends"]);
 const CHAT_ID_MAX = 320;
@@ -141,12 +152,12 @@ async function respectValue(transaction, db, fromUserId, toUserId) {
   return 0;
 }
 
-async function isFanEitherDirection(transaction, db, uid, otherUserId) {
+async function isFanMutual(transaction, db, uid, otherUserId) {
   const [forward, reverse] = await Promise.all([
     respectValue(transaction, db, uid, otherUserId),
     respectValue(transaction, db, otherUserId, uid),
   ]);
-  return forward >= FAN_THRESHOLD || reverse >= FAN_THRESHOLD;
+  return forward >= FAN_THRESHOLD && reverse >= FAN_THRESHOLD;
 }
 
 async function relationshipState(transaction, db, uid, otherUserId) {
@@ -156,7 +167,7 @@ async function relationshipState(transaction, db, uid, otherUserId) {
     : null;
   const blocked = status === "blocked";
   const friend = status === "accepted";
-  const fan = await isFanEitherDirection(transaction, db, uid, otherUserId);
+  const fan = await isFanMutual(transaction, db, uid, otherUserId);
   return { friendship, blocked, friend, fan };
 }
 
@@ -189,7 +200,7 @@ function assertCanStartChat(state, recipient, HttpsError) {
   if (!state.friend && !state.fan) {
     throw new HttpsError(
       "permission-denied",
-      "A Fan or Friend relationship is required to start a private chat.",
+      "A Mutual Fan or Friend relationship is required to start a private chat.",
     );
   }
   assertMessagingPolicy(state, recipient, HttpsError);
@@ -306,6 +317,7 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
         response = existing.data();
         return;
       }
+      let replyPreview = null;
       if (data.replyToMessageId !== undefined && data.replyToMessageId !== null) {
         if (!validString(data.replyToMessageId, 128)) {
           throw new HttpsError("invalid-argument", "replyToMessageId is invalid.");
@@ -316,6 +328,8 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
         if (!reply.exists) {
           throw new HttpsError("not-found", "Reply target not found.");
         }
+        // Without this the recipient got a reply bubble with an empty quote.
+        replyPreview = replyPreviewFrom(reply.data());
       }
       let media = null;
       if (MEDIA_TYPES.has(data.type)) {
@@ -323,12 +337,27 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
           mediaRef(db, chatId, data.mediaId),
         );
         media = mediaSnapshot.exists ? mediaSnapshot.data() : null;
-        const expectedType = data.type === "video" ? "video" : "image";
+        const expectedType = expectedMediaType(data.type);
         if (!media || media.status !== "ready" ||
             media.uploaderId !== uid || media.mediaType !== expectedType ||
-            !validString(media.originalPath, 1024) ||
-            !validString(media.thumbnailPath, 1024) ||
-            (expectedType === "image" && !validString(media.mediumPath, 1024))) {
+            !validString(media.originalPath, 1024)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Media must finish processing and belong to the sender.",
+          );
+        }
+        // Images need a medium rendition for the bubble and a thumbnail;
+        // videos need a thumbnail; audio (private voice notes) has neither.
+        if (expectedType === "image" &&
+            (!validString(media.thumbnailPath, 1024) ||
+             !validString(media.mediumPath, 1024))) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Media must finish processing and belong to the sender.",
+          );
+        }
+        if (expectedType === "video" &&
+            !validString(media.thumbnailPath, 1024)) {
           throw new HttpsError(
             "failed-precondition",
             "Media must finish processing and belong to the sender.",
@@ -346,7 +375,10 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
         mediaId: MEDIA_TYPES.has(data.type) ? data.mediaId : null,
         mediaUrl: media ? (media.mediumPath || media.originalPath) : null,
         thumbnailUrl: media ? media.thumbnailPath : null,
+        mediaWidth: mediaDimensions(media).width,
+        mediaHeight: mediaDimensions(media).height,
         replyToMessageId: data.replyToMessageId || null,
+        replyPreview,
         createdAt: FieldValue.serverTimestamp(),
         editedAt: null,
         deletedAt: null,
@@ -363,6 +395,7 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
       const chatUpdate = {
         lastMessageAt: FieldValue.serverTimestamp(),
         lastMessageText: previewText(data),
+        lastMessageId: messageId,
         lastMessageSenderId: uid,
         [`hiddenFor.${uid}`]: FieldValue.delete(),
         [`hiddenFor.${otherUserId}`]: FieldValue.delete(),
@@ -382,7 +415,11 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
     const { chatId, messageId } = messageIds(request, HttpsError);
     const ref = messageRef(db, chatId, messageId);
     await db.runTransaction(async (transaction) => {
-      await requireParticipantChat(transaction, db, chatId, uid, HttpsError);
+      // Firestore requires every read before any write, so the chat snapshot is
+      // taken up front and reused after the message is tombstoned.
+      const { data: chatData } = await requireParticipantChat(
+        transaction, db, chatId, uid, HttpsError,
+      );
       const message = await transaction.get(ref);
       if (!message.exists) throw new HttpsError("not-found", "Message not found.");
       const current = message.data() || {};
@@ -394,10 +431,188 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
         text: null,
         mediaUrl: null,
         thumbnailUrl: null,
+        mediaWidth: null,
+        mediaHeight: null,
         deletedAt: FieldValue.serverTimestamp(),
+      });
+      // Keep the conversation list preview truthful: deleting the newest
+      // message used to leave the old text in the chat row.
+      if (chatData.lastMessageId === messageId) {
+        transaction.update(chatRef(db, chatId), {
+          lastMessageText: "[deleted]",
+        });
+      }
+    });
+    return { ok: true };
+  }
+
+  async function editMessage(request) {
+    const uid = requireAuth(request, HttpsError);
+    const { chatId, messageId } = messageIds(request, HttpsError);
+    const text = request.data && request.data.text;
+    if (!validString(text, 4000)) {
+      throw new HttpsError("invalid-argument", "Text must be between 1 and 4000 characters.");
+    }
+    const ref = messageRef(db, chatId, messageId);
+    await db.runTransaction(async (transaction) => {
+      // Reads first: Firestore rejects a read after a write in a transaction.
+      const { data: chatData } = await requireParticipantChat(
+        transaction, db, chatId, uid, HttpsError,
+      );
+      const message = await transaction.get(ref);
+      if (!message.exists) throw new HttpsError("not-found", "Message not found.");
+      const current = message.data() || {};
+      if (current.senderId !== uid || current.type !== "text" || current.deletedAt) {
+        throw new HttpsError("permission-denied", "This message cannot be edited.");
+      }
+      const createdAt = timestampDate(current.createdAt);
+      if (!createdAt || Date.now() - createdAt.getTime() > EDIT_WINDOW_MS) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Messages can only be edited within 15 minutes.",
+        );
+      }
+      transaction.update(ref, {
+        text: text.trim(),
+        editedAt: FieldValue.serverTimestamp(),
+      });
+      // Keep the conversation list preview truthful.
+      if (chatData.lastMessageId === messageId) {
+        transaction.update(chatRef(db, chatId), {
+          lastMessageText: text.trim().slice(0, 80),
+        });
+      }
+    });
+    // Read back after the commit so the client gets the server's `editedAt`
+    // and the original `createdAt`, which keeps message ordering stable.
+    const current = await ref.get();
+    return { ok: true, message: current.data() };
+  }
+
+  async function pinMessage(request) {
+    const uid = requireAuth(request, HttpsError);
+    const { chatId, messageId } = messageIds(request, HttpsError);
+    const pinned = request.data ? request.data.pinned === true : false;
+    await db.runTransaction(async (transaction) => {
+      await requireParticipantChat(transaction, db, chatId, uid, HttpsError);
+      const ref = messageRef(db, chatId, messageId);
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists || (snapshot.data() || {}).deletedAt) {
+        throw new HttpsError("not-found", "Message not found.");
+      }
+      // A 1:1 has no moderator, so the sender is the only one who may pin.
+      if (snapshot.data().senderId !== uid) {
+        throw new HttpsError(
+          "permission-denied",
+          "You can only pin messages you sent.",
+        );
+      }
+      transaction.update(ref, {
+        pinnedAt: pinned ? FieldValue.serverTimestamp() : null,
       });
     });
     return { ok: true };
+  }
+
+  async function addReaction(request) {
+    const uid = requireAuth(request, HttpsError);
+    const { chatId, messageId } = messageIds(request, HttpsError);
+    const reaction = request.data && request.data.reaction;
+    if (!validString(reaction, 16)) {
+      throw new HttpsError("invalid-argument", "Reaction is invalid.");
+    }
+    await db.runTransaction(async (transaction) => {
+      await requireParticipantChat(transaction, db, chatId, uid, HttpsError);
+      const ref = messageRef(db, chatId, messageId);
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists || (snapshot.data() || {}).deletedAt) {
+        throw new HttpsError("not-found", "Message not found.");
+      }
+      const message = snapshot.data() || {};
+      const reactionUsers = { ...(message.reactionUsers || {}) };
+      const users = { ...(reactionUsers[reaction] || {}) };
+      const reactions = { ...(message.reactions || {}) };
+      if (users[uid]) {
+        delete users[uid];
+      } else {
+        users[uid] = true;
+      }
+      reactionUsers[reaction] = users;
+      reactions[reaction] = Object.keys(users).length;
+      transaction.update(ref, { reactions, reactionUsers });
+    });
+    return { ok: true };
+  }
+
+  async function reportMessage(request) {
+    const reporterId = requireAuth(request, HttpsError);
+    const chatId = request.data && request.data.chatId;
+    const messageId = request.data && request.data.messageId;
+    const reason = REPORT_REASONS.includes(request.data && request.data.reason)
+      ? request.data.reason
+      : null;
+    const details = typeof (request.data && request.data.details) === "string"
+      ? request.data.details.trim().slice(0, 500)
+      : "";
+    if (!validString(chatId, CHAT_ID_MAX) || !validString(messageId, 128) || !reason) {
+      throw new HttpsError(
+        "invalid-argument",
+        "A structured report reason is required.",
+      );
+    }
+    const chatSnap = await chatRef(db, chatId.trim()).get();
+    if (!chatSnap.exists) throw new HttpsError("not-found", "Chat not found.");
+    const chat = chatSnap.data() || {};
+    const participants = Array.isArray(chat.participantIds)
+      ? chat.participantIds
+      : [chat.userA, chat.userB].filter(Boolean);
+    if (!participants.includes(reporterId)) {
+      throw new HttpsError("permission-denied", "You are not a chat participant.");
+    }
+    const messageSnap = await messageRef(db, chatId.trim(), messageId.trim()).get();
+    if (!messageSnap.exists) throw new HttpsError("not-found", "Message not found.");
+    if (messageSnap.data().deletedAt) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Deleted messages cannot be reported.",
+      );
+    }
+    if (messageSnap.data().senderId === reporterId) {
+      throw new HttpsError("failed-precondition", "You cannot report your own message.");
+    }
+    const reportId = `${messageId.trim()}_${reporterId}`;
+    const reportRef = chatRef(db, chatId.trim())
+      .collection("messageReports").doc(reportId);
+    await db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(reportRef);
+      if (existing.exists) return;
+      transaction.create(reportRef, {
+        reporterId,
+        messageId: messageId.trim(),
+        reason,
+        details,
+        status: "open",
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    });
+
+    // Phase 10 — private-message reports join the same queue. Without this a
+    // report about harassment in DMs was recorded somewhere no moderator could
+    // reach, which is the worst place for it to be.
+    await enqueueModerationCase({
+      db,
+      FieldValue,
+      type: "privateMessage",
+      targetId: messageId.trim(),
+      targetParentId: chatId.trim(),
+      reporterId,
+      creatorId: messageSnap.data().senderId || null,
+      reason,
+      details: details || null,
+      sourcePath: `privateChats/${chatId.trim()}/messageReports/${reportId}`,
+    });
+
+    return { ok: true, reportId };
   }
 
   async function markMessagesRead(request) {
@@ -468,6 +683,10 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
     startPrivateChat,
     sendPrivateMessage,
     deleteMessage,
+    editMessage,
+    pinMessage,
+    addReaction,
+    reportMessage,
     markMessagesRead,
     markMessagesDelivered,
     deleteChat,

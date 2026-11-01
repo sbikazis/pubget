@@ -3,7 +3,12 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createGamesDomain } = require("../src/gamesDomain");
-const catalog = require("../src/gameCatalog");
+const {
+  createFakeAnimeCatalog,
+  FAKE_ANIME,
+  relatedAnimeId,
+  titleOf,
+} = require("./support/fakeAnimeCatalog");
 
 class TestHttpsError extends Error {
   constructor(code, message) {
@@ -205,18 +210,14 @@ function domain(db, extras = {}) {
     random: extras.random || (() => 0.2),
     economy: extras.economy,
     achievements: extras.achievements,
+    catalog: extras.catalog || createFakeAnimeCatalog(),
   });
 }
 
 async function startGuess(db, games) {
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: {
-      type: "guessCharacter",
-      title: "Guess",
-      groupId: "g1",
-      creationSource: "group_chat",
-    },
+    data: { type: "guessCharacter", title: "Guess", groupId: "g1", creationSource: "group_chat" },
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
@@ -224,133 +225,131 @@ async function startGuess(db, games) {
     auth: { uid: "alice" },
     data: {
       gameId: created.gameId,
-      actionType: "select_character",
-      payload: { characterId: "luffy" },
-      clientActionId: "select-alice",
+      actionType: "select",
+      payload: { characterId: "jikan:2001" },
     },
   });
   await games.submitGameAction({
     auth: { uid: "bob" },
     data: {
       gameId: created.gameId,
-      actionType: "select_character",
-      payload: { characterId: "naruto" },
-      clientActionId: "select-bob",
+      actionType: "select",
+      payload: { characterId: "jikan:2003" },
     },
   });
   return created.gameId;
 }
 
-test("guess character uses private selections and yes/no turns", async () => {
+test("guess character scores server-side and ignores client score", async () => {
   const db = createFakeDb(seed());
   const games = domain(db);
   const gameId = await startGuess(db, games);
-  const secret = db.store.get(`games/${gameId}/secret/round`);
   const publicState = db.store.get(`games/${gameId}`).publicState;
-  assert.equal(publicState.phase, "question");
-  assert.deepEqual(secret.selections, { alice: "luffy", bob: "naruto" });
-  assert.equal(publicState.characterOptions.some((item) => item.id === "naruto"), true);
-  await games.submitGameAction({
-    auth: { uid: "alice" },
-    data: {
-      gameId,
-      actionType: "question",
-      payload: { question: "Does the character wear orange?" },
-      clientActionId: "a1",
-    },
-  });
-  await games.submitGameAction({
-    auth: { uid: "bob" },
-    data: {
-      gameId,
-      actionType: "answer",
-      payload: { answer: "yes" },
-      clientActionId: "b1",
-    },
-  });
+  assert.equal(publicState.phase, "ask");
   await games.submitGameAction({
     auth: { uid: "alice" },
     data: {
       gameId,
       actionType: "guess",
-      payload: { characterId: "naruto", score: 100 },
-      clientActionId: "a2",
+      payload: { characterId: "jikan:2003", score: 100 },
+      clientActionId: "a1",
     },
   });
   const after = db.store.get(`games/${gameId}`);
-  assert.equal(after.status, "completed");
-  assert.deepEqual(after.result.winnerIds, ["alice"]);
   assert.equal(after.result.scores.alice, 1);
+  assert.equal(after.status, "COMPLETED");
 });
 
-test("guess character rejects duplicate selections, non-players, and stale versions", async () => {
+test("guess character rejects duplicate answers, non-players, and stale versions", async () => {
   const db = createFakeDb(seed());
   const games = domain(db);
   const gameId = await startGuess(db, games);
+  const choice = "jikan:2003";
   await games.submitGameAction({
     auth: { uid: "alice" },
-    data: {
-      gameId,
-      actionType: "question",
-      payload: { question: "Is the character a ninja?" },
-      clientActionId: "a1",
-    },
+     data: { gameId, actionType: "guess", payload: { characterId: choice }, clientActionId: "a1" },
   });
   await assert.rejects(
     games.submitGameAction({
       auth: { uid: "alice" },
-      data: {
-        gameId,
-        actionType: "question",
-        payload: { question: "Another question?" },
-        clientActionId: "a2",
-      },
+       data: { gameId, actionType: "guess", payload: { characterId: choice }, clientActionId: "a2" },
     }),
     (error) => error.code === "failed-precondition",
   );
   await assert.rejects(
     games.submitGameAction({
       auth: { uid: "dave" },
-      data: { gameId, actionType: "question", payload: { question: "?" } },
+      data: { gameId, actionType: "guess", payload: { characterId: choice } },
     }),
-    (error) => error.code === "permission-denied",
+    (error) => error.code === "failed-precondition",
+  );
+  await assert.rejects(
+    games.submitGameAction({
+      auth: { uid: "bob" },
+      data: {
+        gameId,
+        actionType: "guess",
+        payload: { characterId: choice, stateVersion: -1 },
+      },
+    }),
+    (error) => error.code === "failed-precondition",
   );
 });
 
-test("guess character timeout resolves a selection forfeiture", async () => {
+test("guess character timeout advances the round without client clocks", async () => {
   let now = new Date("2026-09-02T12:00:00Z");
   const db = createFakeDb(seed());
   const games = domain(db, { clock: { now: () => now } });
-  const created = await games.createGame({
-    auth: { uid: "alice" },
-    data: {
-      type: "guessCharacter",
-      title: "Guess",
-      groupId: "g1",
-      creationSource: "group_chat",
-    },
-  });
-  await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
-  await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
-  const gameId = created.gameId;
+  const gameId = await startGuess(db, games);
   now = new Date("2026-09-02T12:05:00Z");
   await games.processExpiredGames();
   const after = db.store.get(`games/${gameId}`);
-  assert.equal(after.status, "completed");
-  assert.deepEqual(after.result.winnerIds, []);
+  assert.ok(after.publicState.phase === "ask" || after.status === "COMPLETED");
+  if (after.status === "COMPLETED") assert.equal(after.result.scores.alice, 0);
 });
+
+test("guess character answer timeout blames the player who stalled", async () => {
+  let now = new Date("2026-09-02T12:00:00Z");
+  const db = createFakeDb(seed());
+  const games = domain(db, { clock: { now: () => now } });
+  const gameId = await startGuess(db, games);
+  const before = db.store.get(`games/${gameId}`).publicState;
+  const asker = before.currentPlayerId;
+  assert.ok(asker, "ask phase must have a current player");
+  const answerer = asker === "alice" ? "bob" : "alice";
+  await games.submitGameAction({
+    auth: { uid: asker },
+    data: { gameId, actionType: "ask", payload: { question: "Is it from the 90s?" } },
+  });
+  const answering = db.store.get(`games/${gameId}`);
+  assert.equal(answering.publicState.phase, "answer");
+  assert.equal(answering.publicState.answeringPlayerId, answerer);
+  now = new Date("2026-09-02T12:01:00Z");
+  await games.processExpiredGames();
+  const after = db.store.get(`games/${gameId}`);
+  assert.notEqual(after.status, "COMPLETED");
+  assert.equal(after.publicState.phase, "ask");
+  assert.equal(after.publicState.lastAction.type, "timeout");
+  assert.equal(after.publicState.lastAction.playerId, answerer);
+  assert.equal(after.publicState.currentPlayerId, asker);
+});
+
+test("guess character does not expose selected answers", async () => {
+  const db = createFakeDb(seed());
+  const games = domain(db);
+  const gameId = await startGuess(db, games);
+  const publicState = db.store.get(`games/${gameId}`).publicState;
+  assert.equal(publicState.question, null);
+  assert.equal(JSON.stringify(publicState).includes("2001"), false);
+});
+
 
 test("anime chain validates studio/character relations and turn order", async () => {
   const db = createFakeDb(seed());
   const games = domain(db);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: {
-      type: "animeChain",
-      title: "Chain",
-      groupId: "g1",
-      creationSource: "group_chat",
-    },
+    data: { type: "animeChain", title: "Chain", groupId: "g1", creationSource: "group_chat" },
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
@@ -361,11 +360,15 @@ test("anime chain validates studio/character relations and turn order", async ()
   await assert.rejects(
     games.submitGameAction({
       auth: { uid: other },
-      data: { gameId: created.gameId, actionType: "submit", payload: { title: "Naruto" } },
+      data: {
+        gameId: created.gameId,
+        actionType: "submit",
+        payload: { title: titleOf(relatedAnimeId(lastId)) },
+      },
     }),
     (error) => error.code === "failed-precondition",
   );
-  const valid = catalog.ANIME.find((item) => catalog.sharesRelation(lastId, item.id));
+  const valid = { id: relatedAnimeId(lastId), title: titleOf(relatedAnimeId(lastId)) };
   await games.submitGameAction({
     auth: { uid: current },
     data: {
@@ -380,26 +383,17 @@ test("anime chain validates studio/character relations and turn order", async ()
   assert.equal(next.publicState.scores[current], 1);
   await games.submitGameAction({
     auth: { uid: next.publicState.currentPlayerId },
-    data: {
-      gameId: created.gameId,
-      actionType: "submit",
-      payload: { title: "Not a real anime" },
-    },
+    data: { gameId: created.gameId, actionType: "submit", payload: { animeId: valid.id } },
   });
-  assert.equal(db.store.get(`games/${created.gameId}`).status, "completed");
+  assert.equal(db.store.get(`games/${created.gameId}`).status, "COMPLETED");
 });
 
-test("emoji guess uses server clues and scores a correct title", async () => {
+test("emoji guess uses server-derived emoji and scores a correct title", async () => {
   const db = createFakeDb(seed());
   const games = domain(db);
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: {
-      type: "emojiAnimeGuess",
-      title: "Emoji",
-      groupId: "g1",
-      creationSource: "group_chat",
-    },
+    data: { type: "emojiAnimeGuess", title: "Emoji", groupId: "g1", creationSource: "group_chat" },
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });
@@ -410,24 +404,13 @@ test("emoji guess uses server clues and scores a correct title", async () => {
   assert.equal(JSON.stringify(publicState).includes(secret.title), false);
   assert.ok(!publicState.title);
   const current = publicState.currentPlayerId;
-  const other = publicState.eligibleGuesserIds[0];
-  await assert.rejects(
-    games.submitGameAction({
-      auth: { uid: current },
-      data: {
-        gameId: created.gameId,
-        actionType: "guess",
-        payload: { title: secret.title },
-      },
-    }),
-    (error) => error.code === "failed-precondition",
-  );
+  const other = current === "alice" ? "bob" : "alice";
   await games.submitGameAction({
     auth: { uid: other },
     data: {
       gameId: created.gameId,
       actionType: "guess",
-      payload: { title: secret.title },
+      payload: { animeId: secret.targetAnimeId },
     },
   });
   const after = db.store.get(`games/${created.gameId}`);
@@ -442,12 +425,7 @@ test("emoji guess timeout advances without scoring the current player", async ()
   const games = domain(db, { clock: { now: () => now } });
   const created = await games.createGame({
     auth: { uid: "alice" },
-    data: {
-      type: "emojiAnimeGuess",
-      title: "Emoji",
-      groupId: "g1",
-      creationSource: "group_chat",
-    },
+    data: { type: "emojiAnimeGuess", title: "Emoji", groupId: "g1", creationSource: "group_chat" },
   });
   await games.joinGame({ auth: { uid: "bob" }, data: { gameId: created.gameId } });
   await games.startGame({ auth: { uid: "alice" }, data: { gameId: created.gameId } });

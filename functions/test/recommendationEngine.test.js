@@ -101,11 +101,11 @@ test("personalized feeds differ when anime interests differ", async () => {
       founderId: "kakashi", createdAt: "2026-09-01T00:00:00.000Z",
     },
     "edits/e-op": {
-      status: "published", creatorId: "zoro", animeTag: "one_piece",
+      status: "published", moderationStatus: "approved", creatorId: "zoro", animeTag: "one_piece",
       createdAt: "2026-09-02T00:00:00.000Z", qualifiedViewsCount: 8, likesCount: 3,
     },
     "edits/e-naruto": {
-      status: "published", creatorId: "kakashi", animeTag: "naruto",
+      status: "published", moderationStatus: "approved", creatorId: "kakashi", animeTag: "naruto",
       createdAt: "2026-09-02T00:00:00.000Z", qualifiedViewsCount: 8, likesCount: 3,
     },
     "public_profiles/nami": { username: "Nami", favoriteAnimeIds: ["one_piece"], totalRespect: 4 },
@@ -147,11 +147,11 @@ test("blocked creators are excluded from edits, fan works, groups, and rising cr
       userIds: ["alice", "mallory"], status: "blocked",
     },
     "edits/blocked-edit": {
-      status: "published", creatorId: "mallory", animeTag: "one_piece",
+      status: "published", moderationStatus: "approved", creatorId: "mallory", animeTag: "one_piece",
       createdAt: "2026-09-02T00:00:00.000Z", qualifiedViewsCount: 80, likesCount: 20,
     },
     "edits/safe-edit": {
-      status: "published", creatorId: "zoro", animeTag: "one_piece",
+      status: "published", moderationStatus: "approved", creatorId: "zoro", animeTag: "one_piece",
       createdAt: "2026-09-02T00:00:00.000Z", qualifiedViewsCount: 4, likesCount: 1,
     },
     "fanWorks/blocked-work": {
@@ -199,6 +199,34 @@ test("blocked creators are excluded from edits, fan works, groups, and rising cr
   assert.equal(has(bob, "recommendedEdits", "blocked-edit"), true);
   assert.equal(has(bob, "recommendedFanWorks", "blocked-work"), true);
   assert.equal(has(bob, "recommendedGroups", "blocked-crew"), true);
+});
+
+test("flagged edits are never recommended", async () => {
+  // §15.18 — a reported Reel keeps `status: 'published'` (so moderation can
+  // restore it later), but the discovery engine must never surface it. Without
+  // the moderation gate a report would have *increased* its reach.
+  const seed = {
+    "users/alice": { favoriteAnimeIds: ["one_piece"] },
+    "edits/flagged-edit": {
+      status: "published", moderationStatus: "flagged", creatorId: "zoro",
+      animeTag: "one_piece", createdAt: "2026-09-02T00:00:00.000Z",
+      qualifiedViewsCount: 99, likesCount: 50,
+    },
+    "edits/unmoderated-edit": {
+      status: "published", creatorId: "zoro", animeTag: "one_piece",
+      createdAt: "2026-09-02T00:00:00.000Z", qualifiedViewsCount: 5, likesCount: 2,
+    },
+    "edits/safe-edit": {
+      status: "published", moderationStatus: "approved", creatorId: "zoro",
+      animeTag: "one_piece", createdAt: "2026-09-02T00:00:00.000Z",
+      qualifiedViewsCount: 4, likesCount: 1,
+    },
+  };
+  const alice = await engine(seed).getDiscoveryFeed({ auth: { uid: "alice" } });
+  const items = alice.sections.recommendedEdits.items;
+  assert.equal(items.some((item) => item.targetId === "flagged-edit"), false);
+  assert.equal(items.some((item) => item.targetId === "unmoderated-edit"), false);
+  assert.equal(items.some((item) => item.targetId === "safe-edit"), true);
 });
 
 test("unauthenticated discovery is rejected", async () => {

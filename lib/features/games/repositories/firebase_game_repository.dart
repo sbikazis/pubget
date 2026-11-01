@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/game_errors.dart';
 import '../models/game_models.dart';
 import 'game_repository.dart';
@@ -52,14 +54,6 @@ final class FirebaseGameRepository implements GameRepository {
       _call('startGame', {'gameId': gameId});
 
   @override
-  Future<Result<void>> pause(String gameId) =>
-      _call('pauseGame', {'gameId': gameId});
-
-  @override
-  Future<Result<void>> resume(String gameId) =>
-      _call('resumeGame', {'gameId': gameId});
-
-  @override
   Future<Result<void>> submitAction({
     required String gameId,
     required String actionType,
@@ -91,9 +85,7 @@ final class FirebaseGameRepository implements GameRepository {
               NotFoundError('This game no longer exists.'),
             );
           }
-          return Success(
-            PubgetGame.fromMap(snapshot.data()!, id: snapshot.id),
-          );
+          return Success(PubgetGame.fromMap(snapshot.data()!, id: snapshot.id));
         })
         .handleError(
           (Object error) => FailureResult<PubgetGame>(_gameFailure(error)),
@@ -108,9 +100,7 @@ final class FirebaseGameRepository implements GameRepository {
         .snapshots()
         .map((snapshot) {
           final people = snapshot.docs
-              .map(
-                (doc) => GameParticipant.fromMap(doc.data(), userId: doc.id),
-              )
+              .map((doc) => GameParticipant.fromMap(doc.data(), userId: doc.id))
               .toList(growable: false);
           return Success(people);
         })
@@ -167,7 +157,13 @@ final class FirebaseGameRepository implements GameRepository {
         .where('groupId', isEqualTo: groupId)
         .where(
           'status',
-          whereIn: <String>['waiting', 'active', 'paused', 'completed'],
+          whereIn: <String>[
+            'CREATED',
+            'WAITING',
+            'STARTING',
+            'IN_PROGRESS',
+            'COMPLETED',
+          ],
         )
         .orderBy('updatedAt', descending: true)
         .limit(limit),
@@ -198,6 +194,70 @@ final class FirebaseGameRepository implements GameRepository {
             .toList(growable: false);
       });
 
+  @override
+  Future<Result<List<AnimeSearchItem>>> searchAnime(
+    String query, {
+    int limit = 20,
+  }) => _guard(() async {
+    final result = await _functions.httpsCallable('searchAnimeCatalog').call(
+      <String, dynamic>{'query': query, 'limit': limit},
+    );
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return (data['items'] as List<Object?>? ?? const <Object?>[])
+        .whereType<Map>()
+        .map((item) => AnimeSearchItem.fromMap(Map<String, dynamic>.from(item)))
+        .toList(growable: false);
+  });
+
+  @override
+  Future<Result<List<CharacterSearchItem>>> searchCharacters(
+    String query, {
+    String? animeId,
+    int limit = 20,
+  }) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('searchCharacterCatalog')
+        .call(<String, dynamic>{
+          'query': query,
+          'limit': limit,
+          'animeId': ?animeId,
+        });
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return (data['items'] as List<Object?>? ?? const <Object?>[])
+        .whereType<Map>()
+        .map(
+          (item) =>
+              CharacterSearchItem.fromMap(Map<String, dynamic>.from(item)),
+        )
+        .toList(growable: false);
+  });
+
+  @override
+  Future<Result<List<GameHistoryEntry>>> getHistory({
+    required String userId,
+    int limit = 20,
+  }) => _guard(() async {
+    // No orderBy: a composite index would be required for
+    // `array-contains` + ordering, and the newest-first order is applied
+    // from the already loaded documents.
+    final snapshot = await _firestore
+        .collection('game_history')
+        .where('participants', arrayContains: userId)
+        .limit(limit)
+        .get();
+    final entries = snapshot.docs
+        .map((doc) => GameHistoryEntry.fromMap(doc.data(), id: doc.id))
+        .toList(growable: false);
+    return entries.toList()..sort((a, b) {
+      final left = a.endedAt;
+      final right = b.endedAt;
+      if (left == null && right == null) return 0;
+      if (left == null) return 1;
+      if (right == null) return -1;
+      return right.compareTo(left);
+    });
+  });
+
   Future<Result<List<PubgetGame>>> _query(Query<Map<String, dynamic>> query) =>
       _guard(() async {
         final snapshot = await query.get();
@@ -213,7 +273,7 @@ final class FirebaseGameRepository implements GameRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: _gameFailure));
     } on GameException catch (error) {
       return FailureResult<T>(error.toFailure());
     } on Object catch (error) {
@@ -229,18 +289,16 @@ Failure _gameFailure(Object error) {
         error.message ?? "You don't have permission.",
       ),
       'not-found' => NotFoundError(error.message ?? 'Game not found.'),
-      'unavailable' || 'resource-exhausted' => NetworkError(
+      'unavailable' ||
+      'resource-exhausted' ||
+      'deadline-exceeded' => NetworkError(
         error.message ?? 'Check your connection and try again.',
       ),
       'already-exists' => ValidationError(
         error.message ?? 'That game action was already submitted.',
       ),
-      _ => ValidationError(error.message ?? 'This game action failed.'),
+      _ => mapFirebaseFailure(error, message: 'This game action failed.'),
     };
   }
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError('Check your connection and try again.');
-  }
-  return UnknownError(error.toString());
+  return mapFirebaseFailure(error);
 }

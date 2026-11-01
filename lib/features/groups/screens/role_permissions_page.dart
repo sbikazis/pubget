@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/group_copy.dart';
 import '../models/group_models.dart';
 import '../providers/group_members_provider.dart';
 
@@ -27,16 +28,17 @@ class _RolePermissionsPageState extends State<RolePermissionsPage> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<GroupMembersProvider>();
+    final copy = GroupCopy.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: const Text('Role permissions')),
+        title: Text(copy.rolePermissionsTitle)),
       body: PubgetLoadingStateView(
         state: provider.state,
         onRetry: () => provider.loadRoles(widget.groupId),
-        empty: const PubgetEmptyState(title: 'No roles'),
+        empty: PubgetEmptyState(title: copy.noRoles),
         error: PubgetErrorState(
-          message: provider.failure?.message ?? 'Roles could not load.',
+          message: provider.failure?.message ?? copy.rolesLoadFailed,
           onRetry: () => provider.loadRoles(widget.groupId),
         ),
         offline: PubgetOfflineState(
@@ -51,9 +53,9 @@ class _RolePermissionsPageState extends State<RolePermissionsPage> {
             return PubgetCard(
               child: ListTile(
                 title: Text(groupRoleLabel(role.name)),
-                subtitle: Text('${role.permissions.length} permissions'),
+                subtitle: Text(copy.permissionsCount(role.permissions.length)),
                 trailing: role.name == PubgetRank.mikado
-                    ? const PubgetBadge(label: 'Immutable')
+                    ? PubgetBadge(label: copy.immutable)
                     : const Icon(Icons.edit_outlined),
                 onTap: role.name == PubgetRank.mikado
                     ? null
@@ -71,12 +73,13 @@ class _RolePermissionsPageState extends State<RolePermissionsPage> {
     GroupMembersProvider provider,
     GroupRoleDefinition role,
   ) async {
+    final copy = GroupCopy.of(context);
     final selected = Set<GroupPermission>.from(role.permissions);
     final result = await showDialog<Set<GroupPermission>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text('${groupRoleLabel(role.name)} permissions'),
+          title: Text(copy.permissionsFor(groupRoleLabel(role.name))),
           content: SizedBox(
             width: 420,
             child: ListView(
@@ -92,7 +95,7 @@ class _RolePermissionsPageState extends State<RolePermissionsPage> {
                         selected.remove(permission);
                       }
                     }),
-                    title: Text(permission.name),
+                    title: Text(copy.permissionLabel(permission)),
                   ),
               ],
             ),
@@ -100,13 +103,13 @@ class _RolePermissionsPageState extends State<RolePermissionsPage> {
           actions: <Widget>[
             PubgetTextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              semanticLabel: 'Cancel role changes',
-              child: const Text('Cancel'),
+              semanticLabel: copy.cancelRoleChangesSemantic,
+              child: Text(copy.cancel),
             ),
             PubgetPrimaryButton(
               onPressed: () => Navigator.pop(dialogContext, selected),
-              semanticLabel: 'Save role permissions',
-              child: const Text('Save'),
+              semanticLabel: copy.saveRolePermissionsSemantic,
+              child: Text(copy.save),
             ),
           ],
         ),

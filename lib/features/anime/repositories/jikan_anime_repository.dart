@@ -6,11 +6,9 @@ import '../models/anime_models.dart';
 import 'anime_repository.dart';
 
 final class JikanAnimeRepository implements AnimeRepository {
-  JikanAnimeRepository({
-    required AnimeHttpClient http,
-    Uri? baseUri,
-  }) : _http = http,
-       _baseUri = baseUri ?? Uri.parse('https://api.jikan.moe/v4');
+  JikanAnimeRepository({required AnimeHttpClient http, Uri? baseUri})
+    : _http = http,
+      _baseUri = baseUri ?? Uri.parse('https://api.jikan.moe/v4');
 
   final AnimeHttpClient _http;
   final Uri _baseUri;
@@ -65,6 +63,38 @@ final class JikanAnimeRepository implements AnimeRepository {
   }
 
   @override
+  Future<Result<List<Anime>>> getAnimeSummaries(
+    List<String> ids, {
+    int chunkSize = 100,
+  }) async {
+    final cleaned = <String>[
+      for (final id in ids)
+        if (id.trim().isNotEmpty) id.trim(),
+    ];
+    if (cleaned.isEmpty) return const Success(<Anime>[]);
+    final unique = cleaned.toSet();
+    final size = chunkSize.clamp(1, 100);
+    final collected = <Anime>[];
+    var failure = <Failure>[];
+    for (var index = 0; index < unique.length; index += size) {
+      final chunk = unique.toList().sublist(
+        index,
+        (index + size).clamp(0, unique.length),
+      );
+      final result = await _list<Anime>(
+        _uri('anime/ids', <String, String>{'ids': chunk.join(',')}),
+        mapJikanAnimeList,
+        priority: AnimeRequestPriority.catalog,
+      );
+      result.fold(onSuccess: collected.addAll, onFailure: failure.add);
+    }
+    if (collected.isEmpty && failure.isNotEmpty) {
+      return FailureResult<List<Anime>>(failure.first);
+    }
+    return Success<List<Anime>>(collected);
+  }
+
+  @override
   Future<Result<AnimePage>> getTrending({int page = 1, int limit = 20}) =>
       _page(
         _uri('top/anime', <String, String>{
@@ -115,6 +145,18 @@ final class JikanAnimeRepository implements AnimeRepository {
       );
 
   @override
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) => _page(
+    _uri('anime', <String, String>{
+      'sfw': 'true',
+      'order_by': 'start_date',
+      'sort': 'desc',
+      'page': '$page',
+      'limit': '${_limit(limit)}',
+    }),
+    page: page,
+  );
+
+  @override
   Future<Result<AnimePage>> getThisSeason({int page = 1, int limit = 20}) =>
       _page(
         _uri('seasons/now', <String, String>{
@@ -156,6 +198,21 @@ final class JikanAnimeRepository implements AnimeRepository {
   }
 
   @override
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId) {
+    final normalized = animeId.trim();
+    if (normalized.isEmpty) {
+      return Future<Result<List<AnimeStaff>>>.value(
+        const FailureResult(ValidationError('Anime id is required.')),
+      );
+    }
+    return _list(
+      _uri('anime/${Uri.encodeComponent(normalized)}/staff'),
+      mapJikanStaff,
+      priority: AnimeRequestPriority.interactive,
+    );
+  }
+
+  @override
   Future<Result<List<AnimeGenre>>> getGenres() async {
     final genres = await _list(
       _uri('genres/anime', const <String, String>{'filter': 'genres'}),
@@ -179,6 +236,44 @@ final class JikanAnimeRepository implements AnimeRepository {
     return _page(
       _uri('anime', <String, String>{
         'genres': normalized,
+        'page': '$page',
+        'limit': '${_limit(limit)}',
+        'order_by': 'members',
+        'sort': 'desc',
+        'sfw': 'true',
+      }),
+      page: page,
+    );
+  }
+
+  @override
+  Future<Result<List<AnimeStudio>>> getStudios({int limit = 25}) {
+    return _list(
+      _uri('producers', <String, String>{
+        'page': '1',
+        'limit': '${_limit(limit)}',
+        'order_by': 'count',
+        'sort': 'desc',
+      }),
+      mapJikanStudios,
+    );
+  }
+
+  @override
+  Future<Result<AnimePage>> getByStudio(
+    String studioId, {
+    int page = 1,
+    int limit = 20,
+  }) {
+    final normalized = studioId.trim();
+    if (normalized.isEmpty) {
+      return Future<Result<AnimePage>>.value(
+        const FailureResult(ValidationError('Studio id is required.')),
+      );
+    }
+    return _page(
+      _uri('anime', <String, String>{
+        'producers': normalized,
         'page': '$page',
         'limit': '${_limit(limit)}',
         'order_by': 'members',
@@ -237,13 +332,47 @@ final class JikanAnimeRepository implements AnimeRepository {
     if (text.isNotEmpty) query['q'] = text;
     final genreId = filter.genreId?.trim();
     if (genreId != null && genreId.isNotEmpty) query['genres'] = genreId;
+    final studioId = filter.studioId?.trim();
+    if (studioId != null && studioId.isNotEmpty) {
+      query['producers'] = studioId;
+    }
     if (filter.type != null) query['type'] = filter.type!.name;
+    final status = filter.airing;
+    if (status != null) {
+      query['status'] = switch (status) {
+        AnimeAiringFilter.airing => 'airing',
+        AnimeAiringFilter.finished => 'complete',
+        AnimeAiringFilter.upcoming => 'upcoming',
+      };
+    }
+    final age = filter.ageRating;
+    if (age != null) {
+      query['rated'] = switch (age) {
+        AnimeAgeFilter.allAges => 'g',
+        AnimeAgeFilter.teens => 'pg13',
+        AnimeAgeFilter.adult => 'r17',
+      };
+    }
+    final minScore = filter.minScore;
+    if (minScore != null) query['min_score'] = _scoreParam(minScore);
+    final maxScore = filter.maxScore;
+    if (maxScore != null) query['max_score'] = _scoreParam(maxScore);
     return query;
   }
 
-  Uri _uri(String path, [Map<String, String> query = const <String, String>{}]) {
+  // Jikan expects the 0–10 score with a trailing `.0` trimmed for whole
+  // numbers (`7`, `7.5`), matching the form the filter sheet produces.
+  static String _scoreParam(double value) => value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(1);
+
+  Uri _uri(
+    String path, [
+    Map<String, String> query = const <String, String>{},
+  ]) {
     return _baseUri.replace(
-      path: '${_baseUri.path.endsWith('/') ? _baseUri.path : '${_baseUri.path}/'}$path',
+      path:
+          '${_baseUri.path.endsWith('/') ? _baseUri.path : '${_baseUri.path}/'}$path',
       queryParameters: query.isEmpty ? null : query,
     );
   }

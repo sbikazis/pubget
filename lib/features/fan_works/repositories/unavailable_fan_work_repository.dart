@@ -25,7 +25,9 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
   @override
   Future<Result<FanWorkUploadTicket>> startMediaUpload({
     required String workId,
+    required FanWorkMediaRole role,
     required String contentType,
+    String characterId = '',
   }) async => _fail();
 
   @override
@@ -33,7 +35,11 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
     required FanWorkUploadTicket ticket,
     required List<int> bytes,
     required String contentType,
+    FanWorkUploadProgress? onProgress,
   }) async => _fail();
+
+  @override
+  Future<Result<void>> cancelMediaUpload() async => _fail();
 
   @override
   Future<Result<void>> confirmMedia({
@@ -42,11 +48,35 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
     required String path,
     required FanWorkMediaRole role,
     String caption = '',
+    String characterId = '',
+    int? pageCount,
   }) async => _fail();
 
   @override
-  Future<Result<void>> like({required String workId, required bool like}) async =>
-      _fail();
+  Future<Result<FanWorkDocumentAccess>> getDocumentAccess({
+    required String workId,
+  }) async => _fail();
+
+  @override
+  Future<Result<FanWorkReadingProgress>> getReadingProgress({
+    required String workId,
+    required String userId,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> saveReadingProgress({
+    required String workId,
+    required FanWorkReadingProgress progress,
+  }) async => _fail();
+
+  @override
+  Future<Result<void>> markAsRead({required String workId}) async => _fail();
+
+  @override
+  Future<Result<void>> like({
+    required String workId,
+    required bool like,
+  }) async => _fail();
 
   @override
   Future<Result<void>> bookmark({
@@ -55,8 +85,10 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
   }) async => _fail();
 
   @override
-  Future<Result<void>> rate({required String workId, required int rating}) async =>
-      _fail();
+  Future<Result<void>> rate({
+    required String workId,
+    required int rating,
+  }) async => _fail();
 
   @override
   Future<Result<int?>> myRating({
@@ -148,4 +180,12 @@ final class UnavailableFanWorkRepository implements FanWorkRepository {
     required String workId,
     required String userId,
   }) async => _fail();
+
+  @override
+  Future<Result<List<FanWorkRevision>>> getRevisions(String workId) async =>
+      _fail();
+
+  @override
+  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId) async =>
+      _fail();
 }

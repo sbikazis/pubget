@@ -22,6 +22,7 @@ class PubgetAvatar extends StatelessWidget {
     this.name,
     this.size = PubgetAvatarSize.medium,
     this.onTap,
+    this.semanticLabel,
     super.key,
   });
 
@@ -30,6 +31,11 @@ class PubgetAvatar extends StatelessWidget {
   final String? name;
   final PubgetAvatarSize size;
   final VoidCallback? onTap;
+
+  /// Announced by screen readers when the avatar is the only representation of
+  /// an identity on screen. Cards that wrap their own `Semantics` do not need
+  /// to set this, and a duplicate label would be read twice.
+  final String? semanticLabel;
 
   String? get _initial {
     final value = name?.trim();
@@ -40,7 +46,11 @@ class PubgetAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final avatar = CircleAvatar(
+    final label = semanticLabel ?? name;
+    final avatar = Semantics(
+      image: true,
+      label: label,
+      child: CircleAvatar(
       radius: size.value / 2,
       backgroundColor: theme.colorScheme.primaryContainer,
       foregroundColor: theme.colorScheme.onPrimaryContainer,
@@ -62,17 +72,19 @@ class PubgetAvatar extends StatelessWidget {
                 imageUrl: imageUrl!,
                 width: size.value,
                 height: size.value,
-                memCacheWidth: size.value.round(),
-                memCacheHeight: size.value.round(),
+                // The loader derives the decode budget from the painted box and
+                // the screen ratio, so a 3x phone is not handed a 48px decode
+                // for a 48dp slot and then asked to scale it up.
                 errorWidget: Icon(Icons.person_outline, size: size.value * 0.5),
               ),
             ),
+      ),
     );
 
     if (onTap == null) return avatar;
     return Semantics(
       button: true,
-      label: name,
+      label: label,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.pill),

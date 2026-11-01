@@ -193,6 +193,7 @@ class _ReactionOverlayState extends State<ReactionOverlay>
     final size = MediaQuery.sizeOf(context);
     final padding = MediaQuery.paddingOf(context);
     final bubble = _clampBubbleRect(widget.bubbleRect, size, padding);
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
 
     const barHeight = 52.0;
     const preferredGap = 60.0; // message.dy - 60
@@ -247,8 +248,8 @@ class _ReactionOverlayState extends State<ReactionOverlay>
                   child: ScaleTransition(
                     scale: _scale,
                     alignment: widget.isMine
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft,
+                        ? (isRtl ? Alignment.centerLeft : Alignment.centerRight)
+                        : (isRtl ? Alignment.centerRight : Alignment.centerLeft),
                     child: IgnorePointer(
                       child: ConstrainedBox(
                         constraints: BoxConstraints(

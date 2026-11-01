@@ -23,14 +23,41 @@ abstract interface class AnimeRepository {
 
   Future<Result<AnimePage>> getThisSeason({int page = 1, int limit = 20});
 
+  /// The whole catalog newest first, for the hub's "Latest updates" page.
+  ///
+  /// This is deliberately a separate method rather than a text search: sending
+  /// an empty query through [searchAnime] short-circuits to an empty page, and
+  /// that is what silently broke Latest updates and its pagination.
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20});
+
   Future<Result<List<AnimeCharacter>>> getCharacters(String animeId);
 
   Future<Result<AnimeCharacter>> getCharacterDetails(String characterId);
+
+  /// The people behind an anime — directors, composers, writers. Info-only
+  /// cards, so a lightweight list of credits is enough.
+  Future<Result<List<AnimeStaff>>> getStaff(String animeId);
+
+  /// Lightweight catalog metadata for a set of ids, used to decorate the
+  /// member's own list without a request per title. Ids that cannot be
+  /// resolved are simply absent from the result.
+  Future<Result<List<Anime>>> getAnimeSummaries(
+    List<String> ids, {
+    int chunkSize = 100,
+  });
 
   Future<Result<List<AnimeGenre>>> getGenres();
 
   Future<Result<AnimePage>> getByGenre(
     String genreId, {
+    int page = 1,
+    int limit = 20,
+  });
+
+  Future<Result<List<AnimeStudio>>> getStudios({int limit = 25});
+
+  Future<Result<AnimePage>> getByStudio(
+    String studioId, {
     int page = 1,
     int limit = 20,
   });
@@ -49,6 +76,8 @@ abstract final class AnimeCacheTtl {
   static const details = Duration(hours: 12);
   static const characters = Duration(hours: 12);
   static const characterDetails = Duration(hours: 12);
+  static const staff = Duration(hours: 12);
+  static const summaries = Duration(hours: 24);
   static const genres = Duration(hours: 24);
   static const seasonsIndex = Duration(hours: 24);
   static const seasonList = Duration(hours: 6);
@@ -59,5 +88,8 @@ abstract final class AnimeCacheTtl {
   static const upcoming = Duration(hours: 2);
   static const thisSeason = Duration(hours: 1);
   static const search = Duration(minutes: 20);
+  static const latest = Duration(hours: 1);
   static const genreList = Duration(hours: 2);
+  static const studiosIndex = Duration(hours: 24);
+  static const studioList = Duration(hours: 2);
 }

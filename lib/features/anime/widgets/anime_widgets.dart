@@ -12,6 +12,7 @@ import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../models/anime_models.dart';
+import 'anime_hub_widgets.dart';
 import '../models/anime_rating_models.dart';
 import '../providers/anime_hub_social_provider.dart';
 import '../providers/anime_providers.dart';
@@ -35,17 +36,38 @@ abstract final class AnimeLinks {
   static String seasonPath(int year, AnimeSeason season) =>
       '/anime/season?year=$year&season=${Uri.encodeComponent(season.name)}';
 
+  static String studioPath(String studioId, {String? name}) {
+    final encoded = Uri.encodeComponent(studioId);
+    if (name == null || name.isEmpty) return '/anime/studio?studioId=$encoded';
+    return '/anime/studio?studioId=$encoded&name=${Uri.encodeComponent(name)}';
+  }
+
   static void openHub(BuildContext context) =>
       AppNavigation.go(context, hubPath());
 
   static void openDetails(BuildContext context, String animeId) =>
       AppNavigation.go(context, detailsPath(animeId));
 
+  static String characterPath(String characterId) =>
+      PubgetLinks.characterPath(characterId);
+
+  static void openCharacter(BuildContext context, String characterId) =>
+      AppNavigation.go(context, characterPath(characterId));
+
+  static String castPath(String animeId) =>
+      '/anime/cast?animeId=${Uri.encodeComponent(animeId)}';
+
+  static void openCast(BuildContext context, String animeId) =>
+      AppNavigation.go(context, castPath(animeId));
+
   static void openCatalog(BuildContext context, AnimeCatalogKind kind) =>
       AppNavigation.go(context, catalogPath(kind));
 
   static void openGenre(BuildContext context, AnimeGenre genre) =>
       AppNavigation.go(context, genrePath(genre.id, name: genre.name));
+
+  static void openStudio(BuildContext context, AnimeStudio studio) =>
+      AppNavigation.go(context, studioPath(studio.id, name: studio.name));
 
   static void openSeason(
     BuildContext context, {
@@ -160,11 +182,7 @@ class AnimePoster extends StatelessWidget {
 }
 
 class AnimePosterCard extends StatelessWidget {
-  const AnimePosterCard({
-    required this.anime,
-    this.width = 128,
-    super.key,
-  });
+  const AnimePosterCard({required this.anime, this.width = 128, super.key});
 
   final Anime anime;
   final double width;
@@ -227,13 +245,30 @@ class AnimePosterCard extends StatelessWidget {
 }
 
 class AnimeResultTile extends StatelessWidget {
-  const AnimeResultTile({required this.anime, super.key});
+  const AnimeResultTile({required this.anime, this.grid = false, super.key});
 
   final Anime anime;
+
+  /// Hub layout: a poster tile that fills one cell of the three column grid.
+  final bool grid;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (grid) {
+      final social = maybeAnimeHubSocial(context);
+      final stats = social?.statsFor(anime.id);
+      final copy = AnimeCopy.of(context);
+      return AnimeHubPosterCard(
+        title: anime.title,
+        imageUrl: anime.images.thumbnailUrl ?? anime.images.largeUrl ?? '',
+        year: anime.year,
+        subtitle: copy.meta(anime),
+        rating: stats != null && stats.averageScore > 0 ? (stats.averageScore * 10).round() : null,
+        heroTag: animePosterHeroTag(anime.id),
+        onTap: () => AnimeLinks.openDetails(context, anime.id),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.md,
@@ -356,10 +391,7 @@ class AnimeHorizontalStrip extends StatelessWidget {
                     gradient: const LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: <Color>[
-                        Color(0xFFF4D37D),
-                        Color(0xFF6C3FC5),
-                      ],
+                      colors: <Color>[Color(0xFFF4D37D), Color(0xFF6C3FC5)],
                     ),
                   ),
                 ),
@@ -376,10 +408,7 @@ class AnimeHorizontalStrip extends StatelessWidget {
                       ),
                       if (subtitle != null && subtitle!.isNotEmpty) ...<Widget>[
                         const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          style: theme.textTheme.bodySmall,
-                        ),
+                        Text(subtitle!, style: theme.textTheme.bodySmall),
                       ],
                     ],
                   ),
@@ -493,10 +522,89 @@ class AnimeHomeStrip extends StatelessWidget {
   }
 }
 
-class AnimePaginatedList extends StatelessWidget {
-  const AnimePaginatedList({required this.list, super.key});
+class AnimePaginatedList extends StatefulWidget {
+  const AnimePaginatedList({
+    required this.list,
+    this.header,
+    this.itemBuilder,
+    super.key,
+  });
 
   final AnimeListProvider list;
+  final Widget? header;
+
+  /// Overrides the default poster-wall tile. Ranking pages pass a list-shaped
+  /// card here instead of forking the whole paginated scroller.
+  final NullableIndexedWidgetBuilder? itemBuilder;
+
+  @override
+  State<AnimePaginatedList> createState() => _AnimePaginatedListState();
+}
+
+class _AnimePaginatedListState extends State<AnimePaginatedList> {
+  final ScrollController _controller = ScrollController();
+  bool _autoFilling = false;
+
+  AnimeListProvider get list => widget.list;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_maybeAutoFill);
+    widget.list.addListener(_refreshCommunityStats);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshCommunityStats());
+  }
+
+  @override
+  void dispose() {
+    widget.list.removeListener(_refreshCommunityStats);
+    _controller
+      ..removeListener(_maybeAutoFill)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(AnimePaginatedList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.list != widget.list) {
+      oldWidget.list.removeListener(_refreshCommunityStats);
+      widget.list.addListener(_refreshCommunityStats);
+    }
+  }
+
+  /// Keeps the poster wall's score badges honest: when a page of titles lands,
+  /// ask the social provider for their real community aggregates in one batch.
+  /// The provider de-dupes, so this is cheap to fire on every list update.
+  void _refreshCommunityStats() {
+    if (!mounted) return;
+    if (list.state != LoadingState.loaded || list.items.isEmpty) return;
+    final ids = <String>[for (final anime in list.items) anime.id];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      maybeAnimeHubSocial(context, listen: false)?.loadStatsFor(ids);
+    });
+  }
+
+  /// Keeps pulling pages until the grid is taller than the viewport.
+  ///
+  /// Without this, a page that arrives while the device is offline, or a
+  /// provider that returns a short first page, leaves the user staring at blank
+  /// space with no scrollbar to trigger the next page. Guarded so only one
+  /// extra request is ever in flight.
+  void _maybeAutoFill() {
+    if (_autoFilling) return;
+    if (!_controller.hasClients) return;
+    if (list.state != LoadingState.loaded) return;
+    if (!list.hasNextPage) return;
+    if (_controller.position.maxScrollExtent > 0) return;
+    _autoFilling = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await list.loadMore();
+      _autoFilling = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -508,42 +616,85 @@ class AnimePaginatedList extends StatelessWidget {
         }
         return false;
       },
-      child: ListView.builder(
-        itemCount: list.items.length + 2,
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            if (!list.fromCache) return const SizedBox.shrink();
-            return AnimeCachedBanner(
-              offline: list.state == LoadingState.offline,
-            );
-          }
-          if (index == list.items.length + 1) {
-            if (list.state == LoadingState.loadingMore) {
-              return const Padding(
-                padding: EdgeInsets.all(AppSpacing.lg),
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            if (list.pageFailure != null) {
-              return PubgetErrorState(
-                title: AnimeCopy.of(context).unableToLoad,
-                message: list.pageFailure!.message,
-                onRetry: list.retryLoadMore,
-                retryLabel: AnimeCopy.of(context).retry,
-              );
-            }
-            if (!list.hasNextPage && list.items.isNotEmpty) {
-              return Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Center(child: Text(AnimeCopy.of(context).endOfList)),
-              );
-            }
-            return const SizedBox.shrink();
-          }
-          return AnimeResultTile(anime: list.items[index - 1]);
-        },
+      // Spec: three columns with infinite scroll. The header, the cached
+      // banner and the footer states stay full width above and below the grid.
+      child: CustomScrollView(
+        controller: _controller,
+        slivers: <Widget>[
+          if (widget.header != null) SliverToBoxAdapter(child: widget.header!),
+          if (list.fromCache)
+            SliverToBoxAdapter(
+              child: AnimeCachedBanner(
+                offline: list.state == LoadingState.offline,
+              ),
+            ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            // A custom item builder means a row-shaped card, which cannot live
+            // in the three-column poster grid, so the sliver switches shape.
+            sliver: widget.itemBuilder == null
+                ? SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisSpacing: AppSpacing.md,
+                          crossAxisSpacing: AppSpacing.md,
+                          childAspectRatio: 0.56,
+                        ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) =>
+                          AnimeResultTile(anime: list.items[index], grid: true),
+                      childCount: list.items.length,
+                    ),
+                  )
+                : SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.sm,
+                        ),
+                        child: widget.itemBuilder!(context, index),
+                      ),
+                      childCount: list.items.length,
+                    ),
+                  ),
+          ),
+          SliverToBoxAdapter(child: _PaginationFooter(list: list)),
+        ],
       ),
     );
+  }
+}
+
+/// End-of-list, loading-more and page-failure states for a paginated grid.
+class _PaginationFooter extends StatelessWidget {
+  const _PaginationFooter({required this.list});
+
+  final AnimeListProvider list;
+
+  @override
+  Widget build(BuildContext context) {
+    if (list.state == LoadingState.loadingMore) {
+      return const Padding(
+        padding: EdgeInsets.all(AppSpacing.lg),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (list.pageFailure != null) {
+      return PubgetErrorState(
+        title: AnimeCopy.of(context).unableToLoad,
+        message: list.pageFailure!.message,
+        onRetry: list.retryLoadMore,
+        retryLabel: AnimeCopy.of(context).retry,
+      );
+    }
+    if (!list.hasNextPage && list.items.isNotEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Center(child: Text(AnimeCopy.of(context).endOfList)),
+      );
+    }
+    return const SizedBox.shrink();
   }
 }
 
@@ -627,13 +778,14 @@ class _AnimeScorePill extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               score.value.toStringAsFixed(1),
-              style: (large
-                      ? theme.textTheme.titleMedium
-                      : theme.textTheme.labelSmall)
-                  ?.copyWith(
-                    color: AppColors.goldPale,
-                    fontWeight: FontWeight.w800,
-                  ),
+              style:
+                  (large
+                          ? theme.textTheme.titleMedium
+                          : theme.textTheme.labelSmall)
+                      ?.copyWith(
+                        color: AppColors.goldPale,
+                        fontWeight: FontWeight.w800,
+                      ),
             ),
           ],
         ),

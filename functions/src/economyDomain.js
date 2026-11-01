@@ -16,6 +16,7 @@ const {
   EQUIP_SLOT_FIELDS,
   STORE_CATALOG,
   catalogById,
+  PREMIUM_CODE,
 } = require("./economyConfig");
 
 function validId(value) {
@@ -59,6 +60,14 @@ function utcDate(clock) {
 function isPremiumUser(user, clock) {
   if (!user || user.subscriptionType !== "premium") return false;
   return toMillis(user.premiumExpiresAt, 0) > clock.getTime();
+}
+
+function isAdminRequest(request) {
+  if (!request || !request.auth) return false;
+  const token = request.auth.token || {};
+  if (token.admin === true) return true;
+  if (token.admin === "true") return true;
+  return false;
 }
 
 function transactionId(type, userId, referenceId) {
@@ -494,15 +503,46 @@ function createEconomyDomain({
     return { ok: true, applied: invitedApplied, inviterId };
   }
 
+  function isExpansionItem(item) {
+    return item && (item.section === "expansion" || item.type === "expansion");
+  }
+
+  async function applyExpansionEffect(transaction, userRef, user, item, clock) {
+    if (!isExpansionItem(item)) return null;
+    const effect = item.effect || null;
+    if (!effect || typeof effect.field !== "string" || !Number.isInteger(effect.amount)) {
+      fail("failed-precondition", "This item is not available.", "item_unavailable");
+    }
+    if (effect.field !== "customMaxMembersLimit") {
+      fail("failed-precondition", "This item is not available.", "item_unavailable");
+    }
+    const current = safeInt(user[effect.field]);
+    let base = 0;
+    if (current != null && current > 0) {
+      base = current;
+    } else {
+      base = 100;
+    }
+    const candidate = base + effect.amount;
+    if (candidate < 2) fail("failed-precondition", "Invalid expansion.", "item_unavailable");
+    if (candidate > 500) {
+      fail("failed-precondition", "Expansion would exceed the maximum allowed limit.", "limit_exceeded");
+    }
+    if (candidate === base) {
+      fail("failed-precondition", "This item is not available.", "item_unavailable");
+    }
+    const update = {
+      [effect.field]: candidate,
+      economyUpdatedAt: FieldValue.serverTimestamp(),
+    };
+    transaction.update(userRef, update);
+    return { applied: true, field: effect.field, value: candidate };
+  }
+
   async function purchaseStoreItem(request) {
     const uid = requireAuth(request, HttpsError);
     const itemId = request.data && request.data.itemId;
     if (!validId(itemId)) fail("invalid-argument", "itemId is required.", "unknown");
-    const clientPrice = request.data && request.data.price;
-    const clientAmount = request.data && request.data.amount;
-    if (clientPrice != null || clientAmount != null) {
-      // Ignore tampered prices; never trust them. Continue with catalog.
-    }
     if (request.data && request.data.userId && request.data.userId !== uid) {
       fail("permission-denied", "You cannot purchase for another user.", "unauthorized");
     }
@@ -514,21 +554,21 @@ function createEconomyDomain({
       fail("failed-precondition", "This item is not available.", "item_unavailable");
     }
     const clock = now();
-    const txId = transactionId("purchase_cosmetic", uid, item.id);
+    const isCosmetic = !isExpansionItem(item);
+    const txType = isCosmetic ? "purchase_cosmetic" : "purchase_expansion";
+    const txId = transactionId(txType, uid, item.id);
     const userRef = db.collection("users").doc(uid);
-    const inventoryRef = userRef.collection("inventory").doc(item.id);
+    const inventoryRef = isCosmetic ? userRef.collection("inventory").doc(item.id) : null;
     const ledgerRef = db.collection("economyTransactions").doc(txId);
     const userTxRef = userRef.collection("transactions").doc(txId);
 
     const result = await db.runTransaction(async (transaction) => {
       const limit = await readRateLimit(transaction, uid, "purchase");
-      const [userSnap, ownedSnap, ledgerSnap] = await Promise.all([
-        transaction.get(userRef),
-        transaction.get(inventoryRef),
-        transaction.get(ledgerRef),
-      ]);
+      const reads = [transaction.get(userRef), transaction.get(ledgerRef)];
+      if (inventoryRef) reads.push(transaction.get(inventoryRef));
+      const [userSnap, ledgerSnap, ownedSnap] = await Promise.all(reads);
       if (!userSnap.exists) fail("not-found", "User not found.", "unknown");
-      if (ownedSnap.exists || ledgerSnap.exists) {
+      if (ledgerSnap.exists || (inventoryRef && ownedSnap && ownedSnap.exists)) {
         fail("already-exists", "You already own this item.", "already_owned");
       }
       const user = userSnap.data() || {};
@@ -548,10 +588,14 @@ function createEconomyDomain({
       }
       writeRateLimit(transaction, limit, clock);
       const version = (safeInt(user.economyVersion) || 0) + 1;
+      let expansionResult = null;
+      if (!isCosmetic) {
+        expansionResult = await applyExpansionEffect(transaction, userRef, user, item, clock);
+      }
       const record = {
         transactionId: txId,
         userId: uid,
-        type: "purchase_cosmetic",
+        type: txType,
         amount: -item.price,
         balanceBefore,
         balanceAfter,
@@ -559,24 +603,31 @@ function createEconomyDomain({
         referenceId: item.id,
         createdAt: FieldValue.serverTimestamp(),
         idempotencyKey: txId,
-        metadata: { itemType: item.type, title: item.title },
+        metadata: {
+          itemType: item.type,
+          title: item.title,
+          section: item.section || (isCosmetic ? "cosmetic" : "expansion"),
+        },
         schemaVersion: SCHEMA_VERSION,
       };
-      transaction.update(userRef, {
+      const userUpdate = {
         coinsBalance: balanceAfter,
         economyVersion: version,
         economyUpdatedAt: FieldValue.serverTimestamp(),
-      });
-      transaction.create(inventoryRef, {
-        itemId: item.id,
-        type: item.type,
-        acquiredAt: FieldValue.serverTimestamp(),
-        source: "purchase",
-        schemaVersion: SCHEMA_VERSION,
-      });
+      };
+      transaction.update(userRef, userUpdate);
+      if (isCosmetic && inventoryRef) {
+        transaction.create(inventoryRef, {
+          itemId: item.id,
+          type: item.type,
+          acquiredAt: FieldValue.serverTimestamp(),
+          source: "purchase",
+          schemaVersion: SCHEMA_VERSION,
+        });
+      }
       transaction.create(ledgerRef, record);
       transaction.create(userTxRef, record);
-      return { balanceAfter, version, itemId: item.id };
+      return { balanceAfter, version, itemId: item.id, expansion: expansionResult };
     });
 
     await notifySafe({
@@ -587,7 +638,7 @@ function createEconomyDomain({
       targetId: item.id,
       action: "purchase_completed",
       destination: "/store",
-      metadata: { itemId: item.id },
+      metadata: { itemId: item.id, section: item.section || (isExpansionItem(item) ? "expansion" : "cosmetic") },
       title: "Purchase complete",
       body: `You bought ${item.title}.`,
       pushWorthy: false,
@@ -646,6 +697,153 @@ function createEconomyDomain({
     return { ok: true, equipped: { slot, itemId: "" } };
   }
 
+  function generatePremiumCodeId() {
+    const alphabet = PREMIUM_CODE.ALPHABET || "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const len = PREMIUM_CODE.CODE_LENGTH || 16;
+    let out = "";
+    for (let i = 0; i < len; i++) {
+      out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return out;
+  }
+
+  async function adminGeneratePremiumCode(request) {
+    const uid = requireAuth(request, HttpsError);
+    if (!isAdminRequest(request)) {
+      fail("permission-denied", "Only administrators can generate premium codes.", "unauthorized");
+    }
+    const data = request.data || {};
+    const durationDays = safeInt(data.durationDays) || PREMIUM_CODE.DEFAULT_DURATION_DAYS;
+    if (durationDays < 1) fail("invalid-argument", "durationDays must be positive.", "unknown");
+    if (durationDays > PREMIUM_CODE.MAX_DURATION_DAYS) {
+      fail("invalid-argument", "durationDays is too large.", "unknown");
+    }
+    const maxRedemptions = safeInt(data.maxRedemptions) || PREMIUM_CODE.MAX_REDEMPTIONS;
+    if (maxRedemptions < 1) fail("invalid-argument", "maxRedemptions must be positive.", "unknown");
+    const expiresAtTs = data.expiresAtMs != null
+      ? (safeInt(data.expiresAtMs) || null)
+      : null;
+    const clock = now();
+    let codeId;
+    let attempts = 0;
+    while (attempts < 10) {
+      attempts += 1;
+      codeId = generatePremiumCodeId();
+      const snap = await db.collection("premiumCodes").doc(codeId).get();
+      if (!snap.exists) break;
+      codeId = undefined;
+    }
+    if (!codeId) fail("internal", "Could not generate a unique premium code.", "unknown");
+    const codeRef = db.collection("premiumCodes").doc(codeId);
+    await db.runTransaction(async (transaction) => {
+      const limit = await readRateLimit(transaction, uid, "codegen");
+      const existing = await transaction.get(codeRef);
+      if (existing.exists) fail("already-exists", "Code already exists.", "unknown");
+      writeRateLimit(transaction, limit, clock);
+      transaction.create(codeRef, {
+        codeId,
+        tier: PREMIUM_CODE.TIER || "premium",
+        durationDays,
+        maxRedemptions,
+        redemptions: 0,
+        expiresAt: expiresAtTs ? FieldValue.serverTimestamp() : null,
+        expiresAtMs: expiresAtTs,
+        isActive: true,
+        createdBy: uid,
+        createdAt: FieldValue.serverTimestamp(),
+        schemaVersion: SCHEMA_VERSION,
+      });
+    });
+    return { ok: true, codeId, tier: "premium", durationDays, maxRedemptions };
+  }
+
+  async function redeemPremiumCode(request) {
+    const uid = requireAuth(request, HttpsError);
+    const code = request.data && request.data.code;
+    const codeStr = typeof code === "string" ? code.trim().toUpperCase() : "";
+    if (!codeStr) fail("invalid-argument", "A premium code is required.", "unknown");
+    const codeRef = db.collection("premiumCodes").doc(codeStr);
+    const userRef = db.collection("users").doc(uid);
+    const txId = transactionId("redeem_premium", uid, codeStr);
+    const ledgerRef = db.collection("economyTransactions").doc(txId);
+    const userTxRef = userRef.collection("transactions").doc(txId);
+    const clock = now();
+    const result = await db.runTransaction(async (transaction) => {
+      const limit = await readRateLimit(transaction, uid, "redeem");
+      const [codeSnap, userSnap, ledgerSnap] = await Promise.all([
+        transaction.get(codeRef),
+        transaction.get(userRef),
+        transaction.get(ledgerRef),
+      ]);
+      if (ledgerSnap.exists) {
+        fail("already-exists", "You have already redeemed this code.", "already_redeemed");
+      }
+      if (!codeSnap.exists) fail("not-found", "This premium code is invalid.", "unknown");
+      const codeData = codeSnap.data() || {};
+      if (codeData.isActive === false) {
+        fail("failed-precondition", "This premium code is not active.", "inactive");
+      }
+      const maxRedemptions = safeInt(codeData.maxRedemptions) || PREMIUM_CODE.MAX_REDEMPTIONS;
+      const redemptions = safeInt(codeData.redemptions) || 0;
+      if (redemptions >= maxRedemptions) {
+        fail("failed-precondition", "This premium code has been fully redeemed.", "exhausted");
+      }
+      const expiresAtMs = safeInt(codeData.expiresAtMs) || (codeData.expiresAt ? toMillis(codeData.expiresAt, 0) : 0);
+      if (expiresAtMs > 0 && expiresAtMs < clock.getTime()) {
+        fail("failed-precondition", "This premium code has expired.", "expired");
+      }
+      if (!userSnap.exists) fail("not-found", "User not found.", "unknown");
+      const user = userSnap.data() || {};
+      const nowMs = clock.getTime();
+      const currentExpiry = toMillis(user.premiumExpiresAt, 0);
+      const baseExpiry = currentExpiry > nowMs ? currentExpiry : nowMs;
+      const durationDays = safeInt(codeData.durationDays) || PREMIUM_CODE.DEFAULT_DURATION_DAYS;
+      const addMs = durationDays * 24 * 60 * 60 * 1000;
+      const newExpiryMs = baseExpiry + addMs;
+      const newExpiryDate = new Date(newExpiryMs);
+      writeRateLimit(transaction, limit, clock);
+      const version = (safeInt(user.economyVersion) || 0) + 1;
+      const premiumSince = user.premiumSince || (isPremiumUser(user, clock) ? user.premiumSince : FieldValue.serverTimestamp());
+      const update = {
+        subscriptionType: "premium",
+        premiumTier: codeData.tier || "premium",
+        premiumExpiresAt: newExpiryDate,
+        premiumSince,
+        economyUpdatedAt: FieldValue.serverTimestamp(),
+        economyVersion: version,
+      };
+      transaction.update(userRef, update);
+      transaction.update(codeRef, {
+        redemptions: redemptions + 1,
+        lastRedeemedAt: FieldValue.serverTimestamp(),
+        lastRedeemedBy: uid,
+      });
+      const record = {
+        transactionId: txId,
+        userId: uid,
+        type: "redeem_premium",
+        amount: 0,
+        balanceBefore: safeInt(user.coinsBalance) || 0,
+        balanceAfter: safeInt(user.coinsBalance) || 0,
+        source: "premium",
+        referenceId: codeStr,
+        createdAt: FieldValue.serverTimestamp(),
+        idempotencyKey: txId,
+        metadata: { tier: update.premiumTier, durationDays },
+        schemaVersion: SCHEMA_VERSION,
+      };
+      transaction.create(ledgerRef, record);
+      transaction.create(userTxRef, record);
+      return {
+        ok: true,
+        tier: update.premiumTier,
+        expiresAtMs: newExpiryMs,
+        expiresAt: newExpiryDate,
+      };
+    });
+    return result;
+  }
+
   return {
     getEconomy,
     getInventory,
@@ -656,6 +854,8 @@ function createEconomyDomain({
     purchaseStoreItem,
     equipCosmetic,
     unequipCosmetic,
+    redeemPremiumCode,
+    adminGeneratePremiumCode,
     applyReward,
     grantDomainRewards,
     isPremiumUser,

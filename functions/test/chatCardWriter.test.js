@@ -108,9 +108,10 @@ test("admin writer posts a system-owned game card clients cannot forge", async (
   assert.equal(typeof writeAdminChatCard, "function");
 });
 
-test("registries agree: mafia is implemented but not genericCreate", () => {
-  assert.equal(GAME_TYPE_REGISTRY.mafia.implemented, true);
-  assert.equal(GAME_TYPE_REGISTRY.mafia.genericCreate, false);
+test("registries agree: mafia is excluded from the generic game registry", () => {
+  assert.equal(GAME_TYPE_REGISTRY.mafia, undefined);
   assert.equal(GAME_TYPE_REGISTRY.guessCharacter.implemented, true);
   assert.equal(GAME_TYPE_REGISTRY.guessCharacter.genericCreate, true);
+  assert.equal(GAME_TYPE_REGISTRY.animeChain.genericCreate, true);
+  assert.equal(GAME_TYPE_REGISTRY.emojiAnimeGuess.genericCreate, true);
 });

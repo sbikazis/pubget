@@ -1,7 +1,21 @@
 {
   "indexes": [
     {
-      "collectionGroup": "edits",
+      "collectionGroup": "friendships",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "games",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -9,11 +23,21 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "score",
-          "order": "DESCENDING"
+          "fieldPath": "waitingDeadlineAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "games",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
         },
         {
-          "fieldPath": "createdAt",
+          "fieldPath": "updatedAt",
           "order": "DESCENDING"
         },
         {
@@ -23,7 +47,29 @@
       ]
     },
     {
-      "collectionGroup": "edits",
+      "collectionGroup": "games",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "groupId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "games",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -35,12 +81,30 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "createdAt",
+          "fieldPath": "updatedAt",
           "order": "DESCENDING"
         },
         {
           "fieldPath": "__name__",
           "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "games",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deadlineAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
         }
       ]
     },
@@ -350,6 +414,28 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "groupIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "creatorId",
           "order": "ASCENDING"
         },
@@ -386,15 +472,129 @@
       ]
     },
     {
-      "collectionGroup": "games",
+      "collectionGroup": "events",
       "queryScope": "COLLECTION",
       "fields": [
+        {
+          "fieldPath": "scope",
+          "order": "ASCENDING"
+        },
         {
           "fieldPath": "status",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "updatedAt",
+          "fieldPath": "participantsCount",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "endAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "scope",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "scope",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "endAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "scope",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "animeIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "groupIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startAt",
           "order": "DESCENDING"
         },
         {
@@ -418,68 +618,6 @@
         {
           "fieldPath": "__name__",
           "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "games",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "groupId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "updatedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "games",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "creatorId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "updatedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "games",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "deadlineAt",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "ASCENDING"
         }
       ]
     },
@@ -628,6 +766,32 @@
       ]
     },
     {
+      "collectionGroup": "fanWorks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "characterIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "publishedAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "economyTransactions",
       "queryScope": "COLLECTION",
       "fields": [
@@ -674,7 +838,85 @@
       ]
     },
     {
-      "collectionGroup": "reels",
+      "collectionGroup": "reelAudios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+<<<<<<< HEAD
+          "fieldPath": "score",
+=======
+          "fieldPath": "usageCount",
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+<<<<<<< HEAD
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+=======
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
+        }
+      ]
+    },
+    {
+      "collectionGroup": "reelAudios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+<<<<<<< HEAD
+          "fieldPath": "creatorId",
+          "order": "ASCENDING"
+        },
+        {
+=======
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+<<<<<<< HEAD
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+=======
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
+        }
+      ]
+    },
+    {
+      "collectionGroup": "reelAudios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+<<<<<<< HEAD
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "publishedAt",
+=======
+          "fieldPath": "usageCount",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -687,6 +929,7 @@
         },
         {
           "fieldPath": "createdAt",
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
           "order": "DESCENDING"
         },
         {
@@ -696,50 +939,7 @@
       ]
     },
     {
-      "collectionGroup": "reels",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "creatorId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "reels",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "moderationStatus",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
+<<<<<<< HEAD
       "collectionGroup": "kirari",
       "queryScope": "COLLECTION",
       "fields": [
@@ -980,6 +1180,16 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+=======
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING"
+        },
+        {
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
           "fieldPath": "status",
           "order": "ASCENDING"
         },
@@ -994,7 +1204,11 @@
       ]
     },
     {
+<<<<<<< HEAD
       "collectionGroup": "kirariModerationQueue",
+=======
+      "collectionGroup": "edits",
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -1002,13 +1216,243 @@
           "order": "ASCENDING"
         },
         {
+<<<<<<< HEAD
           "fieldPath": "queuedAt",
+=======
+          "fieldPath": "characterIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "animeTag",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "searchName",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
           "order": "ASCENDING"
         }
       ]
     },
     {
+<<<<<<< HEAD
       "collectionGroup": "kirari",
+=======
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "hashtags",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "hashtags",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "characterIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "audioId",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "audioId",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "animeId",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "animeId",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -1020,11 +1464,19 @@
           "order": "ASCENDING"
         },
         {
+<<<<<<< HEAD
           "fieldPath": "moderationStatus",
           "order": "ASCENDING"
         },
         {
           "fieldPath": "publishedAt",
+=======
+          "fieldPath": "score",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
           "order": "DESCENDING"
         },
         {
@@ -1034,11 +1486,16 @@
       ]
     },
     {
+<<<<<<< HEAD
       "collectionGroup": "kirariAudio",
+=======
+      "collectionGroup": "edits",
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
       "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "status",
+<<<<<<< HEAD
           "order": "ASCENDING"
         },
         {
@@ -1052,14 +1509,349 @@
         {
           "fieldPath": "__name__",
           "order": "DESCENDING"
+=======
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "hashtags",
+          "order": "ASCENDING",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "characterIds",
+          "order": "ASCENDING",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "animeId",
+          "order": "ASCENDING",
+          "arrayConfig": "EQUAL"
+        },
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "audioId",
+          "order": "ASCENDING",
+          "arrayConfig": "EQUAL"
+        },
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "creatorId",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "characterIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "edits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "animeTag",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "score",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "moderation_cases",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "moderation_cases",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING",
+          "arrayConfig": "NONE"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING",
+          "arrayConfig": "NONE"
+>>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
         }
       ]
     }
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "reviews",
+      "fieldPath": "moderationStatus",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
       "collectionGroup": "members",
       "fieldPath": "uid",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "viewers",
+      "fieldPath": "viewerId",
       "indexes": [
         {
           "order": "ASCENDING",

@@ -1,7 +1,9 @@
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/anime_list_models.dart';
 import 'anime_library_repository.dart';
 
@@ -34,22 +36,29 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
     required AnimeListStatus status,
     String title = '',
     int? rating,
+    bool? favorite,
   }) => _guard(() async {
-    final result = await _functions.httpsCallable('setAnimeListEntry').call(
-      <String, dynamic>{
-        'animeId': animeId,
-        'status': status.wireValue,
-        'title': title,
-        'rating': ?rating,
-      },
-    );
+    final result = await _functions
+        .httpsCallable('setAnimeListEntry')
+        .call(<String, dynamic>{
+          'animeId': animeId,
+          'status': status.wireValue,
+          'title': title,
+          'rating': ?rating,
+          'favorite': ?favorite,
+        });
     final data = Map<String, dynamic>.from(result.data as Map);
     return AnimeListEntry(
       animeId: data['animeId'] as String? ?? animeId,
       status:
           AnimeListStatusCodec.tryParse(data['status'] as String?) ?? status,
-      title: title,
+      title: data['title'] as String? ?? title,
       rating: (data['rating'] as num?)?.toInt() ?? rating,
+      favorite: data['favorite'] == true || favorite == true,
+      // The callable writes a server timestamp it does not echo back, so the
+      // local clock stands in until the next read confirms it.
+      updatedAt:
+          readAnimeTimestamp(data['updatedAt']) ?? DateTime.now().toUtc(),
     );
   });
 
@@ -85,15 +94,15 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
     String? imageUrl,
     int? rating,
   }) => _guard(() async {
-    final result = await _functions.httpsCallable('setCharacterFavorite').call(
-      <String, dynamic>{
-        'characterId': characterId,
-        'favorite': favorite,
-        'name': name,
-        'imageUrl': ?imageUrl,
-        'rating': ?rating,
-      },
-    );
+    final result = await _functions
+        .httpsCallable('setCharacterFavorite')
+        .call(<String, dynamic>{
+          'characterId': characterId,
+          'favorite': favorite,
+          'name': name,
+          'imageUrl': ?imageUrl,
+          'rating': ?rating,
+        });
     final data = Map<String, dynamic>.from(result.data as Map);
     return CharacterFavorite(
       characterId: data['characterId'] as String? ?? characterId,
@@ -103,29 +112,146 @@ final class FirebaseAnimeLibraryRepository implements AnimeLibraryRepository {
     );
   });
 
+  @override
+  Future<Result<List<AnimeCustomList>>> getCustomLists({String? userId}) =>
+      _guard(() async {
+        final result = await _functions
+            .httpsCallable('getCustomAnimeLists')
+            .call(<String, dynamic>{'userId': ?userId});
+        final data = Map<String, dynamic>.from(result.data as Map);
+        final raw = data['items'] as List<Object?>? ?? const <Object?>[];
+        return raw
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  AnimeCustomList.fromMap(Map<String, dynamic>.from(item)),
+            )
+            .toList(growable: false);
+      });
+
+  @override
+  Future<Result<AnimeCustomListDetail>> getCustomList({
+    required String listId,
+    String? userId,
+  }) => _guard(() async {
+    final result = await _functions.httpsCallable('getCustomAnimeList').call(
+      <String, dynamic>{'listId': listId, 'userId': ?userId},
+    );
+    return AnimeCustomListDetail.fromMap(
+      Map<String, dynamic>.from(result.data as Map),
+    );
+  });
+
+  @override
+  Future<Result<AnimeCustomList>> createCustomList({
+    required String name,
+    String description = '',
+    bool private = false,
+    List<String> animeIds = const <String>[],
+  }) => _guard(() async {
+    final result = await _functions.httpsCallable('createCustomAnimeList').call(
+      <String, dynamic>{
+        'name': name,
+        'description': description,
+        'private': private,
+        'animeIds': animeIds,
+      },
+    );
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return AnimeCustomList(
+      id: data['id'] as String? ?? '',
+      name: name,
+      description: data['description'] as String? ?? description,
+      private: data['private'] == true || private,
+      itemsCount: (data['itemsCount'] as num?)?.toInt() ?? animeIds.length,
+      ownerUid: '',
+    );
+  });
+
+  @override
+  Future<Result<void>> updateCustomList({
+    required String listId,
+    String? name,
+    String? description,
+    bool? private,
+  }) => _guard(() async {
+    await _functions.httpsCallable('updateCustomAnimeList').call(
+      <String, dynamic>{
+        'listId': listId,
+        'name': ?name,
+        'description': ?description,
+        'private': ?private,
+      },
+    );
+  });
+
+  @override
+  Future<Result<void>> deleteCustomList(String listId) => _guard(() async {
+    await _functions.httpsCallable('deleteCustomAnimeList').call(
+      <String, dynamic>{'listId': listId},
+    );
+  });
+
+  @override
+  Future<Result<void>> addToCustomList({
+    required String listId,
+    required String animeId,
+    String title = '',
+  }) => _guard(() async {
+    await _functions.httpsCallable('addAnimeToCustomList').call(
+      <String, dynamic>{'listId': listId, 'animeId': animeId, 'title': title},
+    );
+  });
+
+  @override
+  @override
+  Future<Result<void>> removeFromCustomList({
+    required String listId,
+    required String animeId,
+  }) => _guard(() async {
+    await _functions.httpsCallable('removeAnimeFromCustomList').call(
+      <String, dynamic>{'listId': listId, 'animeId': animeId},
+    );
+  });
+
+  @override
+  Future<Result<List<CustomListMembership>>> getCustomListMembership(
+    String animeId,
+  ) => _guard(() async {
+    final result = await _functions
+        .httpsCallable('getCustomListsForAnime')
+        .call(<String, dynamic>{'animeId': animeId});
+    final data = Map<String, dynamic>.from(result.data as Map);
+    final raw = data['items'] as List<Object?>? ?? const <Object?>[];
+    return raw
+        .whereType<Map>()
+        .map(
+          (item) =>
+              CustomListMembership.fromMap(Map<String, dynamic>.from(item)),
+        )
+        .toList(growable: false);
+  });
+
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success(await action());
+      return Success(await runWithRetry(action, mapError: _fail));
     } on Object catch (error) {
       return FailureResult(_fail(error));
     }
   }
 }
 
+/// Maps a callable error into the shared failure taxonomy.
+///
+/// Delegates the code table to [mapFirebaseFailure] so an `internal`/`aborted`
+/// backend hiccup becomes an `UnavailableError` and a throttle a
+/// `RateLimitedError`. The old blanket mapping turned both into a
+/// `NetworkError` and told the member to check a connection that was fine.
 Failure _fail(Object error) {
-  if (error is FirebaseFunctionsException) {
-    return switch (error.code) {
-      'unauthenticated' || 'permission-denied' => PermissionError(
-        error.message ?? 'Anime lists require a signed-in account.',
-      ),
-      'unavailable' || 'deadline-exceeded' => const NetworkError(
-        'Check your connection and try again.',
-      ),
-      'invalid-argument' => ValidationError(
-        error.message ?? 'That list update is not valid.',
-      ),
-      _ => UnknownError(error.message ?? 'Anime list update failed.'),
-    };
+  if (error is FirebaseFunctionsException && error.code == 'unauthenticated') {
+    return PermissionError(
+      error.message ?? 'Anime lists require a signed-in account.',
+    );
   }
-  return const UnknownError('Anime list update failed.');
+  return mapFirebaseFailure(error, message: 'Anime list update failed.');
 }

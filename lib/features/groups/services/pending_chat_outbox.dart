@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_models.dart';
@@ -38,6 +39,7 @@ final class PendingChatOutbox {
           .whereType<ChatMessage>()
           .toList(growable: false);
     } catch (_) {
+      debugPrint('PendingChatOutbox: dropped an unreadable entry for "$scope".');
       return const <ChatMessage>[];
     }
   }
@@ -47,14 +49,30 @@ final class PendingChatOutbox {
     if (!_isPersistable(message)) return;
     final prefs = await _prefs();
     final maps = _decodeMaps(prefs.getString(_key(scope)));
-    maps.removeWhere((item) => item['id'] == message.id);
-    maps.add(_toMap(message));
-    await prefs.setString(_key(scope), jsonEncode(maps));
+    if (maps == null) {
+      // The stored list was unreadable. Starting a fresh list is the only
+      // option, but say so instead of silently discarding what was there.
+      debugPrint(
+        'PendingChatOutbox: resetting corrupt outbox for "$scope" on write.',
+      );
+    }
+    final entries = maps ?? <Map<String, dynamic>>[];
+    entries.removeWhere((item) => item['id'] == message.id);
+    entries.add(_toMap(message));
+    await prefs.setString(_key(scope), jsonEncode(entries));
   }
 
   Future<void> remove(String scope, String messageId) async {
     final prefs = await _prefs();
     final maps = _decodeMaps(prefs.getString(_key(scope)));
+    // Never overwrite a corrupt payload with an empty list: the caller is only
+    // removing one message, so leave the raw value untouched for recovery.
+    if (maps == null) {
+      debugPrint(
+        'PendingChatOutbox: skipped remove on corrupt outbox for "$scope".',
+      );
+      return;
+    }
     maps.removeWhere((item) => item['id'] == messageId);
     if (maps.isEmpty) {
       await prefs.remove(_key(scope));
@@ -76,7 +94,7 @@ final class PendingChatOutbox {
     return true;
   }
 
-  List<Map<String, dynamic>> _decodeMaps(String? raw) {
+  List<Map<String, dynamic>>? _decodeMaps(String? raw) {
     if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
     try {
       final list = jsonDecode(raw) as List<dynamic>;
@@ -85,7 +103,7 @@ final class PendingChatOutbox {
           .map((item) => Map<String, dynamic>.from(item))
           .toList();
     } catch (_) {
-      return <Map<String, dynamic>>[];
+      return null;
     }
   }
 

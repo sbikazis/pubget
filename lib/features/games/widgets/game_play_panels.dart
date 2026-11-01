@@ -6,9 +6,10 @@ import 'package:provider/provider.dart';
 import '../../../core/network/network_service.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/game_copy.dart';
 import '../models/game_models.dart';
-import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
+import 'catalog_search_picker.dart';
 import 'game_widgets.dart';
 
 class GameDeadlineTimer extends StatefulWidget {
@@ -44,7 +45,7 @@ class _GameDeadlineTimerState extends State<GameDeadlineTimer> {
     final remaining = deadline.difference(DateTime.now());
     final expired = remaining.isNegative || remaining == Duration.zero;
     final label = expired
-        ? GameStrings.timedOut
+        ? GameCopy.of(context).timedOut
         : '${remaining.inSeconds.clamp(0, 999)}s';
     return PubgetBadge(label: label);
   }
@@ -65,8 +66,9 @@ class GamePlayArea extends StatelessWidget {
       return const SizedBox.shrink();
     }
     if (!game.isPlayable) {
+      final copy = GameCopy.of(context);
       return PubgetCard(
-        child: Text('This game is ${game.status.name}.'),
+        child: Text(copy.gameStatusLine(copy.statusLabel(game.status))),
       );
     }
     return switch (game.type) {
@@ -90,37 +92,39 @@ class GameResultPanel extends StatelessWidget {
     final scores = result?.scores ?? const <String, int>{};
     final won = result?.winnerIds.contains(userId) == true;
     final draw = result?.summary['draw'] == true;
+    final copy = GameCopy.of(context);
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
             draw
-                ? 'Draw'
+                ? copy.draw
                 : won
-                ? 'You won'
-                : 'Result',
+                ? copy.youWon
+                : copy.resultTitle,
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: AppSpacing.sm),
           if (result != null && result.winnerIds.isNotEmpty)
-            Text('Winners: ${result.winnerIds.join(', ')}'),
-          for (final entry in scores.entries) Text('${entry.key}: ${entry.value}'),
+            Text(copy.winners(result.winnerIds)),
+          for (final entry in scores.entries)
+            Text('${entry.key}: ${entry.value}'),
           const SizedBox(height: AppSpacing.md),
           Wrap(
             spacing: AppSpacing.sm,
             children: <Widget>[
               PubgetSecondaryButton(
                 onPressed: () => GameLinks.open(context, game.id),
-                semanticLabel: GameStrings.viewHistory,
-                child: const Text(GameStrings.viewHistory),
+                semanticLabel: copy.viewHistory,
+                child: Text(copy.viewHistory),
               ),
               if (game.groupId != null)
                 PubgetPrimaryButton(
                   onPressed: () =>
                       GameLinks.openCreate(context, groupId: game.groupId),
-                  semanticLabel: GameStrings.playAgain,
-                  child: const Text(GameStrings.playAgain),
+                  semanticLabel: copy.playAgain,
+                  child: Text(copy.playAgain),
                 ),
             ],
           ),
@@ -130,7 +134,12 @@ class GameResultPanel extends StatelessWidget {
   }
 }
 
-class GuessCharacterPlay extends StatelessWidget {
+/// Plays the real `guessCharacter` engine: `selection` -> `ask` <-> `answer`.
+///
+/// The engine is strictly turn based and only accepts real catalog IDs, so the
+/// panel mirrors those phases exactly instead of guessing a shape the server
+/// never writes.
+class GuessCharacterPlay extends StatefulWidget {
   const GuessCharacterPlay({
     required this.game,
     required this.userId,
@@ -141,84 +150,195 @@ class GuessCharacterPlay extends StatelessWidget {
   final String userId;
 
   @override
+  State<GuessCharacterPlay> createState() => _GuessCharacterPlayState();
+}
+
+class _GuessCharacterPlayState extends State<GuessCharacterPlay> {
+  final _question = TextEditingController();
+
+  @override
+  void dispose() {
+    _question.dispose();
+    super.dispose();
+  }
+
+  void _submit(String actionType, Map<String, dynamic> payload) {
+    final game = widget.game;
+    context.read<GameProvider>().submitAction(
+      gameId: game.id,
+      actionType: actionType,
+      payload: <String, dynamic>{...payload, 'stateVersion': game.stateVersion},
+      clientActionId: '${game.id}-${game.stateVersion}-${widget.userId}',
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final provider = context.watch<GameProvider>();
+    final game = widget.game;
     final state = game.publicState;
-    final prompt = state['prompt'] is Map
-        ? Map<String, dynamic>.from(state['prompt'] as Map)
+    final phase = state['phase'] as String? ?? 'selection';
+    final players = state['players'] is Map
+        ? Map<String, dynamic>.from(state['players'] as Map)
         : const <String, dynamic>{};
-    final choices = (prompt['choices'] as List<Object?>? ?? const <Object?>[])
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
-    final answered =
-        (state['answeredPlayerIds'] as List<Object?>? ?? const <Object?>[])
-            .whereType<String>()
-            .toList();
-    final already = answered.contains(userId);
-    final scores = _scoreMap(state['scores']);
-    final lastReveal = state['lastReveal'] is Map
-        ? Map<String, dynamic>.from(state['lastReveal'] as Map)
+    final myEntry = players[widget.userId] is Map
+        ? Map<String, dynamic>.from(players[widget.userId] as Map)
+        : const <String, dynamic>{};
+    final alreadySelected = myEntry['selected'] == true;
+    final currentPlayerId = state['currentPlayerId'] as String?;
+    final answeringPlayerId = state['answeringPlayerId'] as String?;
+    final question = state['question'] as String?;
+    final lastAction = state['lastAction'] is Map
+        ? Map<String, dynamic>.from(state['lastAction'] as Map)
         : null;
     final online = _online(context);
+    final locked = provider.busy || !online;
+    final copy = GameCopy.of(context);
+
+    Widget body;
+    if (phase == 'selection') {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(copy.chooseSecret, style: _title(context)),
+          const SizedBox(height: AppSpacing.sm),
+          if (alreadySelected)
+            Text(copy.secretLocked)
+          else
+            CatalogSearchPicker(
+              hint: copy.searchSecretCharacter,
+              enabled: online,
+              onSelected: (item) => _submit(
+                GameActionTypes.select,
+                <String, dynamic>{'characterId': item.id},
+              ),
+            ),
+        ],
+      );
+    } else if (phase == 'ask') {
+      final mine = currentPlayerId == widget.userId;
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(mine ? copy.yourTurn : copy.waitingTurn),
+          const SizedBox(height: AppSpacing.sm),
+          if (question != null) Text(question),
+          if (lastAction != null) _lastActionLine(context, lastAction),
+          if (mine) ...[
+            const SizedBox(height: AppSpacing.md),
+            PubgetTextField(
+              controller: _question,
+              label: copy.askAQuestion,
+              enabled: !locked,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            PubgetPrimaryButton(
+              onPressed: locked
+                  ? null
+                  : () => _submit(GameActionTypes.ask, <String, dynamic>{
+                      'question': _question.text,
+                    }),
+              semanticLabel: copy.ask,
+              child: Text(
+                provider.busy ? copy.submitting : copy.ask,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(copy.guessInstead),
+            const SizedBox(height: AppSpacing.sm),
+            CatalogSearchPicker(
+              hint: copy.searchSecretCharacter,
+              enabled: online,
+              emptyLabel: copy.noCatalogMatch,
+              onSelected: (item) => _submit(
+                GameActionTypes.guess,
+                <String, dynamic>{'characterId': item.id},
+              ),
+            ),
+          ],
+        ],
+      );
+    } else if (phase == 'answer') {
+      final mine = answeringPlayerId == widget.userId;
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(mine ? copy.yourTurn : copy.waitingTurn),
+          const SizedBox(height: AppSpacing.sm),
+          if (question != null) Text(question),
+          if (mine) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: PubgetPrimaryButton(
+                    onPressed: locked
+                        ? null
+                        : () => _submit(
+                            GameActionTypes.answer,
+                            <String, dynamic>{'answer': 'yes'},
+                          ),
+                    semanticLabel: copy.yes,
+                    child: Text(copy.yes),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: PubgetSecondaryButton(
+                    onPressed: locked
+                        ? null
+                        : () => _submit(
+                            GameActionTypes.answer,
+                            <String, dynamic>{'answer': 'no'},
+                          ),
+                    semanticLabel: copy.no,
+                    child: Text(copy.no),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      );
+    } else {
+      body = Text(copy.comingSoon);
+    }
+
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
             children: <Widget>[
-              Text(
-                'Round ${state['roundNumber'] ?? game.currentRoundNumber ?? 1}'
-                '/${state['totalRounds'] ?? game.configuration.roundCount}',
-              ),
+              Text(copy.guessCharacter),
               const Spacer(),
               GameDeadlineTimer(deadlineAt: game.deadlineAt),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(
-            prompt['question'] as String? ?? 'Who is this character?',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          CharacterArtworkView(
-            artwork: prompt['artwork'],
-            fallbackClue: prompt['clue'] as String?,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          if (already)
-            const Text('Answer locked in. Waiting for the round to resolve.'),
-          if (!already && !online)
-            const Text(GameStrings.offlineAction),
-          for (final choice in choices)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: PubgetSecondaryButton(
-                onPressed: provider.busy || already || !online
-                    ? null
-                    : () => provider.submitAction(
-                        gameId: game.id,
-                        actionType: GameActionTypes.guess,
-                        payload: <String, dynamic>{
-                          'choiceId': choice['id'],
-                          'stateVersion': game.stateVersion,
-                        },
-                        clientActionId:
-                            '${game.id}-${game.stateVersion}-$userId',
-                      ),
-                semanticLabel: choice['name'] as String? ?? 'choice',
-                child: Text(choice['name'] as String? ?? 'Unknown'),
-              ),
-            ),
-          Text('You ${scores[userId] ?? 0} · Opponent ${_opponentScore(scores, userId)}'),
-          if (lastReveal != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text('Last answer: ${lastReveal['correctName'] ?? ''}'),
-          ],
+          body,
+          if (!online) Text(copy.offlineAction),
           GameActionFeedback(message: provider.actionFeedback),
         ],
       ),
     );
+  }
+
+  TextStyle? _title(BuildContext context) =>
+      Theme.of(context).textTheme.titleMedium;
+
+  Widget _lastActionLine(
+    BuildContext context,
+    Map<String, dynamic> lastAction,
+  ) {
+    final copy = GameCopy.of(context);
+    final type = lastAction['type'];
+    return Text(switch (type) {
+      'answer' => '${copy.answered}: ${lastAction['answer']}',
+      'wrong_guess' => copy.wrongGuess,
+      'timeout' => copy.turnTimedOut,
+      _ => '',
+    }, style: Theme.of(context).textTheme.bodySmall);
   }
 }
 
@@ -256,10 +376,7 @@ class CharacterArtworkView extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.xs),
-        Text(
-          parsed.attribution,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        Text(parsed.attribution, style: Theme.of(context).textTheme.bodySmall),
         if (fallbackClue != null && fallbackClue!.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
           Text(fallbackClue!),
@@ -379,6 +496,7 @@ class AnimeChainPlay extends StatefulWidget {
 
 class _AnimeChainPlayState extends State<AnimeChainPlay> {
   final _title = TextEditingController();
+  int _chainLength = -1;
 
   @override
   void dispose() {
@@ -397,6 +515,13 @@ class _AnimeChainPlayState extends State<AnimeChainPlay> {
     final current = state['currentPlayerId'] as String?;
     final mine = current == widget.userId;
     final online = _online(context);
+    final copy = GameCopy.of(context);
+    if (chain.length != _chainLength) {
+      // The chain advanced, so the submitted title must not be resubmitted.
+      _chainLength = chain.length;
+      _title.clear();
+    }
+    final scores = _scoreMap(state['scores']);
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -405,21 +530,21 @@ class _AnimeChainPlayState extends State<AnimeChainPlay> {
             children: <Widget>[
               Expanded(
                 child: Text(
-                  state['rule'] as String? ?? 'Keep the chain valid.',
+                  state['rule'] as String? ?? copy.chainRule,
                 ),
               ),
               GameDeadlineTimer(deadlineAt: widget.game.deadlineAt),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(mine ? GameStrings.yourTurn : GameStrings.waitingTurn),
+          Text(mine ? copy.yourTurn : copy.waitingTurn),
           const SizedBox(height: AppSpacing.sm),
           for (final link in chain) Text(link['title'] as String? ?? ''),
           if (mine) ...[
             const SizedBox(height: AppSpacing.md),
             PubgetTextField(
               controller: _title,
-              label: 'Next title',
+              label: copy.nextTitle,
               enabled: !provider.busy && online,
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -436,13 +561,14 @@ class _AnimeChainPlayState extends State<AnimeChainPlay> {
                       clientActionId:
                           '${widget.game.id}-${widget.game.stateVersion}-${widget.userId}',
                     ),
-              semanticLabel: GameStrings.submit,
+              semanticLabel: copy.submit,
               child: Text(
-                provider.busy ? GameStrings.submitting : GameStrings.submit,
+                provider.busy ? copy.submitting : copy.submit,
               ),
             ),
-            if (!online) const Text(GameStrings.offlineAction),
+            if (!online) Text(copy.offlineAction),
           ],
+          Text('${copy.you} ${scores[widget.userId] ?? 0}'),
           GameActionFeedback(message: provider.actionFeedback),
         ],
       ),
@@ -462,6 +588,7 @@ class EmojiGuessPlay extends StatefulWidget {
 
 class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
   final _guess = TextEditingController();
+  int _turnIndex = -1;
 
   @override
   void dispose() {
@@ -472,9 +599,22 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<GameProvider>();
-    final state = widget.game.publicState;
+    final game = widget.game;
+    final state = game.publicState;
+    final turnIndex = (state['turnIndex'] as num?)?.toInt() ?? 0;
+    if (turnIndex != _turnIndex) {
+      // A new round must not inherit the previous guess, which the engine
+      // would reject as a duplicate.
+      _turnIndex = turnIndex;
+      _guess.clear();
+    }
     final current = state['currentPlayerId'] as String?;
     final mine = current == widget.userId;
+    final answered =
+        (state['answeredPlayerIds'] as List<Object?>? ?? const <Object?>[])
+            .whereType<String>()
+            .toList();
+    final already = answered.contains(widget.userId);
     final emojis = (state['emojis'] as List<Object?>? ?? const <Object?>[])
         .whereType<String>()
         .toList();
@@ -483,6 +623,7 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
         : null;
     final scores = _scoreMap(state['scores']);
     final online = _online(context);
+    final copy = GameCopy.of(context);
     return PubgetCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -490,15 +631,18 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
           Row(
             children: <Widget>[
               Text(
-                'Turn ${((state['turnIndex'] as num?)?.toInt() ?? 0) + 1}'
+                '${copy.turn} ${turnIndex + 1}'
                 '/${state['totalTurns'] ?? '?'}',
               ),
               const Spacer(),
-              GameDeadlineTimer(deadlineAt: widget.game.deadlineAt),
+              GameDeadlineTimer(deadlineAt: game.deadlineAt),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(mine ? GameStrings.yourTurn : GameStrings.waitingTurn),
+          Text(
+            mine ? copy.clueOwnerTurn : copy.guessTheAnime,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           if (emojis.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -507,36 +651,40 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
             ),
           ],
           const SizedBox(height: AppSpacing.md),
-          if (mine) ...[
-            PubgetTextField(
-              controller: _guess,
-              label: 'Anime title',
-              enabled: !provider.busy && online,
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            PubgetPrimaryButton(
-              onPressed: provider.busy || !online
-                  ? null
-                  : () => provider.submitAction(
-                      gameId: widget.game.id,
-                      actionType: GameActionTypes.guess,
-                      payload: <String, dynamic>{
-                        'title': _guess.text,
-                        'stateVersion': widget.game.stateVersion,
-                      },
-                      clientActionId:
-                          '${widget.game.id}-${widget.game.stateVersion}-guess',
-                    ),
-              semanticLabel: 'Submit guess',
-              child: const Text('Submit guess'),
-            ),
+          if (!mine) ...[
+            if (already)
+              Text(copy.alreadyGuessed)
+            else ...[
+              PubgetTextField(
+                controller: _guess,
+                label: copy.animeTitle,
+                enabled: !provider.busy && online,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              PubgetPrimaryButton(
+                onPressed: provider.busy || !online
+                    ? null
+                    : () => provider.submitAction(
+                        gameId: game.id,
+                        actionType: GameActionTypes.guess,
+                        payload: <String, dynamic>{
+                          'title': _guess.text,
+                          'stateVersion': game.stateVersion,
+                        },
+                        clientActionId:
+                            '${game.id}-${game.stateVersion}-${widget.userId}',
+                      ),
+                semanticLabel: copy.submitGuess,
+                child: Text(copy.submitGuess),
+              ),
+            ],
           ],
-          Text('You ${scores[widget.userId] ?? 0}'),
+          Text('${copy.you} ${scores[widget.userId] ?? 0}'),
           if (lastReveal != null && lastReveal['title'] is String) ...[
             const SizedBox(height: AppSpacing.sm),
-            Text('Last title: ${lastReveal['title']}'),
+            Text('${copy.lastTitle}: ${lastReveal['title']}'),
           ],
-          if (!online) const Text(GameStrings.offlineAction),
+          if (!online) Text(copy.offlineAction),
           GameActionFeedback(message: provider.actionFeedback),
         ],
       ),
@@ -561,11 +709,4 @@ Map<String, int> _scoreMap(dynamic raw) {
     }
   }
   return scores;
-}
-
-int _opponentScore(Map<String, int> scores, String userId) {
-  for (final entry in scores.entries) {
-    if (entry.key != userId) return entry.value;
-  }
-  return 0;
 }

@@ -12,6 +12,9 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Keep in lockstep with build.yml: the pinned `pdfrx_engine` only
+          # compiles on the Flutter/Dart line this project is locked against.
+          flutter-version: '3.32.8'
           channel: 'stable'
           cache: true
 

@@ -76,8 +76,8 @@ test("pipeline notifies creator on publish with edits deep link", async () => {
     targetId: "e1",
     action: "published",
     destination: "/edits?highlight=e1",
-    title: "Edit published",
-    body: "Your Edit is live. Tap to watch it.",
+    title: "Reel published",
+    body: "Your Reel is live. Tap to watch it.",
     pushWorthy: true,
   });
   assert.equal(notifications[0].type, "edit_published");
@@ -92,8 +92,8 @@ test("pipeline notifies creator on publish with edits deep link", async () => {
     targetId: "e1",
     action: "failed",
     destination: "/edits?highlight=e1",
-    title: "Edit processing failed",
-    body: "We could not finish processing your Edit.",
+    title: "Reel processing failed",
+    body: "We could not finish processing your Reel.",
     pushWorthy: true,
   });
   assert.equal(notifications[1].type, "edit_failed");

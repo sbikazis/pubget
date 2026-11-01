@@ -62,12 +62,14 @@ test("multi-user discovery ranking and anime lists against the emulator", async 
     founderId: "sakura", createdAt: new Date(),
   });
   await db.doc("edits/op-edit").set({
-    status: "published", creatorId: "nami", animeTag: "one_piece",
-    createdAt: new Date(), qualifiedViewsCount: 6, likesCount: 2, caption: "gear",
+    status: "published", moderationStatus: "approved", creatorId: "nami",
+    animeTag: "one_piece", createdAt: new Date(), qualifiedViewsCount: 6,
+    likesCount: 2, caption: "gear",
   });
   await db.doc("edits/naruto-edit").set({
-    status: "published", creatorId: "sakura", animeTag: "naruto",
-    createdAt: new Date(), qualifiedViewsCount: 6, likesCount: 2, caption: "rasengan",
+    status: "published", moderationStatus: "approved", creatorId: "sakura",
+    animeTag: "naruto", createdAt: new Date(), qualifiedViewsCount: 6,
+    likesCount: 2, caption: "rasengan",
   });
   await db.doc("fanWorks/op-work").set({
     status: "published", moderationStatus: "approved", creatorId: "nami",

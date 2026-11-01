@@ -30,7 +30,7 @@ function createFakeDb() {
       path,
       collection(name) {
         return {
-          doc(id) {
+          doc(id = `auto-${store.size + 1}`) {
             return ref(`${path}/${name}/${id}`);
           },
         };
@@ -50,8 +50,34 @@ function createFakeDb() {
     store,
     collection(name) {
       return {
-        doc(id) {
+        doc(id = `auto-${store.size + 1}`) {
           return ref(`${name}/${id}`);
+        },
+        where(field, op, value) {
+          return {
+            async get() {
+              const prefix = `${name}/`;
+              const docs = [];
+              for (const [path, saved] of store) {
+                if (!path.startsWith(prefix)) continue;
+                const id = path.slice(prefix.length);
+                const matches =
+                  field === "__name__" && op === "in"
+                    ? (Array.isArray(value) ? value : []).includes(id)
+                    : true;
+                if (matches) {
+                  const data = { ...saved };
+                  docs.push({ id, exists: true, data: () => data });
+                }
+              }
+              return {
+                docs,
+                forEach(callback) {
+                  docs.forEach(callback);
+                },
+              };
+            },
+          };
         },
       };
     },
@@ -248,4 +274,376 @@ test("review reports flag the review and cannot target yourself", async () => {
   });
   assert.equal(db.store.get("anime_stats/16498/reviews/alice").moderationStatus, "flagged");
   assert.ok(db.store.get("anime_stats/16498/reviews/alice/reports/bob"));
+});
+
+test("anime reports are idempotent and rate-limited per reporter", async () => {
+  const { hub, db } = domain();
+  const first = await hub.reportAnime({
+    auth: { uid: "bob" },
+    data: { animeId: "16498", category: "spam", detail: "Clickbait." },
+  });
+  assert.equal(first.alreadyReported, false);
+  assert.equal(
+    db.store.get("anime_reports/16498/reports/bob").category,
+    "spam",
+  );
+  assert.equal(db.store.get("anime_reports/16498/reports/bob").repeatCount, 1);
+  const second = await hub.reportAnime({
+    auth: { uid: "bob" },
+    data: { animeId: "16498", category: "copyright" },
+  });
+  assert.equal(second.alreadyReported, true);
+  assert.equal(
+    db.store.get("anime_reports/16498/reports/bob").repeatCount,
+    2,
+  );
+  assert.equal(
+    db.store.get("anime_reports/16498/reports/bob").category,
+    "copyright",
+  );
+});
+
+test("anime reports reject unknown reasons and enforce the abuse gate", async () => {
+  const { hub } = domain();
+  await assert.rejects(
+    hub.reportAnime({ auth: { uid: "bob" }, data: { animeId: "16498", category: "nonsense" } }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    hub.reportAnime({ data: { animeId: "16498", category: "spam" } }),
+    (error) => error.code === "unauthenticated",
+  );
+  const { hub: rateHub } = domain();
+  for (let i = 0; i < 10; i += 1) {
+    await rateHub.reportAnime({
+      auth: { uid: "mallory" },
+      data: { animeId: `anime-${i}`, category: "spam" },
+    });
+  }
+  await assert.rejects(
+    rateHub.reportAnime({
+      auth: { uid: "mallory" },
+      data: { animeId: "anime-10", category: "spam" },
+    }),
+    (error) => error.code === "resource-exhausted",
+  );
+});
+
+test("character discussion posts are authored by the caller", async () => {
+  const { hub, db } = domain();
+  const result = await hub.postCharacterDiscussion({
+    auth: { uid: "alice" },
+    data: { characterId: "luffy", text: "Future pirate king." },
+  });
+  assert.equal(result.characterId, "luffy");
+  assert.equal(result.userId, "alice");
+  assert.equal(result.username, "Alice");
+  const stored = db.store.get(`character_discussions/luffy/posts/${result.id}`);
+  assert.equal(stored.text, "Future pirate king.");
+  assert.equal(stored.userId, "alice");
+});
+
+test("character discussion rejects empty, banned, and unauthenticated posts", async () => {
+  const { hub } = domain();
+  await assert.rejects(
+    hub.postCharacterDiscussion({ auth: { uid: "alice" }, data: { characterId: "luffy" } }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    hub.postCharacterDiscussion({
+      auth: { uid: "alice" },
+      data: { characterId: "luffy", text: "kys" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    hub.postCharacterDiscussion({ data: { characterId: "luffy", text: "hi" } }),
+    (error) => error.code === "unauthenticated",
+  );
+});
+
+test("only the author can delete a character discussion post", async () => {
+  const { hub, db } = domain();
+  const post = await hub.postCharacterDiscussion({
+    auth: { uid: "alice" },
+    data: { characterId: "luffy", text: "Hello." },
+  });
+  await assert.rejects(
+    hub.deleteCharacterDiscussion({
+      auth: { uid: "bob" },
+      data: { characterId: "luffy", postId: post.id },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+  await hub.deleteCharacterDiscussion({
+    auth: { uid: "alice" },
+    data: { characterId: "luffy", postId: post.id },
+  });
+  assert.equal(db.store.has(`character_discussions/luffy/posts/${post.id}`), false);
+});
+
+test("deleting a missing character discussion post is not found", async () => {
+  const { hub } = domain();
+  await assert.rejects(
+    hub.deleteCharacterDiscussion({
+      auth: { uid: "alice" },
+      data: { characterId: "luffy", postId: "missing" },
+    }),
+    (error) => error.code === "not-found",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Server-authoritative score distribution
+// ---------------------------------------------------------------------------
+
+test("a new rating lands in its own 1-10 bucket", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  const expected = String(Math.round(overallOf(fullCriteria)));
+  assert.equal(stats.scoreDistribution[expected], 1);
+  assert.equal(stats.ratingCount, 1);
+  const total = Object.values(stats.scoreDistribution).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, 1);
+});
+
+test("the distribution buckets every rating from every member", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: { ...fullCriteria, story: 10, action: 10 } },
+  });
+  await hub.upsertAnimeRating({
+    auth: { uid: "bob" },
+    data: { animeId: "16498", criteria: { ...fullCriteria, story: 1, art: 1, characters: 1, action: 1, sound: 1, enjoyment: 1 } },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 2);
+  assert.equal(stats.scoreDistribution["9"], 1);
+  assert.equal(stats.scoreDistribution["1"], 1);
+});
+
+test("changing a rating moves the count between buckets and never double-counts", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  db.store.delete("users/alice/animeHubRate/write");
+  const next = { ...fullCriteria, story: 1, art: 1, characters: 1, action: 1, sound: 1, enjoyment: 1 };
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: next },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 1, "a re-rate must not add a rating");
+  assert.equal(stats.scoreDistribution["1"], 1);
+  assert.equal(stats.scoreDistribution["9"], 0, "the old bucket must be released");
+  const total = Object.values(stats.scoreDistribution).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, stats.ratingCount);
+});
+
+test("re-rating with the same score is idempotent for the distribution", async () => {
+  const { hub, db } = domain();
+  const rate = () => hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  await rate();
+  db.store.delete("users/alice/animeHubRate/write");
+  await rate();
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 1);
+  assert.equal(stats.scoreDistribution["9"], 1);
+});
+
+test("deleting a rating releases its bucket", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  db.store.delete("users/alice/animeHubRate/write");
+  await hub.deleteAnimeRating({ auth: { uid: "alice" }, data: { animeId: "16498" } });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 0);
+  const total = Object.values(stats.scoreDistribution).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, 0, "a deleted rating must leave no plotted score");
+});
+
+test("repeating a delete never drives the distribution below zero", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  db.store.delete("users/alice/animeHubRate/write");
+  await hub.deleteAnimeRating({ auth: { uid: "alice" }, data: { animeId: "16498" } });
+  db.store.delete("users/alice/animeHubRate/write");
+  await hub.deleteAnimeRating({ auth: { uid: "alice" }, data: { animeId: "16498" } });
+  const stats = db.store.get("anime_stats/16498");
+  for (const [bucket, count] of Object.entries(stats.scoreDistribution)) {
+    assert.equal(count, 0, `bucket ${bucket} went negative`);
+  }
+});
+
+test("a pre-migration stats document is not given a partial distribution", async () => {
+  const { hub, db } = domain();
+  // Exactly the shape an older deploy left behind: counts, but no distribution.
+  db.store.set("anime_stats/16498", {
+    animeId: "16498",
+    title: "Attack on Titan",
+    scoreSum: 8.5,
+    ratingCount: 1,
+    averageScore: 8.5,
+  });
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  // The mean moved, because the count is trustworthy...
+  assert.equal(stats.ratingCount, 2);
+  assert.equal(stats.scoreDistribution, undefined, "an absent aggregate must stay absent");
+  // ...but the distribution would now describe one of the two ratings, so the
+  // client must keep reading the chart as unavailable until the backfill runs.
+  assert.equal("scoreDistribution" in stats, false);
+});
+
+test("a pre-migration stats document keeps its absent distribution on delete", async () => {
+  const { hub, db } = domain();
+  db.store.set("anime_stats/16498", {
+    animeId: "16498",
+    title: "Attack on Titan",
+    scoreSum: 8.5,
+    ratingCount: 1,
+    averageScore: 8.5,
+  });
+  db.store.set("users/alice/anime_ratings/16498", {
+    animeId: "16498",
+    userId: "alice",
+    overall: 8.5,
+    criteria: fullCriteria,
+  });
+  await hub.deleteAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498" },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 0);
+  assert.equal("scoreDistribution" in stats, false);
+});
+
+test("a new stats document publishes a complete distribution at once", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: { animeId: "16498", criteria: fullCriteria },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  // Nothing predates this document, so every aggregate in it is already the
+  // truth and the chart can be shown immediately.
+  assert.equal(stats.scoreDistribution["9"], 1);
+  const total = Object.values(stats.scoreDistribution).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, stats.ratingCount);
+});
+
+test("a zero overall is rated but never plotted", async () => {
+  const { hub, db } = domain();
+  await hub.upsertAnimeRating({
+    auth: { uid: "alice" },
+    data: {
+      animeId: "16498",
+      criteria: { story: 0, art: 0, characters: 0, action: 0, sound: 0, enjoyment: 0 },
+    },
+  });
+  const stats = db.store.get("anime_stats/16498");
+  assert.equal(stats.ratingCount, 1);
+  const total = Object.values(stats.scoreDistribution).reduce((sum, n) => sum + n, 0);
+  assert.equal(total, 0, "1-10 has no bucket for a zero score");
+});
+
+test("getAnimeCommunityStats returns aggregates for seeded titles only", async () => {
+  const { hub, db } = domain();
+  db.store.set("anime_stats/16498", {
+    animeId: "16498",
+    title: "Attack on Titan",
+    imageUrl: "https://example.test/aot.png",
+    averageScore: 8.8,
+    ratingCount: 12,
+    scoreSum: 105.6,
+    listedCount: 4,
+    statusCounts: { completed: 2, watching: 2 },
+    scoreDistribution: { "5": 1, "9": 1, "8": 10 },
+  });
+  db.store.set("anime_stats/1535", {
+    animeId: "1535",
+    title: "Death Note",
+    averageScore: 6.0,
+    ratingCount: 1,
+  });
+
+  const result = await hub.getAnimeCommunityStats({
+    auth: { uid: "alice" },
+    data: { animeIds: ["16498", "1535", "does-not-exist", " 16498 "] },
+  });
+  assert.equal(result.stats["16498"].title, "Attack on Titan");
+  assert.equal(result.stats["16498"].averageScore, 8.8);
+  assert.equal(result.stats["16498"].ratingCount, 12);
+  assert.equal(result.stats["16498"].listedCount, 4);
+  assert.deepEqual(result.stats["16498"].statusCounts, { completed: 2, watching: 2 });
+  assert.deepEqual(result.stats["16498"].scoreDistribution, { "5": 1, "9": 1, "8": 10 });
+  assert.equal(result.stats["1535"].title, "Death Note");
+  assert.equal(result.stats["1535"].imageUrl, null);
+  assert.ok(!("does-not-exist" in result.stats), "missing titles are absent, never zero");
+});
+
+test("getAnimeCommunityStats chunks past ten ids and dedupes", async () => {
+  const { hub, db } = domain();
+  const ids = [];
+  for (let i = 1; i <= 11; i += 1) {
+    const animeId = `a${i}`;
+    ids.push(animeId);
+    db.store.set(`anime_stats/${animeId}`, {
+      animeId,
+      title: `Title ${i}`,
+      averageScore: 7.5,
+      ratingCount: 2,
+    });
+  }
+  const result = await hub.getAnimeCommunityStats({
+    auth: { uid: "alice" },
+    data: { animeIds: [...ids, "a1"] },
+  });
+  const found = Object.keys(result.stats).sort();
+  assert.equal(found.length, 11);
+  for (const animeId of ids) {
+    assert.ok(found.includes(animeId), `missing ${animeId}`);
+  }
+});
+
+test("getAnimeCommunityStats validates its input", async () => {
+  const { hub } = domain();
+  for (const payload of [
+    { animeIds: [] },
+    { animeIds: [""] },
+    { animeIds: [42] },
+    { animeIds: new Array(31).fill("x") },
+    {},
+    { animeIds: undefined },
+  ]) {
+    await assert.rejects(
+      () => hub.getAnimeCommunityStats({ auth: { uid: "alice" }, data: payload }),
+      (error) => error.code === "invalid-argument",
+      `expected invalid-argument for ${JSON.stringify(payload)}`,
+    );
+  }
+  await assert.rejects(
+    () => hub.getAnimeCommunityStats({ data: { animeIds: ["16498"] } }),
+    (error) => error.code === "unauthenticated",
+  );
 });

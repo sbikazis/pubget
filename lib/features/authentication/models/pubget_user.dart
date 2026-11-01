@@ -23,6 +23,7 @@ final class PubgetUser {
     this.sectionPrivacy = ProfileSectionPrivacy.public,
     this.totalRespect = 0,
     this.fansCount = 0,
+    this.language,
     required this.createdAt,
     required this.isProfileCompleted,
     this.hasSkippedOnboarding = false,
@@ -48,6 +49,7 @@ final class PubgetUser {
   final ProfileSectionPrivacy sectionPrivacy;
   final int totalRespect;
   final int fansCount;
+  final String? language;
   final DateTime createdAt;
   final bool isProfileCompleted;
   final bool hasSkippedOnboarding;
@@ -94,6 +96,7 @@ final class PubgetUser {
       ),
       totalRespect: _intFrom(map['totalRespect']),
       fansCount: _intFrom(map['fansCount']),
+      language: map['language'] as String?,
       createdAt: _dateFrom(map['createdAt']) ?? DateTime.now(),
       isProfileCompleted: map['isProfileCompleted'] as bool? ?? false,
       hasSkippedOnboarding: map['hasSkippedOnboarding'] as bool? ?? false,
@@ -120,6 +123,7 @@ final class PubgetUser {
       'activityVisibility': activityVisibility,
       'whoCanMessageMe': whoCanMessageMe,
       'sectionPrivacy': sectionPrivacy.toMap(),
+      'language': language,
       'createdAt': createdAt,
       'isProfileCompleted': isProfileCompleted,
       'hasSkippedOnboarding': hasSkippedOnboarding,
@@ -146,6 +150,8 @@ final class PubgetUser {
     ProfileSectionPrivacy? sectionPrivacy,
     int? totalRespect,
     int? fansCount,
+    String? language,
+    bool clearLanguage = false,
     bool? isProfileCompleted,
     bool? hasSkippedOnboarding,
   }) {
@@ -170,6 +176,7 @@ final class PubgetUser {
       sectionPrivacy: sectionPrivacy ?? this.sectionPrivacy,
       totalRespect: totalRespect ?? this.totalRespect,
       fansCount: fansCount ?? this.fansCount,
+      language: clearLanguage ? null : (language ?? this.language),
       createdAt: createdAt,
       isProfileCompleted: isProfileCompleted ?? this.isProfileCompleted,
       hasSkippedOnboarding: hasSkippedOnboarding ?? this.hasSkippedOnboarding,

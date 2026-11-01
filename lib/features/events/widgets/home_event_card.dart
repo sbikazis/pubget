@@ -537,7 +537,13 @@ class HomeEventsSection extends StatelessWidget {
   final List<PubgetEvent> events;
 
   static List<PubgetEvent> pickHome(List<PubgetEvent> input, DateTime now) {
-    final ranked = [...input]
+    // The same event can arrive from several feeds (active + upcoming + mine).
+    final seen = <String>{};
+    final unique = <PubgetEvent>[
+      for (final event in input)
+        if (seen.add(event.id)) event,
+    ];
+    final ranked = [...unique]
       ..sort((a, b) {
         int rank(PubgetEvent event) {
           if (event.status == EventStatus.active && !event.isExpired(now)) {
@@ -555,7 +561,7 @@ class HomeEventsSection extends StatelessWidget {
         final bLeft = b.remaining(now)?.inSeconds ?? 1 << 30;
         return aLeft.compareTo(bLeft);
       });
-    return ranked.take(2).toList(growable: false);
+    return ranked.take(3).toList(growable: false);
   }
 
   @override

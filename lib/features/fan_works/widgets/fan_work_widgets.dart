@@ -7,8 +7,10 @@ import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../l10n/fan_work_copy.dart';
 import '../models/fan_work_lifecycle.dart';
 import '../models/fan_work_models.dart';
+import '../models/fan_work_taxonomy.dart';
 import '../providers/fan_work_providers.dart';
 
 abstract final class FanWorkLinks {
@@ -23,7 +25,7 @@ abstract final class FanWorkLinks {
         context,
         canonical(workId),
         type: 'fanWork',
-        message: FanWorkStrings.copied,
+        message: FanWorkCopy.of(context).copied,
       );
 
   static Future<void> share(
@@ -33,7 +35,7 @@ abstract final class FanWorkLinks {
   }) => PubgetLinks.share(
     context,
     url: canonical(workId),
-    title: title ?? FanWorkStrings.share,
+    title: title ?? FanWorkCopy.of(context).share,
     type: 'fanWork',
   );
 
@@ -63,9 +65,10 @@ class FanWorkPreviewTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final copy = FanWorkCopy.of(context);
     return Semantics(
       button: true,
-      label: '${preview.title}, ${FanWorkTypeCatalog.label(preview.type)}',
+      label: '${preview.title}, ${copy.typeLabel(preview.type)}',
       child: PubgetCard(
         onTap: onTap ?? () => FanWorkLinks.open(context, preview.id),
         padding: EdgeInsets.zero,
@@ -94,14 +97,14 @@ class FanWorkPreviewTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    preview.title.isEmpty ? 'Untitled' : preview.title,
+                    preview.title.isEmpty ? copy.untitled : preview.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall,
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    FanWorkTypeCatalog.label(preview.type),
+                    copy.typeLabel(preview.type),
                     style: theme.textTheme.bodySmall,
                   ),
                   if (preview.creatorName.isNotEmpty)
@@ -127,6 +130,7 @@ class FanWorkHomeStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final feed = context.watch<FanWorkFeedProvider>();
+    final copy = FanWorkCopy.of(context);
     if (feed.state == LoadingState.initial) {
       Future<void>.microtask(feed.load);
     }
@@ -137,7 +141,7 @@ class FanWorkHomeStrip extends StatelessWidget {
         children: <Widget>[
           PubgetSectionHeader(
             title: AppStrings.of(context).sectionFanWorks,
-            actionLabel: FanWorkStrings.seeAll,
+            actionLabel: copy.seeAll,
             onAction: () => AppNavigation.go(context, '/fan-works'),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -147,9 +151,9 @@ class FanWorkHomeStrip extends StatelessWidget {
               child: PubgetSkeleton.card(width: double.infinity, height: 150),
             )
           else if (feed.items.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
-              child: Text('Fan Works will appear here after they are published.'),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: Text(copy.homeStripEmpty),
             )
           else
             SizedBox(
@@ -194,6 +198,12 @@ class FanWorkTagWrap extends StatelessWidget {
   }
 }
 
+/// The fields every creatable type shares: the one required title/name, the
+/// description (which is the character's story for [FanWorkType.character]), the
+/// closed category list, the optional creator note, tags and anime link.
+///
+/// The draft is the source of truth while editing; nothing here talks to the
+/// repository, so every keystroke stays local and cheap.
 class CommonFanWorkFields extends StatelessWidget {
   const CommonFanWorkFields({
     required this.draft,
@@ -206,13 +216,16 @@ class CommonFanWorkFields extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
+    final type = draft.type;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         PubgetTextField(
           key: const Key('fan-work-title'),
-          label: 'Title',
-          hint: 'Give this work a name',
+          label: copy.titleLabel(type),
+          hint: copy.titleHint(type),
+          maxLength: FanWorkLifecycle.titleMax,
           controller: TextEditingController(text: draft.title)
             ..selection = TextSelection.collapsed(offset: draft.title.length),
           onChanged: (value) => onChanged(draft.copyWith(title: value)),
@@ -220,8 +233,9 @@ class CommonFanWorkFields extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         PubgetTextArea(
           key: const Key('fan-work-description'),
-          label: 'Description',
-          hint: 'What is this work about?',
+          label: copy.descriptionLabel(type),
+          hint: copy.descriptionHint(type),
+          maxLength: FanWorkLifecycle.descriptionMax,
           controller: TextEditingController(text: draft.description)
             ..selection = TextSelection.collapsed(
               offset: draft.description.length,
@@ -229,33 +243,58 @@ class CommonFanWorkFields extends StatelessWidget {
           onChanged: (value) => onChanged(draft.copyWith(description: value)),
         ),
         const SizedBox(height: AppSpacing.md),
+        if (FanWorkCategories.supportsCategory(type)) ...<Widget>[
+          FanWorkCategoryPicker(
+            type: type,
+            selectedId: draft.categoryId,
+            onSelected: (id) => onChanged(draft.copyWith(categoryId: id)),
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
+        PubgetTextArea(
+          key: const Key('fan-work-creator-note'),
+          label: copy.creatorNoteLabel(type),
+          hint: copy.creatorNoteHint,
+          minLines: 2,
+          maxLines: 4,
+          maxLength: FanWorkLifecycle.creatorNoteMax,
+          controller: TextEditingController(text: draft.creatorNote)
+            ..selection = TextSelection.collapsed(
+              offset: draft.creatorNote.length,
+            ),
+          onChanged: (value) => onChanged(draft.copyWith(creatorNote: value)),
+        ),
+        const SizedBox(height: AppSpacing.md),
         PubgetTextField(
           key: const Key('fan-work-tags'),
-          label: 'Tags',
-          hint: 'demonslayer, tanjiro, drawing',
-          helperText: 'Up to 8 tags. Hashtags are normalized.',
+          label: copy.tagsLabel,
+          hint: copy.tagsHint,
+          helperText: copy.tagsHelper,
           controller: TextEditingController(text: draft.tags.join(', '))
             ..selection = TextSelection.collapsed(
               offset: draft.tags.join(', ').length,
             ),
           onChanged: (value) => onChanged(
-            draft.copyWith(tags: FanWorkLifecycle.normalizeTags(value.split(','))),
+            draft.copyWith(
+              tags: FanWorkLifecycle.normalizeTags(value.split(',')),
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.md),
         PubgetTextField(
           key: const Key('fan-work-anime-id'),
-          label: 'Related anime ID',
-          hint: 'Optional anime identifier',
+          label: copy.relatedAnimeId,
+          hint: copy.optionalAnimeIdentifier,
           controller: TextEditingController(text: draft.animeId)
             ..selection = TextSelection.collapsed(offset: draft.animeId.length),
-          onChanged: (value) => onChanged(draft.copyWith(animeId: value.trim())),
+          onChanged: (value) =>
+              onChanged(draft.copyWith(animeId: value.trim())),
         ),
         const SizedBox(height: AppSpacing.md),
         PubgetTextField(
           key: const Key('fan-work-anime-title'),
-          label: 'Related anime title',
-          hint: 'Optional display title',
+          label: copy.relatedAnimeTitle,
+          hint: copy.optionalDisplayTitle,
           controller: TextEditingController(text: draft.animeTitle)
             ..selection = TextSelection.collapsed(
               offset: draft.animeTitle.length,
@@ -268,228 +307,292 @@ class CommonFanWorkFields extends StatelessWidget {
   }
 }
 
-class MangaEditor extends StatelessWidget {
-  const MangaEditor({
-    required this.work,
-    required this.draft,
-    required this.onChanged,
-    required this.onAddPage,
+/// The closed category list for a type. It is a picker rather than a free-text
+/// field on purpose: the server rejects anything outside the list, so letting a
+/// creator type one would only produce a publish-time failure.
+class FanWorkCategoryPicker extends StatelessWidget {
+  const FanWorkCategoryPicker({
+    required this.type,
+    required this.selectedId,
+    required this.onSelected,
     super.key,
   });
 
-  final FanWork? work;
-  final FanWorkDraft draft;
-  final ValueChanged<FanWorkDraft> onChanged;
-  final VoidCallback onAddPage;
+  final FanWorkType type;
+  final String selectedId;
+  final ValueChanged<String> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final pages = work?.content.orderedPages ?? const <FanWorkPage>[];
+    final copy = FanWorkCopy.of(context);
+    final categories = FanWorkCategories.forType(type);
+    if (categories.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text('Pages', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: AppSpacing.sm),
-        for (final page in pages)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: SizedBox(
-              width: 48,
-              height: 64,
-              child: AppImageLoader(imageUrl: page.path, fit: BoxFit.cover),
-            ),
-            title: Text('Page ${page.index + 1}'),
-            subtitle: PubgetTextField(
-              hint: 'Optional caption',
-              controller: TextEditingController(text: page.caption)
-                ..selection = TextSelection.collapsed(
-                  offset: page.caption.length,
-                ),
-              onChanged: (value) {
-                final captions = Map<String, String>.from(draft.pageCaptions)
-                  ..[page.mediaId] = value;
-                onChanged(draft.copyWith(pageCaptions: captions));
-              },
-            ),
-          ),
-        PubgetSecondaryButton(
-          onPressed: onAddPage,
-          semanticLabel: 'Add manga page',
-          leadingIcon: Icons.add_photo_alternate_outlined,
-          child: const Text('Add page'),
-        ),
-      ],
-    );
-  }
-}
-
-class DrawingEditor extends StatelessWidget {
-  const DrawingEditor({
-    required this.work,
-    required this.onAddImage,
-    super.key,
-  });
-
-  final FanWork? work;
-  final VoidCallback onAddImage;
-
-  @override
-  Widget build(BuildContext context) {
-    final images = [
-      if (work?.cover != null) work!.cover!,
-      ...?work?.content.images,
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text('Images', style: Theme.of(context).textTheme.titleMedium),
+        Text(copy.category, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: AppSpacing.xs),
+        Text(copy.categoryHint, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: AppSpacing.sm),
         Wrap(
           spacing: AppSpacing.sm,
           runSpacing: AppSpacing.sm,
-          children: [
-            for (final image in images)
-              SizedBox(
-                width: 96,
-                height: 96,
-                child: AppImageLoader(imageUrl: image.path, fit: BoxFit.cover),
+          children: <Widget>[
+            for (final category in categories)
+              PubgetSelectionChip(
+                key: Key('fan-work-category-${category.id}'),
+                label: category.label(arabic: _isArabic(context)),
+                selected: category.id == selectedId,
+                onSelected: (_) => onSelected(category.id),
               ),
           ],
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        PubgetSecondaryButton(
-          onPressed: onAddImage,
-          semanticLabel: 'Add drawing image',
-          leadingIcon: Icons.add_photo_alternate_outlined,
-          child: const Text('Add image'),
         ),
       ],
     );
   }
+
+  static bool _isArabic(BuildContext context) =>
+      Localizations.localeOf(context).languageCode == 'ar';
 }
 
-class StoryEditor extends StatelessWidget {
-  const StoryEditor({
+/// A read-only slot that shows what is already attached to a work and hands the
+/// pick/replace/remove actions back to the editor screen.
+class FanWorkFileSlot extends StatelessWidget {
+  const FanWorkFileSlot({
+    required this.title,
+    required this.hint,
+    required this.emptyLabel,
+    required this.pickLabel,
+    required this.onPick,
+    this.icon = Icons.image_outlined,
+    this.secondaryIcon,
+    this.secondaryLabel = '',
+    this.onSecondary,
+    this.onRemove,
+    this.preview,
+    this.trailingLabel = '',
+    super.key,
+  });
+
+  final String title;
+  final String hint;
+  final String emptyLabel;
+  final String pickLabel;
+  final VoidCallback onPick;
+  final IconData icon;
+  final IconData? secondaryIcon;
+  final String secondaryLabel;
+  final VoidCallback? onSecondary;
+  final VoidCallback? onRemove;
+  final Widget? preview;
+  final String trailingLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return PubgetCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(icon, size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
+              if (trailingLabel.isNotEmpty)
+                Text(trailingLabel, style: theme.textTheme.labelMedium),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(hint, style: theme.textTheme.bodySmall),
+          if (preview != null) ...<Widget>[
+            const SizedBox(height: AppSpacing.md),
+            preview!,
+          ],
+          const SizedBox(height: AppSpacing.md),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: <Widget>[
+              PubgetSecondaryButton(
+                onPressed: onPick,
+                semanticLabel: pickLabel,
+                leadingIcon: icon,
+                child: Text(pickLabel),
+              ),
+              if (onSecondary != null && secondaryIcon != null)
+                PubgetSecondaryButton(
+                  onPressed: onSecondary,
+                  semanticLabel: secondaryLabel,
+                  leadingIcon: secondaryIcon,
+                  child: Text(secondaryLabel),
+                ),
+              if (onRemove != null)
+                PubgetTextButton(
+                  onPressed: onRemove,
+                  semanticLabel: FanWorkCopy.of(context).removeFile,
+                  child: Text(FanWorkCopy.of(context).removeFile),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The manga and story reading file: one PDF, replaced wholesale rather than
+/// edited page by page. Page captions do not exist in this format, so the whole
+/// pre-rebuild page editor is intentionally gone.
+class FanWorkDocumentEditor extends StatelessWidget {
+  const FanWorkDocumentEditor({
     required this.draft,
-    required this.onChanged,
+    required this.work,
+    required this.onPick,
     super.key,
   });
 
   final FanWorkDraft draft;
-  final ValueChanged<FanWorkDraft> onChanged;
+  final FanWork? work;
+  final VoidCallback onPick;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text('Chapters', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: AppSpacing.sm),
-        for (var i = 0; i < draft.chapters.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.md),
-            child: PubgetCard(
-              child: Column(
-                children: <Widget>[
-                  PubgetTextField(
-                    label: 'Chapter title',
-                    controller:
-                        TextEditingController(text: draft.chapters[i].title)
-                          ..selection = TextSelection.collapsed(
-                            offset: draft.chapters[i].title.length,
-                          ),
-                    onChanged: (value) {
-                      final chapters = [...draft.chapters];
-                      chapters[i] = chapters[i].copyWith(title: value);
-                      onChanged(draft.copyWith(chapters: chapters));
-                    },
+    final copy = FanWorkCopy.of(context);
+    final document = work?.content.document;
+    final pages = document?.pageCount ?? 0;
+    return FanWorkFileSlot(
+      key: const Key('fan-work-document-slot'),
+      title: copy.documentLabel(draft.type),
+      hint: copy.documentHint(draft.type),
+      emptyLabel: copy.choosePdf,
+      pickLabel: document == null ? copy.choosePdf : copy.replacePdf,
+      onPick: onPick,
+      icon: Icons.picture_as_pdf_outlined,
+      trailingLabel: pages > 0 ? copy.pagesCount(pages) : '',
+      preview: document == null
+          ? null
+          : Row(
+              children: <Widget>[
+                Icon(
+                  Icons.lock_outline,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    copy.documentProtectedHint,
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
-                  const SizedBox(height: AppSpacing.sm),
-                  PubgetTextArea(
-                    label: 'Chapter text',
-                    minLines: 4,
-                    maxLines: 8,
-                    controller:
-                        TextEditingController(text: draft.chapters[i].body)
-                          ..selection = TextSelection.collapsed(
-                            offset: draft.chapters[i].body.length,
-                          ),
-                    onChanged: (value) {
-                      final chapters = [...draft.chapters];
-                      chapters[i] = chapters[i].copyWith(body: value);
-                      onChanged(draft.copyWith(chapters: chapters));
-                    },
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ),
-        PubgetSecondaryButton(
-          onPressed: () {
-            final chapters = [
-              ...draft.chapters,
-              FanWorkChapter(
-                id: 'ch-${draft.chapters.length + 1}',
-                title: '',
-                body: '',
-                index: draft.chapters.length,
-              ),
-            ];
-            onChanged(draft.copyWith(chapters: chapters));
-          },
-          semanticLabel: 'Add chapter',
-          leadingIcon: Icons.add,
-          child: const Text('Add chapter'),
-        ),
-      ],
     );
   }
 }
 
-class CharacterEditor extends StatelessWidget {
-  const CharacterEditor({
+/// The single artwork of a drawing.
+class FanWorkArtworkEditor extends StatelessWidget {
+  const FanWorkArtworkEditor({
+    required this.work,
+    required this.onPick,
+    super.key,
+  });
+
+  final FanWork? work;
+  final VoidCallback onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
+    final artwork = work?.content.artwork;
+    return FanWorkFileSlot(
+      key: const Key('fan-work-artwork-slot'),
+      title: copy.artworkSlotTitle,
+      hint: copy.drawingImage,
+      emptyLabel: copy.chooseDrawing,
+      pickLabel: artwork == null ? copy.chooseDrawing : copy.replaceFile,
+      onPick: onPick,
+      icon: Icons.brush_outlined,
+      preview: artwork == null
+          ? null
+          : SizedBox(
+              height: 180,
+              child: AppImageLoader(
+                imageUrl: artwork.path,
+                fit: BoxFit.contain,
+              ),
+            ),
+    );
+  }
+}
+
+/// The portrait of a character work, plus its category-specific fields.
+class FanWorkCharacterEditor extends StatelessWidget {
+  const FanWorkCharacterEditor({
     required this.draft,
     required this.work,
     required this.onChanged,
-    required this.onAddImage,
-    this.aiAssisted = false,
+    required this.onPickPortrait,
     super.key,
   });
 
   final FanWorkDraft draft;
   final FanWork? work;
   final ValueChanged<FanWorkDraft> onChanged;
-  final VoidCallback onAddImage;
-  final bool aiAssisted;
+  final VoidCallback onPickPortrait;
 
   @override
   Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
+    final portrait = work?.content.portrait;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        if (aiAssisted) ...[
-          PubgetSelectionChip(
-            label: FanWorkStrings.aiAssisted,
-            selected: true,
-            onSelected: null,
+        if (draft.origin == FanWorkOrigin.aiGenerated) ...<Widget>[
+          Row(
+            children: <Widget>[
+              PubgetSelectionChip(
+                label: copy.originAi,
+                selected: true,
+                onSelected: null,
+              ),
+            ],
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            'This work is labeled as AI-assisted. Pubget does not generate the character in this version.',
+            copy.aiAssistedNotice,
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: AppSpacing.md),
         ],
-        PubgetTextField(
-          key: const Key('fan-work-character-name'),
-          label: 'Name',
-          controller: TextEditingController(text: draft.name)
-            ..selection = TextSelection.collapsed(offset: draft.name.length),
-          onChanged: (value) => onChanged(draft.copyWith(name: value)),
+        FanWorkFileSlot(
+          key: const Key('fan-work-portrait-slot'),
+          title: copy.portraitSlotTitle,
+          hint: copy.choosePortrait,
+          emptyLabel: copy.choosePortrait,
+          pickLabel: portrait == null ? copy.choosePortrait : copy.replaceFile,
+          onPick: onPickPortrait,
+          icon: Icons.face_outlined,
+          preview: portrait == null
+              ? null
+              : SizedBox(
+                  height: 180,
+                  child: AppImageLoader(
+                    imageUrl: portrait.path,
+                    fit: BoxFit.contain,
+                  ),
+                ),
         ),
         const SizedBox(height: AppSpacing.md),
         PubgetTextArea(
-          label: 'Personality',
+          key: const Key('fan-work-character-personality'),
+          label: copy.characterPersonality,
+          hint: copy.characterStoryHint,
+          minLines: 2,
+          maxLines: 5,
+          maxLength: FanWorkLifecycle.maxPersonality,
           controller: TextEditingController(text: draft.personality)
             ..selection = TextSelection.collapsed(
               offset: draft.personality.length,
@@ -498,7 +601,12 @@ class CharacterEditor extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         PubgetTextArea(
-          label: 'Abilities',
+          key: const Key('fan-work-character-abilities'),
+          label: copy.characterAbilities,
+          hint: copy.characterAbilitiesOptional,
+          minLines: 2,
+          maxLines: 5,
+          maxLength: FanWorkLifecycle.maxAbilities,
           controller: TextEditingController(text: draft.abilities)
             ..selection = TextSelection.collapsed(
               offset: draft.abilities.length,
@@ -507,214 +615,263 @@ class CharacterEditor extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.md),
         PubgetTextArea(
-          label: 'Background',
-          controller: TextEditingController(text: draft.background)
-            ..selection = TextSelection.collapsed(
-              offset: draft.background.length,
-            ),
-          onChanged: (value) => onChanged(draft.copyWith(background: value)),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        if (work?.content.image != null)
-          SizedBox(
-            height: 160,
-            child: AppImageLoader(
-              imageUrl: work!.content.image!.path,
-              fit: BoxFit.cover,
-            ),
-          ),
-        PubgetSecondaryButton(
-          onPressed: onAddImage,
-          semanticLabel: 'Add character image',
-          leadingIcon: Icons.add_photo_alternate_outlined,
-          child: const Text('Add image'),
+          key: const Key('fan-work-character-specs'),
+          label: copy.characterSpecs,
+          hint: copy.characterSpecsOptional,
+          minLines: 2,
+          maxLines: 5,
+          maxLength: FanWorkLifecycle.maxSpecs,
+          controller: TextEditingController(text: draft.specs)
+            ..selection = TextSelection.collapsed(offset: draft.specs.length),
+          onChanged: (value) => onChanged(draft.copyWith(specs: value)),
         ),
       ],
     );
   }
 }
 
-class WorldbuildingEditor extends StatelessWidget {
-  const WorldbuildingEditor({
-    required this.draft,
+/// The `+` sheet a manga or story creator uses to collect the characters that
+/// appear in the work: optional portrait, required name, optional bio, reorder
+/// and remove. The list is capped at [FanWorkLifecycle.maxCharacters] so the
+/// document cannot grow past what a reader will scroll.
+class FanWorkCastEditor extends StatelessWidget {
+  const FanWorkCastEditor({
+    required this.characters,
     required this.onChanged,
+    this.onEdit,
     super.key,
   });
 
-  final FanWorkDraft draft;
-  final ValueChanged<FanWorkDraft> onChanged;
+  final List<FanWorkCharacter> characters;
+  final ValueChanged<List<FanWorkCharacter>> onChanged;
+
+  /// Opens the detail sheet for one member. When null the list is
+  /// reorder/remove only, which is what a read-only viewer shows.
+  final ValueChanged<FanWorkCharacter>? onEdit;
 
   @override
   Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
+    final ordered = [...characters]..sort((a, b) => a.index.compareTo(b.index));
+    final atLimit = ordered.length >= FanWorkLifecycle.maxCharacters;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        PubgetTextArea(
-          key: const Key('fan-work-lore'),
-          label: 'Lore',
-          minLines: 6,
-          maxLines: 12,
-          controller: TextEditingController(text: draft.lore)
-            ..selection = TextSelection.collapsed(offset: draft.lore.length),
-          onChanged: (value) => onChanged(draft.copyWith(lore: value)),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                copy.cast,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            Text(
+              copy.charactersCount(ordered.length),
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+          ],
         ),
-        const SizedBox(height: AppSpacing.md),
-        _NamedEntryEditor(
-          title: 'Locations',
-          entries: draft.locations,
-          onChanged: (entries) => onChanged(draft.copyWith(locations: entries)),
-        ),
-        _NamedEntryEditor(
-          title: 'Factions',
-          entries: draft.factions,
-          onChanged: (entries) => onChanged(draft.copyWith(factions: entries)),
-        ),
-        _NamedEntryEditor(
-          title: 'Characters',
-          entries: draft.characters,
-          onChanged: (entries) =>
-              onChanged(draft.copyWith(characters: entries)),
-        ),
-      ],
-    );
-  }
-}
-
-class OtherEditor extends StatelessWidget {
-  const OtherEditor({
-    required this.draft,
-    required this.work,
-    required this.onChanged,
-    required this.onAddImage,
-    super.key,
-  });
-
-  final FanWorkDraft draft;
-  final FanWork? work;
-  final ValueChanged<FanWorkDraft> onChanged;
-  final VoidCallback onAddImage;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        PubgetTextArea(
-          label: 'Content',
-          minLines: 4,
-          maxLines: 10,
-          controller: TextEditingController(text: draft.body)
-            ..selection = TextSelection.collapsed(offset: draft.body.length),
-          onChanged: (value) => onChanged(draft.copyWith(body: value)),
-        ),
-        const SizedBox(height: AppSpacing.md),
-        DrawingEditor(work: work, onAddImage: onAddImage),
-      ],
-    );
-  }
-}
-
-class _NamedEntryEditor extends StatelessWidget {
-  const _NamedEntryEditor({
-    required this.title,
-    required this.entries,
-    required this.onChanged,
-  });
-
-  final String title;
-  final List<FanWorkNamedEntry> entries;
-  final ValueChanged<List<FanWorkNamedEntry>> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text(title, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppSpacing.sm),
-        for (var i = 0; i < entries.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: PubgetTextField(
-              label: 'Name',
-              controller: TextEditingController(text: entries[i].name)
-                ..selection = TextSelection.collapsed(
-                  offset: entries[i].name.length,
-                ),
-              onChanged: (value) {
-                final next = [...entries];
-                next[i] = FanWorkNamedEntry(
-                  name: value,
-                  description: next[i].description,
-                );
-                onChanged(next);
-              },
+        if (ordered.isEmpty)
+          Text(
+            copy.castEmptyMessage,
+            style: Theme.of(context).textTheme.bodySmall,
+          )
+        else
+          for (final entry in ordered)
+            _CastEntryTile(
+              entry: entry,
+              onEdit: onEdit == null ? null : () => onEdit!(entry),
+              canMoveUp: entry.index > 0,
+              canMoveDown: entry.index < ordered.length - 1,
+              onMoveUp: () => _reorder(entry.index, entry.index - 1),
+              onMoveDown: () => _reorder(entry.index, entry.index + 1),
+              onRemove: () => onChanged(
+                ordered.where((item) => item.id != entry.id).toList()
+                  ..sort((a, b) => a.index.compareTo(b.index)),
+              ),
             ),
+        const SizedBox(height: AppSpacing.sm),
+        if (atLimit)
+          Text(
+            copy.castLimitReached,
+            style: Theme.of(context).textTheme.bodySmall,
+          )
+        else
+          PubgetSecondaryButton(
+            key: const Key('fan-work-add-character'),
+            onPressed: () => onChanged(<FanWorkCharacter>[
+              ...ordered,
+              FanWorkCharacter(
+                id: 'char-${DateTime.now().microsecondsSinceEpoch}',
+                name: '',
+                index: ordered.length,
+              ),
+            ]),
+            semanticLabel: copy.addCharacter,
+            leadingIcon: Icons.person_add_alt_outlined,
+            child: Text(copy.addCharacter),
           ),
-        PubgetTextButton(
-          onPressed: () => onChanged([
-            ...entries,
-            const FanWorkNamedEntry(name: ''),
-          ]),
-          semanticLabel: 'Add $title item',
-          child: Text('Add $title'),
-        ),
-        const SizedBox(height: AppSpacing.md),
       ],
+    );
+  }
+
+  void _reorder(int from, int to) {
+    final next = [...characters]..sort((a, b) => a.index.compareTo(b.index));
+    if (to < 0 || to >= next.length) return;
+    final moved = next.removeAt(from);
+    next.insert(to, moved);
+    onChanged(<FanWorkCharacter>[
+      for (var i = 0; i < next.length; i++) next[i].copyWith(index: i),
+    ]);
+  }
+}
+
+class _CastEntryTile extends StatelessWidget {
+  const _CastEntryTile({
+    required this.entry,
+    required this.canMoveUp,
+    required this.canMoveDown,
+    required this.onMoveUp,
+    required this.onMoveDown,
+    required this.onRemove,
+    this.onEdit,
+  });
+
+  final FanWorkCharacter entry;
+  final VoidCallback? onEdit;
+  final bool canMoveUp;
+  final bool canMoveDown;
+  final VoidCallback onMoveUp;
+  final VoidCallback onMoveDown;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = FanWorkCopy.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppSpacing.md),
+        onTap: onEdit,
+        child: PubgetCard(
+          child: Row(
+            children: <Widget>[
+              if (entry.hasImage)
+                SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: AppImageLoader(
+                    imageUrl: entry.imagePath,
+                    fit: BoxFit.cover,
+                  ),
+                )
+              else
+                Icon(
+                  Icons.person_outline,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      entry.name.isEmpty ? copy.characterName : entry.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    if (entry.bio.isNotEmpty)
+                      Text(
+                        entry.bio,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: copy.moveUp,
+                onPressed: canMoveUp ? onMoveUp : null,
+                icon: const Icon(Icons.arrow_upward),
+              ),
+              IconButton(
+                tooltip: copy.moveDown,
+                onPressed: canMoveDown ? onMoveDown : null,
+                icon: const Icon(Icons.arrow_downward),
+              ),
+              IconButton(
+                tooltip: copy.removeCharacter,
+                onPressed: onRemove,
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
-class TypeSpecificEditor extends StatelessWidget {
-  const TypeSpecificEditor({
+/// Dispatches to the editor for the four creatable types.
+///
+/// The two legacy-only types are absent on purpose: they are read-only now, so
+/// the editor can never be asked to produce one.
+class FanWorkTypeEditor extends StatelessWidget {
+  const FanWorkTypeEditor({
     required this.draft,
     required this.work,
     required this.onChanged,
-    required this.onAddImage,
-    required this.onAddPage,
+    required this.onPickDocument,
+    required this.onPickArtwork,
+    required this.onPickPortrait,
+    this.onEditCharacter,
     super.key,
   });
 
   final FanWorkDraft draft;
   final FanWork? work;
   final ValueChanged<FanWorkDraft> onChanged;
-  final VoidCallback onAddImage;
-  final VoidCallback onAddPage;
+  final VoidCallback onPickDocument;
+  final VoidCallback onPickArtwork;
+  final VoidCallback onPickPortrait;
+  final ValueChanged<FanWorkCharacter>? onEditCharacter;
 
   @override
   Widget build(BuildContext context) {
     return switch (draft.type) {
-      FanWorkType.manga => MangaEditor(
+      FanWorkType.manga || FanWorkType.story => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          FanWorkDocumentEditor(
+            draft: draft,
+            work: work,
+            onPick: onPickDocument,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          FanWorkCastEditor(
+            characters: draft.characters,
+            onChanged: (characters) =>
+                onChanged(draft.copyWith(characters: characters)),
+            onEdit: onEditCharacter,
+          ),
+        ],
+      ),
+      FanWorkType.drawing => FanWorkArtworkEditor(
         work: work,
-        draft: draft,
-        onChanged: onChanged,
-        onAddPage: onAddPage,
+        onPick: onPickArtwork,
       ),
-      FanWorkType.drawing => DrawingEditor(work: work, onAddImage: onAddImage),
-      FanWorkType.story => StoryEditor(draft: draft, onChanged: onChanged),
-      FanWorkType.character => CharacterEditor(
-        draft: draft,
-        work: work,
-        onChanged: onChanged,
-        onAddImage: onAddImage,
-      ),
-      FanWorkType.aiCharacter => CharacterEditor(
-        draft: draft,
-        work: work,
-        onChanged: onChanged,
-        onAddImage: onAddImage,
-        aiAssisted: true,
-      ),
-      FanWorkType.worldbuilding => WorldbuildingEditor(
-        draft: draft,
-        onChanged: onChanged,
-      ),
-      FanWorkType.other => OtherEditor(
+      FanWorkType.character => FanWorkCharacterEditor(
         draft: draft,
         work: work,
         onChanged: onChanged,
-        onAddImage: onAddImage,
+        onPickPortrait: onPickPortrait,
       ),
+      // Read-only types: render nothing rather than an editor that could not
+      // save. An edit screen is only ever opened for a creatable type.
+      FanWorkType.worldbuilding || FanWorkType.other => const SizedBox.shrink(),
     };
   }
 }

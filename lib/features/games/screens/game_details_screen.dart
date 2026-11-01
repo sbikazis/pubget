@@ -6,6 +6,8 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../groups/providers/group_provider.dart';
+import '../../mafia/screens/mafia_game_screen.dart';
+import '../l10n/game_copy.dart';
 import '../models/game_models.dart';
 import '../models/game_type_registry.dart';
 import '../providers/game_providers.dart';
@@ -50,6 +52,7 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<GameProvider>();
+    final copy = GameCopy.of(context);
     final game = state.game;
     if (game != null) _maybeLoadGroup(game);
     final uid = context.watch<AuthProvider>().currentUser?.id;
@@ -59,22 +62,22 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
         game != null &&
         (game.creatorId == uid ||
             context.watch<GroupProvider>().membership?.canManageGames == true);
+    if (game != null && game.type == GameType.mafia) {
+      return MafiaGameScreen(gameId: widget.gameId);
+    }
     return Scaffold(
       appBar: AppBar(
         leading: AppBackButton.maybeOf(context),
-        title: Text(game?.title ?? 'Game'),
+        title: Text(game?.title ?? copy.gameTitleFallback),
         actions: [
           IconButton(
-            tooltip: GameStrings.share,
-            onPressed: () => GameLinks.share(
-              context,
-              widget.gameId,
-              title: game?.title,
-            ),
+            tooltip: copy.share,
+            onPressed: () =>
+                GameLinks.share(context, widget.gameId, title: game?.title),
             icon: const Icon(Icons.share_outlined),
           ),
           IconButton(
-            tooltip: GameStrings.copyLink,
+            tooltip: copy.copyLink,
             onPressed: () => GameLinks.copy(context, widget.gameId),
             icon: const Icon(Icons.copy_outlined),
           ),
@@ -82,26 +85,20 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
       ),
       body: PubgetLoadingStateView(
         state: state.state,
-        onRetry: () => context.read<GameProvider>().open(
-          widget.gameId,
-          userId: uid,
-        ),
-        empty: const PubgetEmptyState(
-          title: GameStrings.missing,
-          message: GameStrings.missing,
+        onRetry: () =>
+            context.read<GameProvider>().open(widget.gameId, userId: uid),
+        empty: PubgetEmptyState(
+          title: copy.missing,
+          message: copy.missing,
         ),
         error: GameErrorState(
           message: state.failure?.message,
-          onRetry: () => context.read<GameProvider>().open(
-            widget.gameId,
-            userId: uid,
-          ),
+          onRetry: () =>
+              context.read<GameProvider>().open(widget.gameId, userId: uid),
         ),
         offline: PubgetOfflineState(
-          onRetry: () => context.read<GameProvider>().open(
-            widget.gameId,
-            userId: uid,
-          ),
+          onRetry: () =>
+              context.read<GameProvider>().open(widget.gameId, userId: uid),
         ),
         child: game == null
             ? const SizedBox.shrink()
@@ -110,16 +107,28 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
                 children: <Widget>[
                   GameHeader(game: game),
                   const SizedBox(height: AppSpacing.sm),
-                  if (spec != null)
+                  if (spec != null) ...[
+                    Text(_infoLine(context, game, spec)),
+                    const SizedBox(height: AppSpacing.xs),
+                    // The Game Center has to show each game's duration,
+                    // difficulty, win condition, and type.
                     Text(
-                      '${spec.name} · ${game.participantsCount}/${game.configuration.maxPlayers} players'
-                      ' · ${game.configuration.timerSeconds}s'
-                      '${game.configuration.usesRounds ? ' · ${game.configuration.roundCount} rounds' : ''}',
+                      '${copy.difficultyTitle}: '
+                      '${copy.difficulty(game.configuration.difficulty)}'
+                      ' · ${copy.winCondition}: ${copy.winConditionFor(spec.type)}',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
+                  ],
+                  if (game.status == GameStatus.waiting &&
+                      game.waitingDeadlineAt != null) ...[
+                    const SizedBox(height: AppSpacing.xs),
+                    WaitingRoomCountdown(deadline: game.waitingDeadlineAt!),
+                  ],
                   const SizedBox(height: AppSpacing.md),
                   ParticipantList(participants: state.participants),
                   const SizedBox(height: AppSpacing.md),
-                  if (uid != null) ..._lobbyActions(context, game, uid, canManage),
+                  if (uid != null)
+                    ..._lobbyActions(context, game, uid, canManage),
                   if (uid != null && (game.isPlayable || game.isTerminal))
                     GamePlayArea(game: game, userId: uid),
                   if (state.failure != null)
@@ -133,6 +142,18 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
     );
   }
 
+  /// Spec 12.1: type · players · duration · timer/rounds on one line.
+  String _infoLine(BuildContext context, PubgetGame game, GameTypeSpec spec) {
+    final copy = GameCopy.of(context);
+    final caps = spec.capabilities;
+    final players = game.configuration.maxPlayers == caps.minPlayers
+        ? copy.playerCount(game.participantsCount)
+        : copy.playerCountOf(game.participantsCount, game.configuration.maxPlayers);
+    return '$players · ${copy.durationMinutes(spec.durationMinutes)}'
+        ' · ${copy.timerSeconds(game.configuration.timerSeconds)}'
+        '${game.configuration.usesRounds ? ' · ${copy.roundCount(game.configuration.roundCount)}' : ''}';
+  }
+
   List<Widget> _lobbyActions(
     BuildContext context,
     PubgetGame game,
@@ -140,48 +161,46 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
     bool canManage,
   ) {
     final provider = context.read<GameProvider>();
+    final copy = GameCopy.of(context);
     final joined = provider.isParticipant(uid);
     final spec = GameTypeRegistry.of(game.type);
     final widgets = <Widget>[];
     if (game.isJoinable && !joined) {
       widgets.add(
         PubgetPrimaryButton(
-          onPressed: provider.busy
-              ? null
-              : () => provider.join(widget.gameId),
-          semanticLabel: GameStrings.join,
-          child: const Text(GameStrings.join),
+          onPressed: provider.busy ? null : () => provider.join(widget.gameId),
+          semanticLabel: copy.join,
+          child: Text(copy.join),
         ),
       );
     }
     if (game.isJoinable && joined && game.creatorId != uid) {
       widgets.add(
         PubgetSecondaryButton(
-          onPressed: provider.busy
-              ? null
-              : () => provider.leave(widget.gameId),
-          semanticLabel: GameStrings.leave,
-          child: const Text(GameStrings.leave),
+          onPressed: provider.busy ? null : () => provider.leave(widget.gameId),
+          semanticLabel: copy.leave,
+          child: Text(copy.leave),
         ),
       );
     }
     if (canManage && game.status == GameStatus.waiting) {
-      final canStart =
-          game.participantsCount >= game.configuration.minPlayers;
+      final canStart = game.participantsCount >= game.configuration.minPlayers;
       widgets.add(
         PubgetPrimaryButton(
           onPressed: provider.busy || !canStart
               ? null
               : () => provider.start(widget.gameId),
-          semanticLabel: GameStrings.start,
-          child: const Text(GameStrings.start),
+          semanticLabel: copy.start,
+          child: Text(copy.start),
         ),
       );
       if (!canStart) {
         widgets.add(
           Text(
-            'Need ${spec.capabilities.minPlayers} players to start. '
-            '${game.participantsCount} joined.',
+            copy.needPlayersToStartCount(
+              spec.capabilities.minPlayers,
+              game.participantsCount,
+            ),
           ),
         );
       }
@@ -195,18 +214,16 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
                   final confirmed = await showDialog<bool>(
                     context: context,
                     builder: (context) => AlertDialog(
-                      title: const Text('Cancel this game?'),
-                      content: const Text(
-                        'Players will be returned to the lobby list. This cannot be undone.',
-                      ),
+                      title: Text(copy.cancelTitle),
+                      content: Text(copy.cancelBody),
                       actions: <Widget>[
                         TextButton(
                           onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Keep playing'),
+                          child: Text(copy.keepPlaying),
                         ),
                         TextButton(
                           onPressed: () => Navigator.pop(context, true),
-                          child: const Text(GameStrings.cancel),
+                          child: Text(copy.cancel),
                         ),
                       ],
                     ),
@@ -215,8 +232,8 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
                     await provider.cancel(widget.gameId);
                   }
                 },
-          semanticLabel: GameStrings.cancel,
-          child: const Text(GameStrings.cancel),
+          semanticLabel: copy.cancel,
+          child: Text(copy.cancel),
         ),
       );
     }

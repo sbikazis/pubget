@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   MAX_DURATION_MS,
+  MIN_DURATION_MS,
   TEMPLATES,
   applyTally,
   assertDuration,
@@ -55,11 +56,19 @@ function createFakeDb(seed = {}) {
     doc(id) {
       const resolvedId = id || `auto-${store.size + 1}`;
       const resolvedPath = `${base}/${resolvedId}`;
-      return {
+      const docRef = {
         path: resolvedPath,
         id: resolvedId,
         collection(name) {
           return makeCollection(`${resolvedPath}/${name}`);
+        },
+        async get() {
+          const data = store.get(resolvedPath);
+          return {
+            exists: data !== undefined,
+            ref: docRef,
+            data: () => (data === undefined ? undefined : clone(data)),
+          };
         },
         async set(data) {
           store.set(resolvedPath, clone(data));
@@ -68,6 +77,7 @@ function createFakeDb(seed = {}) {
           store.set(resolvedPath, applyUpdate(store.get(resolvedPath) || {}, data));
         },
       };
+      return docRef;
     },
     where(field, op, value) {
       return query(base, [{ field, op, value }]);
@@ -199,35 +209,85 @@ function recordingBuilder() {
   };
 }
 
-test("poll configuration requires two to ten options", () => {
-  assert.equal(validateConfiguration("poll", { question: "Q", options: ["A"] }), null);
-  const ok = validateConfiguration("poll", { question: "Best opening?", options: ["A", "B"] });
+test("poll configuration requires two to seven options, each with an image", () => {
+  const opt = (index, withImage = true) => ({
+    label: `O${index}`,
+    imageUrl: withImage ? `https://img.example/${index}.png` : "",
+  });
+  assert.equal(
+    validateConfiguration("poll", { question: "Q", options: [opt(1)] }),
+    null,
+  );
+  assert.equal(
+    validateConfiguration(
+      "poll",
+      { question: "Q", options: Array.from({ length: 8 }, (_, index) => opt(index)) },
+    ),
+    null,
+  );
+  assert.equal(
+    validateConfiguration("poll", { question: "Q", options: [opt(1, false), opt(2)] }),
+    null,
+  );
+  const ok = validateConfiguration(
+    "poll",
+    { question: "Best opening?", options: [opt(1), opt(2)] },
+  );
   assert.equal(ok.options.length, 2);
+  assert.equal(ok.options[0].imageUrl, "https://img.example/1.png");
 });
 
-test("quiz responses must answer every question", () => {
+test("quiz responses accept partial answers (missing counts as wrong) and validate chosen options", () => {
   const config = validateConfiguration("quiz", {
     questions: [{
       prompt: "Who wins?",
-      options: ["A", "B"],
+      options: ["A", "B", "C"],
       correctIndex: 0,
     }],
   });
-  assert.equal(validateResponse("quiz", config, { answers: {} }), null);
-  const valid = validateResponse("quiz", config, { answers: { "q-1": "opt-1" } });
-  assert.equal(valid.answers["q-1"], "opt-1");
+  const empty = validateResponse("quiz", config, { answers: {} });
+  assert.deepEqual(empty.answers, {});
+  const partial = validateResponse("quiz", config, { answers: { "q-1": "opt-2" } });
+  assert.equal(partial.answers["q-1"], "opt-2");
+  assert.equal(
+    validateResponse("quiz", config, { answers: { "q-1": "not-an-option" } }),
+    null,
+  );
 });
 
-test("duration rejects inverted and over-long windows", () => {
+test("quiz questions accept bounded per-question seconds timers", () => {
+  const config = validateConfiguration("quiz", {
+    questions: [
+      { prompt: "Q1", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], correctIndex: 0, seconds: 30 },
+      { prompt: "Q2", options: ["A", "B", "C"], correctIndex: 1, seconds: 0 },
+    ],
+  });
+  assert.equal(config.questions[0].seconds, 30);
+  assert.equal(config.questions[1].seconds, 0);
+  const bad = validateConfiguration("quiz", {
+    questions: [
+      { prompt: "Q1", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], correctIndex: 0, seconds: 4 },
+    ],
+  });
+  assert.equal(bad, null);
+});
+
+test("duration rejects inverted, too-short, and over-long windows", () => {
   const start = new Date("2026-09-01T00:00:00Z");
   assert.throws(
     () => assertDuration(start, new Date("2026-08-31T00:00:00Z"), TestHttpsError),
     (error) => error.code === "invalid-argument",
   );
   assert.throws(
+    () => assertDuration(start, new Date(start.getTime() + MIN_DURATION_MS - 1), TestHttpsError),
+    (error) => error.code === "invalid-argument",
+  );
+  assert.throws(
     () => assertDuration(start, new Date(start.getTime() + MAX_DURATION_MS + 1), TestHttpsError),
     (error) => error.code === "invalid-argument",
   );
+  const min = assertDuration(start, new Date(start.getTime() + MIN_DURATION_MS), TestHttpsError);
+  assert.equal(min.end.getTime() - min.start.getTime(), MIN_DURATION_MS);
   const exact = assertDuration(start, new Date(start.getTime() + MAX_DURATION_MS), TestHttpsError);
   assert.equal(exact.end.getTime() - exact.start.getTime(), MAX_DURATION_MS);
 });
@@ -242,7 +302,7 @@ test("illegal lifecycle transitions are rejected", () => {
 });
 
 test("poll results are deterministic from tallies", () => {
-  const config = validateConfiguration("poll", { question: "Q", options: ["A", "B"] });
+  const config = validateConfiguration("poll", { question: "Q", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }] });
   let tally = emptyTally(config, "poll");
   tally = applyTally(tally, "poll", config, { optionIds: ["opt-1"] });
   tally = applyTally(tally, "poll", config, { optionIds: ["opt-1"] });
@@ -250,6 +310,42 @@ test("poll results are deterministic from tallies", () => {
   const result = calculateResult({ type: "poll", configuration: config, tally });
   assert.deepEqual(result.winnerIds, ["opt-1"]);
   assert.equal(result.votes["opt-1"], 2);
+});
+
+test("ranking results use aggregate score with configuration-order ties", () => {
+  const config = validateConfiguration("ranking", {
+    question: "Rank",
+    options: ["A", "B", "C"],
+  });
+  const result = calculateResult({
+    type: "ranking",
+    configuration: config,
+    tally: {
+      submissions: 4,
+      scores: { "opt-3": 5, "opt-1": 8, "opt-2": 8 },
+    },
+  });
+  assert.deepEqual(result.orderedOptionIds, ["opt-1", "opt-2", "opt-3"]);
+  assert.deepEqual(result.winnerIds, ["opt-1", "opt-2"]);
+});
+
+test("ranking response requires every option exactly once", () => {
+  const config = validateConfiguration("ranking", {
+    question: "Rank",
+    options: ["A", "B", "C"],
+  });
+  assert.deepEqual(
+    validateResponse("ranking", config, { rankedIds: ["opt-2", "opt-1", "opt-3"] }),
+    { rankedIds: ["opt-2", "opt-1", "opt-3"] },
+  );
+  assert.equal(
+    validateResponse("ranking", config, { rankedIds: ["opt-1", "opt-1", "opt-3"] }),
+    null,
+  );
+  assert.equal(
+    validateResponse("ranking", config, { rankedIds: ["opt-1", "opt-2"] }),
+    null,
+  );
 });
 
 test("event templates map to real event types", () => {
@@ -260,7 +356,7 @@ test("event templates map to real event types", () => {
 test("unauthenticated event mutations are rejected", async () => {
   const chat = handlers(createFakeDb());
   await assert.rejects(
-    chat.saveEventDraft({ data: { type: "poll", title: "Q", options: ["A", "B"], groupId: "g1" } }),
+    chat.saveEventDraft({ data: { type: "poll", title: "Q", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], groupId: "g1" } }),
     (error) => error.code === "unauthenticated",
   );
 });
@@ -270,7 +366,7 @@ test("plain members can create and publish their own event", async () => {
   const events = handlers(db);
   const draft = await events.saveEventDraft({
     auth: { uid: "bob" },
-    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], question: "Q" },
   });
   assert.ok(draft.eventId);
   const start = new Date(Date.now() - 1000);
@@ -292,7 +388,7 @@ test("founder can draft, publish, and members can submit once", async () => {
       title: "Best opening",
       groupId: "g1",
       question: "Best opening?",
-      options: ["One", "Two"],
+      options: [{ label: "One", imageUrl: "https://img.example/1.png" }, { label: "Two", imageUrl: "https://img.example/2.png" }],
     },
   });
   const start = new Date(Date.now() - 1000);
@@ -354,7 +450,7 @@ test("responses after ending are rejected", async () => {
       title: "Q",
       groupId: "g1",
       question: "Q?",
-      options: ["A", "B"],
+      options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }],
     },
   });
   await events.publishEvent({
@@ -390,7 +486,7 @@ test("non-members cannot submit or join", async () => {
       title: "Q",
       groupId: "g1",
       question: "Q?",
-      options: ["A", "B"],
+      options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }],
     },
   });
   await events.publishEvent({
@@ -428,7 +524,7 @@ test("active events past endAt reject responses", async () => {
       title: "Q",
       groupId: "g1",
       question: "Q?",
-      options: ["A", "B"],
+      options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }],
     },
   });
   await events.publishEvent({
@@ -495,7 +591,7 @@ test("publish is idempotent for an already active event", async () => {
       title: "Q",
       groupId: "g1",
       question: "Q?",
-      options: ["A", "B"],
+      options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }],
     },
   });
   const payload = {
@@ -519,8 +615,8 @@ test("allowUpdate decrements the previous tally before applying the new one", as
       title: "Q",
       groupId: "g1",
       question: "Q?",
-      options: ["A", "B"],
-      configuration: { allowUpdate: true, question: "Q?", options: ["A", "B"] },
+      options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }],
+      configuration: { allowUpdate: true, question: "Q?", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }] },
     },
   });
   await events.publishEvent({
@@ -557,7 +653,7 @@ test("event start notifies group members, not only the creator", async () => {
       title: "Live vote",
       groupId: "g1",
       question: "Q?",
-      options: ["A", "B"],
+      options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }],
     },
   });
   await events.publishEvent({
@@ -603,16 +699,21 @@ test("event end notifies participants who joined", async () => {
   const recorder = recordingBuilder();
   const events = handlers(db, recorder);
   await events.processEventLifecycle();
-  const ended = recorder.sent.find((item) => item.type === "event_ended");
+  const ended = recorder.sent.find(
+    (item) => item.type === "event_result_available",
+  );
   assert.ok(ended);
   assert.ok(ended.recipientIds.includes("bob"));
   assert.ok(ended.recipientIds.includes("alice"));
   assert.equal(ended.recipientIds.includes("gone"), false);
-  assert.equal(ended.pushWorthy, false);
+  assert.equal(ended.pushWorthy, true);
   assert.equal(ended.destination, "/event/old");
   assert.equal(ended.id, "event-end-old");
   await events.processEventLifecycle();
-  assert.equal(recorder.sent.filter((item) => item.type === "event_ended").length, 1);
+  assert.equal(
+    recorder.sent.filter((item) => item.type === "event_result_available").length,
+    1,
+  );
 });
 
 async function publishPoll(events, { allowUpdate = false, extraOptions } = {}) {
@@ -623,11 +724,11 @@ async function publishPoll(events, { allowUpdate = false, extraOptions } = {}) {
       title: "Q",
       groupId: "g1",
       question: "Q?",
-      options: extraOptions || ["A", "B"],
+      options: extraOptions || [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }],
       configuration: {
         allowUpdate,
         question: "Q?",
-        options: extraOptions || ["A", "B"],
+        options: extraOptions || [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }],
       },
     },
   });
@@ -731,7 +832,7 @@ test("captain default role can create an event", async () => {
   const events = handlers(db);
   const draft = await events.saveEventDraft({
     auth: { uid: "alice" },
-    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], question: "Q" },
   });
   assert.ok(draft.eventId);
 });
@@ -746,7 +847,7 @@ test("custom role with manageEvents can create an event", async () => {
   const events = handlers(db);
   const draft = await events.saveEventDraft({
     auth: { uid: "bob" },
-    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], question: "Q" },
   });
   assert.ok(draft.eventId);
 });
@@ -761,7 +862,7 @@ test("custom role without manageEvents can still create as a member", async () =
   const events = handlers(db);
   const draft = await events.saveEventDraft({
     auth: { uid: "alice" },
-    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], question: "Q" },
   });
   assert.ok(draft.eventId);
 });
@@ -772,7 +873,7 @@ test("non-members cannot create an event", async () => {
   await assert.rejects(
     events.saveEventDraft({
       auth: { uid: "charlie" },
-      data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+      data: { type: "poll", title: "Vote", groupId: "g1", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], question: "Q" },
     }),
     (error) => error.code === "permission-denied",
   );
@@ -785,7 +886,7 @@ test("founder can create even when the role document has no permissions", async 
   const events = handlers(db);
   const draft = await events.saveEventDraft({
     auth: { uid: "alice" },
-    data: { type: "poll", title: "Vote", groupId: "g1", options: ["A", "B"], question: "Q" },
+    data: { type: "poll", title: "Vote", groupId: "g1", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], question: "Q" },
   });
   assert.ok(draft.eventId);
 });
@@ -793,7 +894,7 @@ test("founder can create even when the role document has no permissions", async 
 test("quiz configuration accepts multiple ordered questions", () => {
   const config = validateConfiguration("quiz", {
     questions: [
-      { id: "q-a", prompt: "First?", options: ["A", "B"], correctIndex: 0 },
+      { id: "q-a", prompt: "First?", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], correctIndex: 0 },
       { id: "q-b", prompt: "Second?", options: ["C", "D", "E"], correctOptionId: "opt-2" },
     ],
   });
@@ -801,6 +902,48 @@ test("quiz configuration accepts multiple ordered questions", () => {
   assert.equal(config.questions[0].id, "q-a");
   assert.equal(config.questions[1].correctOptionId, "opt-2");
   assert.equal(config.allowUpdate, false);
+});
+
+test("quiz tracks a per-user scoreboard and ranks in the result", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: { "groups/g1/members/charlie": { role: "member", userId: "charlie" } },
+  }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "quiz",
+      title: "Knowledge check",
+      groupId: "g1",
+      questions: [
+        { prompt: "First", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], correctIndex: 0 },
+        { prompt: "Second", options: ["C", "D"], correctIndex: 1 },
+      ],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { answers: { "q-1": "opt-1", "q-2": "opt-2" } } },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "charlie" },
+    data: { eventId: draft.eventId, responseData: { answers: { "q-1": "opt-2", "q-2": "opt-1" } } },
+  });
+  const stored = db.store.get(`events/${draft.eventId}`);
+  assert.equal(stored.tally.scoreboard.bob, 2);
+  assert.equal(stored.tally.scoreboard.charlie, 0);
+  const ended = await events.endEvent({ auth: { uid: "alice" }, data: { eventId: draft.eventId } });
+  assert.equal(ended.result.kind, "quiz");
+  assert.deepEqual(ended.result.leaderboard, { bob: 2, charlie: 0 });
+  assert.deepEqual(ended.result.correctCounts, { "q-1": 1, "q-2": 1 });
 });
 
 test("character comparison requires catalog IDs and rejects duplicates", () => {
@@ -1020,4 +1163,628 @@ test("wrong user, expired challenge, and self-report stay honest", async () => {
     }),
     (error) => error.code === "failed-precondition",
   );
+});
+
+test("resolveEvent locks a prediction with the creator's winner option", async () => {
+  const db = createFakeDb(seedGroup());
+  const recorder = recordingBuilder();
+  const events = handlers(db, recorder);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "prediction",
+      title: "Who reaches the finals?",
+      groupId: "g1",
+      question: "Who wins?",
+      options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { optionId: "opt-2" } },
+  });
+  const outcome = await events.resolveEvent({
+    auth: { uid: "alice" },
+    data: { eventId: draft.eventId, winnerOptionId: "opt-2" },
+  });
+  assert.equal(outcome.status, "ENDED");
+  const stored = db.store.get(`events/${draft.eventId}`);
+  assert.equal(stored.status, "ended");
+  assert.equal(stored.result.winnerOptionId, "opt-2");
+  assert.deepEqual(stored.result.winnerIds, ["bob"]);
+  assert.ok(stored.resultLockedAt);
+  assert.equal(stored.resolvedBy, "alice");
+  const card = recorder.sent.find((item) => item.type === "event_result_available");
+  assert.ok(card);
+  assert.ok(card.recipientIds.includes("bob"));
+});
+
+test("resolveEvent rejects invalid winners and non-creators", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "challenge",
+      title: "Best fan art",
+      groupId: "g1",
+      prompt: "Submit your fan art.",
+      challengeKind: "self_report",
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { text: "Artwork" } },
+  });
+  await assert.rejects(
+    events.resolveEvent({
+      auth: { uid: "charlie" },
+      data: { eventId: draft.eventId, winnerIds: ["bob"] },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+  await assert.rejects(
+    events.resolveEvent({
+      auth: { uid: "alice" },
+      data: { eventId: draft.eventId, winnerIds: ["ghost"] },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  const outcome = await events.resolveEvent({
+    auth: { uid: "alice" },
+    data: { eventId: draft.eventId, winnerIds: ["bob"] },
+  });
+  assert.equal(outcome.status, "ENDED");
+  const stored = db.store.get(`events/${draft.eventId}`);
+  assert.deepEqual(stored.result.winnerIds, ["bob"]);
+  await assert.rejects(
+    events.resolveEvent({
+      auth: { uid: "alice" },
+      data: { eventId: draft.eventId, winnerIds: ["bob"] },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+});
+
+test("theory accepts stance responses and tallies agree/disagree", async () => {
+  const config = validateConfiguration("theory", {
+    prompt: "Gear 5 reveal?",
+    body: "Luffy deserves this form.",
+    anime: { animeId: "one_piece", title: "One Piece", imageUrl: "https://img.example/one-piece.png" },
+  });
+  assert.equal(config.prompt, "Gear 5 reveal?");
+  assert.equal(config.anime.animeId, "one_piece");
+  assert.deepEqual(
+    validateResponse("theory", config, { stance: "agree" }),
+    { stance: "agree" },
+  );
+  assert.deepEqual(
+    validateResponse("theory", config, { stance: "disagree", text: "Let us debate." }),
+    { stance: "disagree", text: "Let us debate." },
+  );
+  assert.equal(validateResponse("theory", config, { text: "no stance" }), null);
+  assert.equal(validateResponse("theory", config, { stance: "maybe" }), null);
+  const db = createFakeDb(seedGroup({
+    extra: {
+      "users/carol": { username: "Carol" },
+      "groups/g1/members/carol": { role: "member", userId: "carol" },
+    },
+  }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "theory",
+      title: "Gear 5",
+      description: "The form is the peak of Luffy's arc.",
+      groupId: "g1",
+      prompt: "Should Gear 5 be permanent?",
+    },
+  });
+  const start = new Date(Date.now() - 1000);
+  const end = new Date(Date.now() + 60 * 60 * 1000);
+  const published = await events.publishEvent({
+    auth: { uid: "alice" },
+    data: { eventId: draft.eventId, startAt: start.toISOString(), endAt: end.toISOString() },
+  });
+  assert.equal(published.status, "active");
+  await events.submitEventResponse({
+    auth: { uid: "bob" },
+    data: { eventId: draft.eventId, responseData: { stance: "agree" } },
+  });
+  await events.submitEventResponse({
+    auth: { uid: "carol" },
+    data: { eventId: draft.eventId, responseData: { stance: "disagree" } },
+  });
+  const stored = db.store.get(`events/${draft.eventId}`);
+  assert.equal(stored.tally.submissions, 2);
+  assert.equal(stored.tally.stances.agree, 1);
+  assert.equal(stored.tally.stances.disagree, 1);
+  const ended = await events.endEvent({ auth: { uid: "alice" }, data: { eventId: draft.eventId } });
+  assert.equal(ended.result.kind, "theory");
+  assert.deepEqual(ended.result.stances, { agree: 1, disagree: 1 });
+});
+
+test("theory requires body text before publishing", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: { type: "theory", title: "Empty body", groupId: "g1" },
+  });
+  await assert.rejects(
+    events.publishEvent({
+      auth: { uid: "alice" },
+      data: {
+        eventId: draft.eventId,
+        startAt: new Date(Date.now() - 1000).toISOString(),
+        endAt: new Date(Date.now() + 3600000).toISOString(),
+      },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});
+
+test("theory without an anime still validates", () => {
+  const config = validateConfiguration("theory", { prompt: "Theory?" });
+  assert.equal(config.prompt, "Theory?");
+  assert.equal(config.anime, null);
+  const bad = validateConfiguration("theory", {
+    prompt: "T",
+    anime: { animeId: "one_piece", title: "" },
+  });
+  assert.equal(bad, null);
+});
+
+test("saveEventDraft rejects poll options without images", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  await assert.rejects(
+    events.saveEventDraft({
+      auth: { uid: "alice" },
+      data: {
+        type: "poll",
+        title: "No images",
+        groupId: "g1",
+        question: "Q?",
+        options: [{ label: "A", imageUrl: "" }, { label: "B", imageUrl: "" }],
+      },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});
+
+test("reactToEvent tracks like/dislike counts and toggles off", async () => {
+  const db = createFakeDb(seedGroup({
+    extra: {
+      "users/carol": { username: "Carol" },
+      "groups/g1/members/carol": { role: "member", userId: "carol" },
+    },
+  }));
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      title: "Like this",
+      groupId: "g1",
+      question: "Q?",
+      options: [
+        { label: "A", imageUrl: "https://img.example/1.png" },
+        { label: "B", imageUrl: "https://img.example/2.png" },
+      ],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  await events.reactToEvent({ auth: { uid: "bob" }, data: { eventId: draft.eventId, reaction: "like" } });
+  await events.reactToEvent({ auth: { uid: "carol" }, data: { eventId: draft.eventId, reaction: "dislike" } });
+  let stored = db.store.get(`events/${draft.eventId}`);
+  assert.deepEqual(stored.reactionCounts, { like: 1, dislike: 1 });
+  await events.reactToEvent({ auth: { uid: "bob" }, data: { eventId: draft.eventId, reaction: "dislike" } });
+  stored = db.store.get(`events/${draft.eventId}`);
+  assert.deepEqual(stored.reactionCounts, { like: 0, dislike: 2 });
+  await events.reactToEvent({ auth: { uid: "bob" }, data: { eventId: draft.eventId, reaction: "dislike" } });
+  stored = db.store.get(`events/${draft.eventId}`);
+  assert.deepEqual(stored.reactionCounts, { like: 0, dislike: 1 });
+  assert.equal(db.store.has(`events/${draft.eventId}/reactions/bob`), false);
+  await assert.rejects(
+    events.reactToEvent({ auth: { uid: "bob" }, data: { eventId: draft.eventId, reaction: "lol" } }),
+    (error) => error.code === "invalid-argument",
+  );
+});
+
+test("endEvent is idempotent and posts a single chat card per group", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      title: "One card",
+      groupId: "g1",
+      question: "Q?",
+      options: [
+        { label: "A", imageUrl: "https://img.example/1.png" },
+        { label: "B", imageUrl: "https://img.example/2.png" },
+      ],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  const startedCard = `groups/g1/messages/evt-${draft.eventId}-started`;
+  const endedCard = `groups/g1/messages/evt-${draft.eventId}-ended`;
+  assert.ok(db.store.has(startedCard));
+  await events.endEvent({ auth: { uid: "alice" }, data: { eventId: draft.eventId } });
+  await events.endEvent({ auth: { uid: "alice" }, data: { eventId: draft.eventId } });
+  assert.ok(db.store.has(endedCard));
+  let endedCards = 0;
+  for (const path of db.store.keys()) {
+    if (path.startsWith("groups/g1/messages/") && path.includes("-ended")) endedCards += 1;
+  }
+  assert.equal(endedCards, 1);
+});
+
+test("multi-group and global events post chat cards to every target group", async () => {
+  const db = createFakeDb({
+    ...seedGroup(),
+    "users/carol": { username: "Carol" },
+    "groups/g2": { founderId: "alice", name: "G2" },
+    "groups/g2/members/alice": { role: "founder", userId: "alice" },
+    "groups/g2/members/bob": { role: "member", userId: "bob" },
+    "groups/g2/roles/founder": { permissions: ["manageEvents"] },
+    "groups/g2/roles/member": { permissions: [] },
+  });
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      title: "Shared",
+      scope: "multiGroup",
+      groupIds: ["g1", "g2"],
+      question: "Q?",
+      options: [
+        { label: "A", imageUrl: "https://img.example/1.png" },
+        { label: "B", imageUrl: "https://img.example/2.png" },
+      ],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  for (const groupId of ["g1", "g2"]) {
+    assert.ok(
+      db.store.has(`groups/${groupId}/messages/evt-${draft.eventId}-started`),
+      `missing started card in ${groupId}`,
+    );
+  }
+});
+
+test("crosspostEvent extends the same event to new groups or global, idempotently", async () => {
+  const db = createFakeDb({
+    ...seedGroup(),
+    "users/carol": { username: "Carol" },
+    "groups/g2": { founderId: "alice", name: "G2" },
+    "groups/g2/members/alice": { role: "founder", userId: "alice" },
+    "groups/g2/roles/founder": { permissions: ["manageEvents"] },
+    "groups/g3": { founderId: "alice", name: "G3" },
+    "groups/g3/members/alice": { role: "founder", userId: "alice" },
+    "groups/g3/roles/founder": { permissions: ["manageEvents"] },
+  });
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      title: "Cross",
+      groupId: "g1",
+      question: "Q?",
+      options: [
+        { label: "A", imageUrl: "https://img.example/1.png" },
+        { label: "B", imageUrl: "https://img.example/2.png" },
+      ],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  const first = await events.crosspostEvent({
+    auth: { uid: "alice" },
+    data: { eventId: draft.eventId, groupIds: ["g2"] },
+  });
+  assert.deepEqual(first.added, ["g2"]);
+  const afterGroup = db.store.get(`events/${draft.eventId}`);
+  assert.equal(afterGroup.scope, "multiGroup");
+  assert.equal(afterGroup.groupId, null);
+  assert.deepEqual(afterGroup.groupIds, ["g1", "g2"]);
+  assert.ok(db.store.has(`groups/g2/messages/evt-${draft.eventId}-created`));
+  const again = await events.crosspostEvent({
+    auth: { uid: "alice" },
+    data: { eventId: draft.eventId, groupIds: ["g2", "g3"] },
+  });
+  assert.deepEqual(again.added, ["g3"]);
+  assert.deepEqual(again.skipped, ["g2"]);
+  const promoted = await events.crosspostEvent({
+    auth: { uid: "alice" },
+    data: { eventId: draft.eventId, toGlobal: true },
+  });
+  assert.equal(promoted.scope, "global");
+  const afterGlobal = db.store.get(`events/${draft.eventId}`);
+  assert.equal(afterGlobal.scope, "global");
+  assert.equal(afterGlobal.groupId, null);
+  assert.deepEqual(afterGlobal.groupIds, ["g1", "g2", "g3"]);
+  await assert.rejects(
+    events.crosspostEvent({
+      auth: { uid: "bob" },
+      data: { eventId: draft.eventId, groupIds: ["g1"] },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+  await assert.rejects(
+    events.crosspostEvent({
+      auth: { uid: "alice" },
+      data: { eventId: draft.eventId, groupIds: [] },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});
+
+test("a future-started event notifies once its start passes", async () => {
+  const db = createFakeDb({
+    ...seedGroup(),
+    "events/later": {
+      type: "theory",
+      creatorId: "alice",
+      groupId: "g1",
+      title: "Later theory",
+      status: "ACTIVE",
+      startAt: new Date(Date.now() - 1000),
+      endAt: new Date(Date.now() + 3600000),
+      startNotifiedAt: null,
+      configuration: { prompt: "Is it real?" },
+      description: "Body text.",
+      tally: { submissions: 0, stances: { agree: 0, disagree: 0 } },
+      responsesCount: 0,
+    },
+  });
+  const recorder = recordingBuilder();
+  const events = handlers(db, recorder);
+  await events.processEventLifecycle();
+  const start = recorder.sent.find((item) => item.type === "event_starting");
+  assert.ok(start);
+  assert.equal(start.id, `event-start-later`);
+  const stored = db.store.get("events/later");
+  assert.ok(stored.startNotifiedAt);
+});
+
+test("poll rewards go to the users who picked winning options", async () => {
+  const db = createFakeDb({
+    ...seedGroup(),
+    "users/carol": { username: "Carol" },
+    "users/dave": { username: "Dave" },
+    "groups/g1/members/carol": { role: "member", userId: "carol" },
+    "groups/g1/members/dave": { role: "member", userId: "dave" },
+  });
+  const rewarded = [];
+  const domains = createEventsDomain({
+    db,
+    FieldValue,
+    HttpsError: TestHttpsError,
+    economy: {
+      grantDomainRewards: async (userIds, payload) => {
+        rewarded.push({ userIds, payload });
+      },
+    },
+    achievements: { evaluate: async () => {} },
+  });
+  const draft = await domains.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      title: "R",
+      groupId: "g1",
+      question: "Q?",
+      options: [
+        { label: "A", imageUrl: "https://img.example/1.png" },
+        { label: "B", imageUrl: "https://img.example/2.png" },
+      ],
+    },
+  });
+  await domains.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  for (const [uid, optionId] of [["bob", "opt-1"], ["carol", "opt-1"], ["dave", "opt-2"]]) {
+    await domains.submitEventResponse({
+      auth: { uid },
+      data: { eventId: draft.eventId, responseData: { optionId } },
+    });
+  }
+  await domains.endEvent({ auth: { uid: "alice" }, data: { eventId: draft.eventId } });
+  assert.equal(rewarded.length, 1);
+  assert.deepEqual([...rewarded[0].userIds].sort(), ["bob", "carol"]);
+});
+
+test("getEventCreationQuota reports the remaining daily allowance", async () => {
+  const db = createFakeDb(seedGroup());
+  const events = handlers(db);
+  const quota = await events.getEventCreationQuota({ auth: { uid: "alice" } });
+  assert.equal(quota.limit, 2);
+  assert.equal(quota.count, 0);
+  assert.equal(quota.remaining, 2);
+  assert.equal(quota.day, new Date().toISOString().slice(0, 10));
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      title: "Q",
+      groupId: "g1",
+      question: "Q?",
+      options: [
+        { label: "A", imageUrl: "https://img.example/1.png" },
+        { label: "B", imageUrl: "https://img.example/2.png" },
+      ],
+    },
+  });
+  await events.publishEvent({
+    auth: { uid: "alice" },
+    data: {
+      eventId: draft.eventId,
+      startAt: new Date(Date.now() - 1000).toISOString(),
+      endAt: new Date(Date.now() + 3600000).toISOString(),
+    },
+  });
+  const after = await events.getEventCreationQuota({ auth: { uid: "alice" } });
+  assert.equal(after.count, 1);
+  assert.equal(after.remaining, 1);
+});
+
+function seededEvent(id, extra = {}) {
+  return {
+    [`events/${id}`]: {
+      type: "poll",
+      creatorId: "alice",
+      groupId: "g1",
+      title: "Seeded",
+      status: "ACTIVE",
+      scope: "group",
+      ...extra,
+    },
+  };
+}
+
+test("reportEvent files one queue entry per reporter and retags on repeat", async () => {
+  const db = createFakeDb({
+    ...seedGroup(),
+    ...seededEvent("e1"),
+  });
+  const events = handlers(db);
+  const first = await events.reportEvent({
+    auth: { uid: "bob" },
+    data: { eventId: "e1", category: "spam", detail: "Repeated posts" },
+  });
+  assert.equal(first.ok, true);
+  assert.equal(first.alreadyReported, false);
+  const entry = db.store.get("events/e1/reports/bob");
+  assert.equal(entry.category, "spam");
+  assert.equal(entry.actorId, "bob");
+  assert.equal(entry.targetId, "e1");
+  assert.equal(entry.creatorId, "alice");
+  assert.equal(entry.status, "open");
+  assert.equal(entry.repeatCount, 1);
+  const repeat = await events.reportEvent({
+    auth: { uid: "bob" },
+    data: { eventId: "e1", category: "harassment" },
+  });
+  assert.equal(repeat.alreadyReported, true);
+  const after = db.store.get("events/e1/reports/bob");
+  assert.equal(after.category, "harassment");
+  assert.equal(after.repeatCount, 2);
+  assert.equal(after.actorId, "bob");
+  assert.equal(after.targetId, "e1");
+});
+
+test("reportEvent rejects self-reports, bad categories, and unknown events", async () => {
+  const db = createFakeDb({
+    ...seedGroup(),
+    ...seededEvent("e1"),
+  });
+  const events = handlers(db);
+  await assert.rejects(
+    events.reportEvent({
+      auth: { uid: "alice" },
+      data: { eventId: "e1", category: "spam" },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+  await assert.rejects(
+    events.reportEvent({
+      auth: { uid: "bob" },
+      data: { eventId: "e1", category: "not-a-reason" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    events.reportEvent({
+      auth: { uid: "bob" },
+      data: { eventId: "missing", category: "spam" },
+    }),
+    (error) => error.code === "not-found",
+  );
+  await assert.rejects(
+    events.reportEvent({ data: { eventId: "e1", category: "spam" } }),
+    (error) => error.code === "unauthenticated",
+  );
+  assert.equal(db.store.has("events/e1/reports/bob"), false);
+});
+
+test("reportEvent rate-limits new reports per reporter per hour", async () => {
+  const seeded = {};
+  for (let index = 1; index <= 11; index += 1) {
+    Object.assign(seeded, seededEvent(`e${index}`));
+  }
+  const db = createFakeDb({ ...seedGroup(), ...seeded });
+  const events = handlers(db);
+  for (let index = 1; index <= 10; index += 1) {
+    const result = await events.reportEvent({
+      auth: { uid: "bob" },
+      data: { eventId: `e${index}`, category: "spam" },
+    });
+    assert.equal(result.ok, true);
+  }
+  await assert.rejects(
+    events.reportEvent({
+      auth: { uid: "bob" },
+      data: { eventId: "e11", category: "spam" },
+    }),
+    (error) => error.code === "resource-exhausted",
+  );
+  const carol = await events.reportEvent({
+    auth: { uid: "carol" },
+    data: { eventId: "e11", category: "spam" },
+  });
+  assert.equal(carol.ok, true);
 });

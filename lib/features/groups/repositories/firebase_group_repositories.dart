@@ -2,14 +2,20 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
+import '../../../core/errors/retry.dart';
 import '../models/group_authority.dart';
 import '../models/group_models.dart';
 import 'group_members_repository.dart';
 import 'group_repository.dart';
 import 'roleplay_repository.dart';
 
-final class FirebaseGroupRepository implements GroupRepository {
+final class FirebaseGroupRepository
+    implements
+        GroupRepository,
+        AnimeLinkedGroupRepository,
+        GroupEntitlementsRepository {
   FirebaseGroupRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
@@ -23,6 +29,18 @@ final class FirebaseGroupRepository implements GroupRepository {
   @override
   Future<Result<Group>> createGroup(GroupDraft draft) =>
       _guard(() => _callGroup('createGroup', draft.toMap()));
+
+  @override
+  Future<Result<GroupEntitlements>> createGroupEntitlements() => _guard(() async {
+    final data = await _callGroupData('createGroupEntitlements', <String, dynamic>{});
+    final maxMembers = (data['maxMembers'] as num?)?.toInt();
+    return GroupEntitlements(
+      maxMembers: maxMembers == null || maxMembers < 2
+          ? GroupEntitlements.fallback.maxMembers
+          : maxMembers,
+      canCreateGroups: data['canCreateGroups'] != false,
+    );
+  });
 
   @override
   Future<Result<Group>> getGroup(String groupId) => _guard(() async {
@@ -74,6 +92,23 @@ final class FirebaseGroupRepository implements GroupRepository {
               group.name.toLowerCase().contains(normalized) ||
               group.description.toLowerCase().contains(normalized),
         )
+        .toList(growable: false);
+  });
+
+  @override
+  Future<Result<List<Group>>> listGroupsByAnime(
+    String animeId, {
+    int limit = 20,
+  }) => _guard(() async {
+    final id = animeId.trim();
+    if (id.isEmpty) return const <Group>[];
+    final snapshot = await _firestore
+        .collection('groups')
+        .where('animeId', isEqualTo: id)
+        .limit(limit)
+        .get();
+    return snapshot.docs
+        .map((doc) => Group.fromMap(doc.data(), id: doc.id))
         .toList(growable: false);
   });
 
@@ -224,12 +259,24 @@ final class FirebaseGroupRepository implements GroupRepository {
   });
 
   Future<Group> _callGroup(String name, Map<String, dynamic> data) async {
-    final result = await _functions.httpsCallable(name).call(data);
-    final group = result.data['group'] as Map<dynamic, dynamic>;
+    final payload = await _callGroupData(name, data);
+    final group = payload['group'] as Map<dynamic, dynamic>;
     return Group.fromMap(
       Map<String, dynamic>.from(group),
-      id: result.data['groupId'] as String,
+      id: payload['groupId'] as String,
     );
+  }
+
+  Future<Map<String, dynamic>> _callGroupData(
+    String name,
+    Map<String, dynamic> data,
+  ) async {
+    final result = await _functions.httpsCallable(name).call(data);
+    final payload = result.data;
+    if (payload is! Map) {
+      throw const FormatException('Unexpected group response.');
+    }
+    return Map<String, dynamic>.from(payload);
   }
 
   Future<void> _callVoid(String name, Map<String, dynamic> data) async {
@@ -238,7 +285,7 @@ final class FirebaseGroupRepository implements GroupRepository {
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: _groupFailure));
     } on Object catch (error) {
       return FailureResult<T>(_groupFailure(error));
     }
@@ -286,9 +333,16 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
         i,
         i + 10 > members.length ? members.length : i + 10,
       );
+      // Display data for other users lives in public_profiles. Reading
+      // users/{uid} is restricted to the owner by firestore.rules, so this
+      // used to fail with permission-denied for every member except the
+      // viewer and left the member list without names/avatars.
       final docs = await Future.wait(
         chunk.map(
-          (member) => _firestore.collection('users').doc(member.uid).get(),
+          (member) => _firestore
+              .collection('public_profiles')
+              .doc(member.uid)
+              .get(),
         ),
       );
       for (var j = 0; j < chunk.length; j++) {
@@ -518,41 +572,46 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
   }) => _guard(() async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return const <GroupMember>[];
-    final byId = await _firestore.collection('users').doc(trimmed).get();
+    // users/{uid} is owner-only and users has no list rule, so both the direct
+    // lookup and the username query were denied. public_profiles/{uid} and the
+    // usernames/{normalized} registry are the client-readable projections.
+    final byId = await _firestore
+        .collection('public_profiles')
+        .doc(trimmed)
+        .get();
     if (byId.exists) {
-      final data = byId.data() ?? <String, dynamic>{};
-      return <GroupMember>[
-        GroupMember(
-          uid: byId.id,
-          role: PubgetRank.ronin,
-          displayName: data['displayName'] as String?,
-          username: data['username'] as String?,
-          avatarUrl: data['avatarUrl'] as String?,
-        ),
-      ];
+      return <GroupMember>[_inviteCandidate(byId.id, byId.data())];
     }
     final handle = trimmed.startsWith('@') ? trimmed.substring(1) : trimmed;
-    final snapshot = await _firestore
-        .collection('users')
-        .where('username', isEqualTo: handle)
-        .limit(limit)
+    final normalized = handle.trim().toLowerCase();
+    if (normalized.isEmpty) return const <GroupMember>[];
+    final registry = await _firestore
+        .collection('usernames')
+        .doc(normalized)
         .get();
-    return snapshot.docs
-        .map(
-          (doc) => GroupMember(
-            uid: doc.id,
-            role: PubgetRank.ronin,
-            displayName: doc.data()['displayName'] as String?,
-            username: doc.data()['username'] as String?,
-            avatarUrl: doc.data()['avatarUrl'] as String?,
-          ),
-        )
-        .toList(growable: false);
+    final uid = registry.data()?['uid'] as String?;
+    if (uid == null || uid.isEmpty) return const <GroupMember>[];
+    final profile = await _firestore
+        .collection('public_profiles')
+        .doc(uid)
+        .get();
+    if (!profile.exists) return const <GroupMember>[];
+    return <GroupMember>[_inviteCandidate(uid, profile.data())];
   });
+
+  GroupMember _inviteCandidate(String uid, Map<String, dynamic>? data) {
+    return GroupMember(
+      uid: uid,
+      role: PubgetRank.ronin,
+      displayName: data?['displayName'] as String?,
+      username: data?['username'] as String?,
+      avatarUrl: data?['avatarUrl'] as String?,
+    );
+  }
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: _groupFailure));
     } on Object catch (error) {
       return FailureResult<T>(_groupFailure(error));
     }
@@ -595,35 +654,37 @@ final class FirebaseRoleplayRepository implements RoleplayRepository {
   });
 
   @override
-  Future<Result<List<RoleplayCharacter>>> getAvailableCharacters(
-    String groupId,
-  ) => _guard(() async {
-    final reserved = await _firestore
-        .collection('groups')
-        .doc(groupId)
-        .collection('characters')
-        .get();
-    final keys = reserved.docs.map((doc) => doc.id).toSet();
-    return _mockCharacters
-        .where((character) => !keys.contains(character.key))
-        .toList(growable: false);
-  });
+  Future<Result<RoleplayGroupContext>> roleplayContext(String groupId) =>
+      _guard(() async {
+        final group = await _firestore.collection('groups').doc(groupId).get();
+        final reserved = await _firestore
+            .collection('groups')
+            .doc(groupId)
+            .collection('characters')
+            .get();
+        final keys = reserved.docs.map((doc) => doc.id).toSet();
+        final snap = group.exists
+            ? (group.data() ?? const <String, dynamic>{})
+            : const <String, dynamic>{};
+        final type = GroupType.values.firstWhere(
+          (value) => value.name == snap['type'],
+          orElse: () => GroupType.public,
+        );
+        return RoleplayGroupContext(
+          type: type,
+          animeId: snap['animeId'] as String?,
+          reservedKeys: keys,
+        );
+      });
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      return Success<T>(await action());
+      return Success<T>(await runWithRetry(action, mapError: _groupFailure));
     } on Object catch (error) {
       return FailureResult<T>(_groupFailure(error));
     }
   }
 }
-
-const _mockCharacters = <RoleplayCharacter>[
-  RoleplayCharacter(key: 'hero', name: 'The Hero', avatarUrl: ''),
-  RoleplayCharacter(key: 'rival', name: 'The Rival', avatarUrl: ''),
-  RoleplayCharacter(key: 'mentor', name: 'The Mentor', avatarUrl: ''),
-  RoleplayCharacter(key: 'trickster', name: 'The Trickster', avatarUrl: ''),
-];
 
 DateTime? _memberDate(Object? value) {
   if (value is DateTime) return value;
@@ -638,15 +699,13 @@ Failure _groupFailure(Object error) {
         error.message ?? 'This group action is not allowed.',
       ),
       'not-found' => NotFoundError(error.message ?? 'Group not found.'),
-      'unavailable' || 'resource-exhausted' => NetworkError(
+      'unavailable' ||
+      'resource-exhausted' ||
+      'deadline-exceeded' => NetworkError(
         error.message ?? 'Please try again.',
       ),
-      _ => ValidationError(error.message ?? 'Group action failed.'),
+      _ => mapFirebaseFailure(error, message: 'Group action failed.'),
     };
   }
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError('Check your connection and try again.');
-  }
-  return UnknownError(error.toString());
+  return mapFirebaseFailure(error);
 }

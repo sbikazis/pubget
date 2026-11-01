@@ -5,6 +5,7 @@ import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../models/auth_user.dart';
 import '../models/pubget_user.dart';
+import '../models/username_status.dart';
 import 'auth_repository.dart';
 import 'user_repository.dart';
 
@@ -66,4 +67,21 @@ final class UnavailableUserRepository implements UserRepository {
     required Uint8List bytes,
     String contentType = 'image/jpeg',
   }) async => FailureResult<String>(UnknownError(message));
+
+  @override
+  Future<Result<UsernameStatus>> checkUsernameAvailable(
+    String username,
+  ) async => const FailureResult<UsernameStatus>(
+    NetworkError('Check your connection and try again.'),
+  );
+
+  @override
+  Future<Result<String>> reserveUsername(String username) async =>
+      const FailureResult<String>(
+        NetworkError('Check your connection and try again.'),
+      );
+
+  @override
+  Future<Result<void>> updateLanguage(String language) async =>
+      FailureResult<void>(UnknownError(message));
 }

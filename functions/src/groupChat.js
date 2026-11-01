@@ -22,6 +22,8 @@ const STICKER_CATALOG = Object.freeze({
   "pubget/spark": { category: "pubget", name: "Spark" },
   "pubget/moon": { category: "pubget", name: "Moon" },
 });
+const { enqueueModerationCase } = require("./moderationQueue");
+
 const REPORT_REASONS = Object.freeze([
   "inappropriate", "spam", "copyright", "harassment", "other",
 ]);
@@ -184,6 +186,10 @@ function previewText(data) {
   return `[${data.type}]`;
 }
 
+// Server-side preview tokens follow the existing `[type]` convention because the
+// callable has no access to the viewer's locale.
+const DELETED_PREVIEW = "[deleted]";
+
 function assertReadyMedia(media, uid, type, HttpsError) {
   const expectedType = expectedMediaType(type);
   if (!media || media.status !== "ready" || media.uploaderId !== uid ||
@@ -208,6 +214,25 @@ function assertReadyMedia(media, uid, type, HttpsError) {
       "Media must finish processing and belong to the sender.",
     );
   }
+}
+
+/**
+ * Display-oriented pixel dimensions recorded by the media pipeline.
+ *
+ * The chat bubble sizes itself from these, so a landscape photo is not forced
+ * through a 4:3 box and a tall screenshot is not letterboxed. Legacy media
+ * processed before the pipeline recorded them returns nulls and the client
+ * falls back to a neutral ratio.
+ */
+function mediaDimensions(media) {
+  if (!media) return { width: null, height: null };
+  const width = Number(media.width);
+  const height = Number(media.height);
+  if (!Number.isFinite(width) || !Number.isFinite(height) ||
+      width <= 0 || height <= 0) {
+    return { width: null, height: null };
+  }
+  return { width: Math.round(width), height: Math.round(height) };
 }
 
 function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achievements }) {
@@ -265,6 +290,8 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
           ? (media.mediumPath || media.originalPath)
           : null,
         thumbnailUrl: media ? media.thumbnailPath || null : null,
+        mediaWidth: mediaDimensions(media).width,
+        mediaHeight: mediaDimensions(media).height,
         stickerKey: catalogSticker ? data.stickerKey : null,
         stickerCreatorId: stickerCreator.stickerCreatorId,
         stickerCreatorName: stickerCreator.stickerCreatorName,
@@ -287,6 +314,7 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
       transaction.update(groupRef(db, groupId), {
         lastMessageAt: FieldValue.serverTimestamp(),
         lastMessageText: previewText(data),
+        lastMessageId: messageId,
       });
       response = message;
     });
@@ -316,7 +344,7 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
     }
     const ref = messageRef(db, groupId, messageId);
     await db.runTransaction(async (transaction) => {
-      await actorContext(transaction, db, groupId, uid, HttpsError);
+      const context = await actorContext(transaction, db, groupId, uid, HttpsError);
       const message = await transaction.get(ref);
       if (!message.exists) throw new HttpsError("not-found", "Message not found.");
       const current = message.data() || {};
@@ -335,6 +363,13 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
         text: text.trim(),
         editedAt: FieldValue.serverTimestamp(),
       });
+      // Keep the chat list preview truthful: editing the newest message used to
+      // leave the old text in the group card until something else touched it.
+      if (context.group && context.group.lastMessageId === messageId) {
+        transaction.update(groupRef(db, groupId), {
+          lastMessageText: text.trim().slice(0, 80),
+        });
+      }
     });
     const current = await ref.get();
     return { ok: true, message: current.data() };
@@ -358,8 +393,16 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
         text: null,
         mediaUrl: null,
         thumbnailUrl: null,
+        mediaWidth: null,
+        mediaHeight: null,
         deletedAt: FieldValue.serverTimestamp(),
       });
+      // Without this the group card kept previewing text that no longer exists.
+      if (context.group && context.group.lastMessageId === messageId) {
+        transaction.update(groupRef(db, groupId), {
+          lastMessageText: DELETED_PREVIEW,
+        });
+      }
     });
     return { ok: true };
   }
@@ -380,6 +423,15 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
       const message = await transaction.get(ref);
       if (!message.exists || message.data().deletedAt) {
         throw new HttpsError("not-found", "Message not found.");
+      }
+      // pinOwnMessages also gates moderator pinning: moderators (deleteMessages)
+      // may pin any member's message, regular members only their own.
+      if (message.data().senderId !== uid &&
+          !can(context.member, context.role, PERMISSIONS.delete)) {
+        throw new HttpsError(
+          "permission-denied",
+          "You can only pin messages you sent.",
+        );
       }
       transaction.update(ref, {
         pinnedAt: pinned ? FieldValue.serverTimestamp() : null,
@@ -503,12 +555,22 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
   async function forwardMessage(request) {
     const uid = requireAuth(request, HttpsError);
     const sourceGroupId = request.data && request.data.sourceGroupId;
+    const sourceChatId = request.data && request.data.sourceChatId;
     const messageId = request.data && request.data.messageId;
     const destinationGroupId = request.data && request.data.destinationGroupId;
     const destinationChatId = request.data && request.data.destinationChatId;
-    if (!validString(sourceGroupId, 128) || !validString(messageId, 128)) {
-      throw new HttpsError("invalid-argument", "sourceGroupId and messageId are required.");
+    // The source is either a group thread or a private conversation, so a
+    // forwarded private message is not stranded: only the source read differs.
+    const fromGroup = validString(sourceGroupId, 128);
+    const fromPrivate = validString(sourceChatId, 320);
+    if (fromGroup === fromPrivate || !validString(messageId, 128)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Provide exactly one source (sourceGroupId or sourceChatId) and messageId.",
+      );
     }
+    // Exactly one of the two is set, so this is the id that reaches provenance.
+    const sourceId = (fromGroup ? sourceGroupId : sourceChatId).trim();
     const destIsGroup = validString(destinationGroupId, 128);
     const destIsPrivate = validString(destinationChatId, 128);
     if (destIsGroup === destIsPrivate) {
@@ -520,7 +582,12 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
     const destMessageId = typeof randomUUID === "function"
       ? randomUUID()
       : `${Date.now()}_${uid}`;
-    const sourceSnap = await messageRef(db, sourceGroupId, messageId).get();
+    const sourceChat = fromGroup
+      ? null
+      : db.collection("privateChats").doc(sourceChatId.trim());
+    const sourceSnap = fromGroup
+      ? await messageRef(db, sourceGroupId, messageId).get()
+      : await sourceChat.collection("messages").doc(messageId).get();
     if (!sourceSnap.exists) throw new HttpsError("not-found", "Message not found.");
     const source = sourceSnap.data() || {};
     if (source.deletedAt) {
@@ -530,16 +597,30 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
       throw new HttpsError("failed-precondition", "This message cannot be forwarded.");
     }
 
-    const sourceMember = await memberRef(db, sourceGroupId, uid).get();
-    if (!sourceMember.exists) {
-      throw new HttpsError("permission-denied", "You are not a group member.");
+    if (fromGroup) {
+      const sourceMember = await memberRef(db, sourceGroupId, uid).get();
+      if (!sourceMember.exists) {
+        throw new HttpsError("permission-denied", "You are not a group member.");
+      }
+    } else {
+      // A private source must actually belong to the sender.
+      const chatSnap = await sourceChat.get();
+      if (!chatSnap.exists) throw new HttpsError("not-found", "Chat not found.");
+      const chat = chatSnap.data() || {};
+      const participants = Array.isArray(chat.participantIds)
+        ? chat.participantIds
+        : [chat.userA, chat.userB].filter(Boolean);
+      if (!participants.includes(uid)) {
+        throw new HttpsError("permission-denied", "You are not a chat participant.");
+      }
     }
 
     let destMedia = null;
     let destMediaId = null;
     if (MEDIA_TYPES.has(source.type) && source.mediaId && !source.stickerKey) {
-      const sourceMedia = await groupRef(db, sourceGroupId)
-        .collection("media").doc(source.mediaId).get();
+      const sourceMedia = await (fromGroup
+        ? groupRef(db, sourceGroupId).collection("media")
+        : sourceChat.collection("media")).doc(source.mediaId).get();
       if (!sourceMedia.exists) {
         throw new HttpsError("failed-precondition", "Source media is unavailable.");
       }
@@ -583,10 +664,7 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
           destMedia,
           destMediaId,
           recipientCount: Math.max(0, (context.group.membersCount || 1) - 1),
-          forwardedFrom: {
-            groupId: sourceGroupId,
-            messageId,
-          },
+          forwardedFrom: forwardedSource(sourceId, messageId, fromGroup),
           FieldValue,
         });
         transaction.create(destRef, message);
@@ -638,10 +716,7 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
         destMedia,
         destMediaId,
         recipientCount: 1,
-        forwardedFrom: {
-          groupId: sourceGroupId,
-          messageId,
-        },
+        forwardedFrom: forwardedSource(sourceId, messageId, fromGroup),
         FieldValue,
       });
       transaction.create(destRef, message);
@@ -685,6 +760,12 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
     }
     const message = await messageRef(db, groupId, messageId).get();
     if (!message.exists) throw new HttpsError("not-found", "Message not found.");
+    if (message.data().deletedAt) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Deleted messages cannot be reported.",
+      );
+    }
     if (message.data().senderId === reporterId) {
       throw new HttpsError("failed-precondition", "You cannot report your own message.");
     }
@@ -702,6 +783,22 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
         createdAt: FieldValue.serverTimestamp(),
       });
     });
+
+    // Phase 10 — the group report used to end here, readable only by its
+    // reporter and an admin client. Queue it for real triage.
+    await enqueueModerationCase({
+      db,
+      FieldValue,
+      type: "groupMessage",
+      targetId: messageId,
+      targetParentId: groupId,
+      reporterId,
+      creatorId: message.data().senderId || null,
+      reason,
+      details: details || null,
+      sourcePath: `groups/${groupId}/messageReports/${reportId}`,
+    });
+
     return { ok: true, reportId };
   }
 
@@ -719,10 +816,26 @@ function createGroupChat({ db, FieldValue, HttpsError, bucket, randomUUID, achie
   };
 }
 
+// Keeps the established `{groupId, messageId}` provenance shape for group
+// sources and adds `chatId` for private ones, so the client can tell where a
+// forwarded message came from.
+function forwardedSource(sourceId, messageId, isGroup) {
+  return isGroup
+    ? { groupId: sourceId, messageId }
+    : { chatId: sourceId, messageId };
+}
+
 function buildForwardedMessage({
   source, uid, identity, destMedia, destMediaId, recipientCount, forwardedFrom,
   FieldValue,
 }) {
+  // Prefer the freshly copied media record; fall back to the source dimensions
+  // so a forward of already-processed media keeps its true aspect ratio.
+  const copied = mediaDimensions(destMedia);
+  const original = mediaDimensions({
+    width: source.mediaWidth,
+    height: source.mediaHeight,
+  });
   return {
     senderId: uid,
     senderName: identity.senderName,
@@ -735,6 +848,8 @@ function buildForwardedMessage({
       ? (destMedia.mediumPath || destMedia.originalPath)
       : source.stickerKey ? null : source.mediaUrl || null,
     thumbnailUrl: destMedia ? destMedia.thumbnailPath || null : null,
+    mediaWidth: copied.width ?? original.width,
+    mediaHeight: copied.height ?? original.height,
     stickerKey: source.stickerKey || null,
     stickerCreatorId: source.stickerCreatorId || null,
     stickerCreatorName: source.stickerCreatorName || null,
@@ -845,15 +960,20 @@ module.exports = {
   ADMIN_CARD_TYPES,
   AUDIO_MAX_BYTES,
   AUDIO_MAX_DURATION_SECONDS,
+  buildForwardedMessage,
+  copyMediaRecord,
   MEDIA_TYPES,
   MESSAGE_TYPES,
   REPORT_REASONS,
   STICKER_CATALOG,
+  timestampDate,
   USER_MESSAGE_TYPES,
   adminChatCardDocument,
   createGroupChat,
   EDIT_WINDOW_MS,
   expectedMediaType,
+  mediaDimensions,
+  replyPreviewFrom,
   resolveStickerCreator,
   validString,
   validateMessage,

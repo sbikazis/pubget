@@ -1,15 +1,25 @@
 "use strict";
 
 const { ROLE_PERMISSIONS, normalizeRole } = require("../groupsDomain");
-const { hasPermission } = require("../pubgetRanks");
+const { ROLE_POSITIONS, hasPermission } = require("../pubgetRanks");
 const { postFromActivity } = require("../chatCardWriter");
 const { toMafiaActivity } = require("./mafiaActivity");
 
 const TITLE_MAX = 80;
-// This project already shipped a 4–8 Mafia contract. Keep it canonical until
-// the product explicitly migrates existing lobbies to a larger table.
-const DEFAULT_MIN = 4;
-const DEFAULT_MAX = 8;
+// Master Spec 13.2: a Mafia lobby holds 7-15 players.
+const DEFAULT_MIN = 7;
+const DEFAULT_MAX = 15;
+// Master Spec 13.2: only SAMURAI and above may create a Mafia game. The check
+// runs inside the creation transaction against the caller's own membership
+// document, so a client cannot talk its way past it.
+//
+// The rank floor is the whole gate. `manageGames` (Master Spec 8.2) is an
+// administrative permission — the generic Games path does not require it to
+// create a game either, only to cancel someone else's — and it is not granted
+// to SAMURAI or HATAMOTO. Requiring both would silently raise the real
+// minimum to DAIMYO and make this section's own sentence untrue.
+const CREATE_MIN_RANK = "samurai";
+const CREATE_MIN_RANK_POSITION = ROLE_POSITIONS[CREATE_MIN_RANK];
 const LOBBY_SECONDS = 120;
 const STARTING_SECONDS = 10;
 
@@ -82,8 +92,12 @@ function createMafiaDomain({
       transaction.get(db.collection("groups").doc(groupId).collection("members").doc(uid)),
       transaction.get(db.collection("groups").doc(groupId)),
     ]);
-    if (!group.exists) return { member: false, manageGames: false, missingGroup: true };
-    if (!member.exists) return { member: false, manageGames: false, group };
+    if (!group.exists) {
+      return { member: false, manageGames: false, rankEligible: false, missingGroup: true };
+    }
+    if (!member.exists) {
+      return { member: false, manageGames: false, rankEligible: false, group };
+    }
     const data = member.data() || {};
     const groupData = group.data() || {};
     const role = normalizeRole(data.rankV2 || data.role || "ronin");
@@ -94,6 +108,7 @@ function createMafiaDomain({
     return {
       member: true,
       manageGames: hasPermission(data, roleDoc, "manageGames", groupData),
+      rankEligible: (ROLE_POSITIONS[role] || 0) >= CREATE_MIN_RANK_POSITION,
       role,
       group,
     };
@@ -126,8 +141,8 @@ function createMafiaDomain({
       throw new HttpsError("invalid-argument", "groupId is required.");
     }
     const groupId = input.groupId.trim();
-  const minPlayers = clampInt(input.minPlayers, DEFAULT_MIN, DEFAULT_MIN, DEFAULT_MAX);
-  const maxPlayers = clampInt(input.maxPlayers, DEFAULT_MAX, minPlayers, DEFAULT_MAX);
+    const minPlayers = clampInt(input.minPlayers, DEFAULT_MIN, DEFAULT_MIN, DEFAULT_MAX);
+    const maxPlayers = clampInt(input.maxPlayers, DEFAULT_MAX, minPlayers, DEFAULT_MAX);
     const ref = db.collection("mafia_games").doc();
     const now = Timestamp ? Timestamp.now() : new Date();
     const countdownEndsAt = Timestamp
@@ -139,8 +154,11 @@ function createMafiaDomain({
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to create Mafia.");
       }
-      if (!access.manageGames) {
-        throw new HttpsError("permission-denied", "You need Manage Games to create Mafia.");
+      if (!access.rankEligible) {
+        throw new HttpsError(
+          "permission-denied",
+          `Only ${CREATE_MIN_RANK.toUpperCase()} and above can create a Mafia game.`,
+        );
       }
       if (access.group.data().hasRunningGame === true) {
         throw new HttpsError("failed-precondition", "This group already has a running Mafia game.");
@@ -153,8 +171,8 @@ function createMafiaDomain({
         createdBy: uid,
         createdAt: FieldValue.serverTimestamp(),
         version: 1,
-        status: "waiting",
-        currentPhase: "waiting",
+        status: "WAITING",
+        currentPhase: "WAITING",
         currentDay: 0,
         currentNight: 0,
         playersCount: 1,
@@ -163,6 +181,8 @@ function createMafiaDomain({
         winner: null,
         countdownEndsAt,
         phaseEndsAt: null,
+        serverStartedAt: null,
+        serverEndsAt: null,
         isLocked: false,
         startedAt: null,
         endedAt: null,
@@ -175,7 +195,7 @@ function createMafiaDomain({
       });
       transaction.update(db.collection("groups").doc(groupId), {
         activeGameId: ref.id,
-        gameStatus: "waiting",
+        gameStatus: "WAITING",
         hasRunningGame: true,
       });
       transaction.create(ref.collection("events").doc(`${ref.id}_created`), {
@@ -209,7 +229,7 @@ function createMafiaDomain({
       },
       { id: ref.id, groupId, type: "mafia" },
     );
-    return { gameId: ref.id, status: "waiting" };
+    return { gameId: ref.id, status: "WAITING" };
   }
 
   async function joinMafiaGame(request) {
@@ -227,7 +247,7 @@ function createMafiaDomain({
       if (!access.member) {
         throw new HttpsError("permission-denied", "Join the group to participate.");
       }
-      if (current.status !== "waiting") {
+      if (current.status !== "WAITING") {
         throw new HttpsError("failed-precondition", "This lobby is not open.");
       }
       const person = await transaction.get(ref.collection("players").doc(uid));
@@ -250,8 +270,8 @@ function createMafiaDomain({
       };
       if (fills) {
         update.isLocked = true;
-        update.status = "starting";
-        update.currentPhase = "starting";
+        update.status = "STARTING";
+        update.currentPhase = "STARTING";
         update.countdownEndsAt = Timestamp
           ? Timestamp.fromMillis(now.toMillis ? now.toMillis() : Date.now() + STARTING_SECONDS * 1000)
           : new Date(Date.now() + STARTING_SECONDS * 1000);
@@ -275,8 +295,8 @@ function createMafiaDomain({
       if (current.createdBy !== uid) {
         throw new HttpsError("permission-denied", "Only the host can start Mafia.");
       }
-      if (current.status === "starting") return;
-      if (current.status !== "waiting") {
+      if (current.status === "STARTING") return;
+      if (current.status !== "WAITING") {
         throw new HttpsError("failed-precondition", "This lobby cannot start.");
       }
       if ((current.playersCount || 0) < (current.minPlayers || DEFAULT_MIN)) {
@@ -284,8 +304,8 @@ function createMafiaDomain({
       }
       const now = Timestamp ? Timestamp.now() : new Date();
       transaction.update(ref, {
-        status: "starting",
-        currentPhase: "starting",
+        status: "STARTING",
+        currentPhase: "STARTING",
         isLocked: true,
         countdownEndsAt: Timestamp
           ? Timestamp.fromMillis((now.toMillis ? now.toMillis() : Date.now()) + STARTING_SECONDS * 1000)

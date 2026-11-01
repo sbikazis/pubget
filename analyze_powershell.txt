@@ -1,0 +1,9 @@
+﻿powershell : Could not find an option with short name "-N".
+Au caractère Ligne:4 : 1
++ powershell -Command "Set-Location 'C:\Users\admin\develop\flutter-app ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Could not find ...hort name "-N".:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+Run 'flutter -h' (or 'flutter <command> -h') for available flutter commands and options.

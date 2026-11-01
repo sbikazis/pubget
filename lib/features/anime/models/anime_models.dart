@@ -61,32 +61,105 @@ enum AnimeCatalogKind {
   ];
 }
 
+/// A top-level destination inside the hub, addressed by its own tab.
+///
+/// [AnimeHubDestination.latest] is the landing destination: the spec asks for a
+/// newest-first catalog, not a curated feed, as the first thing a member sees.
+/// Seasonal and popular discovery stay reachable as their own destinations
+/// instead of being folded away, and [AnimeHubDestination.community] keeps the
+/// curated community and recommendation rails that a catalog grid cannot show.
+enum AnimeHubDestination { latest, thisSeason, popular, community }
+
+extension AnimeHubDestinationCatalog on AnimeHubDestination {
+  /// The catalog this destination pages through, or null when it is not a
+  /// catalog view (community rails, and latest, which has no [AnimeCatalogKind]
+  /// because newest-first is its own repository query).
+  AnimeCatalogKind? get catalogKind => switch (this) {
+    AnimeHubDestination.latest => null,
+    AnimeHubDestination.thisSeason => AnimeCatalogKind.thisSeason,
+    AnimeHubDestination.popular => AnimeCatalogKind.popular,
+    AnimeHubDestination.community => null,
+  };
+
+  bool get isCatalog => switch (this) {
+    AnimeHubDestination.community => false,
+    _ => true,
+  };
+
+  /// Stable English source string; the visible label always resolves through
+  /// `AnimeCopy`, never from a literal.
+  String get label => switch (this) {
+    AnimeHubDestination.latest => AnimeStrings.latestUpdates,
+    AnimeHubDestination.thisSeason => 'This season',
+    AnimeHubDestination.popular => 'Most popular',
+    AnimeHubDestination.community => AnimeStrings.communityStats,
+  };
+}
+
 enum AnimeSearchSort { members, title, newest, favorites }
 
 enum AnimeTypeFilter { tv, movie, ova, special, ona }
+
+extension AnimeTypeFilterCodec on AnimeTypeFilter {
+  String get wireValue => switch (this) {
+    AnimeTypeFilter.tv => 'TV',
+    AnimeTypeFilter.movie => 'Movie',
+    AnimeTypeFilter.ova => 'OVA',
+    AnimeTypeFilter.special => 'Special',
+    AnimeTypeFilter.ona => 'ONA',
+  };
+}
+
+enum AnimeAiringFilter { airing, finished, upcoming }
+
+enum AnimeAgeFilter { allAges, teens, adult }
 
 final class AnimeSearchFilter {
   const AnimeSearchFilter({
     this.text = '',
     this.genreId,
+    this.studioId,
     this.type,
     this.season,
     this.year,
+    this.airing,
+    this.ageRating,
+    this.minScore,
+    this.maxScore,
     this.sort = AnimeSearchSort.members,
   });
 
   final String text;
   final String? genreId;
+  final String? studioId;
   final AnimeTypeFilter? type;
   final AnimeSeason? season;
   final int? year;
+  final AnimeAiringFilter? airing;
+  final AnimeAgeFilter? ageRating;
+
+  /// Inclusive lower bound on the external/global rating, on the same 0–10
+  /// scale the providers expose (Jikan `score`, AniList `averageScore / 10`).
+  final double? minScore;
+
+  /// Inclusive upper bound on the external/global rating, same scale as
+  /// [minScore]. A `null` bound means "unbounded".
+  final double? maxScore;
   final AnimeSearchSort sort;
 
   bool get hasQuery => text.trim().isNotEmpty;
   bool get hasNonTextConstraints =>
       (genreId != null && genreId!.isNotEmpty) ||
+      (studioId != null && studioId!.isNotEmpty) ||
       type != null ||
-      (season != null && year != null);
+      (season != null && year != null) ||
+      airing != null ||
+      ageRating != null ||
+      hasScoreRange;
+
+  /// True when either score bound is set. Kept public so the filter sheet can
+  /// show a score-specific active indicator without inspecting both fields.
+  bool get hasScoreRange => minScore != null || maxScore != null;
   bool get hasConstraints => hasQuery || hasNonTextConstraints;
 
   bool matchesCatalog(Anime anime) {
@@ -108,6 +181,30 @@ final class AnimeSearchFilter {
     if (year != null && anime.year != null && anime.year != year) {
       return false;
     }
+    final statusFilter = airing;
+    if (statusFilter != null) {
+      final status = anime.status?.toLowerCase() ?? '';
+      final matching = switch (statusFilter) {
+        AnimeAiringFilter.airing =>
+          anime.airing == true || status.contains('currently'),
+        AnimeAiringFilter.finished =>
+          (anime.airing == false && status.isNotEmpty) ||
+              status.contains('finished'),
+        AnimeAiringFilter.upcoming => status.contains('not yet'),
+      };
+      if (!matching) return false;
+    }
+    final age = ageRating;
+    if (age != null) {
+      if (anime.ageRating != age) return false;
+    }
+    // Score bounds only apply when the title actually carries a score; an
+    // unknown score is never silently dropped by a client-side preview.
+    final score = anime.score;
+    if (score != null && hasScoreRange) {
+      if (minScore != null && score < minScore!) return false;
+      if (maxScore != null && score > maxScore!) return false;
+    }
     return true;
   }
 
@@ -121,19 +218,34 @@ final class AnimeSearchFilter {
     String? text,
     String? genreId,
     bool clearGenre = false,
+    String? studioId,
+    bool clearStudio = false,
     AnimeTypeFilter? type,
     bool clearType = false,
     AnimeSeason? season,
     bool clearSeason = false,
     int? year,
     bool clearYear = false,
+    AnimeAiringFilter? airing,
+    bool clearAiring = false,
+    AnimeAgeFilter? ageRating,
+    bool clearAgeRating = false,
+    double? minScore,
+    bool clearMinScore = false,
+    double? maxScore,
+    bool clearMaxScore = false,
     AnimeSearchSort? sort,
   }) => AnimeSearchFilter(
     text: text ?? this.text,
     genreId: clearGenre ? null : genreId ?? this.genreId,
+    studioId: clearStudio ? null : studioId ?? this.studioId,
     type: clearType ? null : type ?? this.type,
     season: clearSeason ? null : season ?? this.season,
     year: clearYear ? null : year ?? this.year,
+    airing: clearAiring ? null : airing ?? this.airing,
+    ageRating: clearAgeRating ? null : ageRating ?? this.ageRating,
+    minScore: clearMinScore ? null : minScore ?? this.minScore,
+    maxScore: clearMaxScore ? null : maxScore ?? this.maxScore,
     sort: sort ?? this.sort,
   );
 }
@@ -173,11 +285,39 @@ final class AnimeGenre {
       kind == AnimeTagKind.demographic;
 }
 
+final class AnimeStudio {
+  const AnimeStudio({required this.id, required this.name, this.count});
+
+  final String id;
+  final String name;
+  final int? count;
+}
+
+final class AnimeRelated {
+  const AnimeRelated({
+    required this.id,
+    required this.title,
+    required this.relation,
+    this.type,
+    this.imageUrl,
+  });
+
+  final String id;
+  final String title;
+  final String relation;
+  final String? type;
+  final String? imageUrl;
+}
+
 final class AnimeSeasonYear {
   const AnimeSeasonYear({required this.year, required this.seasons});
 
   final int year;
   final List<AnimeSeason> seasons;
+
+  /// Hub order: the most recent season first, so the newest titles lead.
+  static int compareNewestFirst(AnimeSeasonYear a, AnimeSeasonYear b) =>
+      b.year.compareTo(a.year);
 }
 
 final class VoiceActor {
@@ -297,11 +437,32 @@ final class AnimeCharacter {
       mangaography.isNotEmpty;
 }
 
-final class CharacterAboutSections {
-  const CharacterAboutSections({
-    required this.facts,
-    required this.narrative,
+/// A credit behind an anime: director, composer, writer or animator.
+///
+/// Staff is deliberately lighter than [AnimeCharacter]: the details page only
+/// needs to surface the people behind a title, so there is no profile page or
+/// follow list to attach here.
+final class AnimeStaff {
+  const AnimeStaff({
+    required this.id,
+    required this.name,
+    this.imageUrl,
+    this.roles = const <String>[],
   });
+
+  final String id;
+  final String name;
+  final String? imageUrl;
+  final List<String> roles;
+
+  String get rolesLabel {
+    final joined = roles.where((role) => role.trim().isNotEmpty).join(' · ');
+    return joined;
+  }
+}
+
+final class CharacterAboutSections {
+  const CharacterAboutSections({required this.facts, required this.narrative});
 
   final List<({String label, String value})> facts;
   final String narrative;
@@ -367,18 +528,16 @@ final class CharacterAboutSections {
       valueFor(const {'birthday', 'birth date', 'birthdate'});
   String? get height => valueFor(const {'height'});
   String? get weight => valueFor(const {'weight'});
-  String? get arabicName => valueFor(const {
-    'arabic',
-    'arabic name',
-    'الاسم',
-    'الاسم العربي',
-  });
+  String? get arabicName =>
+      valueFor(const {'arabic', 'arabic name', 'الاسم', 'الاسم العربي'});
 }
 
 final class Anime {
   const Anime({
     required this.id,
     required this.title,
+    this.titleArabic,
+    this.titleJapanese,
     this.alternativeTitles = const <String>[],
     this.synopsis,
     this.type,
@@ -395,7 +554,9 @@ final class Anime {
     this.genres = const <AnimeGenre>[],
     this.studios = const <String>[],
     this.producers = const <String>[],
+    this.relations = const <AnimeRelated>[],
     this.source,
+    this.rating,
     this.images = const AnimeImages(),
     this.trailerUrl,
     this.externalLinks = const <AnimeExternalLink>[],
@@ -406,6 +567,15 @@ final class Anime {
 
   final String id;
   final String title;
+
+  /// The original-language titles, kept apart from [alternativeTitles] because
+  /// the anime page has to be able to name them: the spec asks for the title
+  /// in Arabic, English, Japanese and alternatives, and an unlabelled join of
+  /// the same strings cannot say which is which. Either is null when the
+  /// provider did not supply it.
+  final String? titleArabic;
+  final String? titleJapanese;
+
   final List<String> alternativeTitles;
   final String? synopsis;
   final String? type;
@@ -422,7 +592,9 @@ final class Anime {
   final List<AnimeGenre> genres;
   final List<String> studios;
   final List<String> producers;
+  final List<AnimeRelated> relations;
   final String? source;
+  final String? rating;
   final AnimeImages images;
   final String? trailerUrl;
   final List<AnimeExternalLink> externalLinks;
@@ -439,9 +611,26 @@ final class Anime {
     return parts.join(' · ');
   }
 
-  Anime copyWith({bool? fromCache}) => Anime(
+  AnimeAgeFilter get ageRating {
+    final raw = rating?.toLowerCase() ?? '';
+    if (raw.isEmpty) return AnimeAgeFilter.allAges;
+    if (raw.startsWith('g -') || raw.startsWith('pg - children')) {
+      return AnimeAgeFilter.allAges;
+    }
+    if (raw.startsWith('pg-13')) {
+      return AnimeAgeFilter.teens;
+    }
+    if (raw.startsWith('r -') || raw.startsWith('r+') || raw.startsWith('rx')) {
+      return AnimeAgeFilter.adult;
+    }
+    // Default for unrecognized ratings (PG, etc.)
+    return AnimeAgeFilter.allAges;
+  }
+
+  Anime copyWith({bool? fromCache, String? titleArabic}) => Anime(
     id: id,
     title: title,
+    titleArabic: titleArabic ?? this.titleArabic,
     alternativeTitles: alternativeTitles,
     synopsis: synopsis,
     type: type,
@@ -458,7 +647,9 @@ final class Anime {
     genres: genres,
     studios: studios,
     producers: producers,
+    relations: relations,
     source: source,
+    rating: rating,
     images: images,
     trailerUrl: trailerUrl,
     externalLinks: externalLinks,
@@ -498,6 +689,10 @@ final class AnimePage {
 
 abstract final class AnimeStrings {
   static const hubTitle = 'Anime Hub';
+
+  /// Stable English key for the hub's "Latest updates" page. The visible label
+  /// is always resolved through the translation map, never shown from here.
+  static const latestUpdates = 'Latest updates';
   static const seeAll = 'See all';
   static const searchHint = 'Search anime';
   static const openSearch = 'Search';
@@ -509,8 +704,7 @@ abstract final class AnimeStrings {
   static const nothingFound = 'No Anime Found';
   static const nothingFoundMessage = 'Try another title or browse the catalog.';
   static const unableToLoad = 'Unable to load anime right now.';
-  static const checkConnection =
-      'Please check your connection and try again.';
+  static const checkConnection = 'Please check your connection and try again.';
   static const retry = 'Retry';
   static const cachedBanner = 'Showing cached data';
   static const offlineCached = 'You are offline. Showing cached data.';
@@ -540,14 +734,58 @@ abstract final class AnimeStrings {
   static const malScore = 'MAL';
   static const ratingsTitle = 'Ratings';
   static const popularCharactersTitle = 'Popular characters';
+  static const communityStats = 'Community stats';
+  static const mostListed = 'Most listed in user lists';
+  static const seasonalCharacters = 'Characters of the season';
   static const myAnimeTitle = 'My Anime';
   static const theirAnimeTitle = 'Anime';
   static const reviewsTitle = 'Reviews';
+  static const relatedTitle = 'Related';
+  static const relatedFanWorksTitle = 'Related Fan Works';
+  static const relatedGroupsTitle = 'Related groups';
   static const writeReview = 'Write a review';
   static const reviewHint = 'Share what you thought (optional)';
   static const submitRating = 'Save rating';
   static const favoriteCharacter = 'Favorite character';
   static const filterGenre = 'Genre';
+  static const filterStudio = 'Studio';
+  static const filterStatus = 'Status';
+  static const filterAgeRating = 'Age rating';
+  static const statusAiring = 'Airing';
+  static const statusFinished = 'Finished';
+  static const statusUpcoming = 'Upcoming';
+  static const ageAllAges = 'All ages';
+  static const ageTeens = 'Teens 13+';
+  static const ageAdult = '17+';
+  static const aggregatedResults = 'More results across Pubget';
+  static const entityGroup = 'Group';
+  static const entityPerson = 'Person';
+  static const entityEvent = 'Event';
+  static const entityAnime = 'Anime';
+  static const entityFanWork = 'Fan Work';
+  static const entityCharacter = 'Character';
+  static const entityReel = 'Reel';
+  static const tabInfo = 'Info';
+  static const tabDetails = 'Details';
+  static const tabCharacters = 'Characters';
+  static const tabCharactersCast = 'Characters & cast';
+  static const tabStatistics = 'Statistics';
+  static const scoreDistribution = 'Score distribution';
+  static const criteriaBreakdown = 'What members rated';
+  static const tabRelated = 'Related';
+  static const favoriteCharactersTab = 'Favorite characters';
+  static const favoriteAnimeTab = 'Favorite anime';
+  static const listsTab = 'Lists';
+  static const ratingsTab = 'Ratings';
+  static const reportLabel = 'Report';
+  static const reportReview = 'Report review';
+  static const relatedReels = 'Related reels';
+  static const relatedEvents = 'Related events';
+  static const noReelsFound = 'No reels found';
+  static const noEventsFound = 'No events found';
+  static const myLibrary = 'My library';
+  static const customListsTitle = 'Custom lists';
+  static const recommendedForYou = 'Recommended for you';
   static const filterType = 'Type';
   static const filterSeason = 'Season';
   static const filterSort = 'Sort';
@@ -555,7 +793,8 @@ abstract final class AnimeStrings {
   static const sortTitle = 'Title';
   static const sortNewest = 'Newest';
   static const sortFavorites = 'Most favorited';
-  static const searchFiltersHint = 'Search by name, or filter by season and genre.';
+  static const searchFiltersHint =
+      'Search by name, or filter by season and genre.';
   static const noRatingsYet = 'Be the first to rate this anime on Pubget.';
   static const characterAbout = 'About';
   static const characterNicknames = 'Nicknames';
@@ -571,4 +810,31 @@ abstract final class AnimeStrings {
   static const thisSeasonSubtitle =
       'Airing this cour — posters, scores, and studios.';
   static const popularSubtitle = 'The titles everyone is watching and saving.';
+  static const characterRank = 'Community rank';
+  static const characterYourRating = 'Your rating';
+  static const characterReels = 'Related reels';
+  static const characterDiscussions = 'Community discussion';
+  static const characterDiscussionHint =
+      'Share your thoughts about this character';
+  static const characterDiscussionEmpty =
+      'No discussion yet. Start the conversation.';
+  static const characterNotFound = 'This character could not be found.';
+  static const post = 'Post';
+  static const delete = 'Delete';
+  static const customLists = 'Custom lists';
+  static const customListTab = 'Custom';
+  static const newCustomList = 'New list';
+  static const customListName = 'List name';
+  static const customListDescription = 'Description (optional)';
+  static const privateList = 'Private';
+  static const privateListHint = 'Only you can see this list';
+  static const customListsEmpty = 'No custom lists yet';
+  static const customListsEmptyMessage =
+      'Create your own themed lists to organize anime your way.';
+  static const createList = 'Create list';
+  static const customList = 'Custom list';
+  static const addToList = 'Add to list';
+  static const listNameRequired = 'A list name is required.';
+  static const editList = 'Edit list';
+  static const deleteList = 'Delete list';
 }

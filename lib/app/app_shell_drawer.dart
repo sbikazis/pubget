@@ -69,19 +69,7 @@ abstract final class AppShellDrawerDestinations {
       id: 'anime',
       label: 'Anime List',
       icon: Icons.auto_awesome_mosaic_outlined,
-      path: '/anime',
-    ),
-    (
-      id: 'anime-ratings',
-      label: 'Ratings',
-      icon: Icons.star_outline,
-      path: '/anime/ratings',
-    ),
-    (
-      id: 'anime-characters',
-      label: 'Popular Characters',
-      icon: Icons.people_outline,
-      path: '/anime/characters',
+      path: '/anime/updated',
     ),
     (
       id: 'store',

@@ -47,6 +47,7 @@ async function seedUser(uid) {
 
 async function createGroup(founder, type) {
   const domain = groups();
+  const roleplay = type === "animeRoleplay" || type === "openRoleplay";
   const result = await domain.createGroup({
     auth: { uid: founder },
     data: {
@@ -57,6 +58,7 @@ async function createGroup(founder, type) {
       joinPolicy: "open",
       isSearchable: true,
       rules: "",
+      character: roleplay ? { key: "mentor", name: "The Mentor" } : undefined,
     },
   });
   return result.groupId;
@@ -94,7 +96,7 @@ test("group settings are updatable only by manageSettings holders", async () => 
   assert.equal(group.name, "Renamed");
 
   // A shogun (default manageSettings holder) can update settings.
-  await db.doc(`groups/${groupId}/members/bob`).update({ role: "shogun" });
+  await db.doc(`groups/${groupId}/members/bob`).update({ role: "shogun", rankV2: "shogun" });
   await domain.updateGroupSettings({
     ...auth("bob"),
     data: { groupId, description: "By shogun" },
@@ -148,8 +150,18 @@ test("roleplay reservation is restricted to roleplay groups and enforces exclusi
   const domain = groups();
   const publicGroup = await createGroup("alice", "public");
   const rpGroup = await createGroup("alice", "openRoleplay");
-  await domain.joinGroup({ ...auth("bob"), data: { groupId: rpGroup } });
-  await domain.joinGroup({ ...auth("carol"), data: { groupId: rpGroup } });
+  await domain.joinGroup({
+    ...auth("bob"),
+    data: { groupId: rpGroup, characterKey: "hero", character: { name: "The Hero" } },
+  });
+  await domain.joinGroup({
+    ...auth("carol"),
+    data: {
+      groupId: rpGroup,
+      characterKey: "trickster",
+      character: { name: "The Trickster" },
+    },
+  });
 
   // Non-roleplay group rejects reservation.
   await assert.rejects(

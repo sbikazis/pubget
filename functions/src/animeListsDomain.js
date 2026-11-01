@@ -1,13 +1,41 @@
 "use strict";
 
+// The five personal states a member can give a title. Favouriting is a
+// separate boolean flag on the entry, not a status, so a title can be a
+// favourite while it is still being watched.
 const STATUSES = Object.freeze([
+  "want_to_watch",
   "watching",
   "completed",
-  "plan_to_watch",
-  "dropped",
-  "on_hold",
-  "favorites",
+  "watch_later",
+  "not_interested",
 ]);
+
+// Documents written before the five-state model are still readable.
+const LEGACY_STATUS_ALIASES = Object.freeze({
+  plan_to_watch: "want_to_watch",
+  on_hold: "watch_later",
+  dropped: "not_interested",
+  favorites: "want_to_watch",
+});
+
+function normalizeStatus(status) {
+  if (typeof status !== "string") return null;
+  if (STATUSES.includes(status)) return status;
+  return LEGACY_STATUS_ALIASES[status] || null;
+}
+
+const {
+  readStatusCounts,
+  hasStatusCounts,
+  applyStatusDelta,
+  canonicalStatus,
+  LIST_STATUSES,
+} = require("./animeStats");
+
+const MAX_CUSTOM_LISTS = 30;
+const MAX_CUSTOM_LIST_ITEMS = 500;
+const MAX_CUSTOM_LIST_SEED_ITEMS = 200;
 
 function validString(value, max) {
   return typeof value === "string" && value.trim().length > 0 && value.trim().length <= max;
@@ -25,8 +53,37 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
     return db.collection("users").doc(userId).collection("anime_lists").doc(animeId);
   }
 
+  function statsRef(animeId) {
+    return db.collection("anime_stats").doc(animeId);
+  }
+
   function characterRef(userId, characterId) {
     return db.collection("users").doc(userId).collection("character_favorites").doc(characterId);
+  }
+
+  function customListRef(userId, listId) {
+    return db.collection("users").doc(userId).collection("anime_custom_lists").doc(listId);
+  }
+
+  function customListCountRef(userId) {
+    return db.collection("users").doc(userId).collection("custom_lists_meta").doc("count");
+  }
+
+  function customListItemRef(userId, listId, animeId) {
+    return db.collection("users").doc(userId)
+      .collection("anime_custom_lists").doc(listId)
+      .collection("items").doc(animeId);
+  }
+
+  function ensureOwnedList(tx, meta, userId, listId) {
+    if (!meta.exists) {
+      throw new HttpsError("not-found", "This list does not exist.");
+    }
+    const data = meta.data() || {};
+    if (data.ownerUid && data.ownerUid !== userId) {
+      throw new HttpsError("permission-denied", "This list belongs to another account.");
+    }
+    return data;
   }
 
   async function setAnimeListEntry(request) {
@@ -34,9 +91,7 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
     const animeId = validString(request.data && request.data.animeId, 64)
       ? request.data.animeId.trim()
       : null;
-    const status = STATUSES.includes(request.data && request.data.status)
-      ? request.data.status
-      : null;
+    const status = normalizeStatus(request.data && request.data.status);
     const title = validString(request.data && request.data.title, 200)
       ? request.data.title.trim()
       : "";
@@ -48,28 +103,65 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
     if (rating != null && (!Number.isInteger(rating) || rating < 1 || rating > 10)) {
       throw new HttpsError("invalid-argument", "Rating must be an integer from 1 to 10.");
     }
+    const favorite = request.data && request.data.favorite === true;
     const ref = entryRef(userId, animeId);
+    const stats = statsRef(animeId);
     await db.runTransaction(async (tx) => {
-      const existing = await tx.get(ref);
+      const [existing, statsSnap] = await Promise.all([tx.get(ref), tx.get(stats)]);
       const payload = {
         animeId,
         userId,
         status,
         title,
         rating,
+        favorite,
         updatedAt: FieldValue.serverTimestamp(),
       };
+      const statsData = statsSnap.data() || {};
+      // The five-state breakdown is server-authoritative, so a status change
+      // moves the previous bucket out and the new one in inside the same
+      // transaction. `listedCount` only moves when the entry itself appears or
+      // disappears — re-filing a title must not double-count it. The stored
+      // status is canonicalised first, so an entry still carrying a legacy
+      // spelling leaves the bucket it was actually counted in.
+      let statusCounts = readStatusCounts(statsData);
+      // A pre-migration document has `listedCount` but no breakdown. Writing
+      // one here would count only this entry and leave the older ones out,
+      // and the client would then show a bar chart of a fraction of the
+      // community. The field stays absent — so the chart keeps reading as
+      // unavailable — until the backfill publishes the true totals. A
+      // document this transaction creates is complete by construction.
+      const maintainStatusCounts = hasStatusCounts(statsData) || !statsSnap.exists;
       if (!existing.exists) {
         payload.createdAt = FieldValue.serverTimestamp();
         tx.create(ref, payload);
+        statusCounts = applyStatusDelta(statusCounts, status, 1);
+        const createPayload = {
+          animeId,
+          title,
+          listedCount: (Number(statsData.listedCount) || 0) + 1,
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        if (maintainStatusCounts) createPayload.statusCounts = statusCounts;
+        tx.set(stats, createPayload, { merge: true });
         return;
       }
       if (existing.data()?.userId && existing.data().userId !== userId) {
         throw new HttpsError("permission-denied", "This list entry belongs to another account.");
       }
+      const previousStatus = canonicalStatus(existing.data()?.status);
+      if (previousStatus) statusCounts = applyStatusDelta(statusCounts, previousStatus, -1);
+      statusCounts = applyStatusDelta(statusCounts, status, 1);
       tx.update(ref, payload);
+      if (statsSnap.exists && maintainStatusCounts) {
+        tx.set(stats, {
+          animeId,
+          statusCounts,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
     });
-    return { animeId, status, rating };
+    return { animeId, status, title, rating, favorite };
   }
 
   async function removeAnimeListEntry(request) {
@@ -79,13 +171,37 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
       : null;
     if (!animeId) throw new HttpsError("invalid-argument", "animeId is required.");
     const ref = entryRef(userId, animeId);
+    const stats = statsRef(animeId);
     await db.runTransaction(async (tx) => {
-      const existing = await tx.get(ref);
+      const [existing, statsSnap] = await Promise.all([tx.get(ref), tx.get(stats)]);
       if (!existing.exists) return;
       if (existing.data()?.userId && existing.data().userId !== userId) {
         throw new HttpsError("permission-denied", "This list entry belongs to another account.");
       }
+      // Read the stored status before the delete so the bucket released is the
+      // one this entry was counted in, legacy spellings included.
+      const previousStatus = canonicalStatus(existing.data()?.status);
       tx.delete(ref);
+      if (statsSnap.exists) {
+        const statsData = statsSnap.data() || {};
+        // Release the status bucket this entry was counted in. The early
+        // `!existing.exists` return makes a repeated delete a no-op, so the
+        // counter converges at zero instead of going negative.
+        const statusCounts = applyStatusDelta(
+          readStatusCounts(statsData),
+          previousStatus,
+          -1,
+        );
+        const removePayload = {
+          animeId,
+          listedCount: Math.max(0, (Number(statsData.listedCount) || 0) - 1),
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        // Only move a breakdown this document already publishes, so a
+        // pre-migration document is not given a one-entry chart by a delete.
+        if (hasStatusCounts(statsData)) removePayload.statusCounts = statusCounts;
+        tx.set(stats, removePayload, { merge: true });
+      }
     });
     return { ok: true };
   }
@@ -98,7 +214,8 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
     let query = db.collection("users").doc(userId).collection("anime_lists")
       .orderBy("updatedAt", "desc")
       .limit(limit);
-    if (STATUSES.includes(status)) query = query.where("status", "==", status);
+    const normalizedStatus = normalizeStatus(status);
+    if (normalizedStatus) query = query.where("status", "==", normalizedStatus);
     if (cursor) {
       const cursorSnap = await entryRef(userId, cursor).get();
       if (cursorSnap.exists) query = query.startAfter(cursorSnap);
@@ -165,10 +282,12 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
       const nextCount = already
         ? Number(stats.data()?.favoritesCount) || 0
         : (Number(stats.data()?.favoritesCount) || 0) + 1;
+      const nextName = (name || stats.data()?.name || "").trim();
       tx.set(statsRef, {
         characterId,
-        name: name || stats.data()?.name || "",
+        name: nextName,
         imageUrl: imageUrl || stats.data()?.imageUrl || "",
+        searchName: nextName.toLowerCase() || " ",
         favoritesCount: nextCount,
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
@@ -184,17 +303,285 @@ function createAnimeListsDomain({ db, FieldValue, HttpsError }) {
     return { items };
   }
 
+  async function createCustomAnimeList(request) {
+    const userId = uid(request);
+    const name = validString(request.data && request.data.name, 80)
+      ? request.data.name.trim()
+      : null;
+    if (!name) {
+      throw new HttpsError("invalid-argument", "A list name (1–80 characters) is required.");
+    }
+    const description = validString(request.data && request.data.description, 300)
+      ? request.data.description.trim()
+      : "";
+    const isPrivate = !!(request.data && request.data.private);
+    const rawIds = Array.isArray(request.data && request.data.animeIds)
+      ? request.data.animeIds
+      : [];
+    const animeIds = [...new Set(
+      rawIds
+        .map((value) => (validString(value, 64) ? String(value).trim() : null))
+        .filter(Boolean),
+    )].slice(0, MAX_CUSTOM_LIST_SEED_ITEMS);
+    const col = db.collection("users").doc(userId).collection("anime_custom_lists");
+    const id = col.doc().id;
+    const metaRef = customListRef(userId, id);
+    const countRef = customListCountRef(userId);
+    await db.runTransaction(async (tx) => {
+      const countSnap = await tx.get(countRef);
+      const count = Number(countSnap.data() && countSnap.data().count) || 0;
+      if (count >= MAX_CUSTOM_LISTS) {
+        throw new HttpsError(
+          "resource-exhausted",
+          `You can create up to ${MAX_CUSTOM_LISTS} custom lists.`,
+        );
+      }
+      tx.create(metaRef, {
+        ownerUid: userId,
+        name,
+        description,
+        private: isPrivate,
+        itemsCount: 0,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      tx.set(countRef, { count: count + 1 }, { merge: true });
+    });
+    if (animeIds.length) {
+      await Promise.all(
+        animeIds.map((animeId) => customListItemRef(userId, id, animeId).set({
+          animeId,
+          title: "",
+          addedAt: FieldValue.serverTimestamp(),
+        })),
+      );
+      await metaRef.update({ itemsCount: animeIds.length });
+    }
+    return { id, name, description, private: isPrivate, itemsCount: animeIds.length };
+  }
+
+  async function updateCustomAnimeList(request) {
+    const userId = uid(request);
+    const listId = validString(request.data && request.data.listId, 64)
+      ? request.data.listId.trim()
+      : null;
+    if (!listId) throw new HttpsError("invalid-argument", "listId is required.");
+    const payload = {};
+    if (request.data && request.data.name !== undefined) {
+      const name = validString(request.data.name, 80)
+        ? request.data.name.trim()
+        : null;
+      if (!name) throw new HttpsError("invalid-argument", "A list name (1–80 characters) is required.");
+      payload.name = name;
+    }
+    if (request.data && request.data.description !== undefined) {
+      payload.description = validString(request.data.description, 300)
+        ? request.data.description.trim()
+        : "";
+    }
+    if (request.data && request.data.private !== undefined) {
+      payload.private = !!request.data.private;
+    }
+    if (!Object.keys(payload).length) {
+      throw new HttpsError("invalid-argument", "Nothing to update.");
+    }
+    payload.updatedAt = FieldValue.serverTimestamp();
+    const ref = customListRef(userId, listId);
+    await db.runTransaction(async (tx) => {
+      const doc = await tx.get(ref);
+      const data = ensureOwnedList(tx, doc, userId, listId);
+      tx.update(ref, payload);
+      return data;
+    });
+    return { ok: true };
+  }
+
+  async function deleteCustomAnimeList(request) {
+    const userId = uid(request);
+    const listId = validString(request.data && request.data.listId, 64)
+      ? request.data.listId.trim()
+      : null;
+    if (!listId) throw new HttpsError("invalid-argument", "listId is required.");
+    const ref = customListRef(userId, listId);
+    const meta = await ref.get();
+    const data = meta.data() || {};
+    if (!meta.exists) throw new HttpsError("not-found", "This list does not exist.");
+    if (data.ownerUid && data.ownerUid !== userId) {
+      throw new HttpsError("permission-denied", "This list belongs to another account.");
+    }
+    const itemsSnap = await ref.collection("items").get();
+    await Promise.all(
+      (itemsSnap.docs || []).map((doc) => ref.collection("items").doc(doc.id).delete()),
+    );
+    await ref.delete();
+    const countRef = customListCountRef(userId);
+    const countSnap = await countRef.get();
+    const count = Math.max(0, Number(countSnap.data() && countSnap.data().count) || 0);
+    await db.runTransaction(async (tx) => {
+      tx.set(countRef, { count: Math.max(0, count - 1) });
+    });
+    return { ok: true };
+  }
+
+  async function addAnimeToCustomList(request) {
+    const userId = uid(request);
+    const listId = validString(request.data && request.data.listId, 64)
+      ? request.data.listId.trim()
+      : null;
+    const animeId = validString(request.data && request.data.animeId, 64)
+      ? request.data.animeId.trim()
+      : null;
+    if (!listId || !animeId) {
+      throw new HttpsError("invalid-argument", "listId and animeId are required.");
+    }
+    const title = validString(request.data && request.data.title, 200)
+      ? request.data.title.trim()
+      : "";
+    const metaRef = customListRef(userId, listId);
+    const itemRef = customListItemRef(userId, listId, animeId);
+    await db.runTransaction(async (tx) => {
+      const meta = await tx.get(metaRef);
+      ensureOwnedList(tx, meta, userId, listId);
+      const existing = await tx.get(itemRef);
+      if (existing.exists) {
+        tx.update(itemRef, {
+          title: title || existing.data()?.title || "",
+          addedAt: FieldValue.serverTimestamp(),
+        });
+        return;
+      }
+      const count = Number(meta.data() && meta.data().itemsCount) || 0;
+      if (count >= MAX_CUSTOM_LIST_ITEMS) {
+        throw new HttpsError(
+          "resource-exhausted",
+          `This list can hold up to ${MAX_CUSTOM_LIST_ITEMS} anime.`,
+        );
+      }
+      tx.create(itemRef, {
+        animeId,
+        title,
+        addedAt: FieldValue.serverTimestamp(),
+      });
+      tx.update(metaRef, {
+        itemsCount: count + 1,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    return { ok: true };
+  }
+
+  async function removeAnimeFromCustomList(request) {
+    const userId = uid(request);
+    const listId = validString(request.data && request.data.listId, 64)
+      ? request.data.listId.trim()
+      : null;
+    const animeId = validString(request.data && request.data.animeId, 64)
+      ? request.data.animeId.trim()
+      : null;
+    if (!listId || !animeId) {
+      throw new HttpsError("invalid-argument", "listId and animeId are required.");
+    }
+    const metaRef = customListRef(userId, listId);
+    const itemRef = customListItemRef(userId, listId, animeId);
+    await db.runTransaction(async (tx) => {
+      const meta = await tx.get(metaRef);
+      ensureOwnedList(tx, meta, userId, listId);
+      const existing = await tx.get(itemRef);
+      if (!existing.exists) return;
+      tx.delete(itemRef);
+      const count = Math.max(0, (Number(meta.data() && meta.data().itemsCount) || 0) - 1);
+      tx.update(metaRef, {
+        itemsCount: count,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    return { ok: true };
+  }
+
+  async function getCustomAnimeLists(request) {
+    const requestingUid = uid(request);
+    const userId = validString(request.data && request.data.userId, 128)
+      ? request.data.userId.trim()
+      : requestingUid;
+    const own = userId === requestingUid;
+    const snap = await db.collection("users").doc(userId)
+      .collection("anime_custom_lists")
+      .orderBy("createdAt", "desc")
+      .limit(100)
+      .get();
+    const items = (snap.docs || [])
+      .map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter((item) => own || !item.private);
+    return { userId, items };
+  }
+
+  async function getCustomAnimeList(request) {
+    const requestingUid = uid(request);
+    const userId = validString(request.data && request.data.userId, 128)
+      ? request.data.userId.trim()
+      : requestingUid;
+    const listId = validString(request.data && request.data.listId, 64)
+      ? request.data.listId.trim()
+      : null;
+    if (!listId) throw new HttpsError("invalid-argument", "listId is required.");
+    const own = userId === requestingUid;
+    const ref = customListRef(userId, listId);
+    const meta = await ref.get();
+    if (!meta.exists) throw new HttpsError("not-found", "This list does not exist.");
+    const data = meta.data() || {};
+    if (data.private && !own) {
+      throw new HttpsError("permission-denied", "This list is private.");
+    }
+    const itemsSnap = await ref.collection("items")
+      .orderBy("addedAt", "desc")
+      .limit(500)
+      .get();
+    const items = (itemsSnap.docs || []).map((doc) => ({ id: doc.id, ...doc.data() }));
+    return { list: { id: listId, ...data }, items };
+  }
+
+  async function getCustomListsForAnime(request) {
+    const userId = uid(request);
+    const animeId = validString(request.data && request.data.animeId, 64)
+      ? request.data.animeId.trim()
+      : null;
+    if (!animeId) throw new HttpsError("invalid-argument", "animeId is required.");
+    const col = db.collection("users").doc(userId).collection("anime_custom_lists");
+    const listsSnap = await col.limit(100).get();
+    const memberships = await Promise.all(
+      (listsSnap.docs || []).map(async (doc) => {
+        const item = await customListItemRef(userId, doc.id, animeId).get();
+        if (!item.exists) return null;
+        return { listId: doc.id, name: doc.data()?.name || "" };
+      }),
+    );
+    return {
+      animeId,
+      items: memberships.filter((item) => item !== null),
+    };
+  }
+
   return {
     setAnimeListEntry,
     removeAnimeListEntry,
     getAnimeList,
     setCharacterFavorite,
     getCharacterFavorites,
+    createCustomAnimeList,
+    updateCustomAnimeList,
+    deleteCustomAnimeList,
+    addAnimeToCustomList,
+    removeAnimeFromCustomList,
+    getCustomAnimeLists,
+    getCustomAnimeList,
+    getCustomListsForAnime,
     STATUSES,
+    LIST_STATUSES,
   };
 }
 
 module.exports = {
   createAnimeListsDomain,
   ANIME_LIST_STATUSES: STATUSES,
+  ANIME_LIST_STATUS_KEYS: LIST_STATUSES,
 };
