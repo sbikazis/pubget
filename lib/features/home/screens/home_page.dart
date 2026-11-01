@@ -11,8 +11,6 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
-import '../../edits/models/edit_models.dart';
-import '../../edits/providers/edits_provider.dart';
 import '../../economy/models/economy_types.dart';
 import '../../economy/providers/economy_provider.dart';
 import '../../economy/widgets/economy_widgets.dart';
@@ -364,73 +362,6 @@ class _PeopleSection extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _EditsSection extends StatelessWidget {
-  const _EditsSection();
-
-  @override
-  Widget build(BuildContext context) {
-    final home = context.watch<HomeProvider>();
-    final edits = context.watch<EditsProvider>();
-    if (edits.state == LoadingState.initial) {
-      Future<void>.microtask(() => edits.load(limit: 8));
-    }
-    final copy = AppStrings.of(context);
-    final items = _editsForHome(home, edits);
-    Widget child;
-    if (items.isNotEmpty) {
-      child = HomeHorizontalStrip(
-        height: 228,
-        itemCount: items.length,
-        itemBuilder: (context, index) =>
-            HomeEditPreviewCard(edit: items[index]),
-      );
-    } else if (edits.state == LoadingState.loading ||
-        edits.state == LoadingState.initial ||
-        edits.state == LoadingState.refreshing) {
-      child = const _SkeletonSection();
-    } else if (edits.state == LoadingState.error) {
-      child = PubgetErrorState(
-        title: copy.sectionFailed,
-        message: edits.failure?.message ?? copy.tryAgainShort,
-        onRetry: () => edits.load(refresh: true, limit: 8),
-      );
-    } else {
-      child = PubgetEmptyState(compact: true, title: copy.nothingHereYet);
-    }
-    return _SectionFrame(
-      key: const Key('home-edits'),
-      title: copy.sectionEdits,
-      child: child,
-    );
-  }
-
-  List<Edit> _editsForHome(HomeProvider home, EditsProvider edits) {
-    if (edits.items.isNotEmpty) return edits.items.take(8).toList();
-    return home.feed
-        .section('recommendedEdits')
-        .items
-        .map((item) {
-          final meta = item.metadata;
-          return Edit(
-            id: item.targetId.isEmpty ? item.id : item.targetId,
-            creatorId: meta['creatorId'] as String? ?? '',
-            videoUrl: meta['videoUrl'] as String? ?? '',
-            thumbnailUrl: meta['thumbnailUrl'] as String? ?? '',
-            caption:
-                meta['title'] as String? ?? meta['caption'] as String? ?? '',
-            animeTag: meta['animeTag'] as String? ?? '',
-            likesCount: (meta['likesCount'] as num?)?.toInt() ?? 0,
-            commentsCount: 0,
-            viewsCount: 0,
-            score: item.score,
-            createdAt: item.createdAt,
-            status: 'published',
-          );
-        })
-        .toList(growable: false);
   }
 }
 
