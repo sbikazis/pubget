@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { renditionArgs, editorVideoFilter } = require("../src/kirariPipeline");
+const { renditionArgs, editorVideoFilter, outputDurationSeconds } = require("../src/kirariPipeline");
 
 test("Kirari rendition ladder always outputs vertical 9:16 dimensions", () => {
   const expected = new Map([[360, 202], [540, 302], [720, 404]]);
@@ -26,4 +26,11 @@ test("Kirari editor export applies trim-safe text, color and playback speed filt
   assert.match(filter, /drawtext=text=/);
   assert.match(filter, /setpts=PTS\/1.5/);
   assert.ok(filter.includes("Anime"));
+});
+
+test("Kirari speed changes preserve the selected source interval", () => {
+  assert.equal(outputDurationSeconds(12, 0.5), 24);
+  assert.equal(outputDurationSeconds(12, 1), 12);
+  assert.equal(outputDurationSeconds(12, 2), 6);
+  assert.equal(outputDurationSeconds(12, 9), 6);
 });
