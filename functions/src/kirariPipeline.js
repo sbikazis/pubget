@@ -76,8 +76,8 @@ async function probeVideo(binary, file) {
     // ffmpeg -i without an output target exits non-zero after printing metadata.
     child.once("exit", () => resolve(output));
   });
-  const match = /Duration:\\s*(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)/.exec(stderr);
-  const dimensions = /(\\d{2,5})x(\\d{2,5})/.exec(stderr);
+  const match = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(stderr);
+  const dimensions = /(\d{2,5})x(\d{2,5})/.exec(stderr);
   if (!match) throw new Error("Unable to read video duration.");
   return {
     durationSeconds: Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]),
