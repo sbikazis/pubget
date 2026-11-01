@@ -116,6 +116,10 @@ jobs:
       - name: Install Functions dependencies
         working-directory: functions
         run: npm ci
-      - name: Firestore and Storage rules tests
+      - name: Firestore rules tests
         working-directory: functions
-        run: npx firebase --config ../firebase.json emulators:exec --only firestore,storage --project demo-pubget-security "npm run test:rules && npm run test:storage-rules"
+        run: npx firebase --config ../firebase.json emulators:exec --only firestore --project demo-pubget-security "npm run test:rules"
+      - name: Storage rules tests
+        if: always()
+        working-directory: functions
+        run: npx firebase --config ../firebase.json emulators:exec --only storage --project demo-pubget-security "npm run test:storage-rules"
