@@ -719,8 +719,10 @@ final class AppStrings {
   String get chatGameViewResult => pick('View result', 'عرض النتيجة');
   String chatGameHostStarted(String host) =>
       pick('$host started the game', 'بدأ $host اللعبة');
-  String chatGameStartsAt(String value) =>
-      pick('Starts $value', 'تبدأ $value');
+  String chatGameStartsAt(int requiredPlayers) => pick(
+    '$requiredPlayers players needed to start',
+    'يلزم $requiredPlayers لاعبين لبدء اللعبة',
+  );
   String get chatWelcomeNewMember => pick('A new member joined', 'انضم عضو جديد');
   String get chatWelcomeBadge => pick('WELCOME', 'مرحباً');
   String get chatWelcomeAction => pick('Welcome', 'رحّب به');
