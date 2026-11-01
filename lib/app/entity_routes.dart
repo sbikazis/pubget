@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import '../features/audio/screens/audio_page.dart';
 import '../features/hashtags/screens/hashtag_page.dart';
 import '../features/reels/screens/reel_details_page.dart';
