@@ -782,8 +782,8 @@ service cloud.firestore {
     function eventInSingleGroup(eventId) {
       let data = eventDoc(eventId);
       return data.keys().hasAny(['groupId']) &&
-        data.get('groupId') is string &&
-        groupMember(data.get('groupId'));
+        data.get('groupId', '') is string &&
+        groupMember(data.get('groupId', ''));
     }
         function eventInMultiGroup(eventId) {
       // Rules functions cannot loop. Multi-group membership is enforced through
