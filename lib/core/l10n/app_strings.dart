@@ -707,4 +707,43 @@ final class AppStrings {
     'Voice message could not be played.',
     'تعذّر تشغيل الرسالة الصوتية.',
   );
+
+  // Group chat rich-card copy. Keep both locales in the shared string catalog.
+  String get chatGameGenericTitle => pick('Group game', 'لعبة جماعية');
+  String get chatGameWaiting => pick('Waiting for players', 'بانتظار اللاعبين');
+  String get chatGameStarted => pick('Game started', 'بدأت اللعبة');
+  String get chatGameFull => pick('Game is full', 'اللعبة مكتملة');
+  String get chatGameClosed => pick('Game closed', 'اللعبة مغلقة');
+  String get chatGameJoin => pick('Join game', 'انضم للعبة');
+  String get chatGameView => pick('View game', 'عرض اللعبة');
+  String get chatGameViewResult => pick('View result', 'عرض النتيجة');
+  String chatGameHostStarted(String host) =>
+      pick('$host started the game', 'بدأ $host اللعبة');
+  String chatGameStartsAt(String value) =>
+      pick('Starts $value', 'تبدأ $value');
+  String get chatWelcomeNewMember => pick('A new member joined', 'انضم عضو جديد');
+  String get chatWelcomeBadge => pick('WELCOME', 'مرحباً');
+  String get chatWelcomeAction => pick('Welcome', 'رحّب به');
+  String get chatChatAction => pick('Send a message', 'أرسل رسالة');
+  String get chatEventFallbackTitle => pick('Group event', 'فعالية المجموعة');
+  String get chatEventRsvpGoing => pick('Going', 'سأحضر');
+  String get chatEventRsvpMaybe => pick('Maybe', 'ربما');
+  String get chatEventRsvpDeclined => pick('Can’t go', 'لن أحضر');
+  String get chatDebateAgree => pick('Agree', 'موافق');
+  String get chatDebateDisagree => pick('Disagree', 'غير موافق');
+  String get chatDebateAddArgument => pick('Add argument', 'أضف حجة');
+  String get chatSecurityNote => pick(
+    'Keep your account and personal information safe.',
+    'حافظ على أمان حسابك ومعلوماتك الشخصية.',
+  );
+  String get chatDayToday => pick('Today', 'اليوم');
+  String get chatDayYesterday => pick('Yesterday', 'أمس');
+  String chatMonthLabel(int month) {
+    const en = <String>['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const ar = <String>['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    if (month < 1 || month > 12) return '';
+    return isArabic ? ar[month - 1] : en[month - 1];
+  }
 }
