@@ -219,6 +219,7 @@ function createKirariPipeline({ db, bucket }) {
       const trimEnd = Math.min(metadata.durationSeconds, Math.max(trimStart + 3, requestedEnd > trimStart ? requestedEnd : metadata.durationSeconds));
       const clipDuration = trimEnd - trimStart;
       const speed = Math.max(0.5, Math.min(2, Number(settings.speed) || 1));
+      const outputDuration = clipDuration / speed;
       const audioTrack = reel.audioId ? await db.collection("kirariAudio").doc(reel.audioId).get() : null;
       const audioData = audioTrack && audioTrack.exists ? audioTrack.data() : null;
       const audioSource = audioData && audioData.status === "approved" && audioData.allowReuse === true && audioData.audioPath
@@ -230,7 +231,7 @@ function createKirariPipeline({ db, bucket }) {
         const width = Math.floor((height * 9 / 16) / 2) * 2;
         const args = ["-ss", String(trimStart), "-i", source];
         if (audioSource) args.push("-stream_loop", "-1", "-i", audioSource);
-        args.push("-t", String(clipDuration), "-map", "0:v:0");
+        args.push("-t", String(outputDuration), "-map", "0:v:0");
         if (audioSource && metadata.hasAudio) {
           args.push("-filter_complex",
             "[0:a]volume=0.25,atempo=" + speed + "[sourceaudio];" +
