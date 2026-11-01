@@ -167,11 +167,11 @@ class FirebaseKirariRepository implements KirariRepository {
         }));
       }
     }
-    final cursor = result['nextCursor'];
+    final nextCursor = result['nextCursor'];
     return KirariFeedPageResult(
       reels,
       hasMore: result['hasMore'] == true,
-      nextCursor: cursor is Map ? Map<String, dynamic>.from(cursor) : null,
+      nextCursor: nextCursor is Map ? Map<String, dynamic>.from(nextCursor) : null,
     );
   }
 
