@@ -1,0 +1,47 @@
+name: Validate Flutter Builds
+
+on:
+  push:
+    branches: [ fix/chat-groups-build-stabilization ]
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'android/**'
+      - '.github/workflows/validate-flutter-build.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-build-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    name: Web and Android release compilation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve packages
+        run: flutter pub get
+      - name: Analyze application (legacy warnings are non-blocking)
+        run: flutter analyze --no-fatal-infos
+        continue-on-error: true
+      - name: Build Flutter Web release
+        run: flutter build web --release
+      - name: Build Android release APKs
+        run: flutter build apk --release --split-per-abi

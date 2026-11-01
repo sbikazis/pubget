@@ -1032,7 +1032,7 @@ class _MessageList extends StatelessWidget {
               message.createdAt!.day,
             );
       if (day != null && (lastDay == null || day != lastDay)) {
-        rows.add(_ChatListRow.date(chatDayLabel(message.createdAt, now: now)));
+        rows.add(_ChatListRow.date(chatDayLabel(message.createdAt, now: now, copy: AppStrings.of(context))));
         lastDay = day;
       }
       final prev = i > 0 ? messages[i - 1] : null;

@@ -117,7 +117,7 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
         workId: ticket.workId,
         mediaId: ticket.mediaId,
         path: result.publicUrl,
-        role: FanWorkMediaRole.gallery,
+        role: FanWorkMediaRole.image,
       );
     } catch (_) {}
   });
@@ -399,6 +399,11 @@ final class FirebaseFanWorkRepository implements FanWorkRepository {
     if (contentType.contains('gif')) return 'gif';
     return 'jpg';
   }
+
+  Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
+      _guard(() async {
+        await _functions.httpsCallable(name).call(data);
+      });
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {

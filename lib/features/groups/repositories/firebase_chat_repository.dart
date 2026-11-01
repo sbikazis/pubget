@@ -12,6 +12,7 @@ import '../../../core/errors/result.dart';
 import '../../../core/storage/media_upload_service.dart';
 import '../../../core/storage/r2_storage_service.dart';
 import '../models/chat_models.dart';
+import '../services/chat_send_reliability.dart';
 import 'chat_repository.dart';
 
 final class FirebaseChatRepository implements ChatRepository {
@@ -232,7 +233,7 @@ final class FirebaseChatRepository implements ChatRepository {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     R2UploadResult result;
-    if (type == ChatMediaType.video) {
+    if (type == ChatMessageType.video) {
       // Save to temp file for video
       final dir = await getTemporaryDirectory();
       final ext = _extension(fileName, contentType);
@@ -240,7 +241,7 @@ final class FirebaseChatRepository implements ChatRepository {
       await file.writeAsBytes(bytes);
       result = await _mediaUploadService.uploadReel(userId: uid, video: file);
       await file.delete();
-    } else if (type == ChatMediaType.audio) {
+    } else if (type == ChatMessageType.audio) {
       final dir = await getTemporaryDirectory();
       final ext = _extension(fileName, contentType);
       final file = File('${dir.path}/$mediaId.$ext');

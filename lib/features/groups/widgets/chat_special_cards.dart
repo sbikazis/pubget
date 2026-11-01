@@ -5,12 +5,27 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../games/models/game_type_registry.dart';
-import '../l10n/chat_copy.dart';
 import '../models/chat_models.dart';
 import 'chat_contrast_theme.dart';
 
 const _gameAccent = Color(0xFF6C5CE7);
 const _waGreen = Color(0xFF00A884);
+
+String chatGameStatusLabel(ChatGameActivity? activity, AppStrings copy) {
+  if (activity == null) return copy.gameCard;
+  if (activity.isCancelled) return copy.chatGameClosed;
+  if (activity.isStarted) return copy.chatGameStarted;
+  if (activity.isFull) return copy.chatGameFull;
+  return copy.chatGameWaiting;
+}
+
+String chatGameActionLabel(ChatGameActivity? activity, AppStrings copy) {
+  if (activity == null) return copy.chatGameView;
+  if (activity.isCancelled) return copy.chatGameViewResult;
+  if (activity.isStarted) return copy.chatGameView;
+  if (activity.isFull) return copy.chatGameFull;
+  return copy.chatGameJoin;
+}
 
 /// Interactive game lobby / invitation card (max bubble width).
 class ChatGameLobbyCard extends StatelessWidget {
