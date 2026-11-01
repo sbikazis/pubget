@@ -138,5 +138,6 @@ jobs:
         continue-on-error: true
       - name: Storage rules tests
         if: always()
+        timeout-minutes: 5
         working-directory: functions
         run: npx firebase --config ../firebase.json emulators:exec --only firestore,storage --project demo-pubget-security "npm run test:storage-rules"
