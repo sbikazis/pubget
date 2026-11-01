@@ -84,8 +84,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       }
       final file = File(path);
       final controller = VideoPlayerController.file(file);
-      await controller!.initialize();
-      await controller!.setLooping(true);
+      await controller.initialize();
+      await controller.setLooping(true);
       controller!.addListener(_previewLoop);
       final seconds = controller.value.duration.inMilliseconds / 1000;
       if (!mounted) {
@@ -165,7 +165,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         return;
       }
       durableFile = await _keepLocalCopy(picked);
-      controller = VideoPlayerController.file(durableFile!);
+      controller = VideoPlayerController.file(durableFile);
       await controller.initialize();
       await controller.setLooping(true);
       controller.addListener(_previewLoop);
@@ -431,7 +431,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                           alignment: Alignment.bottomCenter,
                           child: IconButton(
                             color: Colors.white,
-                            icon: Icon(preview!.value.isPlaying ? Icons.pause : Icons.play_arrow),
+                            icon: Icon(preview.value.isPlaying ? Icons.pause : Icons.play_arrow),
                             onPressed: () async {
                               if (preview.value.isPlaying) {
                                 await preview.pause();
