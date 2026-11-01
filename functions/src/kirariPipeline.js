@@ -109,6 +109,18 @@ function outputDurationSeconds(clipDuration, speed) {
   return duration / rate;
 }
 
+function buildAudioAttribution(audioId, audioData) {
+  if (!audioId || !audioData) return null;
+  return {
+    audioId,
+    title: audioData.title || "Original audio",
+    artist: audioData.artist || "",
+    license: audioData.license || "unknown",
+    attribution: audioData.attribution || "",
+    sourceCreatorId: audioData.creatorId || null,
+  };
+}
+
 function escapeDrawtext(value) {
   return String(value).replace(/\\/g, "\\\\")
     .replace(/:/g, "\\:").replace(/'/g, "\\'")
@@ -228,8 +240,11 @@ function createKirariPipeline({ db, bucket }) {
       const outputDuration = outputDurationSeconds(clipDuration, speed);
       const audioTrack = reel.audioId ? await db.collection("kirariAudio").doc(reel.audioId).get() : null;
       const audioData = audioTrack && audioTrack.exists ? audioTrack.data() : null;
-      const audioSource = audioData && audioData.status === "approved" && audioData.allowReuse === true && audioData.audioPath
-        ? path.join(dir, "selected-audio") : null;
+      if (reel.audioId && (!audioData || audioData.status !== "approved" ||
+          audioData.allowReuse !== true || !audioData.audioPath)) {
+        throw new Error("Selected Kirari audio is no longer approved for reuse.");
+      }
+      const audioSource = reel.audioId ? path.join(dir, "selected-audio") : null;
       if (audioSource) await bucket.file(audioData.audioPath).download({ destination: audioSource });
       const variants = {};
       for (const [height, bitrate] of [[360, "650k"], [540, "1200k"], [720, "2500k"]]) {
@@ -292,7 +307,7 @@ function createKirariPipeline({ db, bucket }) {
         renditions: variants,
         coverPath,
         editSettings: { ...settings, trimStartSeconds: trimStart, trimEndSeconds: trimEnd, speed, coverTimeSeconds: coverTime },
-        audioAttribution: audioData ? { audioId: reel.audioId, title: audioData.title || "Original audio", artist: audioData.artist || "", license: audioData.license || "unknown", sourceCreatorId: audioData.creatorId || null } : null,
+        audioAttribution: buildAudioAttribution(reel.audioId, audioData),
         publishedAt: new Date(),
         processedAt: new Date(),
         failureReason: null,
@@ -321,4 +336,4 @@ function createKirariPipeline({ db, bucket }) {
   };
 }
 
-module.exports = { createKirariPipeline, probeVideo, renditionArgs, editorVideoFilter, outputDurationSeconds };
+module.exports = { createKirariPipeline, probeVideo, renditionArgs, editorVideoFilter, outputDurationSeconds, buildAudioAttribution };
