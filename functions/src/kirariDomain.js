@@ -888,11 +888,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (request.data?.approved !== true || request.data?.allowReuse !== true) {
       fail("failed-precondition", "Audio must be explicitly approved for reuse.");
     }
-    const expectedPath = new RegExp(
-      "^kirari-audio/" + audioId.replace(/[.*+?^${}()|[\]\\]/g, "\\  async function getReelsByAudio(request) {") +
-      "/audio\\.(mp3|m4a|aac|ogg)$",
-    );
-    if (!expectedPath.test(audioPath)) {
+    const allowedAudioPaths = ["mp3", "m4a", "aac", "ogg"]
+      .map((extension) => `kirari-audio/${audioId}/audio.${extension}`);
+    if (!allowedAudioPaths.includes(audioPath)) {
       fail("invalid-argument", "Audio path must use the approved Kirari audio location.");
     }
     let metadata;
