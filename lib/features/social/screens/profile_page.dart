@@ -1141,7 +1141,7 @@ class _GroupsSectionState extends State<_GroupsSection> {
 
   Future<Result<List<Group>>> _load() async {
     try {
-      return context.read<GroupRepository>().listJoinedGroups(widget.profileId);
+      return await context.read<GroupRepository>().listJoinedGroups(widget.profileId);
     } on ProviderNotFoundException {
       return const Success<List<Group>>(<Group>[]);
     }
