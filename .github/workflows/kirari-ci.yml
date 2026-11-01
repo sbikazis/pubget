@@ -78,11 +78,12 @@ jobs:
           lib/app/entity_routes.dart
           lib/core/links/pubget_deep_link.dart
           test/reel_entity_surfaces_test.dart
-      - name: Full Flutter test suite (repository baseline)
-        run: flutter test
-        continue-on-error: true
       - name: Kirari integration tests
         run: flutter test test/reel_entity_surfaces_test.dart
+      - name: Full Flutter test suite (repository baseline; bounded)
+        run: flutter test
+        timeout-minutes: 10
+        continue-on-error: true
       # The repository-wide Android build currently fails on pre-existing
       # chat/groups compile errors outside Kirari. Keep it visible but do not
       # block the Kirari-scoped acceptance checks on unrelated legacy code.
