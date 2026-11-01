@@ -57,6 +57,10 @@ final class KirariCopy {
     'Could not load Kirari. Check your connection and retry.',
     'تعذّر تحميل كيراري. تحقق من الاتصال وحاول مجددًا.',
   );
+  String get reelUnavailable => _strings.pick(
+    'This Reel is not available',
+    'هذا الريل غير متاح',
+  );
   String get actionError => _strings.pick('Could not save that action. Please retry.', 'تعذّر حفظ هذا الإجراء. حاول مجددًا.');
   String get uploadError => _strings.pick(
     'Upload failed. Check your connection and retry.',
