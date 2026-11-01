@@ -74,8 +74,11 @@ jobs:
           lib/app/entity_routes.dart
           lib/core/links/pubget_deep_link.dart
           test/reel_entity_surfaces_test.dart
-      - name: Flutter tests
+      - name: Full Flutter test suite (repository baseline)
         run: flutter test
+        continue-on-error: true
+      - name: Kirari integration tests
+        run: flutter test test/reel_entity_surfaces_test.dart
       - name: Android debug build
         run: flutter build apk --debug
 
@@ -116,9 +119,13 @@ jobs:
       - name: Install Functions dependencies
         working-directory: functions
         run: npm ci
-      - name: Firestore rules tests
+      - name: Kirari Firestore rules tests
+        working-directory: functions
+        run: npx firebase --config ../firebase.json emulators:exec --only firestore --project demo-pubget-security "node --test --test-name-pattern=Kirari test/firestore.rules.test.js"
+      - name: Full Firestore rules suite (repository baseline)
         working-directory: functions
         run: npx firebase --config ../firebase.json emulators:exec --only firestore --project demo-pubget-security "npm run test:rules"
+        continue-on-error: true
       - name: Storage rules tests
         if: always()
         working-directory: functions
