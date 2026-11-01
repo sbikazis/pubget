@@ -5,7 +5,6 @@ import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../games/models/game_type_registry.dart';
-import '../l10n/chat_copy.dart';
 import '../models/chat_models.dart';
 import 'chat_contrast_theme.dart';
 
