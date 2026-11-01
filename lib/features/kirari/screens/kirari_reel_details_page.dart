@@ -149,7 +149,11 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
                               contentPadding: EdgeInsets.zero,
                               leading: const Icon(Icons.music_note),
                               title: Text(reel.audioAttribution['title'] as String? ?? 'Original audio'),
-                              subtitle: Text(reel.audioAttribution['artist'] as String? ?? ''),
+                              subtitle: Text([
+                                reel.audioAttribution['artist'] as String? ?? '',
+                                reel.audioAttribution['license'] as String? ?? '',
+                                reel.audioAttribution['attribution'] as String? ?? '',
+                              ].where((value) => value.isNotEmpty).join(' · ')),
                               onTap: () => AppNavigation.go(context, PubgetLinks.audioPath(reel.audioId!)),
                             ),
                           ],
