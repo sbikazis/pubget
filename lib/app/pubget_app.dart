@@ -39,10 +39,11 @@ import '../features/groups/repositories/chat_repository.dart';
 import '../features/groups/repositories/firebase_chat_repository.dart';
 import '../features/groups/repositories/group_members_repository.dart';
 import '../features/groups/repositories/group_repository.dart';
+import '../features/groups/repositories/group_catalog_repository.dart';
 import '../features/groups/repositories/roleplay_repository.dart';
 import '../features/groups/repositories/unavailable_group_repositories.dart';
 import '../features/groups/repositories/unavailable_chat_repository.dart';
-import '../features/groups/screens/create_group_wizard_page.dart';
+import '../features/groups/presentation/pages/create_group_wizard/create_group_wizard_page.dart';
 import '../features/groups/screens/group_chat_page.dart';
 import '../features/groups/screens/group_details_page.dart';
 import '../features/groups/screens/group_invite_page.dart';
@@ -57,7 +58,7 @@ import '../features/edits/providers/edit_upload_manager.dart';
 import '../features/edits/repositories/edits_repository.dart';
 import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
-import '../features/edits/screens/edit_upload_page.dart';
+import '../features/edits/screens/edit_feed_page.dart';
 import '../features/kirari/data/kirari_repository.dart';
 import '../features/kirari/screens/kirari_upload_page.dart';
 import '../features/notifications/widgets/notification_deep_link_binder.dart';
@@ -300,7 +301,10 @@ class PubgetApp extends StatelessWidget {
         ),
         provider.ChangeNotifierProvider<RoleplayProvider>(
           create: (context) =>
-              RoleplayProvider(repository: context.read<RoleplayRepository>()),
+              RoleplayProvider(
+                repository: context.read<RoleplayRepository>(),
+                catalogRepository: context.read<GroupCatalogRepository>(),
+              ),
         ),
         provider.ChangeNotifierProvider<ChatProvider>(
           create: (context) => ChatProvider(
@@ -847,7 +851,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/edits': const AppShell(),
         '/reels': const AppShell(),
         '/reels/upload': const KirariUploadPage(),
-        '/edits/upload': const EditUploadPage(),
+        '/edits/upload': const EditFeedPage(),
         '/groups': const AppShell(),
         '/joined': const AppShell(),
         '/private': const AppShell(),
@@ -968,8 +972,9 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/fan-work': (parameters) {
           final workId = parameters['workId'] ?? '';
           final view = parameters['view'];
-          if (view == 'manga') return MangaViewerPage(workId: workId);
-          if (view == 'story') return StoryReaderPage(workId: workId);
+          if (view == 'manga' || view == 'story') {
+            return FanWorkReaderPage(workId: workId);
+          }
           return FanWorkDetailsPage(workId: workId);
         },
         '/fan-works/create': (parameters) =>
