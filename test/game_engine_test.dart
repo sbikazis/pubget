@@ -18,15 +18,15 @@ void main() {
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.active, GameStatus.paused),
+        GameLifecycle.canTransition(GameStatus.waiting, GameStatus.starting),
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.paused, GameStatus.active),
+        GameLifecycle.canTransition(GameStatus.starting, GameStatus.inProgress),
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.active, GameStatus.completed),
+        GameLifecycle.canTransition(GameStatus.inProgress, GameStatus.completed),
         isTrue,
       );
       expect(
@@ -89,7 +89,7 @@ void main() {
       );
       expect(
         GameTypeRegistry.configurationFor(GameType.mafia).minPlayers,
-        4,
+        7,
       );
     });
 
