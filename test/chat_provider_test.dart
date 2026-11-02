@@ -740,6 +740,9 @@ final class _FakeChatRepository implements ChatRepository {
     required void Function(double progress) onProgress,
     void Function()? onBytesUploaded,
   }) async => const FailureResult(NetworkError());
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// Lets tests drive upload progress without completing until asked.
