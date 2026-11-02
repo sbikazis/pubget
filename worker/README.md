@@ -8,7 +8,7 @@ This Worker stores media bytes in the Cloudflare R2 bucket `pubget-media`.
 - `POST /upload`: authenticated multipart upload for small and medium files.
 - `GET /presign`: creates a 15-minute signed direct-upload URL.
 - `PUT /upload/{key}`: validates and accepts the signed upload.
-- `GET /resolve?key=...`: returns a 10-minute signed playback URL. Reels are readable by signed-in users; personal images/audio are owner-only in this initial policy.
+- `GET /resolve?key=...`: returns a 10-minute signed playback URL. All objects are owner-only until public Reel visibility and group/private-chat membership checks are implemented against Firestore.
 - `GET|HEAD /media/{key}`: streams a signed URL, including byte-range requests for video playback.
 - `DELETE /media/{key}`: owner-only deletion.
 
