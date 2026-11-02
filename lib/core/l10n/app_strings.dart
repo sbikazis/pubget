@@ -2125,8 +2125,15 @@ String get feedTrending => pick('Trending', 'رائج');
   String get submit => pick('Submit', 'إرسال');
 }
 
-/// Backwards-compatible name for event surfaces that still import EventStrings.
-typedef EventStrings = AppStrings;
+/// Stable English labels used by older event-widget tests and integrations.
+abstract final class EventStrings {
+  static const String addQuestion = 'Add question';
+  static const String removeQuestion = 'Remove question';
+  static const String saveDraft = 'Save draft';
+  static const String noEventsTitle = 'No events yet';
+  static const String missing = 'Unavailable';
+  static const String submit = 'Submit';
+}
 
 const Map<String, String> _mafiaPhasesEn = <String, String>{
   'WAITING': 'Waiting room',
