@@ -220,4 +220,7 @@ final class _FakeHubSocialRepository implements AnimeHubSocialRepository {
       const Success(<CharacterFavorite>[
         CharacterFavorite(characterId: 'erwin', name: 'Erwin Smith'),
       ]);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
