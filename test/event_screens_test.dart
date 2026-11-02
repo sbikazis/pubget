@@ -167,6 +167,10 @@ final class _FakeEventRepository implements EventRepository {
       );
 
   @override
+  Stream<Result<List<EventComment>>> watchComments(String eventId) =>
+      Stream<Result<List<EventComment>>>.value(const Success(<EventComment>[]));
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
