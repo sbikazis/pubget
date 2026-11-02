@@ -3,14 +3,11 @@
  * FIREBASE_STORAGE_EMULATOR_HOST=127.0.0.1:9199 \
  * FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node --test test/storage.rules.test.js
  *
-<<<<<<< HEAD
  * The test is run by the CI script test:storage-rules. Both Firestore and
  * Storage emulators must be running because Storage rules consult Firestore.
-=======
  * Wired into package.json as part of the "test:rules" script together with
  * firestore.rules.test.js, executed under the Firebase emulators with
  * --project demo-pubget-security. @firebase/rules-unit-testing is a devDependency.
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -63,12 +60,9 @@ test.before(async () => {
       db.doc("groups/group-owner/members/owner").set({ userId: "owner" }),
       db.doc("groups/group-owner/members/member").set({ userId: "member" }),
       db.doc("privateChats/private-1").set({ userA: "alice", userB: "bob" }),
-<<<<<<< HEAD
       db.doc("kirariAudio/track-1").set({ status: "approved", allowReuse: true }),
       db.doc("kirariAudio/track-pending").set({ status: "pending", allowReuse: true }),
-=======
       db.doc(`groups/${PROBE_GROUP}`).set({ founderId: PROBE_OWNER }),
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
     ]);
   });
   // A *permitted* cross-service write: isGroupOwner() must read the group doc.
@@ -413,7 +407,6 @@ test("fan work media is owner-writable and public only when the work is publishe
     bob.storage().ref("fan_works/alice/w-public/page.jpg").getDownloadURL(),
   );
 });
-<<<<<<< HEAD
 test("Kirari source uploads are owner-only and processed renditions are server-write-only", async () => {
   const owner = env.authenticatedContext("alice");
   const outsider = env.authenticatedContext("mallory");
@@ -440,21 +433,14 @@ test("licensed Kirari audio is readable only after approval and writable only by
   await assertSucceeds(upload(admin, audioPath, "audio/mpeg", 128));
   await assertFails(upload(alice, "kirari-audio/track-2/audio.mp3", "audio/mpeg", 128));
   await assertSucceeds(alice.storage().ref(audioPath).getDownloadURL());
-  await env.withSecurityRulesDisabled(async (context) => {
     await context.storage().ref("kirari-audio/track-pending/audio.mp3")
       .put(bytes(128), { contentType: "audio/mpeg" });
-  });
   await assertFails(alice.storage().ref("kirari-audio/track-pending/audio.mp3").getDownloadURL());
-});
-=======
-
 test("profile covers require owner writes and mirror avatar privacy on reads", async (t) => {
   if (!crossServiceWorks) return t.skip(CROSS_SERVICE_UNSUPPORTED);
-  await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
     await db.doc("users/cover-private").set({ profileVisibility: "private" });
     await db.doc("users/cover-public").set({ profileVisibility: "public" });
-  });
   const owner = env.authenticatedContext("cover-private");
   const publicOwner = env.authenticatedContext("cover-public");
   await assertSucceeds(upload(
@@ -462,91 +448,40 @@ test("profile covers require owner writes and mirror avatar privacy on reads", a
     "users/cover-private/cover.jpg",
     "image/jpeg",
   ));
-  await assertSucceeds(upload(
     publicOwner,
     "users/cover-public/cover.jpg",
-    "image/jpeg",
-  ));
   await assertFails(upload(
     env.authenticatedContext("bob"),
-    "users/cover-private/cover.jpg",
-    "image/jpeg",
-  ));
   // Enforces MIME + 10 MB ceiling.
-  await assertFails(upload(
-    owner,
     "users/cover-private/cover2.jpg",
     "video/mp4",
-  ));
-  await assertFails(upload(
-    owner,
     "users/cover-private/cover3.jpg",
-    "image/jpeg",
     10 * 1024 * 1024 + 1,
-  ));
-  await assertFails(upload(
     env.unauthenticatedContext(),
-    "users/cover-private/cover.jpg",
-    "image/jpeg",
-  ));
-
   await assertSucceeds(
     owner.storage().ref("users/cover-private/cover.jpg").getDownloadURL(),
   );
   await assertFails(
     env.authenticatedContext("bob")
       .storage().ref("users/cover-private/cover.jpg").getDownloadURL(),
-  );
-  await assertSucceeds(
-    env.authenticatedContext("bob")
       .storage().ref("users/cover-public/cover.jpg").getDownloadURL(),
-  );
-
-  await assertFails(
     env.authenticatedContext("bob").storage()
       .ref("users/cover-private/cover.jpg").delete(),
-  );
   await assertSucceeds(owner.storage().ref("users/cover-private/cover.jpg").delete());
-});
-
 test("event option images are owned by the creator and readable by users", async () => {
-  const alice = env.authenticatedContext("alice");
   const bob = env.authenticatedContext("bob");
-  await assertSucceeds(upload(
     alice,
     "events/alice/evt-1/option-1.jpg",
-    "image/jpeg",
-  ));
-  await assertSucceeds(upload(
-    alice,
     "events/alice/evt-1/option-2.png",
     "image/png",
-  ));
-  await assertFails(upload(
     bob,
-    "events/alice/evt-1/option-1.jpg",
-    "image/jpeg",
-  ));
-  await assertFails(upload(
-    alice,
     "events/alice/evt-1/huge.jpg",
-    "image/jpeg",
     5 * 1024 * 1024 + 1,
-  ));
-  await assertFails(upload(
-    alice,
     "events/alice/evt-1/secret.txt",
     "text/plain",
-  ));
-  await assertFails(
     env.unauthenticatedContext().storage()
       .ref("events/alice/evt-1/option-1.jpg").getDownloadURL(),
-  );
   await assertSucceeds(bob.storage().ref("events/alice/evt-1/option-1.jpg").getDownloadURL());
-  await assertFails(
     alice.storage().ref("events/bob/evt-1/option-1.jpg").delete(),
-  );
   await assertFails(bob.storage().ref("events/alice/evt-1/option-1.jpg").delete());
   await assertSucceeds(alice.storage().ref("events/alice/evt-1/option-1.jpg").delete());
-});
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
