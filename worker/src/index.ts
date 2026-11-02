@@ -137,6 +137,74 @@ function validUpload(
     rule.types[extension as keyof typeof rule.types] === contentType;
 }
 
+/** Inspect a short prefix without buffering the full video/audio payload. */
+async function requestPrefix(request: Request, length = 16): Promise<Uint8Array> {
+  const reader = request.clone().body?.getReader();
+  if (!reader) return new Uint8Array();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total < length) {
+      const next = await reader.read();
+      if (next.done) break;
+      chunks.push(next.value);
+      total += next.value.length;
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  const prefix = new Uint8Array(Math.min(length, total));
+  let offset = 0;
+  for (const chunk of chunks) {
+    const take = Math.min(chunk.length, prefix.length - offset);
+    prefix.set(chunk.subarray(0, take), offset);
+    offset += take;
+    if (offset >= prefix.length) break;
+  }
+  return prefix;
+}
+
+function hasMediaSignature(
+  kind: keyof typeof LIMITS,
+  extension: string,
+  bytes: Uint8Array,
+): boolean {
+  const ascii = (start: number, value: string) =>
+    value.split("").every((character, index) => bytes[start + index] === character.charCodeAt(0));
+  if (kind === "image") {
+    if (extension === "jpg" || extension === "jpeg") {
+      return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    }
+    if (extension === "png") {
+      return bytes.length >= 8 &&
+        [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((value, i) => bytes[i] === value);
+    }
+    if (extension === "gif") return bytes.length >= 6 && (ascii(0, "GIF87a") || ascii(0, "GIF89a"));
+    if (extension === "webp") return bytes.length >= 12 && ascii(0, "RIFF") && ascii(8, "WEBP");
+    return false;
+  }
+  if (kind === "reels") {
+    if (extension === "webm") return bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+    return bytes.length >= 12 && (ascii(4, "ftyp") || ascii(4, "styp"));
+  }
+  if (extension === "ogg") return bytes.length >= 4 && ascii(0, "OggS");
+  if (extension === "m4a") return bytes.length >= 12 && ascii(4, "ftyp");
+  if (extension === "aac") return bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xf6) === 0xf0;
+  if (extension === "mp3") {
+    return bytes.length >= 3 && (ascii(0, "ID3") ||
+      (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0));
+  }
+  return false;
+}
+
+async function fileHasMediaSignature(
+  file: File,
+  kind: keyof typeof LIMITS,
+  extension: string,
+): Promise<boolean> {
+  return hasMediaSignature(kind, extension, new Uint8Array(await file.slice(0, 16).arrayBuffer()));
+}
+
 function asciiAt(bytes: Uint8Array, offset: number, length: number): string {
   return String.fromCharCode(...bytes.slice(offset, offset + length));
 }
@@ -291,6 +359,10 @@ export default {
         return json({ error: "Invalid or expired upload authorization." }, 403);
       }
 
+      const prefix = await requestPrefix(request, 16);
+      if (!hasMediaSignature(kind, extension, prefix)) {
+        return json({ error: "File contents do not match the declared media type." }, 415);
+      }
       const expected = await hmac(env, [key, uid, contentType, size, expires].join("\n"));
       if (supplied.length !== expected.length) return json({ error: "Invalid upload signature." }, 403);
       let difference = 0;
@@ -339,6 +411,10 @@ export default {
       if (!validFileSignature(kind, contentType, prefix)) {
         return json({ error: "The file contents do not match the declared media type." }, 415);
       }
+      if (!await fileHasMediaSignature(file, kind, extension)) {
+        return json({ error: "File contents do not match the declared media type." }, 415);
+      }
+
       const key = createKey(kind, uid, extension);
       await env.MEDIA_BUCKET.put(key, file.stream(), {
         httpMetadata: { contentType, cacheControl: "private, max-age=0, no-store" },
@@ -353,8 +429,9 @@ export default {
       const key = url.searchParams.get("key") ?? "";
       const parts = key.split("/");
       if (!safeKey(key)) return json({ error: "Invalid object key." }, 400);
-      // Reels are authenticated-user-readable; personal images and audio remain owner-only.
-      if (parts[0] !== "reels" && parts[1] !== uid) return json({ error: "Forbidden." }, 403);
+      // Fail closed until published-reel visibility is verified against the
+      // authoritative Firestore record. A known key must not expose a draft.
+      if (parts[1] !== uid) return json({ error: "Forbidden." }, 403);
       const object = await env.MEDIA_BUCKET.head(key);
       if (!object) return json({ error: "Media not found." }, 404);
 
