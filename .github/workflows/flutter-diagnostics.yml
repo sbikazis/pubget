@@ -1,0 +1,77 @@
+name: Flutter failure diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feat/cloudflare-r2-media-backend]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.8'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Run tests and summarize only failures
+        shell: bash
+        run: |
+          set +e
+          flutter test --exclude-tags golden --reporter json > /tmp/flutter-tests.jsonl 2>&1
+          status=$?
+          python3 - <<'PY'
+          import json
+          from collections import defaultdict
+          errors = defaultdict(list)
+          failed = []
+          current = {}
+          for line in open('/tmp/flutter-tests.jsonl', encoding='utf-8', errors='replace'):
+              try:
+                  event = json.loads(line)
+              except Exception:
+                  continue
+              kind = event.get('type')
+              test = event.get('test', {})
+              if kind == 'testStart':
+                  current[test.get('id')] = test.get('name', '<unnamed>')
+              elif kind == 'error':
+                  errors[event.get('testID')].append(event.get('error', 'unknown test error'))
+              elif kind == 'testDone' and event.get('result') == 'failure':
+                  failed.append((event.get('testID'), current.get(event.get('testID'), '<unknown>')))
+          print('FAILED_TEST_COUNT=', len(failed))
+          for test_id, name in failed[:100]:
+              print('FAILED_TEST:', name, 'ID=', test_id)
+              for message in errors.get(test_id, [])[:3]:
+                  print('  ERROR:', message[:1500])
+          if not failed:
+              print('No testDone failure event was parsed; last raw lines:')
+              for line in open('/tmp/flutter-tests.jsonl', encoding='utf-8', errors='replace').readlines()[-30:]:
+                  print(line[:1500].rstrip())
+          PY
+          exit "$status"
+
+  web_build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.8'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build web and print concise compiler diagnostics
+        shell: bash
+        run: |
+          set +e
+          flutter build web --release > /tmp/flutter-web-build.log 2>&1
+          status=$?
+          grep -E '(^| )Error:|error:|Exception:|Target of URI|Failed to|Could not|Compilation failed|Error when reading' /tmp/flutter-web-build.log | tail -100 || tail -60 /tmp/flutter-web-build.log
+          exit "$status"
