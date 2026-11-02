@@ -2116,7 +2116,6 @@ String get feedForYou => pick('For You', 'لك');
 String get feedFollowing => pick('Following', 'متابَعين');
 
 String get feedTrending => pick('Trending', 'رائج');
-}
 
   String get addQuestion => pick('Add question', 'إضافة سؤال');
   String get removeQuestion => pick('Remove question', 'حذف السؤال');
@@ -2124,6 +2123,7 @@ String get feedTrending => pick('Trending', 'رائج');
   String get noEventsTitle => pick('No events yet', 'لا توجد فعاليات بعد');
   String get missing => pick('Unavailable', 'غير متاح');
   String get submit => pick('Submit', 'إرسال');
+}
 
 /// Backwards-compatible name for event surfaces that still import EventStrings.
 typedef EventStrings = AppStrings;
