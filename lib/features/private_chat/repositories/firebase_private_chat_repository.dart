@@ -1,16 +1,12 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
-import '../../../core/storage/media_upload_service.dart';
-import '../../../core/storage/r2_storage_service.dart';
 import '../../groups/models/chat_models.dart';
 import '../../groups/services/chat_send_reliability.dart';
 import '../models/private_chat_models.dart';
@@ -21,17 +17,14 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
     FirebaseStorage? storage,
-    MediaUploadService? mediaUploadService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _storage = storage ?? FirebaseStorage.instance,
-       _mediaUploadService = mediaUploadService ?? MediaUploadService();
+       _storage = storage ?? FirebaseStorage.instance;
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
   final FirebaseStorage _storage;
-  final MediaUploadService _mediaUploadService;
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
@@ -214,36 +207,44 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
     final isVideo = contentType.startsWith('video/');
     final type = isVideo ? ChatMessageType.video : ChatMessageType.image;
 
-    R2UploadResult result;
-    if (isVideo) {
-      final dir = await getTemporaryDirectory();
-      final ext = _extension(fileName, contentType);
-      final file = File('${dir.path}/$mediaId.$ext');
-      await file.writeAsBytes(bytes);
-      result = await _mediaUploadService.uploadReel(userId: uid, video: file);
-      await file.delete();
-    } else {
-      result = await _mediaUploadService.uploadImageBytes(
-        userId: uid,
-        bytes: bytes,
-        extension: _extension(fileName, contentType),
-      );
+    if (uid.isEmpty || bytes.isEmpty) {
+      throw const PermissionError('Sign in before sending media.');
     }
-
-    onProgress(0.5);
+    final extension = _extension(fileName, contentType);
+    final path = 'privateChats/$chatId/media/${mediaId}_original.$extension';
+    final ref = _storage.ref(path);
+    final task = ref.putData(
+      bytes,
+      SettableMetadata(
+        contentType: contentType,
+        customMetadata: <String, String>{'uploadedBy': uid},
+      ),
+    );
+    final subscription = task.snapshotEvents.listen((snapshot) {
+      final total = snapshot.totalBytes;
+      if (total > 0) onProgress(snapshot.bytesTransferred / total);
+    });
+    late final TaskSnapshot snapshot;
     try {
-      await _chats.doc(chatId).collection('media').doc(mediaId).set({
-        'mediumPath': result.publicUrl,
-        'originalPath': result.publicUrl,
-        'status': 'ready',
-        'type': type.name,
-      }, SetOptions(merge: true));
-    } catch (_) {}
+      snapshot = await task;
+    } finally {
+      await subscription.cancel();
+    }
+    final mediaUrl = await snapshot.ref.getDownloadURL();
+    await _chats.doc(chatId).collection('media').doc(mediaId).set({
+      'mediumPath': path,
+      'originalPath': path,
+      'status': 'ready',
+      'type': type.name,
+      'uploadedBy': uid,
+      'contentType': contentType,
+      'sizeBytes': bytes.length,
+    }, SetOptions(merge: true));
     onProgress(1);
 
     return ChatMediaUpload(
-      mediaUrl: result.publicUrl,
-      thumbnailUrl: result.publicUrl,
+      mediaUrl: mediaUrl,
+      thumbnailUrl: mediaUrl,
       mediaId: mediaId,
       type: type,
     );
