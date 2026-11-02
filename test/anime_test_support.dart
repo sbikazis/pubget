@@ -132,6 +132,9 @@ final class FakeAnimeHttpClient implements AnimeHttpClient {
     }
     return const AnimeHttpResponse(statusCode: 404, body: '{}');
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 final class FakeAnimeRepository implements AnimeRepository {
@@ -394,4 +397,7 @@ final class FakeAnimeRepository implements AnimeRepository {
     seasonListCalls++;
     return _pageResult(page);
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
