@@ -804,17 +804,13 @@ class _CreatorOverlay extends StatelessWidget {
       return matches.first.value;
     });
     final isFan = given >= SocialSnapshot.fanThreshold;
-<<<<<<< Updated upstream
     final profileName = profile?.primaryName(fallback: '') ?? '';
     final originalName = originalProfile?.primaryName(fallback: '') ?? '';
     final name = profileName.trim().isEmpty
-        ? copy.creatorFallback
+        ? (edit.displayCreatorId.trim().isEmpty
+            ? copy.creatorFallback
+            : edit.displayCreatorId)
         : profileName.trim();
-=======
-    final name =
-        profile?.primaryName(fallback: edit.displayCreatorId) ??
-        edit.displayCreatorId;
->>>>>>> Stashed changes
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1067,27 +1063,12 @@ class _EditActionRail extends StatelessWidget {
   Future<void> _share(BuildContext context, EditsProvider provider) async {
     // Canonical entity link — never the feed-highlight route.
     unawaited(provider.share(edit.id));
-<<<<<<< Updated upstream
     await PubgetLinks.share(
       context,
       url: PubgetLinks.reel(edit.id),
       title: 'Pubget Reel',
       type: 'edit',
     );
-=======
-    // §15.18 — share the specific Reel's canonical link. A generic `/reels`
-    // link dropped the viewer at the top of the feed instead of this Reel.
-    final url = PubgetLinks.reel(edit.id);
-    final text = PubgetLinks.editShareText(caption: edit.caption, url: url);
-    try {
-      await SharePlus.instance.share(
-        ShareParams(text: text, title: EditCopy.of(context).feedTitle),
-      );
-    } catch (_) {
-      if (!context.mounted) return;
-      await PubgetLinks.copy(context, url, type: 'edit');
-    }
->>>>>>> Stashed changes
   }
 
   Future<void> _respect(BuildContext context) async {
