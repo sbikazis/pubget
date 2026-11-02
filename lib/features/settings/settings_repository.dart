@@ -28,6 +28,7 @@ final class SettingsRepository {
 
   Future<Result<SettingsSnapshot>> save(SettingsSnapshot snapshot) async {
     final previous = current;
+    final previousHasSavedLocale = _hasSavedLocale;
     _cached = snapshot;
     _hasSavedLocale = true;
     try {
@@ -35,6 +36,7 @@ final class SettingsRepository {
       return Success(snapshot);
     } on Object {
       _cached = previous;
+      _hasSavedLocale = previousHasSavedLocale;
       return const FailureResult(
         UnknownError('Preferences could not be saved. Previous values kept.'),
       );
