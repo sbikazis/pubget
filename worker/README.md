@@ -32,7 +32,7 @@ npx wrangler deploy --config worker/wrangler.toml
 
 - The bucket is private; do not enable public bucket access.
 - Firebase ID tokens are verified against Google's Secure Token signing keys.
-- The Worker enforces content-type, extension, size, owner, and expiry checks.
+- The Worker enforces content-type, extension, size, owner, expiry, and leading-byte file-signature checks for both multipart and streamed direct uploads.
 - Signed playback URLs are bearer URLs and expire after ten minutes. Avoid logging their query strings.
-- The initial generic media key layout does not replace group/private-chat membership checks. Those feature-specific paths must remain on Firebase until an equivalent membership-aware authorization policy is implemented and tested.
+- The initial generic media key layout does not replace group/private-chat membership checks or per-record publication visibility checks. Those feature-specific paths must remain on Firebase until an equivalent membership-aware authorization policy is implemented and tested.
 - Keep Firebase Storage as the app default until every feature repository, media renderer, migration path, and CI test is switched and verified. Never delete the Firebase source objects as part of a copy operation.
