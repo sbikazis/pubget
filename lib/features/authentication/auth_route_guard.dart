@@ -28,21 +28,13 @@ abstract final class AuthRouteGuard {
     '/notifications',
     '/edits',
     '/edits/upload',
-<<<<<<< Updated upstream
+    // Signed-in feeds and their scoped entry points use authenticated data.
     '/reel',
     '/audio',
-    '/hashtag',
-=======
-    // Every route that renders `ReelsFeedPage` reads the signed-in Edit feed
-    // (and, once wired, mute + saved state). Firestore and Storage both require
-    // auth for that data, so letting a signed-out visitor reach these routes
-    // produced an empty feed and permission errors instead of a clean redirect.
-    '/reel',
     '/hashtag',
     '/reels/anime',
     '/reels/character',
     '/reels/creator',
->>>>>>> Stashed changes
     '/groups',
     '/joined',
     '/groups/create',
