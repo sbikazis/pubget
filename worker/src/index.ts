@@ -137,6 +137,92 @@ function validUpload(
     rule.types[extension as keyof typeof rule.types] === contentType;
 }
 
+function asciiAt(bytes: Uint8Array, offset: number, length: number): string {
+  return String.fromCharCode(...bytes.slice(offset, offset + length));
+}
+
+function startsWithBytes(bytes: Uint8Array, signature: number[]): boolean {
+  return signature.every((value, index) => bytes[index] === value);
+}
+
+/// Verify the first bytes independently of the client-provided MIME type and
+/// extension. This is a server-side gate: the Flutter preflight is not trusted.
+function validFileSignature(
+  kind: keyof typeof LIMITS,
+  contentType: string,
+  bytes: Uint8Array,
+): boolean {
+  if (bytes.length < 12) return false;
+  if (kind === "image") {
+    if (contentType === "image/jpeg") return startsWithBytes(bytes, [0xff, 0xd8, 0xff]);
+    if (contentType === "image/png") return startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    if (contentType === "image/gif") {
+      const header = asciiAt(bytes, 0, 6);
+      return header === "GIF87a" || header === "GIF89a";
+    }
+    if (contentType === "image/webp") {
+      return asciiAt(bytes, 0, 4) === "RIFF" && asciiAt(bytes, 8, 4) === "WEBP";
+    }
+    return false;
+  }
+  if (kind === "reels") {
+    if (contentType === "video/webm") return startsWithBytes(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
+    if (contentType === "video/quicktime") {
+      return asciiAt(bytes, 4, 4) === "ftyp" && asciiAt(bytes, 8, 2) === "qt";
+    }
+    return contentType === "video/mp4" && asciiAt(bytes, 4, 4) === "ftyp";
+  }
+  if (contentType === "audio/mpeg") {
+    return asciiAt(bytes, 0, 3) === "ID3" ||
+      (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0);
+  }
+  if (contentType === "audio/aac") {
+    return bytes[0] === 0xff && (bytes[1] & 0xf6) === 0xf0;
+  }
+  if (contentType === "audio/ogg") return asciiAt(bytes, 0, 4) === "OggS";
+  if (contentType === "audio/mp4") return asciiAt(bytes, 4, 4) === "ftyp";
+  return false;
+}
+
+/// Reads only the first 16 bytes and reconstructs the original stream, so
+/// large video uploads are not buffered into Worker memory for inspection.
+async function inspectAndRestoreBody(body: ReadableStream<Uint8Array>): Promise<{
+  prefix: Uint8Array;
+  stream: ReadableStream<Uint8Array>;
+}> {
+  const reader = body.getReader();
+  const buffered: Uint8Array[] = [];
+  let bufferedLength = 0;
+  while (bufferedLength < 16) {
+    const next = await reader.read();
+    if (next.done) break;
+    buffered.push(next.value);
+    bufferedLength += next.value.length;
+  }
+  const prefix = new Uint8Array(Math.min(16, bufferedLength));
+  let copied = 0;
+  for (const chunk of buffered) {
+    const count = Math.min(chunk.length, prefix.length - copied);
+    if (count <= 0) break;
+    prefix.set(chunk.subarray(0, count), copied);
+    copied += count;
+  }
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of buffered) controller.enqueue(chunk);
+    },
+    async pull(controller) {
+      const next = await reader.read();
+      if (next.done) controller.close();
+      else controller.enqueue(next.value);
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+  return { prefix, stream };
+}
+
 function safeKey(key: string): boolean {
   const parts = key.split("/");
   return parts.length === 3 &&
@@ -217,7 +303,12 @@ export default {
         return json({ error: "Upload signature or size mismatch." }, 403);
       }
 
-      await env.MEDIA_BUCKET.put(key, request.body, {
+      if (!request.body) return json({ error: "Upload body is required." }, 400);
+      const inspected = await inspectAndRestoreBody(request.body);
+      if (!validFileSignature(kind, contentType, inspected.prefix)) {
+        return json({ error: "The file contents do not match the declared media type." }, 415);
+      }
+      await env.MEDIA_BUCKET.put(key, inspected.stream, {
         httpMetadata: { contentType, cacheControl: "private, max-age=0, no-store" },
         customMetadata: { uploadedBy: uid, mediaKind: parts[0] },
       });
@@ -244,6 +335,10 @@ export default {
         return json({ error: "Unsupported media type or size." }, 400);
       }
 
+      const prefix = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+      if (!validFileSignature(kind, contentType, prefix)) {
+        return json({ error: "The file contents do not match the declared media type." }, 415);
+      }
       const key = createKey(kind, uid, extension);
       await env.MEDIA_BUCKET.put(key, file.stream(), {
         httpMetadata: { contentType, cacheControl: "private, max-age=0, no-store" },
