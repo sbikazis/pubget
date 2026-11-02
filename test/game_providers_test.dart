@@ -166,4 +166,7 @@ final class _FakeGameRepository implements GameRepository {
     required String gameId,
     required String userId,
   }) => const Stream<Result<Map<String, dynamic>>>.empty();
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
 }
