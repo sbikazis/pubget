@@ -8,6 +8,12 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return signedIn() &&
+          ('admin' in request.auth.token) &&
+          request.auth.token.admin == true;
+    }
+
     function isImage() {
       return request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
     }
@@ -360,10 +366,21 @@ service firebase.storage {
       allow delete: if signedIn() && request.auth.uid == userId;
     }
 
+    // Event option images are creator-owned, bounded image assets.
+    match /events/{ownerId}/{eventId}/{fileName} {
+      allow read: if signedIn() &&
+          fileName.matches('option-[0-9]+\\.jpg');
+      allow create, update: if signedIn() && request.auth.uid == ownerId &&
+          fileName.matches('option-[0-9]+\\.jpg') &&
+          imageUpload(5 * 1024 * 1024);
+      allow delete: if signedIn() && request.auth.uid == ownerId &&
+          fileName.matches('option-[0-9]+\\.jpg');
+    }
+
     match /kirari-audio/{audioId}/{fileName} {
       allow read: if signedIn() && kirariAudioPublished(audioId) &&
         fileName.matches('audio\\.(mp3|m4a|aac|ogg)');
-      allow create, update: if signedIn() && request.auth.token.admin == true &&
+      allow create, update: if isAdmin() &&
         fileName.matches('audio\\.(mp3|m4a|aac|ogg)') &&
         request.resource.contentType.matches('audio/.*') &&
         request.resource.size <= 25 * 1024 * 1024;
