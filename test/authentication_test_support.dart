@@ -88,6 +88,9 @@ final class FakeAuthRepository implements AuthRepository {
   }
 
   Future<void> close() => _controller.close();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 final class FakeUserRepository implements UserRepository {
@@ -132,6 +135,9 @@ final class FakeUserRepository implements UserRepository {
     user = next;
     return Success<PubgetUser>(next);
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Future<SettingsProvider> englishSettingsProvider() async {
