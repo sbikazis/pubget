@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
+import 'package:pubget/core/l10n/app_strings.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
@@ -99,7 +100,7 @@ final class _FakeEventRepository implements EventRepository {
   Future<Result<void>> end(String eventId) async => const Success<void>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) async =>
+  Future<Result<List<PubgetEvent>>> getActiveEvents({PubgetEvent? after, int limit = 20}) async =>
       const Success(<PubgetEvent>[]);
 
   @override
@@ -126,7 +127,7 @@ final class _FakeEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) async =>
+  Future<Result<List<PubgetEvent>>> getRecentEvents({PubgetEvent? after, int limit = 20}) async =>
       const Success(<PubgetEvent>[]);
 
   @override
@@ -165,6 +166,9 @@ final class _FakeEventRepository implements EventRepository {
       Stream<Result<PubgetEvent>>.value(
         const FailureResult(NotFoundError('This event no longer exists.')),
       );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 final class _FakeGroupRepository implements GroupRepository {
