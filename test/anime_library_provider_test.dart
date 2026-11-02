@@ -119,5 +119,9 @@ final class _FakeLibraryRepository implements AnimeLibraryRepository {
   }
 
   @override
+  Future<Result<List<AnimeCustomList>>> getCustomLists({String? userId}) async =>
+      const Success<List<AnimeCustomList>>(<AnimeCustomList>[]);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
