@@ -241,6 +241,8 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String path,
     required FanWorkMediaRole role,
     String caption = '',
+    String characterId = '',
+    int? pageCount,
   }) async => const Success<void>(null);
 
   @override
@@ -369,7 +371,9 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   @override
   Future<Result<FanWorkUploadTicket>> startMediaUpload({
     required String workId,
+    required FanWorkMediaRole role,
     required String contentType,
+    String characterId = '',
   }) async => const FailureResult(UnknownError('unused'));
 
   @override
@@ -377,6 +381,7 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required FanWorkUploadTicket ticket,
     required List<int> bytes,
     required String contentType,
+    FanWorkUploadProgress? onProgress,
   }) async => const Success<void>(null);
 
   @override
@@ -385,4 +390,7 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
         watchWorkResult ??
             const FailureResult(NotFoundError('This Fan Work is unavailable.')),
       );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
