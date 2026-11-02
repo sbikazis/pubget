@@ -137,7 +137,7 @@ final class _FakeEventRepository implements EventRepository {
   Future<Result<void>> end(String eventId) async => const Success<void>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) async =>
+  Future<Result<List<PubgetEvent>>> getActiveEvents({PubgetEvent? after, int limit = 20}) async =>
       const Success(<PubgetEvent>[]);
 
   @override
@@ -164,7 +164,7 @@ final class _FakeEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) async =>
+  Future<Result<List<PubgetEvent>>> getRecentEvents({PubgetEvent? after, int limit = 20}) async =>
       const Success(<PubgetEvent>[]);
 
   @override
@@ -210,4 +210,7 @@ final class _FakeEventRepository implements EventRepository {
   @override
   Stream<Result<PubgetEvent>> watchEvent(String eventId) =>
       const Stream<Result<PubgetEvent>>.empty();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
