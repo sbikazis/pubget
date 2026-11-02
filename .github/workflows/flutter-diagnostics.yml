@@ -30,8 +30,10 @@ jobs:
           import json
           from collections import defaultdict
           errors = defaultdict(list)
+          global_errors = []
           failed = []
           current = {}
+          done = []
           for line in open('/tmp/flutter-tests.jsonl', encoding='utf-8', errors='replace'):
               try:
                   event = json.loads(line)
@@ -41,18 +43,35 @@ jobs:
               test = event.get('test', {})
               if kind == 'testStart':
                   current[test.get('id')] = test.get('name', '<unnamed>')
-              elif kind == 'error':
-                  errors[event.get('testID')].append(event.get('error', 'unknown test error'))
-              elif kind == 'testDone' and event.get('result') == 'failure':
-                  failed.append((event.get('testID'), current.get(event.get('testID'), '<unknown>')))
+              elif kind in ('error', 'testError'):
+                  test_id = event.get('testID')
+                  message = event.get('error', event.get('message', 'unknown test error'))
+                  if test_id is None:
+                      global_errors.append(message)
+                  else:
+                      errors[test_id].append(message)
+              elif kind == 'testDone' and event.get('result') != 'success' and not event.get('skipped', False):
+                  test_id = event.get('testID')
+                  failed.append((test_id, current.get(test_id, '<unknown>'), event.get('result')))
+              elif kind == 'done':
+                  done.append(event)
           print('FAILED_TEST_COUNT=', len(failed))
-          for test_id, name in failed[:100]:
-              print('FAILED_TEST:', name, 'ID=', test_id)
+          print('GLOBAL_ERROR_COUNT=', len(global_errors))
+          for message in global_errors[:30]:
+              print('GLOBAL_ERROR:', str(message)[:2000])
+          for test_id, name, result in failed[:100]:
+              print('FAILED_TEST:', name, 'RESULT=', result, 'ID=', test_id)
               for message in errors.get(test_id, [])[:3]:
-                  print('  ERROR:', message[:1500])
-          if not failed:
-              print('No testDone failure event was parsed; last raw lines:')
-              for line in open('/tmp/flutter-tests.jsonl', encoding='utf-8', errors='replace').readlines()[-30:]:
+                  print('  ERROR:', str(message)[:1500])
+          for test_id, messages in errors.items():
+              if not any(row[0] == test_id for row in failed):
+                  print('ERROR_EVENT_WITHOUT_FAILED_TEST:', current.get(test_id, '<unknown>'), 'ID=', test_id)
+                  for message in messages[:3]:
+                      print('  ERROR:', str(message)[:1500])
+          print('DONE_EVENT=', done[-1] if done else 'missing')
+          if not failed and not global_errors and not any(errors.values()):
+              print('No explicit error event was parsed; last raw lines:')
+              for line in open('/tmp/flutter-tests.jsonl', encoding='utf-8', errors='replace').readlines()[-40:]:
                   print(line[:1500].rstrip())
           PY
           exit "$status"
