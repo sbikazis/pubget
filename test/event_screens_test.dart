@@ -161,6 +161,16 @@ final class _FakeEventRepository implements EventRepository {
   }) async => const Success<void>(null);
 
   @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) async => const Success<String?>(null);
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() async =>
+      const Success(EventCreationQuota(count: 0, limit: 2, remaining: 2));
+
+  @override
   Stream<Result<PubgetEvent>> watchEvent(String eventId) =>
       Stream<Result<PubgetEvent>>.value(
         const FailureResult(NotFoundError('This event no longer exists.')),
