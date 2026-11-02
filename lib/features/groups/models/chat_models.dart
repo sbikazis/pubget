@@ -235,8 +235,6 @@ final class ChatMessage {
       cardMeta: map['cardMeta'] is Map
           ? Map<String, dynamic>.from(map['cardMeta'] as Map)
           : null,
-      mediaWidth: (map['mediaWidth'] as num?)?.toInt(),
-      mediaHeight: (map['mediaHeight'] as num?)?.toInt(),
     );
   }
 
