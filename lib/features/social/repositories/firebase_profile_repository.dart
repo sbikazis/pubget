@@ -79,7 +79,7 @@ final class FirebaseProfileRepository implements ProfileRepository {
   ) async {
     try {
       await _functions.httpsCallable('updateSocialProfile').call<void>(
-        <String, dynamic>{'userId': userId, ...update.toMap()},
+        <String, dynamic>{...update.toMap()},
       );
       return getOwnProfile(userId);
     } on Object catch (error) {
