@@ -1665,6 +1665,7 @@ test("Kirari exposes only approved public reels and approved audio metadata", as
   await assertFails(db("alice").doc("kirariAudio/track-approved").update({
     status: "approved", allowReuse: true,
   }));
+});
 
 test("ready audio is readable by signed-in users; drafts and failures are not", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
