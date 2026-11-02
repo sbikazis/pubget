@@ -1372,10 +1372,7 @@ String get chatDebateDisagree => pick('Disagree', 'غير موافق');
 
 String get chatDebateAddArgument => pick('Add argument', 'أضف حجة');
 
-String get chatSecurityNote => pick(
-    'Keep your account and personal information safe.',
-    'حافظ على أمان حسابك ومعلوماتك الشخصية.',
-  );
+
 
 String get chatDayToday => pick('Today', 'اليوم');
 
