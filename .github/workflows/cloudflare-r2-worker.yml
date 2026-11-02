@@ -24,5 +24,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Test media signature validation
+        run: npx --yes vitest@3.2.4 run worker/src/index.test.ts
+
       - name: Validate Worker bundle
         run: npx --yes wrangler@4 deploy --dry-run --config worker/wrangler.toml
