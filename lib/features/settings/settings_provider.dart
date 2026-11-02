@@ -39,6 +39,19 @@ final class SettingsProvider extends ChangeNotifier {
     _notify();
   }
 
+  /// Seeds a fresh device from the authenticated server profile, but never
+  /// overwrites a language the user has explicitly chosen on this device.
+  Future<bool> seedLanguageFromServer(String language) async {
+    if (_repository.hasSavedLocale) return false;
+    final option = switch (language.trim().toLowerCase()) {
+      'ar' => AppLocaleOption.arabic,
+      'en' => AppLocaleOption.english,
+      _ => null,
+    };
+    if (option == null) return false;
+    return _commit(_snapshot.copyWith(localeOption: option));
+  }
+
   Future<bool> setThemeMode(ThemeMode mode) =>
       _commit(_snapshot.copyWith(themeMode: mode));
 
