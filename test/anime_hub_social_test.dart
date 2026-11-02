@@ -222,5 +222,10 @@ final class _FakeHubSocialRepository implements AnimeHubSocialRepository {
       ]);
 
   @override
+  Future<Result<List<AnimeCustomList>>> listUserCustomAnimeLists(
+    String userId,
+  ) async => const Success<List<AnimeCustomList>>(<AnimeCustomList>[]);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
