@@ -51,7 +51,7 @@ Failure _mapCode(String code, String? message) {
       body.contains('not authorized') ||
       body.contains('permission')) {
     return const PermissionError(
-      'Upload was blocked by storage security. Stay signed in and retry; if it keeps failing, rules may still be deploying.',
+      'Could not upload this video securely. Stay signed in and retry.',
     );
   }
   if (normalized == 'resource-exhausted' || normalized == 'quota-exceeded') {
