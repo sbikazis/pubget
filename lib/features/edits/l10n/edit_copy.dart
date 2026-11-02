@@ -291,8 +291,8 @@ final class EditCopy {
         );
       }
       return _s.pick(
-        'Upload was blocked by storage security. Stay signed in and retry in a moment.',
-        'تم حظر الرفع بواسطة أمان التخزين. ابقَ مسجّل الدخول وأعد المحاولة بعد لحظات.',
+        'Could not upload this video securely. Please retry.',
+        'تعذر رفع الفيديو بشكل آمن. أعد المحاولة من فضلك.',
       );
     }
     if (failure is NetworkError) {
