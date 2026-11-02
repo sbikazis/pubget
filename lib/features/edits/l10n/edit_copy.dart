@@ -65,8 +65,6 @@ final class EditCopy {
     'Your Reel is ready — watch it now?',
     'ريلك جاهز — شاهده الآن؟',
   );
-  String get videoReadyOffer =>
-      _s.pick('Your Reel is ready — watch it now?', 'ريلك جاهز — شاهده الآن؟');
   String get watchNow => _s.pick('Watch now', 'شاهده الآن');
   String get openEdit => _s.pick('Open published Reel', 'فتح الريل المنشور');
   String get noVideoYet => _s.pick(
@@ -199,7 +197,6 @@ final class EditCopy {
   String get reelDetails => _s.pick('Reel', 'ريل');
   String get creatorFallback => _s.pick('Pubget creator', 'مبدع على Pubget');
   String get originalAudio => _s.pick('Original Audio', 'الصوت الأصلي');
-  String get audio => _s.pick('Audio', 'الصوت');
   String get audioSource => _s.pick('Audio source', 'مصدر الصوت');
   String get openOriginalReel =>
       _s.pick('Open original Reel', 'فتح الريل الأصلي');
@@ -223,7 +220,6 @@ final class EditCopy {
   );
   String get remixEnabled => _s.pick('Remix enabled', 'إعادة المزج متاحة');
   String get remixDisabled => _s.pick('Remix disabled', 'إعادة المزج معطّلة');
-  String get hashtags => _s.pick('Hashtags', 'الوسوم');
   String get mentions => _s.pick('Mentions', 'الإشارات');
   String charactersCount(int count) => _s.pick(
     '$count ${count == 1 ? 'character' : 'characters'}',
