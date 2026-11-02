@@ -64,4 +64,8 @@ final class AdManager {
   void reportImpression(AdPlacement placement) {
     if (isEligible(placement)) _onImpressionLogged(placement);
   }
+
+  void dispose() {
+    // No native resources exist until an ad SDK adapter is configured.
+  }
 }
