@@ -79,27 +79,6 @@ abstract final class PubgetLinks {
   static String reelHighlight(String reelId) =>
       canonical(reelHighlightPath(reelId));
 
-  /// Axis 15 §15.18 — canonical shareable link for one Reel.
-  /// A share must carry the reel identity, not just the feed.
-  static String reelPath(String reelId) =>
-      _encodedPath('/reel', reelId) ?? '/reels';
-
-  static String reel(String reelId) => canonical(reelPath(reelId));
-
-  static String hashtagPath(String tag) {
-    final trimmed = tag.trim().replaceAll('#', '');
-    if (trimmed.isEmpty) return '/reels';
-    return '/hashtag?tag=${Uri.encodeQueryComponent(trimmed.toLowerCase())}';
-  }
-
-  static String hashtag(String tag) => canonical(hashtagPath(tag));
-
-  /// Axis 15 §15.8 — the audio library and one audio's detail page.
-  static String audioPath(String audioId) =>
-      _encodedPath('/audio', audioId) ?? '/audio';
-
-  static String audio(String audioId) => canonical(audioPath(audioId));
-
   static String animeReelsPath(String animeId) =>
       _encodedPath('/reels/anime', animeId) ?? '/reels';
 
