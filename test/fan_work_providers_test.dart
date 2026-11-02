@@ -83,7 +83,7 @@ void main() {
     editor.updateDraft(
       editor.draft.copyWith(
         title: 'Kept locally',
-        body: 'Once upon a time in a village far away.',
+        description: 'Once upon a time in a village far away.',
       ),
     );
     final saved = await editor.saveDraft();
@@ -162,9 +162,7 @@ FanWork _work(String id) => FanWork(
   title: 'Work $id',
   description: 'A drawing',
   content: const FanWorkContent(
-    images: <FanWorkMedia>[
-      FanWorkMedia(mediaId: 'i1', path: 'fan_works/alice/w/i1.jpg'),
-    ],
+    artwork: FanWorkMedia(mediaId: 'i1', path: 'fan_works/alice/w/i1.jpg'),
   ),
   status: FanWorkStatus.published,
   moderationStatus: FanWorkModerationStatus.approved,
@@ -214,6 +212,8 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String path,
     required FanWorkMediaRole role,
     String caption = '',
+    String characterId = '',
+    int? pageCount,
   }) async => const Success<void>(null);
 
   @override
@@ -265,7 +265,13 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
         type: draft.type,
         title: draft.title,
         description: draft.description,
-        content: FanWorkContent(body: draft.body, name: draft.name),
+        content: FanWorkContent(
+          body: draft.description,
+          characters: draft.characters,
+          personality: draft.personality,
+          abilities: draft.abilities,
+          specs: draft.specs,
+        ),
         status: FanWorkStatus.draft,
         moderationStatus: FanWorkModerationStatus.pending,
         visibility: FanWorkVisibility.unpublished,
@@ -403,4 +409,8 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
         watchWorkResult ??
             const FailureResult(NotFoundError('This Fan Work is unavailable.')),
       );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
 }
