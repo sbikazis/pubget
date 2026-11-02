@@ -68,7 +68,8 @@ void main() {
     }, id: 'ai-1');
     expect(work.type, FanWorkType.aiCharacter);
     expect(work.isAiAssisted, isTrue);
-    expect(FanWorkTypeCatalog.label(work.type), contains('AI-assisted'));
+    expect(work.origin, FanWorkOrigin.aiGenerated);
+    expect(FanWorkTypeCatalog.label(work.type), 'Character');
   });
 
   test('tags are normalized and de-duplicated', () {
@@ -91,6 +92,7 @@ void main() {
           creatorId: 'alice',
           type: FanWorkType.drawing,
           title: 'Sketch',
+          categoryId: 'portrait',
           description: '',
           content: const FanWorkContent(),
           status: FanWorkStatus.draft,
