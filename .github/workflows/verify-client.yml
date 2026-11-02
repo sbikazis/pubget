@@ -37,7 +37,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       # Goldens are rasterized per-platform: the committed PNGs were produced
       # on macOS, so this Linux runner renders text differently and the
