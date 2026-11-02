@@ -227,4 +227,7 @@ final class _FakeEconomyRepository implements EconomyRepository {
 
   @override
   Future<Result<void>> claimReferral() async => const Success<void>(null);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
