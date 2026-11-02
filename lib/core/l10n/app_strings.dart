@@ -2118,6 +2118,9 @@ String get feedFollowing => pick('Following', 'متابَعين');
 String get feedTrending => pick('Trending', 'رائج');
 }
 
+/// Backwards-compatible name for event surfaces that still import EventStrings.
+typedef EventStrings = AppStrings;
+
 const Map<String, String> _mafiaPhasesEn = <String, String>{
   'WAITING': 'Waiting room',
   'STARTING': 'Starting',
