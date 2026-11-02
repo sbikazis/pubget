@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/features/fan_works/models/fan_work_lifecycle.dart';
 import 'package:pubget/features/fan_works/models/fan_work_models.dart';
+import 'package:pubget/features/fan_works/models/fan_work_taxonomy.dart';
 
 void main() {
   test('FanWork round-trips through toMap and fromMap', () {
