@@ -85,6 +85,8 @@ MediaCompressionResult _compressImageInBackground(_CompressionInput input) {
   final originalHeight = working.height;
   var quality = 86;
   Uint8List best = input.bytes;
+  var bestWidth = originalWidth;
+  var bestHeight = originalHeight;
   final mime = input.contentType;
 
   Uint8List encode(img.Image image, int jpegQuality) {
@@ -117,7 +119,11 @@ MediaCompressionResult _compressImageInBackground(_CompressionInput input) {
       quality = (quality - 5).clamp(55, 86).toInt();
     }
     final candidate = encode(working, quality);
-    if (candidate.length < best.length) best = candidate;
+    if (candidate.length < best.length) {
+      best = candidate;
+      bestWidth = working.width;
+      bestHeight = working.height;
+    }
     if (best.length <= input.targetBytes) break;
   }
 
@@ -134,7 +140,7 @@ MediaCompressionResult _compressImageInBackground(_CompressionInput input) {
   return MediaCompressionResult(
     bytes: best,
     contentType: mime,
-    width: working.width,
-    height: working.height,
+    width: bestWidth,
+    height: bestHeight,
   );
 }
