@@ -79,8 +79,6 @@ abstract final class PubgetLinks {
   static String reelHighlight(String reelId) =>
       canonical(reelHighlightPath(reelId));
 
-<<<<<<< Updated upstream
-=======
   /// Axis 15 §15.18 — canonical shareable link for one Reel.
   /// A share must carry the reel identity, not just the feed.
   static String reelPath(String reelId) =>
@@ -120,7 +118,6 @@ abstract final class PubgetLinks {
   static String creatorReels(String creatorId) =>
       canonical(creatorReelsPath(creatorId));
 
->>>>>>> Stashed changes
   static String gamePath(String gameId) => _encodedPath('/game', gameId) ?? '';
 
   static String game(String gameId) => canonical(gamePath(gameId));
