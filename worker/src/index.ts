@@ -147,7 +147,7 @@ function startsWithBytes(bytes: Uint8Array, signature: number[]): boolean {
 
 /// Verify the first bytes independently of the client-provided MIME type and
 /// extension. This is a server-side gate: the Flutter preflight is not trusted.
-export function validFileSignature(
+export export function validFileSignature(
   kind: keyof typeof LIMITS,
   contentType: string,
   bytes: Uint8Array,
