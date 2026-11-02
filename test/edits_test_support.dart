@@ -83,6 +83,9 @@ final class FakeEditsRepository implements EditsRepository {
     required String contentType,
     required String caption,
     required String animeTag,
+    String? hashtags,
+    String? characterTags,
+    String? audioId,
     String? fileName,
     int? sizeBytes,
     String? idempotencyKey,
@@ -122,8 +125,16 @@ final class FakeEditsRepository implements EditsRepository {
       Success(testEdit(id: editId, status: 'processing'));
 
   @override
-  Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) async =>
-      Success(EditPage(feed, hasMore: false));
+  Future<Result<EditPage>> getFeed({
+    Edit? after,
+    int limit = 5,
+    String? audioId,
+    String? animeId,
+    String? characterId,
+    String? hashtag,
+    String? creatorId,
+    FeedType feedType = FeedType.forYou,
+  }) async => Success(EditPage(feed, hasMore: false));
 
   @override
   Future<Result<List<Edit>>> getCreatorEdits(
@@ -236,6 +247,27 @@ final class FakeEditsRepository implements EditsRepository {
     if (signalFailure != null) return FailureResult(signalFailure!);
     return const Success<void>(null);
   }
+
+  @override
+  Future<Result<void>> reportEdit({
+    required String editId,
+    required String category,
+    String? detail,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> muteReelCreator({
+    required String creatorId,
+    required bool mute,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<SavedReelsPage>> listSavedReels({
+    String? afterId,
+    int limit = 30,
+  }) async => const Success<SavedReelsPage>(
+    SavedReelsPage(<Edit>[], hasMore: false),
+  );
 
   Future<void> close() async => _editController.close();
 }
