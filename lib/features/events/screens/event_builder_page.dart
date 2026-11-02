@@ -277,6 +277,7 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
             content: _typeStep(copy, builder),
           ),
           Step(
+<<<<<<< Updated upstream
             title: const Text('Configure'),
             content: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,6 +407,11 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                 if (spec.usesQuiz) _quizEditor(),
               ],
             ),
+=======
+            title: Text(copy.eventStepContent),
+            isActive: _step >= 2,
+            content: _contentStep(copy, builder),
+>>>>>>> Stashed changes
           ),
           Step(
             title: Text(copy.eventStepDuration),
