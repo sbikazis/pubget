@@ -119,8 +119,6 @@ final class ChatMessage {
     this.senderTitle,
     this.disappearing = false,
     this.cardMeta,
-    this.mediaWidth,
-    this.mediaHeight,
     this.reactionUsers = const <String, Set<String>>{},
   });
 
@@ -286,18 +284,6 @@ final class ChatMessage {
   final String? senderTitle;
   final bool disappearing;
   final Map<String, dynamic>? cardMeta;
-  final int? mediaWidth;
-  final int? mediaHeight;
-
-  bool get hasDisplayMedia =>
-      (thumbnailUrl?.trim().isNotEmpty ?? false) ||
-      (mediaUrl?.trim().isNotEmpty ?? false);
-  bool get hasMediaSize =>
-      mediaWidth != null && mediaHeight != null &&
-      mediaWidth! > 0 && mediaHeight! > 0;
-  double get mediaAspectRatio => hasMediaSize
-      ? mediaWidth! / mediaHeight!
-      : 4 / 3;
 
   bool get isDeleted => deletedAt != null;
 
