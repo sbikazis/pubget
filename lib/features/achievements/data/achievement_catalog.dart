@@ -144,11 +144,7 @@ abstract final class AchievementCatalog {
         AchievementConditionProgress(
           id: 'works_10',
           labelEn: '10 published Reels + Fan Works',
-<<<<<<< Updated upstream
-          labelAr: '10 أعمال منشورة (ريلز + أعمال معجبين)',
-=======
           labelAr: '10 أعمال منشورة (ريلز + أعمال المعجبين)',
->>>>>>> Stashed changes
           current: 0,
           target: 10,
           met: false,
