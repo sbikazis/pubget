@@ -125,7 +125,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             child: group == null
                 ? const SizedBox.shrink()
                 : provider.isFounder
-                    ? _FounderPanel(group: group)
+                    ? _GroupControlPanel(group: group)
                     : provider.hasEntryHub
                         ? _GroupEntryHub(group: group)
                         : _VisitorDetails(group: group),
