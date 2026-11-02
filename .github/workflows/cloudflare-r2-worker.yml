@@ -1,0 +1,28 @@
+name: Cloudflare R2 Worker validation
+
+on:
+  pull_request:
+    paths:
+      - "worker/**"
+      - ".github/workflows/cloudflare-r2-worker.yml"
+  push:
+    branches:
+      - main
+      - feat/cloudflare-r2-media-backend
+    paths:
+      - "worker/**"
+      - ".github/workflows/cloudflare-r2-worker.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  worker-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate Worker bundle
+        run: npx --yes wrangler@4 deploy --dry-run --config worker/wrangler.toml
