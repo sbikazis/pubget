@@ -115,6 +115,7 @@ import '../features/fan_works/repositories/fan_work_repository.dart';
 import '../features/fan_works/repositories/firebase_fan_work_repository.dart';
 import '../features/fan_works/repositories/unavailable_fan_work_repository.dart';
 import '../features/fan_works/screens/fan_work_screens.dart';
+import '../features/fan_works/screens/fan_work_reader_page.dart';
 import '../features/economy/providers/economy_provider.dart';
 import '../features/economy/repositories/economy_repository.dart';
 import '../features/economy/repositories/firebase_economy_repository.dart';
@@ -298,6 +299,9 @@ class PubgetApp extends StatelessWidget {
           create: (context) => GroupMembersProvider(
             repository: context.read<GroupMembersRepository>(),
           ),
+        ),
+        provider.Provider<GroupCatalogRepository>(
+          create: (_) => FirebaseGroupCatalogRepository(),
         ),
         provider.ChangeNotifierProvider<RoleplayProvider>(
           create: (context) =>
