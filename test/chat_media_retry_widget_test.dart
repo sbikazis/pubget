@@ -195,4 +195,7 @@ final class _RetryRepository implements ChatRepository {
     }
     return _upload!.future;
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
