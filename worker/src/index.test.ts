@@ -37,7 +37,7 @@ describe("R2 upload content signatures", () => {
   });
 
   it("checks common audio container signatures", () => {
-    expect(validFileSignature("audio", "audio/mpeg", new TextEncoder().encode("ID3\u0004\u0000\u0000\u0000\u0000\u0000\u0000"))).toBe(true);
+    expect(validFileSignature("audio", "audio/mpeg", new TextEncoder().encode("ID3\u0004\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"))).toBe(true);
     expect(validFileSignature("audio", "audio/aac", Uint8Array.from([
       0xff, 0xf1, 0x50, 0x80, 0, 0, 0, 0, 0, 0, 0, 0,
     ]))).toBe(true);
