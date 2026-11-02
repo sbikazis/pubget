@@ -34,7 +34,14 @@ jobs:
       # differently and the comparison fails. Exclude the `golden` tag here;
       # run `flutter test` locally on macOS to validate goldens.
       - name: Tests
-        run: flutter test --exclude-tags golden
+        run: |
+          set +e
+          flutter test --exclude-tags golden --reporter expanded > /tmp/flutter-tests.log 2>&1
+          status=$?
+          if [ $status -ne 0 ]; then
+            tail -n 160 /tmp/flutter-tests.log
+            exit $status
+          fi
 
   functions-gate:
     name: Functions syntax and unit tests
