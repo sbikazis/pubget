@@ -161,6 +161,9 @@ final class _FakeGameRepository implements GameRepository {
   }) => Stream<Result<Map<String, dynamic>>>.value(
     const Success(<String, dynamic>{}),
   );
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
 }
 
 final class _FakeGroupRepository implements GroupRepository {
