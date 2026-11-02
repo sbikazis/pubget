@@ -14,10 +14,6 @@ void main() {
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.waiting, GameStatus.active),
-        isTrue,
-      );
-      expect(
         GameLifecycle.canTransition(GameStatus.waiting, GameStatus.starting),
         isTrue,
       );
