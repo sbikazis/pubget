@@ -1326,41 +1326,62 @@ final class AppStrings {
     'Voice message could not be played.',
     'تعذّر تشغيل الرسالة الصوتية.',
   );
-<<<<<<< HEAD
+String get chatGameGenericTitle => pick('Group game', 'لعبة جماعية');
 
-  // Group chat rich-card copy. Keep both locales in the shared string catalog.
-  String get chatGameGenericTitle => pick('Group game', 'لعبة جماعية');
-  String get chatGameWaiting => pick('Waiting for players', 'بانتظار اللاعبين');
-  String get chatGameStarted => pick('Game started', 'بدأت اللعبة');
-  String get chatGameFull => pick('Game is full', 'اللعبة مكتملة');
-  String get chatGameClosed => pick('Game closed', 'اللعبة مغلقة');
-  String get chatGameJoin => pick('Join game', 'انضم للعبة');
-  String get chatGameView => pick('View game', 'عرض اللعبة');
-  String get chatGameViewResult => pick('View result', 'عرض النتيجة');
-  String chatGameHostStarted(String host) =>
+String get chatGameWaiting => pick('Waiting for players', 'بانتظار اللاعبين');
+
+String get chatGameStarted => pick('Game started', 'بدأت اللعبة');
+
+String get chatGameFull => pick('Game is full', 'اللعبة مكتملة');
+
+String get chatGameClosed => pick('Game closed', 'اللعبة مغلقة');
+
+String get chatGameJoin => pick('Join game', 'انضم للعبة');
+
+String get chatGameView => pick('View game', 'عرض اللعبة');
+
+String get chatGameViewResult => pick('View result', 'عرض النتيجة');
+
+String chatGameHostStarted(String host) =>
       pick('$host started the game', 'بدأ $host اللعبة');
-  String chatGameStartsAt(int requiredPlayers) => pick(
+
+String chatGameStartsAt(int requiredPlayers) => pick(
     '$requiredPlayers players needed to start',
     'يلزم $requiredPlayers لاعبين لبدء اللعبة',
   );
-  String get chatWelcomeNewMember => pick('A new member joined', 'انضم عضو جديد');
-  String get chatWelcomeBadge => pick('WELCOME', 'مرحباً');
-  String get chatWelcomeAction => pick('Welcome', 'رحّب به');
-  String get chatChatAction => pick('Send a message', 'أرسل رسالة');
-  String get chatEventFallbackTitle => pick('Group event', 'فعالية المجموعة');
-  String get chatEventRsvpGoing => pick('Going', 'سأحضر');
-  String get chatEventRsvpMaybe => pick('Maybe', 'ربما');
-  String get chatEventRsvpDeclined => pick('Can’t go', 'لن أحضر');
-  String get chatDebateAgree => pick('Agree', 'موافق');
-  String get chatDebateDisagree => pick('Disagree', 'غير موافق');
-  String get chatDebateAddArgument => pick('Add argument', 'أضف حجة');
-  String get chatSecurityNote => pick(
+
+String get chatWelcomeNewMember => pick('A new member joined', 'انضم عضو جديد');
+
+String get chatWelcomeBadge => pick('WELCOME', 'مرحباً');
+
+String get chatWelcomeAction => pick('Welcome', 'رحّب به');
+
+String get chatChatAction => pick('Send a message', 'أرسل رسالة');
+
+String get chatEventFallbackTitle => pick('Group event', 'فعالية المجموعة');
+
+String get chatEventRsvpGoing => pick('Going', 'سأحضر');
+
+String get chatEventRsvpMaybe => pick('Maybe', 'ربما');
+
+String get chatEventRsvpDeclined => pick('Can’t go', 'لن أحضر');
+
+String get chatDebateAgree => pick('Agree', 'موافق');
+
+String get chatDebateDisagree => pick('Disagree', 'غير موافق');
+
+String get chatDebateAddArgument => pick('Add argument', 'أضف حجة');
+
+String get chatSecurityNote => pick(
     'Keep your account and personal information safe.',
     'حافظ على أمان حسابك ومعلوماتك الشخصية.',
   );
-  String get chatDayToday => pick('Today', 'اليوم');
-  String get chatDayYesterday => pick('Yesterday', 'أمس');
-  String chatMonthLabel(int month) {
+
+String get chatDayToday => pick('Today', 'اليوم');
+
+String get chatDayYesterday => pick('Yesterday', 'أمس');
+
+String chatMonthLabel(int month) {
     const en = <String>['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const ar = <String>['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
@@ -1368,451 +1389,615 @@ final class AppStrings {
     if (month < 1 || month > 12) return '';
     return isArabic ? ar[month - 1] : en[month - 1];
   }
-=======
-  String get voiceNoteFailed => pick(
-    'Your voice message could not be saved. Please try again.',
-    'تعذّر حفظ رسالتك الصوتية. حاول مرة أخرى.',
-  );
-  String get voiceMicPermissionDenied => pick(
+
+String get voiceMicPermissionDenied => pick(
     'Microphone access is required to record a voice message.',
     'يلزم السماح بالوصول إلى الميكروفون لتسجيل رسالة صوتية.',
   );
-  String get voicePreviewUnavailable => pick(
+
+String get voicePreviewUnavailable => pick(
     'Preview is not available on this device.',
     'المعاينة غير متاحة على هذا الجهاز.',
   );
-  String get voiceSlideToCancel => pick('Slide to cancel', 'اسحب للإلغاء');
-  String get resume => pick('Resume', 'استئناف');
-  String get pause => pick('Pause', 'إيقاف مؤقت');
-  String get preview => pick('Preview', 'معاينة');
+
+String get voiceSlideToCancel => pick('Slide to cancel', 'اسحب للإلغاء');
+
+String get resume => pick('Resume', 'استئناف');
+
+String get pause => pick('Pause', 'إيقاف مؤقت');
+
+String get preview => pick('Preview', 'معاينة');
 
   // —— Group game-lobby / special chat cards ——
-  String get chatGameGenericTitle => pick('Game', 'لعبة');
-  String get chatGameStatusWaiting => pick('Waiting room', 'قاعة الانتظار');
-  String get chatGameStatusLive => pick('Live now', 'مباشر الآن');
-  String get chatGameStatusFull => pick('Full', 'اكتمل العدد');
-  String get chatGameStatusClosed => pick('Closed', 'أُغلقت');
-  String get chatGameCtaJoin => pick('Join game', 'انضمام للعبة');
-  String get chatGameCtaView => pick('View game', 'عرض اللعبة');
-  String get chatGameCtaDetails => pick('View details', 'عرض التفاصيل');
-  String chatGameHostStarted(String host) =>
-      pick('$host started a new game room', 'بدأ $host غرفة لعب جديدة');
-  String chatGameStartsAt(int players) =>
-      pick('Starts at $players players', 'يبدأ عند $players لاعبين');
 
-  String get chatWelcomeBadge =>
-      pick('Welcome the new member!', 'رحّبوا بالعضو الجديد!');
-  String get chatWelcomeNewMember => pick('New member', 'عضو جديد');
-  String get chatWelcomeAction => pick('👋 Welcome', '👋 ترحيب');
-  String get chatChatAction => pick('💬 Chat', '💬 دردشة');
-  String chatAgeYears(int years) => pick('$years yrs', '$years سنة');
+String get chatGameStatusWaiting => pick('Waiting room', 'قاعة الانتظار');
 
-  String get chatEventFallbackTitle => pick('Event', 'فعالية');
-  String get chatEventRsvpGoing => pick('Going ✅', 'سأحضر ✅');
-  String get chatEventRsvpMaybe => pick('Maybe ❓', 'ربما ❓');
-  String get chatEventRsvpDeclined => pick("Can't go ❌", 'لن أحضر ❌');
+String get chatGameStatusLive => pick('Live now', 'مباشر الآن');
 
-  String get chatDebateAgree => pick('Agree', 'موافق');
-  String get chatDebateDisagree => pick('Disagree', 'غير موافق');
-  String get chatDebateAddArgument =>
-      pick('Add your argument / opinion', 'أضف حجتك / رأيك');
+String get chatGameStatusFull => pick('Full', 'اكتمل العدد');
 
-  String get chatDayToday => pick('Today', 'اليوم');
-  String get chatDayYesterday => pick('Yesterday', 'أمس');
-  String chatMonthLabel(int month) => pick(
-    const <String>[
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ][month - 1],
-    const <String>[
-      'يناير',
-      'فبراير',
-      'مارس',
-      'أبريل',
-      'مايو',
-      'يونيو',
-      'يوليو',
-      'أغسطس',
-      'سبتمبر',
-      'أكتوبر',
-      'نوفمبر',
-      'ديسمبر',
-    ][month - 1],
-  );
+String get chatGameStatusClosed => pick('Closed', 'أُغلقت');
 
-  // —— Group media library ——
-  String get chatMediaSearchHint => pick('Search media', 'ابحث في الوسائط');
-  String get chatMediaEmptyTitle => pick('No shared media', 'لا وسائط مشتركة');
-  String get chatMediaEmptyMessage => pick(
+String get chatGameCtaJoin => pick('Join game', 'انضمام للعبة');
+
+String get chatGameCtaView => pick('View game', 'عرض اللعبة');
+
+String get chatGameCtaDetails => pick('View details', 'عرض التفاصيل');
+
+String chatAgeYears(int years) => pick('$years yrs', '$years سنة');
+
+String get chatMediaSearchHint => pick('Search media', 'ابحث في الوسائط');
+
+String get chatMediaEmptyTitle => pick('No shared media', 'لا وسائط مشتركة');
+
+String get chatMediaEmptyMessage => pick(
     'Images, videos, stickers, and voice notes shared in this chat will appear here.',
     'ستظهر هنا الصور والفيديوهات والملصقات والرسائل الصوتية المشاركة في هذه المحادثة.',
   );
-  String get chatMediaLoadFailed =>
+
+String get chatMediaLoadFailed =>
       pick('Media could not load.', 'تعذّر تحميل الوسائط.');
-  String get chatMediaNoMore => pick('No more media', 'لا مزيد من الوسائط');
-  String get chatMediaLoadMore => pick('Load more', 'تحميل المزيد');
-  String get chatMediaFilterAll => pick('All', 'الكل');
-  String get chatMediaFilterImages => pick('Images', 'صور');
-  String get chatMediaFilterVideos => pick('Videos', 'فيديو');
-  String get chatMediaFilterGifs => pick('GIFs', 'GIF');
-  String get chatMediaFilterStickers => pick('Stickers', 'ملصقات');
-  String get chatMediaFilterAudio => pick('Audio', 'صوتيات');
+
+String get chatMediaNoMore => pick('No more media', 'لا مزيد من الوسائط');
+
+String get chatMediaLoadMore => pick('Load more', 'تحميل المزيد');
+
+String get chatMediaFilterAll => pick('All', 'الكل');
+
+String get chatMediaFilterImages => pick('Images', 'صور');
+
+String get chatMediaFilterVideos => pick('Videos', 'فيديو');
+
+String get chatMediaFilterGifs => pick('GIFs', 'GIF');
+
+String get chatMediaFilterStickers => pick('Stickers', 'ملصقات');
+
+String get chatMediaFilterAudio => pick('Audio', 'صوتيات');
 
   // ---- Phase 02: username + availability (spec §3.2) ----
-  String get username => pick('Username', 'اسم المستخدم');
-  String get usernameHint => pick('pubget_fan', 'pubget_fan');
-  String get usernameRequired =>
+
+String get username => pick('Username', 'اسم المستخدم');
+
+String get usernameHint => pick('pubget_fan', 'pubget_fan');
+
+String get usernameRequired =>
       pick('Username is required.', 'اسم المستخدم مطلوب.');
-  String get usernameHelp => pick(
+
+String get usernameHelp => pick(
     'Letters, numbers, dots, underscores and hyphens. 3–20 characters, not starting with a digit.',
     'حروف وأرقام ونقاط وشرطات سفلية وواصلات. 3–20 حروف، ولا يبدأ برقم.',
   );
-  String get usernameTooLong =>
+
+String get usernameTooLong =>
       pick('Use at most 20 characters.', '20 حروف كحد أقصى.');
-  String get usernameInvalidStart =>
+
+String get usernameInvalidStart =>
       pick('Must start with a letter.', 'يجب أن يبدأ بحرف.');
-  String get usernameInvalidCharacters => pick(
+
+String get usernameInvalidCharacters => pick(
     'Use letters, numbers, and middle dots only.',
     'استخدم الحروف والأرقام والنقاط المتوسطة فقط.',
   );
-  String get usernameChecking =>
+
+String get usernameChecking =>
       pick('Checking availability…', 'نفحص توفر الاسم…');
-  String get usernameAvailable =>
+
+String get usernameAvailable =>
       pick('Username is available.', 'اسم المستخدم متاح.');
-  String get usernameTaken =>
+
+String get usernameTaken =>
       pick('Username is already taken.', 'اسم المستخدم محجوز بالفعل.');
-  String get usernameCheckFailed =>
+
+String get usernameCheckFailed =>
       pick('We could not check this username.', 'تعذّر فحص هذا الاسم.');
 
   // ---- Phase 02: onboarding (spec §3.2/§3.3) ----
-  String get onboardingTitleIdentity => pick('Your face & name', 'صورتك واسمك');
-  String get onboardingTitleAbout => pick('A little about you', 'القليل عنك');
-  String get onboardingTitleInterests => pick('What do you love?', 'ماذا تحب؟');
-  String get onboardingSubtitleIdentity => pick(
+
+String get onboardingTitleIdentity => pick('Your face & name', 'صورتك واسمك');
+
+String get onboardingTitleAbout => pick('A little about you', 'القليل عنك');
+
+String get onboardingTitleInterests => pick('What do you love?', 'ماذا تحب؟');
+
+String get onboardingSubtitleIdentity => pick(
     'Username and photo are required. Everything else can wait.',
     'اسم المستخدم والصور مطلوبان. كل شيء آخر يمكن تأجيله.',
   );
-  String get onboardingSubtitleAbout => pick(
+
+String get onboardingSubtitleAbout => pick(
     'Optional details. Skip any field you want to fill later.',
     'تفاصيل اختيارية. تخطَّ أي حقل تريد تعبئته لاحقاً.',
   );
-  String get onboardingSubtitleInterests => pick(
+
+String get onboardingSubtitleInterests => pick(
     'Pick anime moods to feed recommendations. Skip anytime.',
     'اختر مزاجك الأنمي لتغذية التوصيات. يمكنك التخطي في أي وقت.',
   );
-  String get onboardingContinue => pick('Continue', 'متابعة');
-  String get onboardingContinueSemantic =>
+
+String get onboardingContinue => pick('Continue', 'متابعة');
+
+String get onboardingContinueSemantic =>
       pick('Continue profile setup', 'متابعة إعداد الملف');
-  String get onboardingSaveAndEnter =>
+
+String get onboardingSaveAndEnter =>
       pick('Save profile and continue', 'حفظ الملف والمتابعة');
-  String get onboardingEnterPubget => pick('Enter Pubget', 'ادخل إلى Pubget');
-  String get onboardingBack => pick('Back', 'رجوع');
-  String get onboardingBackSemantic =>
+
+String get onboardingEnterPubget => pick('Enter Pubget', 'ادخل إلى Pubget');
+
+String get onboardingBack => pick('Back', 'رجوع');
+
+String get onboardingBackSemantic =>
       pick('Back to previous step', 'العودة إلى الخطوة السابقة');
-  String get onboardingSkipStep => pick('Skip this step', 'تخطي هذه الخطوة');
-  String get onboardingSkipForNow => pick('Skip for now', 'تخطٍّ الآن');
-  String get onboardingStepOfLabel => pick('Step', 'الخطوة');
-  String get onboardingOfLabel => pick('of', 'من');
-  String get onboardingDisplayName => pick('Display name', 'الاسم الظاهر');
-  String get onboardingDisplayNameOptional =>
+
+String get onboardingSkipStep => pick('Skip this step', 'تخطي هذه الخطوة');
+
+String get onboardingSkipForNow => pick('Skip for now', 'تخطٍّ الآن');
+
+String get onboardingStepOfLabel => pick('Step', 'الخطوة');
+
+String get onboardingOfLabel => pick('of', 'من');
+
+String get onboardingDisplayName => pick('Display name', 'الاسم الظاهر');
+
+String get onboardingDisplayNameOptional =>
       pick('Display name (optional)', 'الاسم الظاهر (اختياري)');
-  String get onboardingDisplayNameHint =>
+
+String get onboardingDisplayNameHint =>
       pick('How you appear to other members.', 'كيف تظهر لأعضاء آخرين.');
-  String get onboardingDisplayNameRequired =>
+
+String get onboardingDisplayNameRequired =>
       pick('Display name is required.', 'الاسم الظاهر مطلوب.');
-  String get onboardingPhotoRequired =>
+
+String get onboardingPhotoRequired =>
       pick('Profile photo is required.', 'صورة البروفايل مطلوبة.');
-  String get onboardingChoosePhoto =>
+
+String get onboardingChoosePhoto =>
       pick('Choose profile picture', 'اختر صورة البروفايل');
-  String get onboardingChoosePhotoSemantic =>
+
+String get onboardingChoosePhotoSemantic =>
       pick('Choose a profile picture', 'اختر صورة للبروفايل');
-  String get onboardingPhotoReady => pick('Photo ready', 'الصورة جاهزة');
-  String get onboardingBio => pick('Bio', 'نبذة');
-  String get onboardingBioHint =>
+
+String get onboardingPhotoReady => pick('Photo ready', 'الصورة جاهزة');
+
+String get onboardingBio => pick('Bio', 'نبذة');
+
+String get onboardingBioHint =>
       pick('A short vibe check for your page.', 'سطر قصير يعبّر عن صفحتك.');
-  String get onboardingSkipBio => pick('Skip bio', 'تخطي النبذة');
-  String get onboardingSkipBioSemantic => pick('Skip bio', 'تخطي النبذة');
-  String get onboardingCountry => pick('Country', 'البلد');
-  String get onboardingSkipCountry => pick('Skip country', 'تخطي البلد');
-  String get onboardingSkipCountrySemantic =>
+
+String get onboardingSkipBio => pick('Skip bio', 'تخطي النبذة');
+
+String get onboardingSkipBioSemantic => pick('Skip bio', 'تخطي النبذة');
+
+String get onboardingCountry => pick('Country', 'البلد');
+
+String get onboardingSkipCountry => pick('Skip country', 'تخطي البلد');
+
+String get onboardingSkipCountrySemantic =>
       pick('Skip country', 'تخطي البلد');
-  String get onboardingAge => pick('Age', 'العمر');
-  String get onboardingSkipAge => pick('Skip age', 'تخطي العمر');
-  String get onboardingSkipAgeSemantic => pick('Skip age', 'تخطي العمر');
-  String get onboardingInterestsTitle =>
+
+String get onboardingAge => pick('Age', 'العمر');
+
+String get onboardingSkipAge => pick('Skip age', 'تخطي العمر');
+
+String get onboardingSkipAgeSemantic => pick('Skip age', 'تخطي العمر');
+
+String get onboardingInterestsTitle =>
       pick('Anime interests', 'اهتماماتك الأنمي');
-  String get onboardingSkipInterests =>
+
+String get onboardingSkipInterests =>
       pick('Skip interests', 'تخطي الاهتمامات');
-  String get onboardingSkipInterestsSemantic =>
+
+String get onboardingSkipInterestsSemantic =>
       pick('Skip anime interests', 'تخطي اهتمامات الأنمي');
-  String get onboardingOfflineSave =>
+
+String get onboardingOfflineSave =>
       pick('Save on this device for now', 'احفظ على هذا الجهاز الآن');
-  String get onboardingOfflineSaveSemantic => pick(
+
+String get onboardingOfflineSaveSemantic => pick(
     'Save your onboarding details on this device for now.',
     'احفظ بياناتك على هذا الجهاز الآن.',
   );
-  String get onboardingInterestAction => pick('Action', 'أكشن');
-  String get onboardingInterestAdventure => pick('Adventure', 'مغامرة');
-  String get onboardingInterestComedy => pick('Comedy', 'كوميديا');
-  String get onboardingInterestFantasy => pick('Fantasy', 'فانتازيا');
-  String get onboardingInterestMystery => pick('Mystery', 'غموض');
-  String get onboardingInterestRomance => pick('Romance', 'رومانسية');
-  String get onboardingOfflineTitle => pick('You are offline', 'أنت غير متصل');
-  String get onboardingOfflineMessage => pick(
+
+String get onboardingInterestAction => pick('Action', 'أكشن');
+
+String get onboardingInterestAdventure => pick('Adventure', 'مغامرة');
+
+String get onboardingInterestComedy => pick('Comedy', 'كوميديا');
+
+String get onboardingInterestFantasy => pick('Fantasy', 'فانتازيا');
+
+String get onboardingInterestMystery => pick('Mystery', 'غموض');
+
+String get onboardingInterestRomance => pick('Romance', 'رومانسية');
+
+String get onboardingOfflineTitle => pick('You are offline', 'أنت غير متصل');
+
+String get onboardingOfflineMessage => pick(
     'Skip for now, or reconnect to save your profile.',
     'تخطَّ الآن، أو أعد الاتصال لحفظ ملفك.',
   );
-  String get onboardingSaveFailedTitle =>
+
+String get onboardingSaveFailedTitle =>
       pick('Profile not saved', 'لم يتم حفظ الملف');
 
   // ---- Phase 02: place holder home shell chrome ----
-  String get homeWelcomeToPubget =>
+
+String get homeWelcomeToPubget =>
       pick('Welcome to Pubget', 'مرحباً بك في Pubget');
-  String get homeAccountReady => pick(
+
+String get homeAccountReady => pick(
     'Your account is ready. The full home experience arrives in a later prompt.',
     'حسابك جاهز. تجربة الرئيسية الكاملة ستصل في تحديث لاحق.',
   );
-  String get homeMyProfile => pick('My profile', 'ملفي');
-  String get homeMyProfileSemantic => pick('Open my profile', 'فتح ملفي');
-  String get homeGroups => pick('Groups', 'المجموعات');
-  String get homeGroupsSemantic => pick('Open groups', 'فتح المجموعات');
-  String get homeEditOnboarding =>
+
+String get homeMyProfile => pick('My profile', 'ملفي');
+
+String get homeMyProfileSemantic => pick('Open my profile', 'فتح ملفي');
+
+String get homeGroups => pick('Groups', 'المجموعات');
+
+String get homeGroupsSemantic => pick('Open groups', 'فتح المجموعات');
+
+String get homeEditOnboarding =>
       pick('Edit onboarding details', 'تعديل بيانات التعارف');
-  String get homeEditOnboardingSemantic =>
+
+String get homeEditOnboardingSemantic =>
       pick('Edit onboarding details', 'تعديل بيانات التعارف');
 
   // ---- Phase 02: profile (spec §18) ----
-  String get displayName => pick('Display name', 'الاسم الظاهر');
-  String get bio => pick('Bio', 'نبذة');
-  String get bioHint =>
+
+String get displayName => pick('Display name', 'الاسم الظاهر');
+
+String get bio => pick('Bio', 'نبذة');
+
+String get bioHint =>
       pick('Tell your community who you are.', 'أخبر مجتمعك من أنت.');
-  String get bioEmptyCta =>
+
+String get bioEmptyCta =>
       pick('Add a bio so people can meet you', 'أضف نبذة ليتعارف الناس عليك');
-  String get age => pick('Age', 'العمر');
-  String get country => pick('Country', 'البلد');
-  String get favoriteQuote => pick('Favorite quote', 'اقتباسك المفضل');
-  String get animeTwin => pick('Anime twin', 'توأمك الأنمي');
-  String get giveRespect => pick('Give Respect', 'منح الاحترام');
-  String get saveRespect => pick('Save Respect', 'حفظ الاحترام');
-  String get startChat => pick('Start chat', 'ابدأ المحادثة');
-  String get blockUser => pick('Block user', 'حظر المستخدم');
-  String get unblockUser => pick('Unblock user', 'إلغاء الحظر');
-  String get blockUserConfirmTitle =>
+
+String get age => pick('Age', 'العمر');
+
+String get country => pick('Country', 'البلد');
+
+String get favoriteQuote => pick('Favorite quote', 'اقتباسك المفضل');
+
+String get animeTwin => pick('Anime twin', 'توأمك الأنمي');
+
+String get giveRespect => pick('Give Respect', 'منح الاحترام');
+
+String get saveRespect => pick('Save Respect', 'حفظ الاحترام');
+
+String get startChat => pick('Start chat', 'ابدأ المحادثة');
+
+String get blockUser => pick('Block user', 'حظر المستخدم');
+
+String get unblockUser => pick('Unblock user', 'إلغاء الحظر');
+
+String get blockUserConfirmTitle =>
       pick('Block this user?', 'حظر هذا المستخدم؟');
-  String get blockUserConfirmBody => pick(
+
+String get blockUserConfirmBody => pick(
     'Blocked users cannot message you or appear in your feed.',
     'لا يمكن للمحظورين مراسلتك أو الظهور في خلاصتك.',
   );
-  String get addFriend => pick('Add friend', 'إضافة صديق');
-  String get removeFriend => pick('Remove friend', 'إزالة الصديق');
-  String get couldNotLoadEdits =>
+
+String get addFriend => pick('Add friend', 'إضافة صديق');
+
+String get removeFriend => pick('Remove friend', 'إزالة الصديق');
+
+String get couldNotLoadEdits =>
       pick('Could not load Reels.', 'تعذّر تحميل الريلز.');
-  String get edits => pick('Reels', 'ريلز');
-  String get noEditsYet =>
+
+String get edits => pick('Reels', 'ريلز');
+
+String get noEditsYet =>
       pick('No Reels published yet', 'لا توجد ريلز منشورة بعد');
-  String get noEditsToShow => pick('No Reels to show', 'لا توجد ريلز للعرض');
-  String get cutSceneCta => pick(
+
+String get noEditsToShow => pick('No Reels to show', 'لا توجد ريلز للعرض');
+
+String get cutSceneCta => pick(
     'Cut a scene and publish your first Reel.',
     'قصّ مشهداً وانشر أول ريل لك.',
   );
-  String get creatorNoEdits => pick(
+
+String get creatorNoEdits => pick(
     'This creator has not shared Reels yet.',
     'لم يشارك هذا المبدع ريلز بعد.',
   );
-  String get openEdits => pick('Open Reels', 'فتح الريلز');
-  String get createAnEdit => pick('Create a Reel', 'أنشئ ريلاً');
-  String get favoriteAnime => pick('Favorite anime', 'الأنمي المفضل');
-  String get giveRespectSemantic =>
+
+String get openEdits => pick('Open Reels', 'فتح الريلز');
+
+String get createAnEdit => pick('Create a Reel', 'أنشئ ريلاً');
+
+String get favoriteAnime => pick('Favorite anime', 'الأنمي المفضل');
+
+String get giveRespectSemantic =>
       pick('Give selected Respect', 'منح الاحترام المختار');
-  String get startChatSemantic =>
+
+String get startChatSemantic =>
       pick('Start a private chat', 'ابدأ محادثة خاصة');
-  String get couldNotStartChat => pick(
+
+String get couldNotStartChat => pick(
     'Could not start this private chat.',
     'تعذّر بدء هذه المحادثة الخاصة.',
   );
-  String get block => pick('Block', 'حظر');
-  String get sendFriendRequest =>
+
+String get block => pick('Block', 'حظر');
+
+String get sendFriendRequest =>
       pick('Send friend request', 'إرسال طلب صداقة');
-  String get cancelFriendRequest =>
+
+String get cancelFriendRequest =>
       pick('Cancel friend request', 'إلغاء طلب الصداقة');
-  String get acceptFriendRequest =>
+
+String get acceptFriendRequest =>
       pick('Accept friend request', 'قبول طلب الصداقة');
-  String get cancelRequest => pick('Cancel request', 'إلغاء الطلب');
-  String get acceptRequest => pick('Accept request', 'قبول الطلب');
-  String get unblock => pick('Unblock', 'إلغاء الحظر');
-  String get incomingRequests => pick('Incoming requests', 'الطلبات الواردة');
-  String get outgoingRequests => pick('Outgoing requests', 'الطلبات المرسلة');
-  String get requestSent => pick('Request sent', 'تم إرسال الطلب');
-  String get rejectRequest => pick('Reject request', 'رفض الطلب');
-  String get noFriendRequests =>
+
+String get cancelRequest => pick('Cancel request', 'إلغاء الطلب');
+
+String get acceptRequest => pick('Accept request', 'قبول الطلب');
+
+String get unblock => pick('Unblock', 'إلغاء الحظر');
+
+String get incomingRequests => pick('Incoming requests', 'الطلبات الواردة');
+
+String get outgoingRequests => pick('Outgoing requests', 'الطلبات المرسلة');
+
+String get requestSent => pick('Request sent', 'تم إرسال الطلب');
+
+String get rejectRequest => pick('Reject request', 'رفض الطلب');
+
+String get noFriendRequests =>
       pick('No friend requests', 'لا توجد طلبات صداقة');
-  String get newRequestsAppearHere =>
+
+String get newRequestsAppearHere =>
       pick('New friend requests will appear here.', 'ستظهر طلبات الصداقة هنا.');
-  String get myEvents => pick('My Events', 'فعالياتي');
+
+String get myEvents => pick('My Events', 'فعالياتي');
 
   // ---- Phase 02: edit profile (spec §18.2) ----
-  String get cover => pick('Cover', 'الغلاف');
-  String get coverChange => pick('Change cover', 'تغيير الغلاف');
-  String get coverSelected => pick('New cover selected', 'تم اختيار غلاف جديد');
-  String get avatarChange => pick('Change photo', 'تغيير الصورة');
-  String get avatarSelected =>
+
+String get cover => pick('Cover', 'الغلاف');
+
+String get coverChange => pick('Change cover', 'تغيير الغلاف');
+
+String get coverSelected => pick('New cover selected', 'تم اختيار غلاف جديد');
+
+String get avatarChange => pick('Change photo', 'تغيير الصورة');
+
+String get avatarSelected =>
       pick('New photo selected', 'تم اختيار صورة جديدة');
-  String get editBioHint =>
+
+String get editBioHint =>
       pick('Tell the community about you.', 'أخبر المجتمع عن نفسك.');
-  String get ageOptional => pick('Age (optional)', 'العمر (اختياري)');
-  String get countryOptional => pick('Country (optional)', 'البلد (اختياري)');
-  String get favoriteQuoteOptional =>
+
+String get ageOptional => pick('Age (optional)', 'العمر (اختياري)');
+
+String get countryOptional => pick('Country (optional)', 'البلد (اختياري)');
+
+String get favoriteQuoteOptional =>
       pick('Favorite quote (optional)', 'اقتباسك المفضل (اختياري)');
-  String get animeTwinOptional =>
+
+String get animeTwinOptional =>
       pick('Anime twin (optional)', 'توأمك الأنمي (اختياري)');
-  String get animeTwinHint =>
+
+String get animeTwinHint =>
       pick('A character you vibe with', 'شخصية تنسجم معها');
-  String get favoriteAnimeIds =>
+
+String get favoriteAnimeIds =>
       pick('Favorite anime IDs', 'معرّفات الأنمي المفضل');
-  String get socialLinks => pick('Social links', 'روابط التواصل');
-  String get addLinkUrl => pick('Add link URL', 'أضف رابطاً');
-  String get linkLabelOptional => pick('Label (optional)', 'التسمية (اختياري)');
-  String get addLink => pick('Add link', 'إضافة الرابط');
-  String get addSocialLinkSemantic =>
+
+String get socialLinks => pick('Social links', 'روابط التواصل');
+
+String get addLinkUrl => pick('Add link URL', 'أضف رابطاً');
+
+String get linkLabelOptional => pick('Label (optional)', 'التسمية (اختياري)');
+
+String get addLink => pick('Add link', 'إضافة الرابط');
+
+String get addSocialLinkSemantic =>
       pick('Add social link', 'إضافة رابط تواصل');
-  String get privacy => pick('Privacy', 'الخصوصية');
-  String get profileVisibility => pick('Profile visibility', 'ظهور الملف');
-  String get activityVisibility => pick('Activity visibility', 'ظهور النشاط');
-  String get whoCanMessageMe => pick('Who can message me', 'من يمكنه مراسلتي');
-  String get whoCanMessageRelated =>
+
+String get privacy => pick('Privacy', 'الخصوصية');
+
+String get profileVisibility => pick('Profile visibility', 'ظهور الملف');
+
+String get activityVisibility => pick('Activity visibility', 'ظهور النشاط');
+
+String get whoCanMessageMe => pick('Who can message me', 'من يمكنه مراسلتي');
+
+String get whoCanMessageRelated =>
       pick('Fans and Friends', 'المعجبون والأصدقاء');
-  String get whoCanMessageFriends => pick('Friends only', 'الأصدقاء فقط');
-  String get showFavorites => pick('Show favorites', 'إظهار المفضلة');
-  String get showActivity => pick('Show activity', 'إظهار النشاط');
-  String get showFriends => pick('Show friends', 'إظهار الأصدقاء');
-  String get showFans => pick('Show fans', 'إظهار المعجبين');
-  String get showWorks => pick(
+
+String get whoCanMessageFriends => pick('Friends only', 'الأصدقاء فقط');
+
+String get showFavorites => pick('Show favorites', 'إظهار المفضلة');
+
+String get showActivity => pick('Show activity', 'إظهار النشاط');
+
+String get showFriends => pick('Show friends', 'إظهار الأصدقاء');
+
+String get showFans => pick('Show fans', 'إظهار المعجبين');
+
+String get showWorks => pick(
     'Show works (Reels / Fan Works)',
     'إظهار الأعمال (الريلز / أعمال المعجبين)',
   );
-  String get showGroups => pick('Show groups', 'إظهار المجموعات');
-  String get showRatings => pick('Show ratings', 'إظهار التقييمات');
-  String get showAchievements => pick('Show achievements', 'إظهار الإنجازات');
-  String get public => pick('Public', 'عام');
-  String get private => pick('Private', 'خاص');
-  String get saveChanges => pick('Save changes', 'حفظ التغييرات');
-  String get saveProfileChangesSemantic =>
+
+String get showGroups => pick('Show groups', 'إظهار المجموعات');
+
+String get showRatings => pick('Show ratings', 'إظهار التقييمات');
+
+String get showAchievements => pick('Show achievements', 'إظهار الإنجازات');
+
+String get public => pick('Public', 'عام');
+
+String get private => pick('Private', 'خاص');
+
+String get saveChanges => pick('Save changes', 'حفظ التغييرات');
+
+String get saveProfileChangesSemantic =>
       pick('Save profile changes', 'حفظ تغييرات الملف');
-  String get chooseCoverSemantic =>
+
+String get chooseCoverSemantic =>
       pick('Choose a cover photo', 'اختر صورة غلاف');
-  String get chooseAvatarSemantic =>
+
+String get chooseAvatarSemantic =>
       pick('Choose a new profile photo', 'اختر صورة ملف جديدة');
 
   // ── Group Games and Mafia (spec §12-13) ────────────────────────────────
-  String get mafiaTitle => pick('Mafia', 'مافيا');
-  String get mafiaCouldNotLoad =>
+
+String get mafiaTitle => pick('Mafia', 'مافيا');
+
+String get mafiaCouldNotLoad =>
       pick('Could not load Mafia', 'تعذّر تحميل المافيا');
-  String get mafiaLog => pick('Game log', 'سجل اللعبة');
-  String get mafiaDiscussionLabel => pick('Discussion', 'النقاش');
-  String get mafiaSecretChannel =>
+
+String get mafiaLog => pick('Game log', 'سجل اللعبة');
+
+String get mafiaDiscussionLabel => pick('Discussion', 'النقاش');
+
+String get mafiaSecretChannel =>
       pick('Mafia secret channel', 'القناة السرية للمافيا');
-  String get mafiaSecretMessage => pick('Secret message', 'رسالة سرية');
-  String get mafiaSendSecretSemantic =>
+
+String get mafiaSecretMessage => pick('Secret message', 'رسالة سرية');
+
+String get mafiaSendSecretSemantic =>
       pick('Send a secret message', 'إرسال رسالة سرية');
-  String get mafiaLeave => pick('Leave', 'مغادرة');
-  String get mafiaJoin => pick('Join', 'انضمام');
-  String get mafiaStart => pick('Start game', 'بدء اللعبة');
-  String get mafiaStartSemantic => pick('Start', 'بدء');
-  String mafiaNeedMorePlayers(int minimum, int joined) => pick(
+
+String get mafiaLeave => pick('Leave', 'مغادرة');
+
+String get mafiaJoin => pick('Join', 'انضمام');
+
+String get mafiaStart => pick('Start game', 'بدء اللعبة');
+
+String get mafiaStartSemantic => pick('Start', 'بدء');
+
+String mafiaNeedMorePlayers(int minimum, int joined) => pick(
     'You need $minimum players to start. Joined now: $joined.',
     'تحتاج اللعبة إلى $minimum لاعبين. المنضم الآن: $joined.',
   );
-  String mafiaRosterCount(int joined, int maximum, int minimum) => pick(
+
+String mafiaRosterCount(int joined, int maximum, int minimum) => pick(
     '$joined/$maximum players · minimum $minimum',
     '$joined/$maximum لاعبين · الحد الأدنى $minimum',
   );
-  String get mafiaYouAreSpectator =>
+
+String get mafiaYouAreSpectator =>
       pick('You are watching this game.', 'أنت تشاهد اللعبة كمشاهد.');
-  String get mafiaYourTurn =>
+
+String get mafiaYourTurn =>
       pick('It is your turn to speak.', 'حان دورك للكلام.');
-  String get mafiaWaitingForSpeaker =>
+
+String get mafiaWaitingForSpeaker =>
       pick('Waiting for the current player.', 'بانتظار دور اللاعب الحالي.');
-  String get mafiaEndTurn => pick('End my turn', 'إنهاء دوري');
-  String get mafiaEndTurnSemantic => pick('End turn', 'إنهاء الدور');
-  String mafiaNightAbility(String role) =>
+
+String get mafiaEndTurn => pick('End my turn', 'إنهاء دوري');
+
+String get mafiaEndTurnSemantic => pick('End turn', 'إنهاء الدور');
+
+String mafiaNightAbility(String role) =>
       pick('$role night ability', 'قدرة $role الليلية');
-  String get mafiaSecretVoteRevote => pick(
+
+String get mafiaSecretVoteRevote => pick(
     'Secret re-vote: only the tied players.',
     'إعادة تصويت سرية بين المتعادلين فقط.',
   );
-  String get mafiaSecretVote => pick(
+
+String get mafiaSecretVote => pick(
     'Secret vote. You cannot vote for yourself.',
     'تصويت سري. لا يمكنك التصويت لنفسك.',
   );
-  String get mafiaLastWordsIntro => pick(
+
+String get mafiaLastWordsIntro => pick(
     'You are out. You may write last words once.',
     'أنت الآن خارج اللعبة. يمكنك كتابة كلماتك الأخيرة مرة واحدة.',
   );
-  String get mafiaLastWordsLabel => pick('Last words', 'كلمات أخيرة');
-  String get mafiaLastWordsSend => pick('Send', 'إرسال');
-  String get mafiaLastWordsSendSemantic =>
+
+String get mafiaLastWordsLabel => pick('Last words', 'كلمات أخيرة');
+
+String get mafiaLastWordsSend => pick('Send', 'إرسال');
+
+String get mafiaLastWordsSendSemantic =>
       pick('Send last words', 'إرسال الكلمات الأخيرة');
-  String get mafiaLastWordsSpoken => pick('Last words: ', 'الكلمات الأخيرة: ');
-  String mafiaYourRole(String role) => pick('Your role: $role', 'دورك: $role');
-  String mafiaYourTeam(String team) => pick('Team: $team', 'الفريق: $team');
-  String get mafiaTeamMafia => pick('Mafia', 'المافيا');
-  String get mafiaTeamTown => pick('Town', 'المدينة');
-  String mafiaTeammates(String names) =>
+
+String get mafiaLastWordsSpoken => pick('Last words: ', 'الكلمات الأخيرة: ');
+
+String mafiaYourRole(String role) => pick('Your role: $role', 'دورك: $role');
+
+String mafiaYourTeam(String team) => pick('Team: $team', 'الفريق: $team');
+
+String get mafiaTeamMafia => pick('Mafia', 'المافيا');
+
+String get mafiaTeamTown => pick('Town', 'المدينة');
+
+String mafiaTeammates(String names) =>
       pick('Your Mafia allies: $names', 'زملاؤك في المافيا: $names');
-  String mafiaInvestigationResult(String result) =>
+
+String mafiaInvestigationResult(String result) =>
       pick('Investigation result: $result', 'نتيجة التحقيق: $result');
-  String mafiaDonResult(String result) =>
+
+String mafiaDonResult(String result) =>
       pick('Don check: $result', 'نتيجة تحقق الدون: $result');
-  String get mafiaEliminated => pick('eliminated', 'مقصى');
-  String get mafiaDisconnected => pick('disconnected', 'غير متصل');
-  String get mafiaYou => pick('you', 'أنت');
-  String get mafiaMafiaWon => pick('The Mafia won', 'فازت المافيا');
-  String get mafiaTownWon => pick('The town won', 'فازت المدينة');
-  String get mafiaGameEnded => pick('The game ended', 'انتهت اللعبة');
-  String get mafiaPlayAgain => pick('Play again', 'العب مجددًا');
-  String get mafiaProtectedLastNight =>
+
+String get mafiaEliminated => pick('eliminated', 'مقصى');
+
+String get mafiaDisconnected => pick('disconnected', 'غير متصل');
+
+String get mafiaYou => pick('you', 'أنت');
+
+String get mafiaMafiaWon => pick('The Mafia won', 'فازت المافيا');
+
+String get mafiaTownWon => pick('The town won', 'فازت المدينة');
+
+String get mafiaGameEnded => pick('The game ended', 'انتهت اللعبة');
+
+String get mafiaPlayAgain => pick('Play again', 'العب مجددًا');
+
+String get mafiaProtectedLastNight =>
       pick('Saved last night', 'تم إنقاذه الليلة الماضية');
-  String get mafiaDead => pick('dead', 'ميت');
-  String get mafiaDoctorSameTarget => pick(
+
+String get mafiaDead => pick('dead', 'ميت');
+
+String get mafiaDoctorSameTarget => pick(
     'You already protected this player last night.',
     'لقد حمت هذا اللاعب الليلة الماضية.',
   );
-  String get mafiaRoleUnknown => pick('Unknown', 'غير معروف');
-  String get mafiaPhaseUnknown => pick('Unknown', 'غير معروف');
+
+String get mafiaRoleUnknown => pick('Unknown', 'غير معروف');
+
+String get mafiaPhaseUnknown => pick('Unknown', 'غير معروف');
 
   // Dynamic Mafia content (Master Spec 13.12 "عربي كامل"): the server ships
   // structured log events, English verdict tokens, and English Failure
   // messages. Every dynamic string the screen shows is resolved through the
   // getters below, so no English sentence or raw wire token ever reaches the
   // Arabic UI.
-  String get mafiaLogCreated => pick(
+
+String get mafiaLogCreated => pick(
     'A Mafia lobby is waiting for players.',
     'غرفة مافيا بانتظار اللاعبين.',
   );
-  String get mafiaLogStarting => pick(
+
+String get mafiaLogStarting => pick(
     'Mafia is starting. Roles will be assigned privately.',
     'بدأت المافيا. ستُوزَّع الأدوار سراً.',
   );
-  String get mafiaLogRolesAssigned =>
+
+String get mafiaLogRolesAssigned =>
       pick('Roles have been assigned privately.', 'تم توزيع الأدوار سراً.');
-  String get mafiaLogStarted => pick('The game has started.', 'بدأت اللعبة.');
-  String mafiaLogPhaseChanged(String phase) =>
+
+String get mafiaLogStarted => pick('The game has started.', 'بدأت اللعبة.');
+
+String mafiaLogPhaseChanged(String phase) =>
       pick('Phase: $phase', 'الطور: $phase');
-  String mafiaLogNightKilled(String name, String role) => pick(
+
+String mafiaLogNightKilled(String name, String role) => pick(
     '$name was killed during the night ($role).',
     'قُتل $name خلال الليل ($role).',
   );
-  String mafiaLogNight(int night, bool death) => death
+
+String mafiaLogNight(int night, bool death) => death
       ? pick(
           'Night $night: there was a death.',
           'الليلة $night: كانت هناك وفاة.',
@@ -1821,24 +2006,31 @@ final class AppStrings {
           'Night $night passed without a death.',
           'مرّت الليلة $night دون وفيات.',
         );
-  String mafiaLogEliminated(String name, String role) =>
+
+String mafiaLogEliminated(String name, String role) =>
       pick('$name was eliminated ($role).', 'أُقصي $name ($role).');
-  String mafiaLogVoteResolved(int day) =>
+
+String mafiaLogVoteResolved(int day) =>
       pick('Day $day: the vote concluded.', 'اليوم $day: انتهى التصويت.');
-  String mafiaLogVoteTie(String names) => pick(
+
+String mafiaLogVoteTie(String names) => pick(
     'The vote tied between $names. A re-vote is open.',
     'تعادل التصويت بين $names. أُعيد التصويت.',
   );
-  String mafiaLogExecuted(String name, String role) =>
+
+String mafiaLogExecuted(String name, String role) =>
       pick('$name was voted out ($role).', 'أُخرج $name بالتصويت ($role).');
-  String mafiaLogFinished(String outcome) =>
+
+String mafiaLogFinished(String outcome) =>
       pick('The game ended: $outcome', 'انتهت اللعبة: $outcome');
-  String get mafiaLogRewards =>
+
+String get mafiaLogRewards =>
       pick('Rewards were paid to the winners.', 'مُنحت المكافآت للفائزين.');
 
   /// Detective/Don night verdicts (Master Spec 13.3). The server returns the
   /// English tokens "Mafia"/"Not Mafia"/"Detective"/"Not Detective".
-  String mafiaVerdict(String verdict) => switch (verdict) {
+
+String mafiaVerdict(String verdict) => switch (verdict) {
     'Mafia' => pick('Mafia', 'مافيا'),
     'Not Mafia' => pick('Not Mafia', 'ليس مافيا'),
     'Detective' => pick('Detective', 'المحقق'),
@@ -1847,32 +2039,39 @@ final class AppStrings {
   };
 
   /// Localized separator for joining names inside dynamic copy.
-  String get listSeparator => pick(', ', '، ');
+
+String get listSeparator => pick(', ', '، ');
 
   // Mafia failure copy. Failures stay locale-neutral (spec §1.4); the screen
   // renders these instead of the raw English `Failure.message`.
-  String get mafiaOffline => pick(
+
+String get mafiaOffline => pick(
     'You appear to be offline. Reconnecting…',
     'يبدو أنك غير متصل. جارٍ إعادة الاتصال…',
   );
-  String get mafiaNotPermitted => pick(
+
+String get mafiaNotPermitted => pick(
     'You do not have permission to view this game.',
     'ليس لديك صلاحية لعرض هذه اللعبة.',
   );
-  String get mafiaGameGone => pick(
+
+String get mafiaGameGone => pick(
     'This Mafia game no longer exists.',
     'لم تعد لعبة المافيا هذه موجودة.',
   );
-  String get mafiaRetryLater => pick(
+
+String get mafiaRetryLater => pick(
     'Too many requests. Please wait a moment and try again.',
     'طلبات كثيرة. انتظر قليلاً ثم حاول مجدداً.',
   );
-  String get mafiaActionRejected =>
+
+String get mafiaActionRejected =>
       pick('That action could not be completed.', 'تعذّر تنفيذ هذا الإجراء.');
-  String get mafiaErrorGeneric =>
+
+String get mafiaErrorGeneric =>
       pick('Something went wrong. Please try again.', 'حدث خطأ. حاول مجدداً.');
 
-  String mafiaPhaseLabel(String phase) {
+String mafiaPhaseLabel(String phase) {
     final en = _mafiaPhasesEn[phase];
     final ar = _mafiaPhasesAr[phase];
     // An unrecognized phase falls back to a localized "Unknown" rather than the
@@ -1881,35 +2080,45 @@ final class AppStrings {
     return pick(en, ar);
   }
 
-  String mafiaRoleLabel(String role) {
+String mafiaRoleLabel(String role) {
     final en = _mafiaRolesEn[role];
     final ar = _mafiaRolesAr[role];
     if (en == null || ar == null) return mafiaRoleUnknown;
     return pick(en, ar);
   }
 
-  String userNameWelcome(String name) =>
+String userNameWelcome(String name) =>
       pick('Welcome, $name', 'مرحباً، $name');
-  String stepOf(int step, int total) =>
+
+String stepOf(int step, int total) =>
       pick('Step $step of $total', 'الخطوة $step من $total');
-  String memberSince(String month) => pick('Since $month', 'منذ $month');
+
+String memberSince(String month) => pick('Since $month', 'منذ $month');
 
   // Axis 15 — single source of truth for the Reels product surface.
   // Every Reels/Edits label, route title, and share card must read the
   // product name from here; nothing may hardcode it.
-  String get productReelsName => pick('Reels', 'ريلز');
 
-  String get audioNotFound => pick('Audio not found', 'الصوت غير موجود');
-  String get searchAudioHint => pick('Search audio…', 'ابحث عن صوت…');
-  String get useAudio => pick('Use audio', 'استخدام الصوت');
-  String get browseAudio => pick('Browse audio', 'تصفح الأصوات');
-  String get noAudioFound => pick('No audio found', 'لا يوجد صوت');
-  String get noAudioAvailable =>
+String get productReelsName => pick('Reels', 'ريلز');
+
+String get audioNotFound => pick('Audio not found', 'الصوت غير موجود');
+
+String get searchAudioHint => pick('Search audio…', 'ابحث عن صوت…');
+
+String get useAudio => pick('Use audio', 'استخدام الصوت');
+
+String get browseAudio => pick('Browse audio', 'تصفح الأصوات');
+
+String get noAudioFound => pick('No audio found', 'لا يوجد صوت');
+
+String get noAudioAvailable =>
       pick('No audio available', 'لا توجد أصوات متاحة');
-  String get feedForYou => pick('For You', 'لك');
-  String get feedFollowing => pick('Following', 'متابَعين');
-  String get feedTrending => pick('Trending', 'رائج');
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
+
+String get feedForYou => pick('For You', 'لك');
+
+String get feedFollowing => pick('Following', 'متابَعين');
+
+String get feedTrending => pick('Trending', 'رائج');
 }
 
 const Map<String, String> _mafiaPhasesEn = <String, String>{
