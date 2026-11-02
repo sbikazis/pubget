@@ -455,7 +455,7 @@ class _WaGamesSheet extends StatelessWidget {
                       GameLinks.openCreate(
                         context,
                         groupId: groupId,
-                        fromChat: true,
+                        
                       );
                     },
                     child: Text('لعب', style: GoogleFonts.cairo()),
