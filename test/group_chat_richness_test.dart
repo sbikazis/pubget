@@ -394,6 +394,9 @@ final class _FakeChatRepository implements ChatRepository {
       ),
     );
   }
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
 }
 
 final class _FakeGroupRepository implements GroupRepository {
