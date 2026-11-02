@@ -34,6 +34,10 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Match the project lockfile and pdfrx engine's supported Dart range.
+          # Floating stable currently resolves a newer Dart compiler that
+          # rejects the pinned pdfrx_engine version.
+          flutter-version: '3.32.8'
           channel: stable
           cache: true
       - name: Resolve packages
