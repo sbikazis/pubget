@@ -1603,7 +1603,6 @@ test("mafia history is participant-read only and never client-writable (SEC-H-01
 });
 
 
-<<<<<<< HEAD
 test("Kirari documents and interactions are read-only to clients with publication privacy", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     const admin = context.firestore();
@@ -1666,7 +1665,7 @@ test("Kirari exposes only approved public reels and approved audio metadata", as
   await assertFails(db("alice").doc("kirariAudio/track-approved").update({
     status: "approved", allowReuse: true,
   }));
-=======
+
 test("ready audio is readable by signed-in users; drafts and failures are not", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     const admin = context.firestore();
@@ -1746,5 +1745,4 @@ test("the mute list is self-scoped and server-owned", async () => {
   await assertFails(alice.doc("reelMutes/alice").set({ uid: "alice" }));
 
   await assertFails(bob.collection("reelMutes/alice/creators").get());
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
 });
