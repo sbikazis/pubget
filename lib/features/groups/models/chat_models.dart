@@ -119,12 +119,9 @@ final class ChatMessage {
     this.senderTitle,
     this.disappearing = false,
     this.cardMeta,
-<<<<<<< HEAD
     this.mediaWidth,
     this.mediaHeight,
-=======
     this.reactionUsers = const <String, Set<String>>{},
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
   });
 
   factory ChatMessage.optimistic({
