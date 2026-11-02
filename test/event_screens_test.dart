@@ -42,7 +42,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(EventStrings.noEventsTitle), findsWidgets);
+    final copy = AppStrings.of(tester.element(find.byType(EventListScreen)));
+    expect(find.text(copy.eventNoActiveYet), findsWidgets);
   });
 
   testWidgets('event details shows a missing-event empty state', (
@@ -68,7 +69,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(EventStrings.missing), findsWidgets);
+    final copy = AppStrings.of(tester.element(find.byType(EventDetailsScreen)));
+    expect(find.text(copy.eventMissing), findsWidgets);
     expect(find.byType(PubgetEmptyState), findsOneWidget);
   });
 }
