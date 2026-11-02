@@ -75,7 +75,7 @@ final class _CompressionInput {
 }
 
 MediaCompressionResult _compressImageInBackground(_CompressionInput input) {
-  final decoded = img.decodeImage(input.bytes, maxPixels: 40 * 1000 * 1000);
+  final decoded = img.decodeImage(input.bytes);
   if (decoded == null) {
     throw const FormatException('The image could not be decoded.');
   }
@@ -108,13 +108,13 @@ MediaCompressionResult _compressImageInBackground(_CompressionInput input) {
   // resizing. Keep aspect ratio and never upscale.
   for (var attempt = 0; attempt < 8; attempt++) {
     if (attempt > 0) {
-      final nextWidth = (working.width * 0.85).round().clamp(1, working.width);
+      final nextWidth = (working.width * 0.85).round().clamp(1, working.width).toInt();
       working = img.copyResize(
         working,
         width: nextWidth,
         interpolation: img.Interpolation.average,
       );
-      quality = (quality - 5).clamp(55, 86);
+      quality = (quality - 5).clamp(55, 86).toInt();
     }
     final candidate = encode(working, quality);
     if (candidate.length < best.length) best = candidate;
