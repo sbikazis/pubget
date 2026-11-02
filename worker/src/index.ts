@@ -152,35 +152,51 @@ export export function validFileSignature(
   contentType: string,
   bytes: Uint8Array,
 ): boolean {
-  if (bytes.length < 12) return false;
   if (kind === "image") {
-    if (contentType === "image/jpeg") return startsWithBytes(bytes, [0xff, 0xd8, 0xff]);
-    if (contentType === "image/png") return startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    if (contentType === "image/jpeg") {
+      return bytes.length >= 3 && startsWithBytes(bytes, [0xff, 0xd8, 0xff]);
+    }
+    if (contentType === "image/png") {
+      return bytes.length >= 8 &&
+        startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    }
     if (contentType === "image/gif") {
+      if (bytes.length < 6) return false;
       const header = asciiAt(bytes, 0, 6);
       return header === "GIF87a" || header === "GIF89a";
     }
     if (contentType === "image/webp") {
-      return asciiAt(bytes, 0, 4) === "RIFF" && asciiAt(bytes, 8, 4) === "WEBP";
+      return bytes.length >= 12 &&
+        asciiAt(bytes, 0, 4) === "RIFF" &&
+        asciiAt(bytes, 8, 4) === "WEBP";
     }
     return false;
   }
+
   if (kind === "reels") {
-    if (contentType === "video/webm") return startsWithBytes(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
-    if (contentType === "video/quicktime") {
-      return asciiAt(bytes, 4, 4) === "ftyp" && asciiAt(bytes, 8, 2) === "qt";
+    if (contentType === "video/webm") {
+      return bytes.length >= 4 && startsWithBytes(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
     }
-    return contentType === "video/mp4" && asciiAt(bytes, 4, 4) === "ftyp";
+    if (bytes.length < 12 || asciiAt(bytes, 4, 4) !== "ftyp") return false;
+    if (contentType === "video/quicktime") return asciiAt(bytes, 8, 2) === "qt";
+    return contentType === "video/mp4";
   }
+
   if (contentType === "audio/mpeg") {
-    return asciiAt(bytes, 0, 3) === "ID3" ||
-      (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0);
+    const hasId3Header = bytes.length >= 10 && asciiAt(bytes, 0, 3) === "ID3";
+    const hasMpegFrameSync =
+      bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0;
+    return hasId3Header || hasMpegFrameSync;
   }
   if (contentType === "audio/aac") {
-    return bytes[0] === 0xff && (bytes[1] & 0xf6) === 0xf0;
+    return bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xf6) === 0xf0;
   }
-  if (contentType === "audio/ogg") return asciiAt(bytes, 0, 4) === "OggS";
-  if (contentType === "audio/mp4") return asciiAt(bytes, 4, 4) === "ftyp";
+  if (contentType === "audio/ogg") {
+    return bytes.length >= 4 && asciiAt(bytes, 0, 4) === "OggS";
+  }
+  if (contentType === "audio/mp4") {
+    return bytes.length >= 12 && asciiAt(bytes, 4, 4) === "ftyp";
+  }
   return false;
 }
 
