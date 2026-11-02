@@ -665,7 +665,6 @@ class PubgetApp extends StatelessWidget {
       FirebaseFanWorkRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
-        storage: FirebaseStorage.instance,
       ),
       FirebaseEconomyRepository(
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
