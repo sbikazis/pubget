@@ -125,10 +125,8 @@ final class _FakeGameRepository implements GameRepository {
   @override
   Future<Result<void>> leave(String gameId) async => const Success<void>(null);
 
-  @override
   Future<Result<void>> pause(String gameId) async => const Success<void>(null);
 
-  @override
   Future<Result<void>> resume(String gameId) async => const Success<void>(null);
 
   @override
