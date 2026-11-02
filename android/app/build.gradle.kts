@@ -49,9 +49,24 @@ android {
         }
     }
 
+    // CI must be able to compile a release variant without access to the
+    // private upload keystore. Real release builds use the configured
+    // production keystore whenever it is present and valid.
+    val configuredReleaseStore =
+        keystoreProperties.getProperty("storeFile")?.let { file(it) }
+    val hasReleaseSigning =
+        !keystoreProperties.getProperty("keyAlias").isNullOrBlank() &&
+        !keystoreProperties.getProperty("keyPassword").isNullOrBlank() &&
+        !keystoreProperties.getProperty("storePassword").isNullOrBlank() &&
+        configuredReleaseStore?.isFile == true
+
     buildTypes {
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
