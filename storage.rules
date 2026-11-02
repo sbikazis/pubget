@@ -369,12 +369,12 @@ service firebase.storage {
     // Event option images are creator-owned, bounded image assets.
     match /events/{ownerId}/{eventId}/{fileName} {
       allow read: if signedIn() &&
-          fileName.matches('option-[0-9]+\\.jpg');
+          fileName.matches('option-[0-9]+\\.(jpg|jpeg|png|webp)');
       allow create, update: if signedIn() && request.auth.uid == ownerId &&
-          fileName.matches('option-[0-9]+\\.jpg') &&
+          fileName.matches('option-[0-9]+\\.(jpg|jpeg|png|webp)') &&
           imageUpload(5 * 1024 * 1024);
       allow delete: if signedIn() && request.auth.uid == ownerId &&
-          fileName.matches('option-[0-9]+\\.jpg');
+          fileName.matches('option-[0-9]+\\.(jpg|jpeg|png|webp)');
     }
 
     match /kirari-audio/{audioId}/{fileName} {
