@@ -18,6 +18,7 @@ import '../models/fan_work_models.dart';
 import '../models/fan_work_taxonomy.dart';
 import '../providers/fan_work_providers.dart';
 import '../widgets/fan_work_widgets.dart';
+import 'fan_work_reader_page.dart';
 
 class FanWorkFeedPage extends StatefulWidget {
   const FanWorkFeedPage({super.key});
@@ -1322,3 +1323,9 @@ class _CastSheetState extends State<_CastSheet> {
     );
   }
 }
+
+
+/// Compatibility names for older deep links and tests. Both reader types now
+/// share one provider-backed reader which dispatches by the stored work shape.
+typedef MangaViewerPage = FanWorkReaderPage;
+typedef StoryReaderPage = FanWorkReaderPage;
