@@ -132,6 +132,10 @@ final class _FakeEventRepository implements EventRepository {
   }) async => FailureResult(UnknownError('unused'));
 
   @override
+  Future<Result<EventCreationQuota>> getCreationQuota() async =>
+      const Success(EventCreationQuota(count: 0, limit: 2, remaining: 2));
+
+  @override
   Future<Result<String>> saveDraft(EventDraft draft) async =>
       const Success('draft-1');
 
