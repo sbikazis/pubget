@@ -46,7 +46,7 @@ void main() {
       MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
-          ChangeNotifierProvider<FanWorkReaderProvider>.value(value: reader),
+          ChangeNotifierProvider<FanWorkDetailsProvider>.value(value: details),
         ],
         child: const MaterialApp(home: FanWorkDetailsPage(workId: 'missing')),
       ),
@@ -109,7 +109,7 @@ void main() {
       MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
-          ChangeNotifierProvider<FanWorkDetailsProvider>.value(value: details),
+          ChangeNotifierProvider<FanWorkReaderProvider>.value(value: reader),
         ],
         child: const MaterialApp(home: StoryReaderPage(workId: 'story-1')),
       ),
