@@ -119,6 +119,9 @@ final class _SequenceHttpClient implements AnimeHttpClient {
     }
     return const AnimeHttpResponse(statusCode: 200, body: '{"ok":true}');
   }
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
 }
 
 final class _HoldHttpClient implements AnimeHttpClient {
@@ -139,4 +142,7 @@ final class _HoldHttpClient implements AnimeHttpClient {
   void releaseAll() {
     if (!_ready.isCompleted) _ready.complete();
   }
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
 }

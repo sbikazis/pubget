@@ -165,8 +165,23 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
 
   @override
   Future<String> resolveUrl(String storageKey) async {
-    // The worker serves objects publicly; no permanent R2 URL is stored.
-    return '$_baseUrl/media/${Uri.encodeComponent(storageKey)}';
+    final token = await _requireToken();
+    final response = await _client
+        .get(
+          _uri('/resolve', {'key': storageKey}),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw _mapWorkerError(response);
+    }
+    final decoded =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final url = decoded['url'] as String?;
+    if (url == null || !url.startsWith('https://')) {
+      throw const UnknownError('The media service returned an invalid media URL.');
+    }
+    return url;
   }
 
   Future<String> _requireToken() async {

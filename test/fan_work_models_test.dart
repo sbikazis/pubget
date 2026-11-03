@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/features/fan_works/models/fan_work_lifecycle.dart';
 import 'package:pubget/features/fan_works/models/fan_work_models.dart';
+import 'package:pubget/features/fan_works/models/fan_work_taxonomy.dart';
 
 void main() {
   test('FanWork round-trips through toMap and fromMap', () {
@@ -68,7 +69,8 @@ void main() {
     }, id: 'ai-1');
     expect(work.type, FanWorkType.aiCharacter);
     expect(work.isAiAssisted, isTrue);
-    expect(FanWorkTypeCatalog.label(work.type), contains('AI-assisted'));
+    expect(work.origin, FanWorkOrigin.aiGenerated);
+    expect(FanWorkTypeCatalog.label(work.type), 'Character');
   });
 
   test('tags are normalized and de-duplicated', () {
@@ -91,6 +93,7 @@ void main() {
           creatorId: 'alice',
           type: FanWorkType.drawing,
           title: 'Sketch',
+          categoryId: 'portrait',
           description: '',
           content: const FanWorkContent(),
           status: FanWorkStatus.draft,

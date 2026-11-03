@@ -4,16 +4,10 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
-<<<<<<< Updated upstream
-import '../../../core/storage/media_upload_service.dart';
-import '../../../core/storage/r2_storage_service.dart';
-import '../models/fan_work_models.dart';
-=======
 import '../../../core/errors/retry.dart';
 import '../models/fan_work_lifecycle.dart';
 import '../models/fan_work_models.dart';
 import '../services/fan_work_upload_client.dart';
->>>>>>> Stashed changes
 import 'fan_work_repository.dart';
 
 final class FirebaseFanWorkRepository
@@ -112,70 +106,24 @@ final class FirebaseFanWorkRepository
     required String contentType,
     FanWorkUploadProgress? onProgress,
   }) => _guard(() async {
-<<<<<<< Updated upstream
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
-    final isVideo = contentType.startsWith('video/');
-    final ext = _extensionFromContentType(contentType);
-    final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
-
-    R2UploadResult result;
-    if (isVideo) {
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsBytes(Uint8List.fromList(bytes));
-      result = await _mediaUploadService.uploadReel(userId: uid, video: file);
-      await file.delete();
-    } else {
-      result = await _mediaUploadService.uploadImageBytes(
-        userId: uid,
-        bytes: Uint8List.fromList(bytes),
-        extension: ext,
-      );
-    }
-
-    // Try to update the media doc if path structure matches
-<<<<<<< HEAD
-    try {
-      await confirmMedia(
-        workId: ticket.workId,
-        mediaId: ticket.mediaId,
-        path: result.publicUrl,
-        role: FanWorkMediaRole.image,
-=======
-=======
-    // The server already refused an oversized or wrong-role payload when it
-    // minted the ticket; re-checking here keeps a stale ticket from silently
-    // uploading more than the rules would allow.
+    // Enforce the ticket's server-issued limit again before sending bytes.
     final limit = ticket.maxBytes > 0
         ? ticket.maxBytes
-        : FanWorkLifecycle.maxImageBytes;
-    if (bytes.length > limit) {
+        : ticket.role == FanWorkMediaRole.document
+            ? FanWorkLifecycle.maxDocumentBytes
+            : FanWorkLifecycle.maxImageBytes;
+    if (bytes.isEmpty || bytes.length > limit) {
       throw FirebaseFunctionsException(
         code: 'failed-precondition',
         message: ticket.role == FanWorkMediaRole.document
             ? 'PDF files must be 50 MB or smaller.'
             : 'Images must be 12 MB or smaller.',
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
       );
     }
-    // The bytes go through the signed session the server opened, not through
-    // the storage SDK. That is the point of the grant: it cannot mint a
-    // permanent `downloadToken`, so the object stays private and readable only
-    // via a short-lived signed grant. A `putData` call would write the object
-    // without ever using the ticket the server validated.
-    //
-    // Two URL shapes share this path. A document gets a resumable session URI
-    // and has to be cut into `Content-Range` slices; an image gets a one-shot
-    // signed `PUT` whose signature covers its headers, so it must be sent as
-    // one ranged-free request. Sending the wrong shape to the wrong URL is
-    // refused every time.
-    final mime = ticket.contentType.isNotEmpty
-        ? ticket.contentType
-        : contentType;
+    final mime = ticket.contentType.isNotEmpty ? ticket.contentType : contentType;
     _activeUploadClient?.cancel();
     final client = FanWorkUploadClient();
     _activeUploadClient = client;
->>>>>>> Stashed changes
     try {
       final result = await client.upload(
         sessionUrl: ticket.uploadUrl,
@@ -625,11 +573,6 @@ final class FirebaseFanWorkRepository
         return snapshot.docs
             .map((doc) => FanWork.fromMap(doc.data(), id: doc.id))
             .toList(growable: false);
-      });
-
-  Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
-      _guard(() async {
-        await _functions.httpsCallable(name).call(data);
       });
 
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>

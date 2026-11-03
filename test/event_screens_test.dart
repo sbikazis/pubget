@@ -3,11 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
+import 'package:pubget/core/l10n/app_strings.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/events/models/event_models.dart';
-import 'package:pubget/features/events/models/event_type_registry.dart';
 import 'package:pubget/features/events/providers/event_providers.dart';
 import 'package:pubget/features/events/repositories/event_repository.dart';
 import 'package:pubget/features/events/screens/event_details_screen.dart';
@@ -42,7 +42,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(EventStrings.noEventsTitle), findsWidgets);
+    final copy = AppStrings.of(tester.element(find.byType(EventListScreen)));
+    expect(find.text(copy.eventNoActiveYet), findsWidgets);
   });
 
   testWidgets('event details shows a missing-event empty state', (
@@ -68,7 +69,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(EventStrings.missing), findsWidgets);
+    final copy = AppStrings.of(tester.element(find.byType(EventDetailsScreen)));
+    expect(find.text(copy.eventMissing), findsWidgets);
     expect(find.byType(PubgetEmptyState), findsOneWidget);
   });
 }
@@ -99,7 +101,7 @@ final class _FakeEventRepository implements EventRepository {
   Future<Result<void>> end(String eventId) async => const Success<void>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) async =>
+  Future<Result<List<PubgetEvent>>> getActiveEvents({PubgetEvent? after, int limit = 20}) async =>
       const Success(<PubgetEvent>[]);
 
   @override
@@ -126,7 +128,7 @@ final class _FakeEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) async =>
+  Future<Result<List<PubgetEvent>>> getRecentEvents({PubgetEvent? after, int limit = 20}) async =>
       const Success(<PubgetEvent>[]);
 
   @override
@@ -161,10 +163,27 @@ final class _FakeEventRepository implements EventRepository {
   }) async => const Success<void>(null);
 
   @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) async => const Success<String?>(null);
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() async =>
+      const Success(EventCreationQuota(count: 0, limit: 2, remaining: 2));
+
+  @override
   Stream<Result<PubgetEvent>> watchEvent(String eventId) =>
       Stream<Result<PubgetEvent>>.value(
         const FailureResult(NotFoundError('This event no longer exists.')),
       );
+
+  @override
+  Stream<Result<List<EventComment>>> watchComments(String eventId) =>
+      Stream<Result<List<EventComment>>>.value(const Success(<EventComment>[]));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 final class _FakeGroupRepository implements GroupRepository {

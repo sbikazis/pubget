@@ -291,11 +291,7 @@ class _EditCommentsSheetState extends State<EditCommentsSheet> {
         compact: true,
         icon: Icons.chat_bubble_outline,
         title: copy.comments,
-<<<<<<< Updated upstream
-        message: 'Be the first to reply to this Reel.',
-=======
         message: copy.noCommentsMessage,
->>>>>>> Stashed changes
       );
     }
     final viewerId = context.watch<AuthProvider>().currentUser?.id;

@@ -143,8 +143,8 @@ void main() {
           configuration: const EventConfiguration(
             question: 'Q',
             options: <EventOption>[
-              EventOption(id: 'opt-1', label: 'A'),
-              EventOption(id: 'opt-2', label: 'B'),
+              EventOption(id: 'opt-1', label: 'A', imageUrl: 'https://cdn.example/a.jpg'),
+              EventOption(id: 'opt-2', label: 'B', imageUrl: 'https://cdn.example/b.jpg'),
             ],
           ),
         ),

@@ -24,6 +24,11 @@ jobs:
   compile:
     name: Web and Android release compilation
     runs-on: ubuntu-latest
+    # A cold runner has to download the Gradle distribution, the Flutter engine
+    # artifacts and every Maven dependency before R8 runs on three ABIs. That
+    # normally takes well under half an hour; bound it so a stalled download
+    # fails with logs instead of hanging until GitHub's six-hour default.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Setup Java 17
@@ -34,6 +39,10 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Match the project lockfile and pdfrx engine's supported Dart range.
+          # Floating stable currently resolves a newer Dart compiler that
+          # rejects the pinned pdfrx_engine version.
+          flutter-version: '3.32.8'
           channel: stable
           cache: true
       - name: Resolve packages
@@ -41,7 +50,36 @@ jobs:
       - name: Analyze application (legacy warnings are non-blocking)
         run: flutter analyze --no-fatal-infos
         continue-on-error: true
+      # Gradle and its dependencies are re-downloaded on every fresh runner,
+      # which dominates this job. Cache them so repeat runs start warm.
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*', 'android/gradle.properties', 'pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
       - name: Build Flutter Web release
-        run: flutter build web --release
+        run: |
+          set +e
+          flutter build web --release > /tmp/flutter-web-build.log 2>&1
+          status=$?
+          if [ $status -ne 0 ]; then
+            tail -n 180 /tmp/flutter-web-build.log
+            exit $status
+          fi
       - name: Build Android release APKs
-        run: flutter build apk --release --split-per-abi
+        run: |
+          set +e
+          # 30 minutes: a healthy cold build finishes well inside this, while a
+          # stalled Gradle/Maven download is cut off with its log instead of
+          # running until the job timeout.
+          timeout --foreground 1800 flutter build apk --release --split-per-abi > /tmp/flutter-apk-build.log 2>&1
+          status=$?
+          if [ $status -ne 0 ]; then
+            tail -n 180 /tmp/flutter-apk-build.log
+            exit $status
+          fi

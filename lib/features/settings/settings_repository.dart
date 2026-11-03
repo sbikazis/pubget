@@ -7,12 +7,16 @@ final class SettingsRepository {
 
   final SettingsStore _store;
   SettingsSnapshot? _cached;
+  bool _hasSavedLocale = false;
+
+  bool get hasSavedLocale => _hasSavedLocale;
 
   SettingsSnapshot get current => _cached ?? const SettingsSnapshot();
 
   Future<Result<SettingsSnapshot>> load() async {
     try {
       final stored = await _store.read();
+      _hasSavedLocale = stored.containsKey('locale');
       _cached = SettingsSnapshot.fromStorage(stored);
       return Success(_cached!);
     } on Object {
@@ -24,12 +28,15 @@ final class SettingsRepository {
 
   Future<Result<SettingsSnapshot>> save(SettingsSnapshot snapshot) async {
     final previous = current;
+    final previousHasSavedLocale = _hasSavedLocale;
     _cached = snapshot;
+    _hasSavedLocale = true;
     try {
       await _store.write(snapshot.toStorage());
       return Success(snapshot);
     } on Object {
       _cached = previous;
+      _hasSavedLocale = previousHasSavedLocale;
       return const FailureResult(
         UnknownError('Preferences could not be saved. Previous values kept.'),
       );

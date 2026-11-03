@@ -7,18 +7,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
-<<<<<<< Updated upstream
-import '../../../core/storage/media_upload_service.dart';
-import '../../../core/storage/r2_storage_service.dart';
-import '../models/chat_models.dart';
-<<<<<<< HEAD
-import '../services/chat_send_reliability.dart';
-=======
-=======
 import '../models/chat_models.dart';
 import '../services/chat_send_reliability.dart';
->>>>>>> Stashed changes
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
 import 'chat_repository.dart';
 
 final class FirebaseChatRepository implements ChatRepository {
@@ -249,54 +239,6 @@ final class FirebaseChatRepository implements ChatRepository {
   }) => _guard(() async {
     final extension = _extension(fileName, contentType);
     final type = chatMediaTypeFor(contentType: contentType, fileName: fileName);
-<<<<<<< Updated upstream
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-
-    R2UploadResult result;
-    if (type == ChatMessageType.video) {
-      // Save to temp file for video
-      final dir = await getTemporaryDirectory();
-      final ext = _extension(fileName, contentType);
-      final file = File('${dir.path}/$mediaId.$ext');
-      await file.writeAsBytes(bytes);
-      result = await _mediaUploadService.uploadReel(userId: uid, video: file);
-      await file.delete();
-    } else if (type == ChatMessageType.audio) {
-      final dir = await getTemporaryDirectory();
-      final ext = _extension(fileName, contentType);
-      final file = File('${dir.path}/$mediaId.$ext');
-      await file.writeAsBytes(bytes);
-      result = await _mediaUploadService.uploadAudio(userId: uid, audio: file);
-      await file.delete();
-    } else {
-      result = await _mediaUploadService.uploadImageBytes(
-        userId: uid,
-        bytes: bytes,
-        extension: _extension(fileName, contentType),
-      );
-    }
-
-    onProgress(0.5);
-    onBytesUploaded?.call();
-
-    // Try to update media doc if exists
-    try {
-      await _firestore
-          .collection('groups')
-          .doc(groupId)
-          .collection('media')
-          .doc(mediaId)
-          .set({
-            'mediumPath': result.publicUrl,
-            'originalPath': result.publicUrl,
-            'status': 'ready',
-            'type': type.name,
-          }, SetOptions(merge: true));
-    } catch (_) {}
-
-    onProgress(1);
-
-=======
     final path = 'groups/$groupId/media/${mediaId}_original.$extension';
     final reference = _storage.ref(path);
     final task = reference.putData(
@@ -340,7 +282,6 @@ final class FirebaseChatRepository implements ChatRepository {
     if (data['status'] != 'ready') {
       throw StateError('Media processing failed.');
     }
->>>>>>> Stashed changes
     return ChatMediaUpload(
       mediaUrl: (data['mediumPath'] ?? data['originalPath']) as String,
       thumbnailUrl: data['thumbnailPath'] as String?,
@@ -411,13 +352,6 @@ Failure _chatFailure(Object error) {
       'not-found' => const NotFoundError(ChatFailureCodes.notFound),
       'unavailable' ||
       'deadline-exceeded' ||
-<<<<<<< Updated upstream
-      'resource-exhausted' => const NetworkError(ChatFailureCodes.network),
-      'invalid-argument' ||
-      'failed-precondition' ||
-      'already-exists' => const ValidationError(ChatFailureCodes.validation),
-      _ => ValidationError(error.message ?? ChatFailureCodes.unknown),
-=======
       'resource-exhausted' ||
       'internal' ||
       'aborted' ||
@@ -426,7 +360,7 @@ Failure _chatFailure(Object error) {
       'failed-precondition' ||
       'already-exists' => const ValidationError(ChatFailureCodes.validation),
       _ => const UnknownError(ChatFailureCodes.unknown),
->>>>>>> Stashed changes
+
     };
   }
   if (error is FirebaseException) {

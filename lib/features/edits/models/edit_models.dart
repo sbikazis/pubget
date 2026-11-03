@@ -200,12 +200,8 @@ final class Edit {
           'This Reel is held for review (possible third-party watermark).';
     }
     if (moderationStatus == 'flagged' || statusEnum == EditStatus.rejected) {
-<<<<<<< Updated upstream
-      return moderationReason ?? 'This Reel was flagged and was not published.';
-=======
       return moderationReason ??
           'This Reel was flagged and was not published.';
->>>>>>> Stashed changes
     }
     return switch (failureReason) {
       'invalid-video' =>

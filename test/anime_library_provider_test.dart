@@ -73,6 +73,7 @@ final class _FakeLibraryRepository implements AnimeLibraryRepository {
     required AnimeListStatus status,
     String title = '',
     int? rating,
+    bool? favorite,
   }) async {
     writes += 1;
     final entry = AnimeListEntry(
@@ -116,4 +117,11 @@ final class _FakeLibraryRepository implements AnimeLibraryRepository {
       CharacterFavorite(characterId: characterId, name: name, rating: rating),
     );
   }
+
+  @override
+  Future<Result<List<AnimeCustomList>>> getCustomLists({String? userId}) async =>
+      const Success<List<AnimeCustomList>>(<AnimeCustomList>[]);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

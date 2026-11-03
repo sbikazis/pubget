@@ -42,6 +42,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // The Center opens on "Available"; the empty copy belongs to a list tab.
+    await tester.tap(find.byType(Tab).at(1));
+    await tester.pumpAndSettle();
     expect(find.text(GameStrings.noGamesTitle), findsWidgets);
   });
 
@@ -108,6 +111,12 @@ final class _FakeGameRepository implements GameRepository {
   }) async => const Success(<PubgetGame>[]);
 
   @override
+  Future<Result<List<GameHistoryEntry>>> getHistory({
+    required String userId,
+    int limit = 20,
+  }) async => const Success(<GameHistoryEntry>[]);
+
+  @override
   Future<Result<List<GameParticipant>>> getParticipants(String gameId) async =>
       const Success(<GameParticipant>[]);
 
@@ -125,10 +134,8 @@ final class _FakeGameRepository implements GameRepository {
   @override
   Future<Result<void>> leave(String gameId) async => const Success<void>(null);
 
-  @override
   Future<Result<void>> pause(String gameId) async => const Success<void>(null);
 
-  @override
   Future<Result<void>> resume(String gameId) async => const Success<void>(null);
 
   @override
@@ -161,6 +168,9 @@ final class _FakeGameRepository implements GameRepository {
   }) => Stream<Result<Map<String, dynamic>>>.value(
     const Success(<String, dynamic>{}),
   );
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
 }
 
 final class _FakeGroupRepository implements GroupRepository {

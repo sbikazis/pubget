@@ -60,16 +60,11 @@ final class EditCopy {
   String get failedNotificationBody => _s.pick(
     'Reel processing failed. Open the app to retry or delete the draft.',
     'فشلت معالجة الريل. افتح التطبيق لإعادة المحاولة أو حذف المسودة.',
-<<<<<<< Updated upstream
-=======
   );
   String get videoReadyOffer => _s.pick(
     'Your Reel is ready — watch it now?',
     'ريلك جاهز — شاهده الآن؟',
->>>>>>> Stashed changes
   );
-  String get videoReadyOffer =>
-      _s.pick('Your Reel is ready — watch it now?', 'ريلك جاهز — شاهده الآن؟');
   String get watchNow => _s.pick('Watch now', 'شاهده الآن');
   String get openEdit => _s.pick('Open published Reel', 'فتح الريل المنشور');
   String get noVideoYet => _s.pick(
@@ -88,15 +83,10 @@ final class EditCopy {
   );
   String get failedLoad =>
       _s.pick('Reels could not load.', 'تعذّر تحميل الريلز.');
-<<<<<<< Updated upstream
-  String get brokenClip =>
-      _s.pick('This Reel could not be played.', 'تعذّر تشغيل هذا الريل.');
-=======
   String get brokenClip => _s.pick(
     'This Reel could not be played.',
     'تعذّر تشغيل هذا الريل.',
   );
->>>>>>> Stashed changes
   String get offlineClip => _s.pick(
     'Offline — retry when you are connected.',
     'بدون اتصال — أعد المحاولة عند توفر الإنترنت.',
@@ -207,7 +197,6 @@ final class EditCopy {
   String get reelDetails => _s.pick('Reel', 'ريل');
   String get creatorFallback => _s.pick('Pubget creator', 'مبدع على Pubget');
   String get originalAudio => _s.pick('Original Audio', 'الصوت الأصلي');
-  String get audio => _s.pick('Audio', 'الصوت');
   String get audioSource => _s.pick('Audio source', 'مصدر الصوت');
   String get openOriginalReel =>
       _s.pick('Open original Reel', 'فتح الريل الأصلي');
@@ -231,7 +220,6 @@ final class EditCopy {
   );
   String get remixEnabled => _s.pick('Remix enabled', 'إعادة المزج متاحة');
   String get remixDisabled => _s.pick('Remix disabled', 'إعادة المزج معطّلة');
-  String get hashtags => _s.pick('Hashtags', 'الوسوم');
   String get mentions => _s.pick('Mentions', 'الإشارات');
   String charactersCount(int count) => _s.pick(
     '$count ${count == 1 ? 'character' : 'characters'}',
@@ -279,15 +267,9 @@ final class EditCopy {
         'هذا الفيديو ليس MP4 مدعومًا، أو حجمه كبير جدًا.',
       ),
       'duration' => _s.pick(
-<<<<<<< Updated upstream
-        'Videos can be up to 3 minutes long.',
-        'مدة الفيديو يمكن أن تصل إلى 3 دقائق.',
-      ),
-=======
           'Reels can be up to 60 seconds long.',
           'يمكن أن يصل طول الريل إلى 60 ثانية.',
         ),
->>>>>>> Stashed changes
       'aspect-unrecoverable' => _s.pick(
         'We could not prepare this video for full-screen display. Delete the draft or try another file.',
         'تعذر تجهيز هذا الفيديو للعرض بملء الشاشة. احذف المسودة أو جرّب ملفًا آخر.',
@@ -309,8 +291,8 @@ final class EditCopy {
         );
       }
       return _s.pick(
-        'Upload was blocked by storage security. Stay signed in and retry in a moment.',
-        'تم حظر الرفع بواسطة أمان التخزين. ابقَ مسجّل الدخول وأعد المحاولة بعد لحظات.',
+        'Could not upload this video securely. Please retry.',
+        'تعذر رفع الفيديو بشكل آمن. أعد المحاولة من فضلك.',
       );
     }
     if (failure is NetworkError) {

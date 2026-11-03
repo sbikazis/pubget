@@ -133,10 +133,8 @@ final class _FakeGameRepository implements GameRepository {
   @override
   Future<Result<void>> leave(String gameId) async => const Success<void>(null);
 
-  @override
   Future<Result<void>> pause(String gameId) async => const Success<void>(null);
 
-  @override
   Future<Result<void>> resume(String gameId) async => const Success<void>(null);
 
   @override
@@ -166,4 +164,7 @@ final class _FakeGameRepository implements GameRepository {
     required String gameId,
     required String userId,
   }) => const Stream<Result<Map<String, dynamic>>>.empty();
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
 }

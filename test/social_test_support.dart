@@ -1,8 +1,10 @@
 import 'dart:typed_data';
 
+import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/authentication/models/pubget_user.dart';
+import 'package:pubget/features/kirari/data/kirari_repository.dart';
 import 'package:pubget/features/social/models/public_profile.dart';
 import 'package:pubget/features/social/models/social_models.dart';
 import 'package:pubget/features/social/repositories/profile_repository.dart';
@@ -158,4 +160,15 @@ final class FakeSocialRepository implements SocialRepository {
   @override
   Future<Result<void>> unblockUser({required String otherUserId}) async =>
       _result<void>(null);
+}
+
+/// The profile page mounts the creator's Reels strip, which reads the Kirari
+/// repository. Social tests do not exercise Reels, so the strip resolves to an
+/// empty list instead of reaching Firestore.
+final class FakeKirariRepository extends Fake implements KirariRepository {
+  @override
+  Future<List<KirariReel>> getCreatorReels(
+    String creatorId, {
+    int limit = 20,
+  }) async => const <KirariReel>[];
 }
