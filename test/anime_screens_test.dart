@@ -279,6 +279,7 @@ Widget _harness({
 }) {
   final network = NetworkService(probe: () async => true);
   final hub = AnimeHubProvider(repository: repository);
+  final hubCatalogs = AnimeHubCatalogProvider(repository: repository);
   final list = AnimeListProvider(
     repository: repository,
     debounce: Duration.zero,
@@ -297,6 +298,9 @@ Widget _harness({
     providers: [
       ChangeNotifierProvider<NetworkService>.value(value: network),
       ChangeNotifierProvider<AnimeHubProvider>.value(value: hub),
+      ChangeNotifierProvider<AnimeHubCatalogProvider>.value(
+        value: hubCatalogs,
+      ),
       ChangeNotifierProvider<AnimeListProvider>.value(value: list),
       ChangeNotifierProvider<AnimeDetailsProvider>.value(value: details),
       ChangeNotifierProvider<AuthProvider>.value(value: auth),
