@@ -30,6 +30,7 @@ jobs:
           import json
           from collections import defaultdict
           errors = defaultdict(list)
+          prints = defaultdict(list)
           global_errors = []
           failed = []
           current = {}
@@ -46,10 +47,17 @@ jobs:
               elif kind in ('error', 'testError'):
                   test_id = event.get('testID')
                   message = event.get('error', event.get('message', 'unknown test error'))
+                  stack = event.get('stackTrace')
+                  detail = str(message) + (('\n' + str(stack)) if stack else '')
                   if test_id is None:
-                      global_errors.append(message)
+                      global_errors.append(detail)
                   else:
-                      errors[test_id].append(message)
+                      errors[test_id].append(detail)
+              elif kind == 'print':
+                  test_id = event.get('testID')
+                  message = event.get('message', '')
+                  if test_id is not None:
+                      prints[test_id].append(message)
               elif kind == 'testDone' and event.get('result') != 'success' and not event.get('skipped', False):
                   test_id = event.get('testID')
                   failed.append((test_id, current.get(test_id, '<unknown>'), event.get('result')))
@@ -62,7 +70,9 @@ jobs:
           for test_id, name, result in failed[:100]:
               print('FAILED_TEST:', name, 'RESULT=', result, 'ID=', test_id)
               for message in errors.get(test_id, [])[:3]:
-                  print('  ERROR:', str(message)[:1500])
+                  print('  ERROR:', str(message)[:3000])
+              for message in prints.get(test_id, [])[:12]:
+                  print('  TRACE:', str(message)[:1500])
           for test_id, messages in errors.items():
               if not any(row[0] == test_id for row in failed):
                   print('ERROR_EVENT_WITHOUT_FAILED_TEST:', current.get(test_id, '<unknown>'), 'ID=', test_id)
