@@ -184,6 +184,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // Characters live on the dedicated second tab, not the details tab.
+    await tester.tap(find.byType(Tab).at(1));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('character-10')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('character-10')));
