@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
+import 'package:pubget/features/kirari/data/kirari_repository.dart';
 import 'package:pubget/features/social/models/social_models.dart';
 import 'package:pubget/features/social/providers/profile_provider.dart';
 import 'package:pubget/features/social/providers/social_provider.dart';
@@ -35,6 +36,7 @@ void main() {
           ChangeNotifierProvider<SocialProvider>(
             create: (_) => SocialProvider(repository: FakeSocialRepository()),
           ),
+          Provider<KirariRepository>(create: (_) => FakeKirariRepository()),
         ],
         child: const MaterialApp(home: ProfilePage(userId: 'user-2')),
       ),
@@ -135,6 +137,7 @@ void main() {
               ),
             ),
           ),
+          Provider<KirariRepository>(create: (_) => FakeKirariRepository()),
         ],
         child: const MaterialApp(home: ProfilePage(userId: 'user-2')),
       ),

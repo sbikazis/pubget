@@ -42,6 +42,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // The Center opens on "Available"; the empty copy belongs to a list tab.
+    await tester.tap(find.byType(Tab).at(1));
+    await tester.pumpAndSettle();
     expect(find.text(GameStrings.noGamesTitle), findsWidgets);
   });
 
@@ -106,6 +109,12 @@ final class _FakeGameRepository implements GameRepository {
     required String userId,
     int limit = 20,
   }) async => const Success(<PubgetGame>[]);
+
+  @override
+  Future<Result<List<GameHistoryEntry>>> getHistory({
+    required String userId,
+    int limit = 20,
+  }) async => const Success(<GameHistoryEntry>[]);
 
   @override
   Future<Result<List<GameParticipant>>> getParticipants(String gameId) async =>

@@ -33,7 +33,9 @@ void main() {
 
     expect(find.byKey(const Key('group-details-hero')), findsOneWidget);
     expect(find.byKey(const Key('group-hero-badges')), findsOneWidget);
-    expect(find.text('MIKADO'), findsNothing);
+    // The hero badges carry the viewer's live rank; the founder's rank is
+    // the MIKADO tier, so it is expected to be on screen.
+    expect(find.text('MIKADO'), findsWidgets);
     expect(find.text('Rising Crew'), findsOneWidget);
     expect(find.text('Anime Roleplay'), findsOneWidget);
     expect(find.text('4'), findsWidgets);

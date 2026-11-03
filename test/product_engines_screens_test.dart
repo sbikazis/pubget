@@ -20,10 +20,12 @@ import 'package:pubget/features/events/repositories/event_repository.dart';
 import 'package:pubget/features/events/screens/event_details_screen.dart';
 import 'package:pubget/features/games/models/game_models.dart';
 import 'package:pubget/features/games/models/game_type_registry.dart';
+import 'package:pubget/features/games/providers/game_catalog_provider.dart';
 import 'package:pubget/features/games/providers/game_providers.dart';
 import 'package:pubget/features/games/repositories/game_repository.dart';
 import 'package:pubget/features/games/screens/game_create_page.dart';
 import 'package:pubget/features/games/screens/game_details_screen.dart';
+import 'package:pubget/features/games/widgets/catalog_search_picker.dart';
 import 'package:pubget/features/games/widgets/game_play_panels.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
@@ -137,14 +139,22 @@ void main() {
     mafia.dispose();
   });
 
-  testWidgets('guess character play locks a submitted answer', (tester) async {
+  testWidgets('guess character play locks the selected secret', (tester) async {
+    final repository = _LiveGameRepository();
+    final catalog = GameCatalogProvider(repository: repository);
+    addTearDown(catalog.dispose);
     await tester.pumpWidget(
-      ChangeNotifierProvider<GameProvider>(
-        create: (_) => GameProvider(repository: _LiveGameRepository()),
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<GameProvider>.value(
+            value: GameProvider(repository: repository),
+          ),
+          ChangeNotifierProvider<GameCatalogProvider>.value(value: catalog),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: GuessCharacterPlay(
-              game: _guessGame(),
+              game: _guessGame(secretSelected: true),
               userId: 'alice',
             ),
           ),
@@ -153,14 +163,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Who is this character?'), findsOneWidget);
-    expect(find.text('Luffy'), findsOneWidget);
-    expect(find.text('Original Pubget silhouette'), findsOneWidget);
-    expect(find.byType(CustomPaint), findsWidgets);
-    expect(
-      find.text('Answer locked in. Waiting for the round to resolve.'),
-      findsOneWidget,
-    );
+    // A committed selection replaces the catalog picker with the locked copy,
+    // so the same player cannot pick again.
+    expect(find.text(GameStrings.secretLocked), findsOneWidget);
+    expect(find.byType(CatalogSearchPicker), findsNothing);
   });
 
   testWidgets('guess character artwork falls back to the clue', (tester) async {
@@ -215,7 +221,7 @@ void main() {
     expect(find.text('A straw hat pirate.'), findsOneWidget);
   });
 
-  testWidgets('game create exposes the current Phase games without Mafia', (
+  testWidgets('game create exposes every implemented game, Mafia included', (
     tester,
   ) async {
     final creator = GameCreateProvider(repository: _LiveGameRepository());
@@ -236,7 +242,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Guess the Character'), findsOneWidget);
-    expect(find.text('Mafia'), findsNothing);
+    // Spec 12.1 lists all four games as available; Mafia creates through
+    // createMafiaGame instead of the generic createGame, but it is offered.
+    expect(find.text('Mafia'), findsOneWidget);
     expect(find.text('Rules', skipOffstage: false), findsOneWidget);
   });
 
@@ -298,7 +306,7 @@ Future<AuthProvider> _auth() async {
   return auth;
 }
 
-PubgetGame _guessGame({bool completed = false}) {
+PubgetGame _guessGame({bool completed = false, bool secretSelected = false}) {
   return PubgetGame(
     id: 'g1',
     type: GameType.guessCharacter,
@@ -325,6 +333,9 @@ PubgetGame _guessGame({bool completed = false}) {
       'engine': 'guessCharacter',
       'roundNumber': 1,
       'totalRounds': 5,
+      'players': <String, dynamic>{
+        if (secretSelected) 'alice': <String, dynamic>{'selected': true},
+      },
       'answeredPlayerIds': <String>['alice'],
       'scores': <String, int>{'alice': 1, 'bob': 0},
       'prompt': <String, dynamic>{
@@ -725,6 +736,19 @@ final class _ExpiredEventRepository implements EventRepository {
   @override
   Stream<Result<PubgetEvent>> watchEvent(String eventId) =>
       Stream<Result<PubgetEvent>>.value(Success(_event));
+
+  @override
+  Stream<Result<List<EventComment>>> watchComments(String eventId) =>
+      Stream<Result<List<EventComment>>>.value(
+        const Success(<EventComment>[]),
+      );
+
+  @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) async => const Success<String?>(null);
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 

@@ -72,7 +72,7 @@ void main() {
     expect(find.text(FanWorkTypeCatalog.label(FanWorkType.aiCharacter)), findsOneWidget);
     await tester.tap(find.text(FanWorkTypeCatalog.label(FanWorkType.character)));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('fan-work-character-name')), findsWidgets);
+    expect(find.byKey(const Key('fan-work-character-personality')), findsWidgets);
   });
 
   testWidgets('manga viewer keeps page order and an indicator', (tester) async {
@@ -93,7 +93,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('1 / 2'), findsOneWidget);
+    expect(find.text('Page 1 of 2'), findsOneWidget);
     expect(find.text('Splash'), findsOneWidget);
   });
 

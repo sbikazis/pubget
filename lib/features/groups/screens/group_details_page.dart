@@ -124,11 +124,9 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             empty: PubgetEmptyState(title: copy.groupUnavailable),
             child: group == null
                 ? const SizedBox.shrink()
-                : provider.isFounder
-                    ? _GroupControlPanel(group: group)
-                    : provider.hasEntryHub
-                        ? _GroupEntryHub(group: group)
-                        : _VisitorDetails(group: group),
+                : provider.isFounder || provider.hasEntryHub
+                ? _GroupControlPanel(group: group)
+                : _VisitorDetails(group: group),
           ),
         ),
       ),
@@ -141,62 +139,6 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     await context.read<GroupProvider>().load(
       groupId: widget.groupId,
       userId: userId,
-    );
-  }
-}
-
-
-/// Compact management entry surface for trusted group ranks. This widget is
-/// intentionally kept beside the details page so its route contract cannot
-/// drift from the group screen.
-class _GroupEntryHub extends StatelessWidget {
-  const _GroupEntryHub({required this.group});
-
-  final Group group;
-
-  @override
-  Widget build(BuildContext context) {
-    final copy = AppStrings.of(context);
-    final provider = context.watch<GroupProvider>();
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _IdentityHeader(group: group),
-          const SizedBox(height: AppSpacing.lg),
-          Text('Entry Hub', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.sm),
-          Text(copy.membersCount(group.membersCount)),
-          const SizedBox(height: AppSpacing.lg),
-          PubgetCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Text(copy.groupInformation,
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: AppSpacing.sm),
-                Text(group.description.isEmpty
-                    ? copy.communityFallback
-                    : group.description),
-                const SizedBox(height: AppSpacing.md),
-                FilledButton(
-                  onPressed: () => AppNavigation.go(
-                    context, '/group-chat?groupId=${group.id}'),
-                  child: Text(copy.openChat),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                if (provider.canManageMembers)
-                  OutlinedButton(
-                    onPressed: () => AppNavigation.go(
-                      context, '/group-members?groupId=${group.id}'),
-                    child: Text(copy.manageMembers),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -50,6 +50,7 @@ void main() {
               contrast: ChatContrastTheme.fromBackground(null),
               onLongPress: (_) {},
               onMediaTap: () {},
+              onRetryMedia: provider.retry,
             ),
           ),
         ),
