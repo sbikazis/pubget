@@ -484,6 +484,13 @@ void main() {
       );
 
       expect(notifications, 1, reason: 'only optimistic insert notifies');
+      // The upload worker first awaits findReadyMedia before registering its
+      // progress callback. Wait for that asynchronous boundary before emitting
+      // deterministic progress ticks from this fake repository.
+      for (var tick = 0; tick < 20 && !repository.progressHandlerReady; tick++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(repository.progressHandlerReady, isTrue);
       final revisionAfterInsert = provider.contentRevision;
       final messageId = provider.messages.single.id;
       expect(provider.localPreviewBytes(messageId), isNotNull);
@@ -756,6 +763,8 @@ final class _ProgressiveUploadRepository extends _FakeChatRepository {
   void Function(double progress)? _onProgress;
   void Function()? _onBytesUploaded;
   Completer<Result<ChatMediaUpload>>? _uploadCompleter;
+
+  bool get progressHandlerReady => _onProgress != null;
 
   void emitProgress(double value) => _onProgress?.call(value);
 
