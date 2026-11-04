@@ -147,16 +147,21 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       db.collection("friendships").doc(userA.length + ":" + userA + userB.length + ":" + userB),
       db.collection("friendships").doc(userA + "_" + userB),
     ];
-    const docs = await Promise.all(refs.map((ref) => ref.get().catch(() => null)));
-    return docs.some((doc) => doc && doc.exists && doc.data()?.status === "blocked");
+    // Fail closed: a friendship lookup failure must never silently expose
+    // content from a user who may have blocked the viewer (or vice versa).
+    const docs = await Promise.all(refs.map((ref) => ref.get()));
+    return docs.some((doc) => doc.exists && doc.data()?.status === "blocked");
   }
 
   async function excludedCreatorIds(uid) {
+    // Privacy filters are security decisions, not optional personalization.
+    // If any source is unavailable, reject the request rather than return an
+    // unfiltered feed.
     const [blockedByA, blockedByB, blockedLegacy, muted] = await Promise.all([
-      db.collection("friendships").where("userA", "==", uid).get().catch(() => ({ docs: [] })),
-      db.collection("friendships").where("userB", "==", uid).get().catch(() => ({ docs: [] })),
-      db.collection("friendships").where("userIds", "array-contains", uid).get().catch(() => ({ docs: [] })),
-      db.collection("users").doc(uid).collection("kirariMutedCreators").get().catch(() => ({ docs: [] })),
+      db.collection("friendships").where("userA", "==", uid).get(),
+      db.collection("friendships").where("userB", "==", uid).get(),
+      db.collection("friendships").where("userIds", "array-contains", uid).get(),
+      db.collection("users").doc(uid).collection("kirariMutedCreators").get(),
     ]);
     const docs = [...(blockedByA.docs || []), ...(blockedByB.docs || []), ...(blockedLegacy.docs || [])];
     const blocked = docs.filter((doc) => doc.data()?.status === "blocked").flatMap((doc) => {
@@ -1017,13 +1022,13 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const profile = profileSnap.data() || {};
     const userRef = db.collection("users").doc(uid);
     const [blockedByA, blockedByB, blockedByLegacy, interests, follows, muted, notInterested] = await Promise.all([
-      db.collection("friendships").where("userA", "==", uid).get().catch(() => ({ docs: [] })),
-      db.collection("friendships").where("userB", "==", uid).get().catch(() => ({ docs: [] })),
-      db.collection("friendships").where("userIds", "array-contains", uid).get().catch(() => ({ docs: [] })),
-      userRef.collection("kirariInterests").get().catch(() => ({ docs: [] })),
-      db.collection("respects").where("fromUserId", "==", uid).get().catch(() => ({ docs: [] })),
-      userRef.collection("kirariMutedCreators").get().catch(() => ({ docs: [] })),
-      userRef.collection("kirariNotInterested").get().catch(() => ({ docs: [] })),
+      db.collection("friendships").where("userA", "==", uid).get(),
+      db.collection("friendships").where("userB", "==", uid).get(),
+      db.collection("friendships").where("userIds", "array-contains", uid).get(),
+      userRef.collection("kirariInterests").get(),
+      db.collection("respects").where("fromUserId", "==", uid).get(),
+      userRef.collection("kirariMutedCreators").get(),
+      userRef.collection("kirariNotInterested").get(),
     ]);
     const blockedDocs = [...(blockedByA.docs || []), ...(blockedByB.docs || []), ...(blockedByLegacy.docs || [])];
     const blockedIds = new Set(blockedDocs
