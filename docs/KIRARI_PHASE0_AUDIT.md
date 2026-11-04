@@ -281,3 +281,28 @@ The locked source of truth was located at `docs/PUBGET_MASTER_SPEC.md` and read 
 ### Current implementation status
 - Source changes on `feature/15-kirari-production-rebuild`: KIR-015 stable score/id cursor comparator + test; KIR-016 seen marker only after qualified playback; KIR-017 server-only seen marker Rules + Rules test; KIR-018 fail-closed privacy filters + regression test.
 - **Phase 0 remains open.** No PR has been opened. No runtime tests, Emulator tests, Flutter checks, deployed Rules/index verification, or weak-network/device profiling have passed in this session.
+
+
+## Verification update — 2026-11-04
+
+### CI run 41928966116 — PASS
+Commit: `38d97d2f3534334007df25a1f490fe3a27f50b7c`
+
+All three required workflow jobs completed successfully:
+- Flutter analyze, tests and Android debug build — success.
+- Functions checks and unit tests — success.
+- Firestore and Storage Emulator rules tests — success.
+
+This closes the source/CI verification gate for the changes present in that commit only. It does **not** close Phase 0 or production acceptance.
+
+### Remaining release blockers (confirmed from current source)
+1. **KIR-Q01/Q04 — Feed completeness:** `getFeed` still truncates the global candidate query to 100 before Following, privacy and personalization filters. Eligible reels can be starved. Cursor ordering is deterministic only within this capped, mutable candidate window.
+2. **KIR-Q02 — Read amplification:** friendship, respect, interest, mute and not-interested collections are read without pagination or bounded materialized snapshots.
+3. **KIR-Q03 — Recommendation maturity:** current ranker remains heuristic. It does not consume the specified behavioral events (watch duration, skips, replays, searches/profile visits), character/anime arrays, calibrated exploration controls, or creator/topic diversity caps.
+4. **Upload recovery:** the client persists the local source and restarts upload to the same object path after app restart. This is not byte-offset resumable/background upload.
+5. **Moderation:** automated moderation is text-only; visual/audio moderation and creator appeal workflow are absent.
+6. **Operations:** source code and Emulator CI do not prove deployed FFmpeg runtime capacity, Cloud Functions limits, Storage bucket configuration, deployed indexes/rules, App Check enforcement, or production billing readiness.
+7. **Device acceptance:** weak-network playback, memory pressure, thermal behavior, long-session controller cleanup, and real-device upload recovery still require physical-device verification.
+
+### Release decision
+**NO-GO for production-ready PR approval.** CI is green, but the outstanding architecture, moderation, deployment and device acceptance blockers above are material. Do not describe the feature as production complete or merge it to `main` until these are closed or explicitly accepted by the repository owner with a staged rollout plan.
