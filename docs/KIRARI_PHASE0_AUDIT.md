@@ -242,3 +242,11 @@ The locked source of truth was located at `docs/PUBGET_MASTER_SPEC.md` and read 
 - GitHub combined status and PR-triggered workflow lookup for the latest commit returned no checks/runs. This branch does not match the workflow's configured push branch (`feat/kirari-system-rebuild`), and no PR was opened because the full acceptance gate remains incomplete.
 - Local Node/Flutter/Emulator execution is unavailable in this environment (GitHub clone DNS resolution failed). Therefore these source changes are **not test-passing claims**.
 - Remaining Phase 0 blockers: full callable/query/index cross-reference; Rules/Storage emulator execution; Functions test execution; Flutter analyze/widget/integration/build; device weak-network and memory profiling; complete integration verification and CI.
+
+
+### KIR-017 — Client could forge seen-ring state (security fix committed; Emulator not run)
+- **Evidence:** `firestore.rules` previously allowed the owner to create/update/delete `users/{uid}/kirariSeen/{reelId}` as long as the document only contained `seenAt`. This made it possible to suppress recommendations without qualified playback, defeating the server-owned seen-ring contract.
+- **Root cause:** owner-scoped preferences rule was applied to an anti-abuse/recommendation state that must be server-authoritative.
+- **Change:** deny all client writes to Kirari seen markers. The Admin SDK playback transaction writes them after a server-qualified view. Updated the Firestore Rules test to expect client create to fail.
+- **Files:** `firestore.rules`; `functions/test/firestore.rules.test.js`.
+- **Risk:** until Emulator rules tests pass, this is a source-level correction, not verified security evidence. Confirm the playback transaction is the only writer and that existing clients do not rely on writing seen markers.
