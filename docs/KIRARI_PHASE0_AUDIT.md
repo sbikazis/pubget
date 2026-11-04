@@ -219,3 +219,26 @@ The locked source of truth was located at `docs/PUBGET_MASTER_SPEC.md` and read 
 - **Source inventory:** Flutter Kirari screens/repository/copy; Functions domain/pipeline/media access/visibility; Kirari tests; Firestore and Storage rules were fetched from `main`. Full line-by-line callable/query/index/collection cross-reference is still open.
 - **Not run:** Flutter analyze/build, Functions test suite, Firebase Emulator Rules tests, device UI/network/memory profiling, deployed Firebase/Cloudflare verification. GitHub source access alone cannot run these.
 - **Decision:** Matrix consolidated; Phase 0 is **not closed** because runtime gates and complete callable/query mapping remain. Proceed only with scoped fixes that have source evidence and tests; do not claim a complete rebuild or production-ready PR.
+
+
+## Implementation pass — feed correctness (2026-11-04)
+
+### KIR-015 — Feed cursor was not a real keyset cursor (fixed in source; runtime not yet verified)
+- **Evidence:** `functions/src/kirariDomain.js:getFeed` read the supplied `afterScore` but searched for `afterId` inside a newly fetched top-100 candidate list. If the prior item moved out of that window, the cursor was ignored and page 1 could repeat. The score was also not used to define the next-page boundary.
+- **Root cause:** cursor implementation depended on a volatile in-memory rank window instead of a deterministic score/id tuple.
+- **Change:** sort by rank descending then document id ascending; apply a score/id keyset comparator; return that tuple as nextCursor. Exported the comparator and added a unit test for score ties, before/after boundaries, and absent cursor.
+- **Files:** `functions/src/kirariDomain.js`; `functions/test/kirariDomain.test.js`.
+- **Risk/limitation:** feed candidates are still capped at 100 fetched documents. This patch fixes cursor comparison within the candidate window but does not implement a complete server-side cursor across arbitrarily large feeds. Candidate selection/ranking needs a separate scalable design.
+
+### KIR-016 — Feed fetch incorrectly marked prefetched items as seen (fixed in source; runtime not yet verified)
+- **Evidence:** `getFeed` wrote every returned item to `users/{uid}/kirariSeen` before the viewer had played it. A fetch/prefetch could therefore suppress a reel from For You.
+- **Root cause:** seen-ring mutation was coupled to feed delivery instead of server-credited playback.
+- **Change:** removed seen writes from `getFeed`; `recordPlayback` now reads the viewer's seen document in its transaction and records it only when a qualified view is credited.
+- **Files:** `functions/src/kirariDomain.js`.
+- **Risk/limitation:** playback qualification itself still relies on heartbeat elapsed time and client event values bounded by server elapsed time; additional adversarial tests are required before treating anti-farming as complete.
+
+### Verification status for this pass
+- Source updates committed to `feature/15-kirari-production-rebuild`: feed cursor comparator and cursor test.
+- GitHub combined status and PR-triggered workflow lookup for the latest commit returned no checks/runs. This branch does not match the workflow's configured push branch (`feat/kirari-system-rebuild`), and no PR was opened because the full acceptance gate remains incomplete.
+- Local Node/Flutter/Emulator execution is unavailable in this environment (GitHub clone DNS resolution failed). Therefore these source changes are **not test-passing claims**.
+- Remaining Phase 0 blockers: full callable/query/index cross-reference; Rules/Storage emulator execution; Functions test execution; Flutter analyze/widget/integration/build; device weak-network and memory profiling; complete integration verification and CI.
