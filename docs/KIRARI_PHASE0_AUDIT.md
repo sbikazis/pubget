@@ -42,3 +42,14 @@
 7. Record packages, CI evidence, and any blocked paid-service requirements.
 
 **Gate: Phase 0 remains OPEN. No production-ready claim. No code implementation is approved until the complete evidence matrix is consolidated.**
+
+## Additional integration findings (pass 2)
+
+| ID | Priority | Evidence | Root cause / impact | Remediation |
+|---|---|---|---|---|
+| KIR-011 | High | `docs/KIRARI_OPERATIONS.md` says canonical `/reel/:id` resolves Edits when ID belongs to Edits and Kirari otherwise. But `lib/features/reels/screens/reel_details_page.dart` implements canonical `/reel/:reelId` using only `EditsRepository.getEdit()`; the independent Kirari details screen is `lib/features/kirari/screens/kirari_reel_details_page.dart`. | The canonical route's data source is Edits-only, so a Kirari reel deep link may be treated as missing or render the wrong detail model instead of dispatching by domain. | Add explicit domain resolution (prefer server/route contract, not fragile client probing); route to the matching detail/viewer context; preserve login return and unavailable states; integration-test both Edits and Kirari IDs. |
+| KIR-012 | High | `lib/features/reels/reels_brand.dart` defines literal `name='Reels'` and `arabicName='ريلز'`; Kirari copy separately uses `Kirari` / `كيراري`. Requirement specifies one central `AppStrings.productReelsName`. | Multiple product-name authorities can drift across navigation, branding, localization and screens; inconsistent label appears to user. | Replace local brand literals with central product-name constant and localization; audit every navigation/entry surface and test Arabic/English. |
+| KIR-013 | High | `docs/KIRARI_OPERATIONS.md` explicitly says recovery after process death restarts upload from persisted local file to same object path; it is not byte-offset continuation or background upload after app closes. | Current recovery is whole-file retry, not true resumable transfer; large uploads on weak networks can restart from zero and consume data/time. | Implement SDK-supported resumable session recovery or clearly scoped upload-job backend; persist session/progress safely, verify generation/idempotency and cleanup. If platform cannot guarantee background continuation, disclose that UX limitation and avoid claiming full resumability. |
+| KIR-014 | High | `docs/KIRARI_OPERATIONS.md` states automated moderation is text-based only and there is no visual/audio classification or creator appeal workflow. | Anime edits are primarily video/audio; text-only moderation leaves media abuse/copyright/unsafe-content gaps and no appeal path. | Document launch policy and risk acceptance; implement provider-agnostic media review hook, human escalation/appeal and takedown audit. If automated media review requires unavailable paid service, mark BLOCKED and keep appropriate manual controls. |
+
+These additions are source/documentation verified; they are not runtime failures reproduced on device.
