@@ -250,3 +250,34 @@ The locked source of truth was located at `docs/PUBGET_MASTER_SPEC.md` and read 
 - **Change:** deny all client writes to Kirari seen markers. The Admin SDK playback transaction writes them after a server-qualified view. Updated the Firestore Rules test to expect client create to fail.
 - **Files:** `firestore.rules`; `functions/test/firestore.rules.test.js`.
 - **Risk:** until Emulator rules tests pass, this is a source-level correction, not verified security evidence. Confirm the playback transaction is the only writer and that existing clients do not rely on writing seen markers.
+
+
+## Functions / Rules / query audit — additional pass (2026-11-04)
+
+### KIR-018 — Privacy filtering failed open on Firestore lookup errors (source fix + regression test committed; runtime pending)
+- **Evidence:** `functions/src/kirariDomain.js:isBlockedPair`, `excludedCreatorIds`, and `getFeed` converted friendship/mute/interest/respect lookup failures into `null` or empty snapshots. The feed could therefore continue without applying block/mute filters during a backend failure.
+- **Root cause:** security/privacy predicates were treated as optional enrichment and swallowed infrastructure errors.
+- **Change:** removed fail-open catches from direct block checks and feed privacy/personalization reads. A failed privacy dependency now fails the callable instead of returning a potentially unsafe feed. Added a regression test that makes a friendship lookup fail and asserts the feed rejects.
+- **Files:** `functions/src/kirariDomain.js`; `functions/test/kirariDomain.test.js`.
+- **Risk:** this is intentionally fail-closed but may make feed unavailable during a Firestore incident. Add bounded retries/observability only if they preserve fail-closed semantics.
+
+### Query/index findings (open)
+- **KIR-Q01 — Feed candidate cap / pagination:** `getFeed` queries the top 100 published/approved reels by stored ranking or velocity, then performs block/mute/not-interested filtering, Following filtering, For You ranking, diversity/exploration selection and cursor filtering in memory. This can starve eligible items beyond the first 100 and cannot provide a stable exhaustive cursor as the candidate set changes. The previous cursor correction only makes the tuple comparison deterministic within this capped candidate set. **Root cause:** ranking and filtering happen after a bounded Firestore query, rather than on a server-ranked candidate pipeline with cursor-stable materialized pages.
+- **KIR-Q02 — Unbounded per-user reads:** feed loads all matching friendship documents, all respects from the viewer, all Kirari interests, muted creators and not-interested records. These reads grow with account activity and have no explicit limits/pagination. **Root cause:** per-request profile reconstruction from unbounded collections rather than compact server-maintained profile/graph snapshots.
+- **KIR-Q03 — Incomplete relevance dimensions:** `rankKirari` currently considers hashtags, singular `animeId`, `audioId`, creator, freshness, engagement and a negative counter. It does not use the spec's characterIds/animeIds arrays, watch-duration/skip/replay/search/profile-visit signals, diversity caps, or calibrated 70–90/10–30 exploration controls. **Root cause:** lightweight static scoring is used instead of the specified behavioral recommendation service.
+- **KIR-Q04 — Following semantics:** Following is derived from `respects` documents with value >= 5, which is the intended fan threshold, but candidate reels still originate from a global top-100 rankingScore query. A creator's reels can be omitted merely because they are outside the global top 100. **Root cause:** creator filtering occurs after global truncation rather than querying the followed-creator set or a server-built following feed.
+- **KIR-Q05 — Indexes:** the current index file includes composite indexes for the inspected reel feed, hashtag, creator, audio and moderation queue queries. No missing index was proven in this static pass. Deployment state was not inspected; source JSON presence is not proof that indexes are deployed.
+
+### Rules and pipeline findings (open)
+- Firestore Kirari root, comments, actions, playback sessions, audio and upload lock/quota/key documents are server-write-only; public reads are gated on published/approved state. Seen Ring client writes were explicitly denied in KIR-017. Existing Rules tests cover several owner/public/server-write boundaries, but Emulator execution is still required.
+- Storage source upload is owner-scoped, MP4-only, and bounded at 500 MiB; processed renditions are server-write-only and reads require a published/approved parent reel. Confirm deployed Storage Rules and test resumable upload metadata/content-type behavior in Emulator/device flows.
+- Pipeline implementation uses ffmpeg processing and emits processed renditions/cover; this source review does not establish that the deployed runtime has ffmpeg, sufficient memory/time, or required billing/Cloud Run capabilities. Deployment/operational verification remains blocked.
+- Callable exports are wired through `functions/index.js` for upload/finalize/retry/cancel/delete, actions/comments, playback/feed/hashtag/audio/creator/reel, moderation and mute. A complete client-callable parity and auth/App Check/rate-limit matrix remains open.
+
+### Test execution findings
+- `functions/package.json` defines `npm test` as an explicit allowlist of Node tests including `kirariDomain.test.js`, `kirariPipeline.test.js`, and `kirariNotifications.test.js`. Its separate `test:rules` script is Emulator-dependent and is not part of that ordinary test allowlist.
+- Source-level tests were added/updated, but neither the Node suite nor Emulator suite has been executed in this environment. Do not interpret the presence of tests as passing evidence.
+
+### Current implementation status
+- Source changes on `feature/15-kirari-production-rebuild`: KIR-015 stable score/id cursor comparator + test; KIR-016 seen marker only after qualified playback; KIR-017 server-only seen marker Rules + Rules test; KIR-018 fail-closed privacy filters + regression test.
+- **Phase 0 remains open.** No PR has been opened. No runtime tests, Emulator tests, Flutter checks, deployed Rules/index verification, or weak-network/device profiling have passed in this session.
