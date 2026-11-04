@@ -2,7 +2,7 @@ name: Kirari CI
 
 on:
   push:
-    branches: [feat/kirari-system-rebuild]
+    branches: [feat/kirari-system-rebuild, feature/15-kirari-production-rebuild]
     paths:
       - 'test/**'
       - 'lib/features/kirari/**'
