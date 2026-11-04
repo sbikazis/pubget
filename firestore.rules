@@ -1371,8 +1371,8 @@ service cloud.firestore {
     }
     match /users/{uid}/kirariSeen/{reelId} {
       allow read: if self(uid);
-      allow create, update, delete: if self(uid) &&
-        request.resource.data.keys().hasOnly(['seenAt']);
+      // Seen-ring writes are server-owned and occur only after qualified playback.
+      allow create, update, delete: if false;
     }
     match /users/{uid}/kirariInterests/{interestId} {
       allow read: if self(uid);
