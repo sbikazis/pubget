@@ -232,3 +232,21 @@ test('feed cursor uses score descending and id ascending', () => {
   assert.equal(isFeedCursorAfter(11, 'z', 10, 'a'), false);
   assert.equal(isFeedCursorAfter(9, 'z', NaN, null), true);
 });
+
+
+test("Kirari feed fails closed when privacy-filter lookup fails", async () => {
+  const db = {
+    collection(name) {
+      if (name === "users") return { doc: () => ({ get: async () => ({ data: () => ({}) }) }) };
+      if (name === "friendships") return {
+        where: () => ({ get: async () => { throw new Error("privacy lookup unavailable"); } }),
+      };
+      throw new Error("unexpected collection " + name);
+    },
+  };
+  const domain = createKirariDomain({ db, FieldValue: {}, HttpsError: TestHttpsError, bucket: {} });
+  await assert.rejects(
+    domain.getFeed({ auth: { uid: "viewer" }, data: { type: "forYou" } }),
+    /privacy lookup unavailable/,
+  );
+});
