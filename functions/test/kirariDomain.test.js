@@ -237,9 +237,17 @@ test('feed cursor uses score descending and id ascending', () => {
 test("Kirari feed fails closed when privacy-filter lookup fails", async () => {
   const db = {
     collection(name) {
-      if (name === "users") return { doc: () => ({ get: async () => ({ data: () => ({}) }) }) };
+      if (name === "users") return {
+        doc: () => ({
+          get: async () => ({ data: () => ({}) }),
+          collection: () => ({ get: async () => ({ docs: [] }) }),
+        }),
+      };
       if (name === "friendships") return {
         where: () => ({ get: async () => { throw new Error("privacy lookup unavailable"); } }),
+      };
+      if (name === "respects") return {
+        where: () => ({ get: async () => ({ docs: [] }) }),
       };
       throw new Error("unexpected collection " + name);
     },
