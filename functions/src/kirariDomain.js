@@ -668,9 +668,10 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const sessionRef = ref.collection("playbackSessions").doc(sessionId);
     const eventRef = sessionRef.collection("events").doc(eventId);
     const viewerRef = ref.collection("viewers").doc(uid);
+    const seenRef = db.collection("users").doc(uid).collection("kirariSeen").doc(reelId);
     await db.runTransaction(async (tx) => {
-      const [reel, session, event, viewer] = await Promise.all([
-        tx.get(ref), tx.get(sessionRef), tx.get(eventRef), tx.get(viewerRef),
+      const [reel, session, event, viewer, seen] = await Promise.all([
+        tx.get(ref), tx.get(sessionRef), tx.get(eventRef), tx.get(viewerRef), tx.get(seenRef),
       ]);
       if (!reel.exists || reel.data().status !== "published" || reel.data().moderationStatus !== "approved") fail("not-found", "Kirari video not found.");
       if (!session.exists || session.data().viewerId !== uid) fail("permission-denied", "Playback session is invalid.");
@@ -729,6 +730,11 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
           ...(completed ? { completed: true, lastCompletedAt: FieldValue.serverTimestamp() } : {}),
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
+      }
+      // A reel becomes "seen" only after server-credited qualified playback,
+      // never merely because the feed response was fetched or prefetched.
+      if (qualified && !seen.exists) {
+        tx.set(seenRef, { seenAt: FieldValue.serverTimestamp() }, { merge: true });
       }
       tx.create(eventRef, {
         viewerId: uid, watchSeconds, verifiedPercent,
@@ -1038,7 +1044,13 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     let items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
       .filter((item) => !blockedIds.has(item.creatorId) &&
         !mutedIds.has(item.creatorId) && !notInterestedIds.has(item.id) &&
-        item.creatorId !== uid);
+        item.creatorId !== uid)
+      .map((item) => ({
+        ...item,
+        _rank: type === "trending"
+          ? clamp(item.velocityScore, 0, 1000000000)
+          : clamp(item.rankingScore, 0, 100),
+      }));
     if (type === "following") items = items.filter((item) => creatorIds.has(item.creatorId));
     const now = Date.now();
     if (type === "forYou") {
@@ -1068,20 +1080,17 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         ].sort((a, b) => b._rank - a._rank);
       }
     }
+    // Stable keyset cursor: descending score, then ascending document id.
+    // Do not search for afterId inside a freshly fetched top-N window; it may
+    // have moved or fallen outside that window since the prior request.
+    items.sort((a, b) => b._rank - a._rank || a.id.localeCompare(b.id));
     if (Number.isFinite(afterScore) && afterId) {
-      const index = items.findIndex((item) => item.id === afterId);
-      if (index >= 0) items = items.slice(index + 1);
+      items = items.filter((item) => item._rank < afterScore ||
+        (item._rank === afterScore && item.id.localeCompare(afterId) > 0));
     }
     const page = items.slice(0, limit).map(({ _rank, ...item }) => ({
       ...item, rankingScore: _rank ?? item.rankingScore ?? 0,
     }));
-    const batch = db.batch();
-    for (const item of page) {
-      batch.set(db.collection("users").doc(uid).collection("kirariSeen").doc(item.id), {
-        seenAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-    }
-    if (page.length) await batch.commit();
     return {
       items: page,
       hasMore: items.length > limit,
