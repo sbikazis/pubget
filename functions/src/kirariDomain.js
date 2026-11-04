@@ -107,6 +107,11 @@ function rankKirari(item, profile, now = Date.now()) {
   );
 }
 
+function isFeedCursorAfter(score, id, afterScore, afterId) {
+  if (!Number.isFinite(afterScore) || !afterId) return true;
+  return score < afterScore || (score === afterScore && String(id).localeCompare(String(afterId)) > 0);
+}
+
 function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }) {
   const reels = () => db.collection("kirari");
   const fail = (code, message) => { throw new HttpsError(code, message); };
@@ -1085,8 +1090,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     // have moved or fallen outside that window since the prior request.
     items.sort((a, b) => b._rank - a._rank || a.id.localeCompare(b.id));
     if (Number.isFinite(afterScore) && afterId) {
-      items = items.filter((item) => item._rank < afterScore ||
-        (item._rank === afterScore && item.id.localeCompare(afterId) > 0));
+      items = items.filter((item) => isFeedCursorAfter(item._rank, item.id, afterScore, afterId));
     }
     const page = items.slice(0, limit).map(({ _rank, ...item }) => ({
       ...item, rankingScore: _rank ?? item.rankingScore ?? 0,
@@ -1106,5 +1110,5 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
 module.exports = {
   KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings, rankKirari,
-  createKirariDomain,
+  isFeedCursorAfter, createKirariDomain,
 };
