@@ -217,8 +217,9 @@ The locked source of truth was located at `docs/PUBGET_MASTER_SPEC.md` and read 
 
 - **Documents:** Located and read: `docs/PUBGET_MASTER_SPEC.md` (Axis 15 full section), `docs/PUBGET_OPERATING_PROMPT.md` (items 0–6), and `docs/PUBGET_GAP_ANALYSIS_AND_ROADMAP.md`. The user-named root paths do not exist; canonical files are under `docs/`.
 - **Source inventory:** Flutter Kirari screens/repository/copy; Functions domain/pipeline/media access/visibility; Kirari tests; Firestore and Storage rules were fetched from `main`. Full line-by-line callable/query/index/collection cross-reference is still open.
-- **Not run:** Flutter analyze/build, Functions test suite, Firebase Emulator Rules tests, device UI/network/memory profiling, deployed Firebase/Cloudflare verification. GitHub source access alone cannot run these.
-- **Decision:** Matrix consolidated; Phase 0 is **not closed** because runtime gates and complete callable/query mapping remain. Proceed only with scoped fixes that have source evidence and tests; do not claim a complete rebuild or production-ready PR.
+- **CI verification (2026-11-04):** Flutter analyze, Flutter tests, Android debug build, Functions syntax/unit tests, Firestore Rules Emulator tests, and Storage Rules tests all passed in GitHub Actions run `41928966116` for commit `38d97d2f3534334007df25a1f490fe3a27f50b7c`.
+- **Still not verified:** device UI/network/memory profiling, deployed Firebase/Cloudflare configuration, deployed indexes/rules, and production runtime capacity.
+- **Decision:** Phase 0 remains **open** because the complete callable/query mapping, scalability, moderation and production/device acceptance gates remain. CI green is not equivalent to production acceptance.
 
 
 ## Implementation pass — feed correctness (2026-11-04)
