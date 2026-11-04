@@ -222,3 +222,13 @@ test("admin moderation and audio catalog endpoints require the admin claim", asy
     );
   }
 });
+
+
+test('feed cursor uses score descending and id ascending', () => {
+  const { isFeedCursorAfter } = require('../src/kirariDomain');
+  assert.equal(isFeedCursorAfter(9, 'b', 10, 'a'), true);
+  assert.equal(isFeedCursorAfter(10, 'b', 10, 'a'), true);
+  assert.equal(isFeedCursorAfter(10, 'a', 10, 'a'), false);
+  assert.equal(isFeedCursorAfter(11, 'z', 10, 'a'), false);
+  assert.equal(isFeedCursorAfter(9, 'z', NaN, null), true);
+});
