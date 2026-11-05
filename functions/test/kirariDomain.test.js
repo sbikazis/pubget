@@ -589,3 +589,113 @@ test("Following feed queries followed creators in bounded chunks and paginates w
     ...second.items.map((item) => item.id),
   ]).size, 6);
 });
+
+
+test("saved Kirari reels paginate with a document cursor and never repeat entries", async () => {
+  const savedIds = ["saved_1", "saved_2", "saved_3", "saved_4", "saved_5"];
+  const savedById = new Map(savedIds.map((id) => [id, {
+    id, exists: true, data: () => ({ savedAt: id }),
+  }]));
+  const reelById = new Map(savedIds.map((id) => [id, {
+    id,
+    exists: true,
+    data: () => ({
+      creatorId: "creator_" + id,
+      status: "published",
+      moderationStatus: "approved",
+      caption: id,
+    }),
+  }]));
+  const savedCollection = {
+    doc(id) {
+      return {
+        async get() { return savedById.get(id) || { id, exists: false }; },
+      };
+    },
+    orderBy() {
+      let pageSize = 0;
+      let cursorId = null;
+      const query = {
+        startAfter(snapshot) { cursorId = snapshot.id; return this; },
+        limit(value) { pageSize = value; return this; },
+        async get() {
+          const start = cursorId ? savedIds.indexOf(cursorId) + 1 : 0;
+          return {
+            docs: savedIds.slice(start, start + pageSize)
+              .map((id) => savedById.get(id)),
+          };
+        },
+      };
+      return query;
+    },
+  };
+  const db = {
+    collection(name) {
+      if (name === "users") return {
+        doc: () => ({ collection: (sub) => {
+          assert.equal(sub, "kirariSaved");
+          return savedCollection;
+        } }),
+      };
+      if (name === "kirari") return {
+        doc: (id) => Promise.resolve(reelById.get(id) || { id, exists: false }),
+      };
+      if (name === "friendships") return {
+        doc: (id) => ({ async get() { return { id, exists: false }; } }),
+      };
+      if (name === "public_profiles") return {
+        doc: (id) => ({ async get() { return { id, exists: false }; } }),
+      };
+      throw new Error("unexpected collection " + name);
+    },
+  };
+  const domain = createKirariDomain({
+    db, FieldValue: {}, HttpsError: TestHttpsError, bucket: {},
+  });
+  const first = await domain.getSavedReels({
+    auth: { uid: "viewer" }, data: { limit: 2 },
+  });
+  assert.deepEqual(first.items.map((item) => item.id), ["saved_1", "saved_2"]);
+  assert.equal(first.hasMore, true);
+  assert.equal(first.nextCursor, "saved_2");
+
+  const second = await domain.getSavedReels({
+    auth: { uid: "viewer" }, data: { limit: 2, cursor: first.nextCursor },
+  });
+  assert.deepEqual(second.items.map((item) => item.id), ["saved_3", "saved_4"]);
+  assert.equal(second.hasMore, true);
+  assert.equal(second.nextCursor, "saved_4");
+
+  const third = await domain.getSavedReels({
+    auth: { uid: "viewer" }, data: { limit: 2, cursor: second.nextCursor },
+  });
+  assert.deepEqual(third.items.map((item) => item.id), ["saved_5"]);
+  assert.equal(third.hasMore, false);
+  assert.equal(third.nextCursor, "saved_5");
+  assert.equal(new Set([
+    ...first.items, ...second.items, ...third.items,
+  ].map((item) => item.id)).size, 5);
+});
+
+test("saved Kirari pagination rejects a cursor that is not owned by the viewer", async () => {
+  const db = {
+    collection(name) {
+      if (name === "users") return {
+        doc: () => ({ collection: () => ({
+          doc: (id) => ({ async get() { return { id, exists: false }; } }),
+          orderBy() { return { startAfter() { return this; }, limit() { return this; } }; },
+        }) }),
+      };
+      throw new Error("database should not be queried beyond the saved cursor");
+    },
+  };
+  const domain = createKirariDomain({
+    db, FieldValue: {}, HttpsError: TestHttpsError, bucket: {},
+  });
+  await assert.rejects(
+    domain.getSavedReels({
+      auth: { uid: "viewer" }, data: { limit: 2, cursor: "foreign_or_deleted_cursor" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});
