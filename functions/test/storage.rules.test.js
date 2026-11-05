@@ -542,3 +542,18 @@ test("licensed Kirari audio is readable only after approval and writable only by
   });
   await assertFails(alice.storage().ref("kirari-audio/track-pending/audio.mp3").getDownloadURL());
 });
+
+
+test("edits and reels resumable updates retain MIME and 100 MB limits", async () => {
+  const alice = env.authenticatedContext("alice");
+  const editPath = "edits/alice/v_update-guard.mp4";
+  const reelPath = "reels/alice/v_update-guard.mp4";
+
+  await assertSucceeds(upload(alice, editPath, "video/mp4", 32));
+  await assertFails(upload(alice, editPath, "application/pdf", 32));
+  await assertFails(upload(alice, editPath, "video/mp4", 100 * 1024 * 1024 + 1));
+
+  await assertSucceeds(upload(alice, reelPath, "video/mp4", 32));
+  await assertFails(upload(alice, reelPath, "application/pdf", 32));
+  await assertFails(upload(alice, reelPath, "video/mp4", 100 * 1024 * 1024 + 1));
+});
