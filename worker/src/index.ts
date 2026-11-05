@@ -269,6 +269,62 @@ function createKey(
 /// Uses the caller's Firebase ID token against Firestore's REST API, so the
 /// exact same Firestore Security Rules that protect chat metadata also gate
 /// access to the corresponding R2 objects. No Admin credential is stored here.
+async function authorizePublishedOwnerAsset(
+  request: Request,
+  projectId: string,
+  ownerUid: string,
+  key: string,
+): Promise<boolean> {
+  const token = request.headers.get("authorization")?.match(/^Bearer\\s+(.+)$/i)?.[1];
+  if (!token) return false;
+  const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+  try {
+    const profile = await fetch(`${base}/public_profiles/${encodeURIComponent(ownerUid)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (profile.ok) {
+      const document = await profile.json() as { fields?: Record<string, { stringValue?: string }> };
+      if (Object.values(document.fields ?? {}).some((value) => value.stringValue === key)) return true;
+    }
+
+    // Group and event documents expose only their published image references.
+    // Firestore rules still decide whether the caller may query each collection.
+    for (const [collection, fields] of [
+      ["groups", ["imageUrl", "coverUrl", "chatBackgroundUrl"]],
+      ["events", ["imageUrl", "coverUrl", "bannerUrl", "thumbnailUrl"]],
+    ] as const) {
+      for (const field of fields) {
+        const response = await fetch(`${base}:runQuery`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            structuredQuery: {
+              from: [{ collectionId: collection }],
+              where: {
+                fieldFilter: {
+                  field: { fieldPath: field },
+                  op: "EQUAL",
+                  value: { stringValue: key },
+                },
+              },
+              limit: 1,
+            },
+          }),
+        });
+        if (!response.ok) continue;
+        const rows = await response.json() as Array<{ document?: unknown }>;
+        if (rows.some((row) => row.document != null)) return true;
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 async function authorizeConversation(
   request: Request,
   projectId: string,
@@ -464,7 +520,9 @@ export default {
             !await authorizeConversation(request, env.FIREBASE_PROJECT_ID, scopeType, scopeId, uid)) {
           return json({ error: "Forbidden." }, 403);
         }
-      } else if (parts[1] !== uid) {
+      } else if (parts[1] !== uid &&
+          (object.customMetadata?.uploadedBy !== parts[1] ||
+           !await authorizePublishedOwnerAsset(request, env.FIREBASE_PROJECT_ID, parts[1], key))) {
         return json({ error: "Forbidden." }, 403);
       }
 
