@@ -237,6 +237,19 @@ test("poll configuration requires two to seven options, each with an image", () 
   assert.equal(ok.options[0].imageUrl, "https://img.example/1.png");
 });
 
+test("poll options accept stable Cloudflare R2 image keys", () => {
+  const config = validateConfiguration("poll", {
+    question: "Choose one",
+    options: [
+      { label: "A", imageUrl: "images/alice/option-a.jpg" },
+      { label: "B", imageUrl: "groups/g1/alice/option-b.webp" },
+    ],
+  });
+  assert.ok(config);
+  assert.equal(config.options[0].imageUrl, "images/alice/option-a.jpg");
+  assert.equal(config.options[1].imageUrl, "groups/g1/alice/option-b.webp");
+});
+
 test("quiz responses accept partial answers (missing counts as wrong) and validate chosen options", () => {
   const config = validateConfiguration("quiz", {
     questions: [{
