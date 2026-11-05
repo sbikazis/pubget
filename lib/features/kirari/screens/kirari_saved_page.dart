@@ -16,8 +16,13 @@ class KirariSavedPage extends StatefulWidget {
 }
 
 class _KirariSavedPageState extends State<KirariSavedPage> {
+  static const int _pageSize = 30;
+
   List<KirariReel> _items = const <KirariReel>[];
+  Map<String, dynamic>? _nextCursor;
+  bool _hasMore = false;
   bool _loading = true;
+  bool _loadingMore = false;
   String? _error;
   final Set<String> _removing = <String>{};
 
@@ -28,15 +33,22 @@ class _KirariSavedPageState extends State<KirariSavedPage> {
   }
 
   Future<void> _load() async {
+    if (_loadingMore) return;
     setState(() {
       _loading = true;
       _error = null;
+      _nextCursor = null;
+      _hasMore = false;
     });
     try {
-      final items = await context.read<KirariRepository>().getSavedReels();
+      final page = await context.read<KirariRepository>().getSavedReels(
+        limit: _pageSize,
+      );
       if (!mounted) return;
       setState(() {
-        _items = items;
+        _items = page.items;
+        _hasMore = page.hasMore;
+        _nextCursor = page.nextCursor;
         _loading = false;
       });
     } catch (_) {
@@ -45,6 +57,34 @@ class _KirariSavedPageState extends State<KirariSavedPage> {
         _loading = false;
         _error = 'Could not load your saved videos.';
       });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || _loadingMore || !_hasMore || _nextCursor == null) return;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await context.read<KirariRepository>().getSavedReels(
+        limit: _pageSize,
+        cursor: _nextCursor,
+      );
+      if (!mounted) return;
+      setState(() {
+        final existingIds = _items.map((item) => item.id).toSet();
+        _items = <KirariReel>[
+          ..._items,
+          ...page.items.where((item) => !existingIds.contains(item.id)),
+        ];
+        _hasMore = page.hasMore;
+        _nextCursor = page.nextCursor;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not load more saved videos. Try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
     }
   }
 
@@ -74,7 +114,7 @@ class _KirariSavedPageState extends State<KirariSavedPage> {
         actions: [
           IconButton(
             tooltip: 'Refresh saved videos',
-            onPressed: _loading ? null : _load,
+            onPressed: _loading || _loadingMore ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -99,9 +139,25 @@ class _KirariSavedPageState extends State<KirariSavedPage> {
                       child: ListView.separated(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.all(12),
-                        itemCount: _items.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemCount: _items.length + (_hasMore ? 1 : 0),
+                        separatorBuilder: (_, index) => index == _items.length - 1
+                            ? const SizedBox.shrink()
+                            : const Divider(height: 1),
                         itemBuilder: (context, index) {
+                          if (index == _items.length) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Center(
+                                child: _loadingMore
+                                    ? const CircularProgressIndicator()
+                                    : OutlinedButton.icon(
+                                        onPressed: _loadMore,
+                                        icon: const Icon(Icons.expand_more),
+                                        label: const Text('Load more'),
+                                      ),
+                              ),
+                            );
+                          }
                           final reel = _items[index];
                           return ListTile(
                             contentPadding: const EdgeInsets.symmetric(vertical: 6),
