@@ -216,7 +216,7 @@ class PubgetApp extends StatelessWidget {
               inner: JikanAnimeRepository(
                 http: ResilientAnimeHttpClient(inner: PackageAnimeHttpClient()),
               ),
-              isOnline: () => network.isOnline,
+              isOnline: () => network.canAttemptNetworkRequest,
             );
           },
         ),
