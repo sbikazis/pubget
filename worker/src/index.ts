@@ -458,7 +458,8 @@ export default {
       if (scoped) {
         const scopeType = parts[0];
         const scopeId = parts[1];
-        if (object.customMetadata?.scopeType !== scopeType ||
+        if (parts[2] !== object.customMetadata?.uploadedBy ||
+            object.customMetadata?.scopeType !== scopeType ||
             object.customMetadata?.scopeId !== scopeId ||
             !await authorizeConversation(request, env.FIREBASE_PROJECT_ID, scopeType, scopeId, uid)) {
           return json({ error: "Forbidden." }, 403);
@@ -537,9 +538,26 @@ export default {
     if (url.pathname.startsWith("/media/") && request.method === "DELETE") {
       const uid = await authenticate(request, env.FIREBASE_PROJECT_ID);
       if (!uid) return json({ error: "Authentication required." }, 401);
-      const key = decodeURIComponent(url.pathname.slice("/media/".length));
+      let key: string;
+      try {
+        key = decodeURIComponent(url.pathname.slice("/media/".length));
+      } catch {
+        return json({ error: "Invalid object key." }, 400);
+      }
       if (!safeKey(key)) return json({ error: "Not found." }, 404);
-      if (key.split("/")[1] !== uid) return json({ error: "Forbidden." }, 403);
+      const parts = key.split("/");
+      const object = await env.MEDIA_BUCKET.head(key);
+      if (!object) return new Response(null, { status: 204, headers: CORS });
+      const scoped = parts.length === 4;
+      const ownerUid = scoped ? parts[2] : parts[1];
+      if (ownerUid !== uid || object.customMetadata?.uploadedBy !== uid) {
+        return json({ error: "Forbidden." }, 403);
+      }
+      if (scoped && !await authorizeConversation(
+        request, env.FIREBASE_PROJECT_ID, parts[0], parts[1], uid,
+      )) {
+        return json({ error: "Conversation access denied." }, 403);
+      }
       await env.MEDIA_BUCKET.delete(key);
       return new Response(null, { status: 204, headers: CORS });
     }
