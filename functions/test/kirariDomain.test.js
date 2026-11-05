@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings, rankKirari,
-  isFeedCursorAfter, diversifyKirari, createKirariDomain,
+  isFeedCursorAfter, shouldCountEarlySkip, diversifyKirari, createKirariDomain,
 } = require("../src/kirariDomain");
 
 class TestHttpsError extends Error {
@@ -318,4 +318,22 @@ test("For You ranking does not consume client-supplied playback counters", () =>
     clientReplayCount: 999999, clientEarlySkipCount: 0,
   }, { interests: [], creatorIds: [] }, now);
   assert.equal(forged, normal);
+});
+
+test("server early-skip policy only counts recent unqualified playback transitions", () => {
+  const now = 100000;
+  const valid = {
+    viewerId: "viewer", uid: "viewer", qualified: false, skipCounted: false,
+    creditedSeconds: 1, lastHeartbeatAt: now - 2000,
+    creatorId: "creator", reelStatus: "published", now,
+  };
+  assert.equal(shouldCountEarlySkip(valid), true);
+  assert.equal(shouldCountEarlySkip({ ...valid, qualified: true }), false);
+  assert.equal(shouldCountEarlySkip({ ...valid, skipCounted: true }), false);
+  assert.equal(shouldCountEarlySkip({ ...valid, creditedSeconds: 3 }), false);
+  assert.equal(shouldCountEarlySkip({ ...valid, viewerId: "attacker" }), false);
+  assert.equal(shouldCountEarlySkip({ ...valid, creatorId: "viewer" }), false);
+  assert.equal(shouldCountEarlySkip({ ...valid, reelStatus: "deleted" }), false);
+  assert.equal(shouldCountEarlySkip({ ...valid, lastHeartbeatAt: now - 16000 }), false);
+  assert.equal(shouldCountEarlySkip({ ...valid, lastHeartbeatAt: now - 100 }), false);
 });
