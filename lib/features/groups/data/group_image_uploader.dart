@@ -93,7 +93,6 @@ final class FirebaseGroupImageUploader implements GroupImageUploader {
   }) async {
     validatePayload(uid: uid, bytes: bytes);
     final mime = normalizeContentType(contentType);
-    final safeKind = kind.trim().isEmpty ? 'image' : kind.trim();
     final extension = extensionFor(mime);
     try {
       return await _mediaStorage.upload(
