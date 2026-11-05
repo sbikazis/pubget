@@ -252,7 +252,10 @@ test("Kirari feed fails closed when privacy-filter lookup fails", async () => {
       if (name === "users") return {
         doc: () => ({
           get: async () => ({ data: () => ({}) }),
-          collection: () => ({ get: async () => ({ docs: [] }) }),
+          collection: () => {
+            const query = { limit: () => query, get: async () => ({ docs: [] }) };
+            return query;
+          },
         }),
       };
       if (name === "friendships") return {
