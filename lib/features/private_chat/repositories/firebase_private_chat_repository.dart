@@ -259,13 +259,18 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
   });
 
   String _extension(String fileName, String contentType) {
-    final candidate = fileName.split('.').last.toLowerCase();
-    if (candidate.length <= 5 && RegExp(r'^[a-z0-9]+$').hasMatch(candidate)) {
-      return candidate;
-    }
-    return contentType == 'image/png' ? 'png' : 'jpg';
+    if (contentType == 'video/quicktime') return 'mov';
+    if (contentType == 'video/webm') return 'webm';
+    if (contentType.startsWith('video/')) return 'mp4';
+    if (contentType == 'audio/mpeg') return 'mp3';
+    if (contentType == 'audio/aac') return 'aac';
+    if (contentType == 'audio/ogg') return 'ogg';
+    if (contentType == 'audio/mp4') return 'm4a';
+    if (contentType == 'image/png') return 'png';
+    if (contentType == 'image/webp') return 'webp';
+    if (contentType == 'image/gif') return 'gif';
+    return 'jpg';
   }
-
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
       _guard(() async {
         await _functions.httpsCallable(name).call(data);
