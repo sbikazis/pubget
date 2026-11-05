@@ -46,6 +46,8 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
     required Uint8List bytes,
     required String contentType,
     required String extension,
+    String? scopeType,
+    String? scopeId,
     void Function(double progress)? onProgress,
   }) async {
     onProgress?.call(0);
@@ -55,12 +57,16 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
             bytes: bytes,
             contentType: contentType,
             extension: extension,
+            scopeType: scopeType,
+            scopeId: scopeId,
           )
         : await _uploadPresigned(
             kind: kind,
             bytes: bytes,
             contentType: contentType,
             extension: extension,
+            scopeType: scopeType,
+            scopeId: scopeId,
           );
     onProgress?.call(1);
     return key;
@@ -71,6 +77,8 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
     required Uint8List bytes,
     required String contentType,
     required String extension,
+    String? scopeType,
+    String? scopeId,
   }) async {
     final token = await _requireToken();
     final request = http.MultipartRequest('POST', _uri('/upload'))
@@ -78,6 +86,7 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
       ..fields['kind'] = kind.name
       ..fields['contentType'] = contentType
       ..fields['ext'] = extension
+      ..fields.addAll({if (scopeType != null) 'scopeType': scopeType, if (scopeId != null) 'scopeId': scopeId})
       ..files.add(
         http.MultipartFile.fromBytes('file', bytes,
             filename: 'upload.$extension', contentType: null),
@@ -94,6 +103,8 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
     required Uint8List bytes,
     required String contentType,
     required String extension,
+    String? scopeType,
+    String? scopeId,
   }) async {
     final token = await _requireToken();
     final query = <String, String>{
@@ -101,6 +112,8 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
       'contentType': contentType,
       'sizeBytes': '${bytes.length}',
       'ext': extension,
+      if (scopeType != null) 'scopeType': scopeType,
+      if (scopeId != null) 'scopeId': scopeId,
     };
     final presignResponse = await _client
         .get(
