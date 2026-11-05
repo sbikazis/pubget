@@ -1,19 +1,18 @@
 import 'dart:typed_data';
 
-import 'package:firebase_storage/firebase_storage.dart';
+import '../../../core/media/media_kind.dart';
+import '../../../core/media/media_repository_factory.dart';
+import '../../../core/media/r2_media_storage_provider.dart';
 
 /// Uploads poll-option images for events.
 ///
-/// Staging lives under `events/{uid}/drafts/…`, which matches the Storage rule
-/// `events/{userId}/{eventId}/{fileName}` (the draft bucket is just an
-/// eventId-shaped prefix), so option images can be written before the draft
-/// document exists and stay valid after publishing.
+/// Draft images are stored as owner-scoped R2 objects. The stable object key
+/// is persisted with the event and resolved through the media Worker.
 final class FirebaseEventImageUploader {
-  FirebaseEventImageUploader({FirebaseStorage? storage}) : _storage = storage;
+  FirebaseEventImageUploader({R2MediaStorageProvider? mediaStorage})
+    : _mediaStorage = mediaStorage ?? createR2MediaStorageProvider();
 
-  final FirebaseStorage? _storage;
-
-  FirebaseStorage get storage => _storage ?? FirebaseStorage.instance;
+  final R2MediaStorageProvider _mediaStorage;
 
   static const maxBytes = 5 * 1024 * 1024;
 
@@ -81,8 +80,12 @@ final class FirebaseEventImageUploader {
     final name =
         'opt_${DateTime.now().millisecondsSinceEpoch}_${_bytesSeed(bytes)}'
         '.${extensionFor(mime)}';
-    final ref = storage.ref('events/$uid/drafts/$name');
-    await ref.putData(bytes, SettableMetadata(contentType: mime));
-    return ref.getDownloadURL();
+    return _mediaStorage.upload(
+      ownerUid: uid,
+      kind: MediaKind.image,
+      bytes: bytes,
+      contentType: mime,
+      extension: extensionFor(mime),
+    );
   }
 }
