@@ -4,16 +4,16 @@ import 'dart:io';
 /// Independent public 204 endpoints avoid treating one DNS hostname as the
 /// whole internet. A successful 204 confirms outbound HTTPS reachability;
 /// failure of one provider falls through to the other.
-const List<Uri> _connectivityEndpoints = <Uri>[
-  Uri(scheme: 'https', host: 'connectivitycheck.gstatic.com', path: '/generate_204'),
-  Uri(scheme: 'https', host: 'cp.cloudflare.com', path: '/generate_204'),
+const List<String> _connectivityEndpoints = <String>[
+  'https://connectivitycheck.gstatic.com/generate_204',
+  'https://cp.cloudflare.com/generate_204',
 ];
 
 const Duration _endpointTimeout = Duration(seconds: 3);
 
 Future<bool> probeNetwork() async {
   for (final endpoint in _connectivityEndpoints) {
-    if (await _probeEndpoint(endpoint)) return true;
+    if (await _probeEndpoint(Uri.parse(endpoint))) return true;
   }
   return false;
 }
