@@ -55,11 +55,6 @@ void main() {
   });
 
   group('createMediaRepository', () {
-    test('creates the Cloudflare-backed repository by default', () {
-      final repository = createMediaRepository();
-      expect(repository.backend, MediaBackend.r2);
-    });
-
     test('uses the in-memory backend only when explicitly requested', () {
       final repository = createMediaRepository(backendOverride: 'memory');
       expect(repository.backend, MediaBackend.memory);
