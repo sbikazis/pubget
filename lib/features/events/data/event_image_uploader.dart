@@ -49,15 +49,6 @@ final class FirebaseEventImageUploader {
     };
   }
 
-  static String _bytesSeed(Uint8List bytes) {
-    var seed = 0;
-    final step = bytes.length > 64 ? bytes.length ~/ 8 : 1;
-    for (var i = 0; i < bytes.length; i += step) {
-      seed = (seed * 31 + bytes[i]) & 0x7fffffff;
-    }
-    return seed.toRadixString(16);
-  }
-
   void validate({required String uid, required Uint8List bytes}) {
     if (uid.trim().isEmpty) {
       throw const FormatException('Sign in to upload an event image.');
@@ -70,16 +61,13 @@ final class FirebaseEventImageUploader {
     }
   }
 
-  /// Uploads one cropped option image and returns its download URL.
+  /// Uploads one cropped option image and returns its stable R2 object key.
   Future<String> uploadOptionImage({
     required String uid,
     required Uint8List bytes,
   }) async {
     validate(uid: uid, bytes: bytes);
     final mime = contentType(bytes);
-    final name =
-        'opt_${DateTime.now().millisecondsSinceEpoch}_${_bytesSeed(bytes)}'
-        '.${extensionFor(mime)}';
     return _mediaStorage.upload(
       ownerUid: uid,
       kind: MediaKind.image,
