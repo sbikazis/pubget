@@ -9,6 +9,7 @@ import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
 
 import '../data/kirari_repository.dart';
+import '../data/kirari_video_cache.dart';
 import '../l10n/kirari_copy.dart';
 import 'kirari_upload_page.dart';
 
@@ -28,6 +29,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   };
 
   late KirariRepository _repository;
+  final KirariVideoCache _videoCache = KirariVideoCache();
   String _feedType = 'forYou';
   final List<KirariReel> _items = <KirariReel>[];
   VideoPlayerController? _controller;
@@ -171,7 +173,10 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       try {
         final url = await _repository.getPlaybackUrl(reel, quality: quality);
         if (url.isEmpty || !attemptedUrls.add(url)) continue;
-        controller = VideoPlayerController.networkUrl(Uri.parse(url));
+        final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
+        controller = cached == null
+            ? VideoPlayerController.networkUrl(Uri.parse(url))
+            : VideoPlayerController.file(cached);
         await controller.initialize().timeout(const Duration(seconds: 20));
         return controller;
       } catch (error) {
@@ -185,13 +190,47 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     throw StateError('Kirari playback failed for all available renditions: $lastError');
   }
 
+  Future<VideoPlayerController> _makeCachedController(KirariReel reel) async {
+    final preferred = await _adaptiveQuality(reel);
+    final qualities = <int>{preferred, 540, 360, 720};
+    Object? lastError;
+    for (final quality in qualities) {
+      try {
+        final url = await _repository.getPlaybackUrl(reel, quality: quality);
+        if (url.isEmpty) continue;
+        final file = await _videoCache.getOrDownload(
+          reelId: reel.id,
+          quality: quality,
+          source: Uri.parse(url),
+        );
+        final controller = VideoPlayerController.file(file);
+        try {
+          await controller.initialize().timeout(const Duration(seconds: 20));
+          return controller;
+        } catch (_) {
+          await controller.dispose();
+          rethrow;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    // Disk prefetch is best-effort. A live network controller keeps the feed
+    // usable when the cache download is interrupted by weak connectivity.
+    try {
+      return await _makeController(reel);
+    } catch (error) {
+      throw StateError('Kirari prefetch failed: $lastError; playback: $error');
+    }
+  }
+
   Future<void> _prefetchNext(int index) async {
     if (index < 0 || index >= _items.length ||
         _prefetchController != null || index == _activeIndex) return;
     final reel = _items[index];
     VideoPlayerController? controller;
     try {
-      controller = await _makeController(reel);
+      controller = await _makeCachedController(reel);
       await controller.setLooping(true);
       await controller.pause();
       if (!mounted || index == _activeIndex) {
