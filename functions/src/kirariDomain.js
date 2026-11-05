@@ -570,10 +570,14 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (!allowed.has(kind)) fail("invalid-argument", "Unsupported Kirari action.");
     const ref = reelRef(reelId);
     const actionRef = ref.collection("actions").doc(`${uid}_${kind === "unlike" ? "like" : kind === "unsave" ? "save" : kind === "undo_not_interested" ? "not_interested" : kind}`);
+    const savedRef = db.collection("users").doc(uid)
+      .collection("kirariSaved").doc(reelId);
     const parent = await ref.get();
     if (!parent.exists || parent.data()?.status !== "published" || parent.data()?.moderationStatus !== "approved" || (kind !== "report" && await isBlockedPair(uid, parent.data()?.creatorId))) fail("not-found", "Kirari video not found.");
     await db.runTransaction(async (tx) => {
-      const [reel, existing] = await Promise.all([tx.get(ref), tx.get(actionRef)]);
+      const [reel, existing, saved] = await Promise.all([
+        tx.get(ref), tx.get(actionRef), tx.get(savedRef),
+      ]);
       if (!reel.exists || reel.data().status !== "published") fail("not-found", "Kirari video not found.");
       if (kind !== "report" && reel.data().moderationStatus !== "approved") {
         fail("not-found", "Kirari video not found.");
@@ -617,6 +621,19 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         return;
       }
       const positive = kind === "like" || kind === "save" || kind === "share";
+      if (kind === "save" && existing.exists) {
+        if (!saved.exists) {
+          tx.set(savedRef, {
+            reelId,
+            savedAt: FieldValue.serverTimestamp(),
+          });
+        }
+        return;
+      }
+      if (kind === "unsave" && !existing.exists) {
+        if (saved.exists) tx.delete(savedRef);
+        return;
+      }
       if (positive && existing.exists) return;
       if (!positive && !existing.exists) return;
       const counter = kind === "like" || kind === "unlike" ? "likesCount"
@@ -624,6 +641,14 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const amount = kind === "share" || positive ? 1 : -1;
       if (positive) tx.create(actionRef, { uid, kind, createdAt: FieldValue.serverTimestamp() });
       else tx.delete(actionRef);
+      if (kind === "save") {
+        tx.set(savedRef, {
+          reelId,
+          savedAt: FieldValue.serverTimestamp(),
+        });
+      } else if (kind === "unsave") {
+        tx.delete(savedRef);
+      }
       tx.update(ref, {
         [counter]: FieldValue.increment(amount),
         [`counters.${counter.replace("Count", "").toLowerCase()}`]: FieldValue.increment(amount),
@@ -1101,6 +1126,30 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return { ok: true, audioId };
   }
 
+  async function getSavedReels(request) {
+    const uid = auth(request);
+    const limit = Math.round(clamp(request.data?.limit || 30, 1, 60));
+    const saved = await db.collection("users").doc(uid)
+      .collection("kirariSaved")
+      .orderBy("savedAt", "desc")
+      .limit(limit + 1)
+      .get();
+    const docs = saved.docs.slice(0, limit);
+    const candidates = await Promise.all(docs.map(async (doc) => {
+      const reel = await reels().doc(doc.id).get();
+      if (!reel.exists || reel.data()?.status !== "published" ||
+          reel.data()?.moderationStatus !== "approved" ||
+          await isBlockedPair(uid, reel.data()?.creatorId)) {
+        return null;
+      }
+      return { id: reel.id, ...reel.data() };
+    }));
+    return {
+      items: await attachViewerState(candidates.filter(Boolean), uid),
+      hasMore: saved.docs.length > limit,
+    };
+  }
+
   async function getReel(request) {
     const uid = auth(request);
     const reelId = inputId(request.data?.reelId, "reelId");
@@ -1452,7 +1501,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   return {
     startUpload, finalizeUpload, retryProcessing, cancelUpload, deleteReel, action, addComment, commentAction,
-    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, publishAudioTrack, getComments, getReelsByAudio, getCreatorReels, getReel, reviewContent, getModerationQueue, setCreatorMute, setProcessingState,
+    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, publishAudioTrack, getComments, getReelsByAudio, getCreatorReels, getSavedReels, getReel, reviewContent, getModerationQueue, setCreatorMute, setProcessingState,
   };
 }
 
