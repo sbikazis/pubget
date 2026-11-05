@@ -240,16 +240,28 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         }
         creatorProfiles.set(creatorId, profilePromise);
       }
+      const noAction = { exists: false };
+      let likedPromise = Promise.resolve(noAction);
+      let savedPromise = Promise.resolve(noAction);
+      try {
+        likedPromise = itemRef.collection("actions")
+          .doc(uid + "_like").get().catch(() => noAction);
+        savedPromise = itemRef.collection("actions")
+          .doc(uid + "_save").get().catch(() => noAction);
+      } catch (_) {
+        // If a lightweight data adapter omits subcollection reads, return the
+        // public reel without viewer flags rather than failing the whole feed.
+      }
       const [liked, saved, creator] = await Promise.all([
-        itemRef.collection("actions").doc(uid + "_like").get(),
-        itemRef.collection("actions").doc(uid + "_save").get(),
+        likedPromise,
+        savedPromise,
         creatorProfiles.get(creatorId),
       ]);
       const creatorData = creator && creator.exists ? creator.data() || {} : {};
       return {
         ...item,
-        viewerLiked: liked.exists,
-        viewerSaved: saved.exists,
+        viewerLiked: liked.exists === true,
+        viewerSaved: saved.exists === true,
         creatorUsername: creatorData.username || creatorData.displayName || "",
         creatorAvatarUrl: creatorData.avatarUrl || "",
       };
