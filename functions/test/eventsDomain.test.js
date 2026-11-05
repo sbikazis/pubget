@@ -374,6 +374,29 @@ test("unauthenticated event mutations are rejected", async () => {
   );
 });
 
+test("global event drafts index nested R2 image keys for access-controlled playback", async () => {
+  const db = createFakeDb();
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      scope: "global",
+      title: "Global vote",
+      question: "Choose",
+      options: [
+        { label: "A", imageUrl: "images/alice/option-a.jpg" },
+        { label: "B", imageUrl: "images/alice/option-b.jpg" },
+      ],
+    },
+  });
+  const stored = db.store.get("events/" + draft.eventId);
+  assert.deepEqual(stored.mediaKeys, [
+    "images/alice/option-a.jpg",
+    "images/alice/option-b.jpg",
+  ]);
+});
+
 test("plain members can create and publish their own event", async () => {
   const db = createFakeDb(seedGroup());
   const events = handlers(db);
