@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings, rankKirari,
-  createKirariDomain,
+  isFeedCursorAfter, createKirariDomain,
 } = require("../src/kirariDomain");
 
 class TestHttpsError extends Error {
@@ -225,12 +225,15 @@ test("admin moderation and audio catalog endpoints require the admin claim", asy
 
 
 test('feed cursor uses score descending and id ascending', () => {
-  const { isFeedCursorAfter } = require('../src/kirariDomain');
   assert.equal(isFeedCursorAfter(9, 'b', 10, 'a'), true);
   assert.equal(isFeedCursorAfter(10, 'b', 10, 'a'), true);
   assert.equal(isFeedCursorAfter(10, 'a', 10, 'a'), false);
   assert.equal(isFeedCursorAfter(11, 'z', 10, 'a'), false);
   assert.equal(isFeedCursorAfter(9, 'z', NaN, null), true);
+  assert.equal(isFeedCursorAfter(10, 'a', 10, null), true);
+  assert.equal(isFeedCursorAfter(10, 'a', Infinity, 'b'), true);
+  assert.equal(isFeedCursorAfter(10, 'c', 10, 'b'), true);
+  assert.equal(isFeedCursorAfter(10, 'a', 10, 'c'), false);
 });
 
 
