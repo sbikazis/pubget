@@ -20,15 +20,17 @@ final class FirebaseUserRepository implements UserRepository {
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _mediaUploader = mediaUploader ?? RepositoryMediaUrlUploader(
-         repository: createMediaRepository(),
-       );
+       _mediaUploader = mediaUploader;
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
 
   /// Avatar bytes always use the shared Cloudflare media stack.
-  final MediaUrlUploader _mediaUploader;
+  MediaUrlUploader? _mediaUploader;
+
+  MediaUrlUploader get _uploader => _mediaUploader ??= RepositoryMediaUrlUploader(
+    repository: createMediaRepository(),
+  );
 
   CollectionReference<Map<String, dynamic>> get _users =>
       _firestore.collection('users');
@@ -79,7 +81,7 @@ final class FirebaseUserRepository implements UserRepository {
     required Uint8List bytes,
     String contentType = 'image/jpeg',
   }) async {
-    return _mediaUploader.uploadImage(
+    return _uploader.uploadImage(
       ownerUid: userId,
       bytes: bytes,
       claimedContentType: contentType,
