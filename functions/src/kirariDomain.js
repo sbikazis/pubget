@@ -167,6 +167,18 @@ function diversifyKirari(items, limit, explorationRatio = KIRARI.explorationRati
   }
   return selected;
 }
+function shouldCountEarlySkip({
+  viewerId, uid, qualified, skipCounted, creditedSeconds,
+  lastHeartbeatAt, creatorId, reelStatus, now = Date.now(),
+}) {
+  const heartbeat = Number(lastHeartbeatAt) || 0;
+  const ageMs = now - heartbeat;
+  return viewerId === uid && qualified !== true && skipCounted !== true &&
+    Math.max(0, Number(creditedSeconds) || 0) < KIRARI.qualifiedViewSeconds &&
+    ageMs >= 500 && ageMs <= 15000 && creatorId !== uid &&
+    reelStatus === "published";
+}
+
 function isFeedCursorAfter(score, id, afterScore, afterId) {
   if (!Number.isFinite(afterScore) || !afterId) return true;
   return score < afterScore || (score === afterScore && String(id).localeCompare(String(afterId)) > 0);
@@ -723,14 +735,14 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
           const previous = previousSession.data() || {};
           const lastHeartbeat = previous.lastHeartbeatAt?.toMillis?.() ||
             previous.startedAt?.toMillis?.() || 0;
-          const sinceHeartbeatMs = Date.now() - lastHeartbeat;
-          const credited = Math.max(0, Number(previous.creditedSeconds) || 0);
-          const shouldCountSkip = previous.viewerId === uid &&
-            previous.qualified !== true && previous.skipCounted !== true &&
-            credited < KIRARI.qualifiedViewSeconds &&
-            sinceHeartbeatMs >= 500 && sinceHeartbeatMs <= 15000 &&
-            previousReel.data()?.creatorId !== uid &&
-            previousReel.data()?.status === "published";
+          const shouldCountSkip = shouldCountEarlySkip({
+            viewerId: previous.viewerId, uid,
+            qualified: previous.qualified, skipCounted: previous.skipCounted,
+            creditedSeconds: previous.creditedSeconds,
+            lastHeartbeatAt: lastHeartbeat,
+            creatorId: previousReel.data()?.creatorId,
+            reelStatus: previousReel.data()?.status,
+          });
           if (shouldCountSkip) {
             tx.update(previousSessionRef, {
               skipCounted: true,
@@ -1299,5 +1311,5 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
 module.exports = {
   KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings, rankKirari,
-  isFeedCursorAfter, diversifyKirari, createKirariDomain,
+  isFeedCursorAfter, shouldCountEarlySkip, diversifyKirari, createKirariDomain,
 };
