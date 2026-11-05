@@ -789,8 +789,6 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const uid = auth(request);
     const reelId = inputString(request.data?.reelId, 128, "reelId");
     const sessionId = inputId(request.data?.sessionId, "sessionId");
-    const watchSeconds = clamp(request.data?.watchSeconds, 0, KIRARI.maxWatchEventSeconds);
-    const clientPercent = clamp(request.data?.percent, 0, 100);
     const eventId = inputId(request.data?.eventId, "eventId");
     if (!eventId) fail("invalid-argument", "Playback event id is required.");
     const ref = reelRef(reelId);
@@ -811,12 +809,12 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const elapsed = clamp((Date.now() - last) / 1000, 0, KIRARI.maxWatchEventSeconds);
       const duration = Math.max(3, Number(reel.data().durationSeconds) || 60);
       const previousCredited = Math.max(0, Number(data.creditedSeconds || 0));
-      const credited = Math.min(
-        previousCredited + Math.min(watchSeconds, elapsed + 1),
-        duration,
-      );
+      // Watch duration and completion are derived exclusively from elapsed
+      // server time between accepted heartbeats. Client watchSeconds/percent
+      // are intentionally ignored so forged percentages cannot qualify views.
+      const credited = Math.min(previousCredited + elapsed, duration);
       const creditedDelta = Math.max(0, credited - previousCredited);
-      const verifiedPercent = Math.min(clientPercent, credited / duration * 100);
+      const verifiedPercent = credited / duration * 100;
       const viewerData = viewer.data() || {};
       const lastQualifiedAt = viewerData.lastQualifiedAt?.toMillis?.() || 0;
       const qualified = reel.data().creatorId !== uid &&
@@ -871,7 +869,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         tx.set(seenRef, { seenAt: FieldValue.serverTimestamp() }, { merge: true });
       }
       tx.create(eventRef, {
-        viewerId: uid, watchSeconds, verifiedPercent,
+        viewerId: uid, creditedSeconds: creditedDelta, verifiedPercent,
         createdAt: FieldValue.serverTimestamp(),
       });
     });
