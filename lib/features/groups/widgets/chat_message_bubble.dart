@@ -975,6 +975,16 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
   var _playing = false;
   var _speed = 1.0;
   final AudioPlayer _fallbackPlayer = AudioPlayer();
+  late final StreamSubscription<void> _completionSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _completionSubscription = _fallbackPlayer.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _playing = false);
+    });
+  }
+
   final _levels = List<double>.generate(
     28,
     (i) => 0.25 + math.sin(i * 0.55).abs() * 0.75,
@@ -982,6 +992,7 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
 
   @override
   void dispose() {
+    unawaited(_completionSubscription.cancel());
     unawaited(_fallbackPlayer.dispose());
     super.dispose();
   }
