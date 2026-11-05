@@ -14,10 +14,9 @@ import 'profile_repository.dart';
 
 /// Firebase-backed profile data adapter.
 ///
-/// Profile fields remain in Firestore. Media upload is isolated behind the
-/// repository so the storage provider can be replaced without changing UI
-/// callers; this implementation retains the currently deployed Storage paths
-/// until the R2 profile-key resolver is wired into the app composition.
+/// Profile fields remain in Firestore. Avatar and cover bytes are stored
+/// in Cloudflare R2 through the shared media repository; the public profile
+/// projection stores stable object keys, never expiring signed URLs.
 final class FirebaseProfileRepository implements ProfileRepository {
   FirebaseProfileRepository({
     FirebaseFirestore? firestore,
