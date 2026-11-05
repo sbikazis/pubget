@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import '../../../core/media/media_kind.dart';
+import '../../../core/media/media_repository_factory.dart';
+import '../../../core/media/r2_media_storage_provider.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
@@ -16,15 +18,15 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
   FirebasePrivateChatRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
-    FirebaseStorage? storage,
+    R2MediaStorageProvider? mediaStorage,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _storage = storage ?? FirebaseStorage.instance;
+       _mediaStorage = mediaStorage ?? createR2MediaStorageProvider();
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
-  final FirebaseStorage _storage;
+  final R2MediaStorageProvider _mediaStorage;
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
@@ -203,48 +205,54 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
     required String contentType,
     required void Function(double progress) onProgress,
   }) => _guard(() async {
-    final uid = _uid ?? '';
-    final isVideo = contentType.startsWith('video/');
-    final type = isVideo ? ChatMessageType.video : ChatMessageType.image;
-
-    if (uid.isEmpty || bytes.isEmpty) {
+    final uid = _uid;
+    if (uid == null || bytes.isEmpty) {
       throw const PermissionError('Sign in before sending media.');
     }
+    final type = contentType.startsWith('video/')
+        ? ChatMessageType.video
+        : contentType.startsWith('audio/')
+            ? ChatMessageType.audio
+            : ChatMessageType.image;
+    final kind = type == ChatMessageType.video
+        ? MediaKind.reels
+        : type == ChatMessageType.audio
+            ? MediaKind.audio
+            : MediaKind.image;
     final extension = _extension(fileName, contentType);
-    final path = 'privateChats/$chatId/media/${mediaId}_original.$extension';
-    final ref = _storage.ref(path);
-    final task = ref.putData(
-      bytes,
-      SettableMetadata(
-        contentType: contentType,
-        customMetadata: <String, String>{'uploadedBy': uid},
-      ),
+    final path = await _mediaStorage.upload(
+      ownerUid: uid,
+      kind: kind,
+      bytes: bytes,
+      contentType: contentType,
+      extension: extension,
+      scopeType: 'privateChats',
+      scopeId: chatId,
+      onProgress: onProgress,
     );
-    final subscription = task.snapshotEvents.listen((snapshot) {
-      final total = snapshot.totalBytes;
-      if (total > 0) onProgress(snapshot.bytesTransferred / total);
-    });
-    late final TaskSnapshot snapshot;
-    try {
-      snapshot = await task;
-    } finally {
-      await subscription.cancel();
-    }
-    final mediaUrl = await snapshot.ref.getDownloadURL();
-    await _chats.doc(chatId).collection('media').doc(mediaId).set({
-      'mediumPath': path,
+
+    final mediaRef = _chats.doc(chatId).collection('media').doc(mediaId);
+    await mediaRef.set({
+      'mediaId': mediaId,
+      'uploaderId': uid,
+      'mediaType': type == ChatMessageType.video
+          ? 'video'
+          : type == ChatMessageType.audio
+              ? 'audio'
+              : 'image',
       'originalPath': path,
+      'thumbnailPath': type == ChatMessageType.image ? path : null,
+      'mediumPath': type == ChatMessageType.image ? path : null,
       'status': 'ready',
-      'type': type.name,
-      'uploadedBy': uid,
       'contentType': contentType,
       'sizeBytes': bytes.length,
-    }, SetOptions(merge: true));
+      'createdAt': FieldValue.serverTimestamp(),
+    });
     onProgress(1);
 
     return ChatMediaUpload(
-      mediaUrl: mediaUrl,
-      thumbnailUrl: mediaUrl,
+      mediaUrl: path,
+      thumbnailUrl: type == ChatMessageType.image ? path : null,
       mediaId: mediaId,
       type: type,
     );
