@@ -248,7 +248,7 @@ function safeKey(key: string): boolean {
   }
   return parts.length === 4 &&
     ["groups", "privateChats"].includes(parts[0]) &&
-    /^[A-Za-z0-9_-]{1,128}$/.test(parts[1]) &&
+    /^[A-Za-z0-9_:-]{1,320}$/.test(parts[1]) &&
     /^[A-Za-z0-9_-]{1,128}$/.test(parts[2]) &&
     /^[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5}$/.test(parts[3]);
 }
@@ -277,7 +277,7 @@ async function authorizeConversation(
   uid: string,
 ): Promise<boolean> {
   if (!["groups", "privateChats"].includes(scopeType) ||
-      !/^[A-Za-z0-9_-]{1,128}$/.test(scopeId)) return false;
+      !/^[A-Za-z0-9_:-]{1,320}$/.test(scopeId)) return false;
   const token = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return false;
   const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
