@@ -21,6 +21,8 @@ class KirariUploadPage extends StatefulWidget {
 
 class _KirariUploadPageState extends State<KirariUploadPage> {
   static const _pendingKey = 'kirari.pendingUpload.v1';
+  static const _draftsKey = 'kirari.savedDrafts.v1';
+  List<Map<String, dynamic>> _savedDrafts = const [];
   final _caption = TextEditingController();
   final _hashtags = TextEditingController();
   final _overlayText = TextEditingController();
@@ -73,52 +75,104 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   Future<void> _restorePendingUpload() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final rawDrafts = prefs.getString(_draftsKey);
+      final decodedDrafts = rawDrafts == null ? null : jsonDecode(rawDrafts);
+      if (decodedDrafts is List) {
+        _savedDrafts = decodedDrafts
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .where((item) => item['localPath'] is String)
+            .toList(growable: true);
+      }
       final raw = prefs.getString(_pendingKey);
-      if (raw == null) return;
-      final data = jsonDecode(raw);
-      if (data is! Map) return;
-      final path = data['localPath'] as String?;
-      if (path == null || !await File(path).exists()) {
-        await prefs.remove(_pendingKey);
-        return;
+      Map<String, dynamic>? data;
+      if (raw != null) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) data = Map<String, dynamic>.from(decoded);
       }
-      final file = File(path);
-      final controller = VideoPlayerController.file(file);
-      await controller.initialize();
-      await controller.setLooping(true);
-      controller.addListener(_previewLoop);
-      final seconds = controller.value.duration.inMilliseconds / 1000;
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      final start = (data['trimStartSeconds'] as num?)?.toDouble() ?? 0;
-      final end = (data['trimEndSeconds'] as num?)?.toDouble() ?? seconds;
-      setState(() {
-        _video = XFile(path);
-        _preview = controller;
-        _duration = seconds;
-        _trim = RangeValues(
-          start.clamp(0, seconds - 3).toDouble(),
-          end.clamp(3, seconds).toDouble(),
-        );
-        _speed = (data['speed'] as num?)?.toDouble() ?? 1;
-        _filter = data['filter'] as String? ?? 'none';
-        _coverTime = (data['coverTimeSeconds'] as num?)?.toDouble() ?? 0;
-        _overlayText.text = data['overlayText'] as String? ?? '';
-        _caption.text = data['caption'] as String? ?? '';
-        _hashtags.text = (data['hashtags'] as List? ?? const []).join(' ');
-        _audioId = data['audioId'] as String?;
-        _idempotencyKey = data['idempotencyKey'] as String?;
-        final reelId = data['reelId'] as String?;
-        final storagePath = data['storagePath'] as String?;
-        if (reelId != null && storagePath != null) {
-          _session = KirariUploadSession(reelId: reelId, storagePath: storagePath);
-        }
-        _status = KirariCopy.of(context).resumeUpload;
-      });
+      data ??= _savedDrafts.isNotEmpty ? _savedDrafts.last : null;
+      if (data != null) await _restoreDraftData(data);
+      if (mounted) setState(() {});
     } catch (_) {
       if (mounted) setState(() => _error = KirariCopy.of(context).loadError);
+    }
+  }
+
+  Future<void> _restoreDraftData(Map<String, dynamic> data) async {
+    final path = data['localPath'] as String?;
+    if (path == null || !await File(path).exists()) return;
+    final controller = VideoPlayerController.file(File(path));
+    await controller.initialize();
+    await controller.setLooping(true);
+    controller.addListener(_previewLoop);
+    final seconds = controller.value.duration.inMilliseconds / 1000;
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    final start = (data['trimStartSeconds'] as num?)?.toDouble() ?? 0;
+    final end = (data['trimEndSeconds'] as num?)?.toDouble() ?? seconds;
+    final safeStart = start.clamp(0, (seconds - 3).clamp(0, seconds)).toDouble();
+    final safeEnd = end.clamp(safeStart + 3, seconds).toDouble();
+    _preview?.removeListener(_previewLoop);
+    await _preview?.dispose();
+    setState(() {
+      _video = XFile(path);
+      _preview = controller;
+      _duration = seconds;
+      _trim = RangeValues(safeStart, safeEnd);
+      _speed = (data['speed'] as num?)?.toDouble() ?? 1;
+      _filter = data['filter'] as String? ?? 'none';
+      _coverTime = ((data['coverTimeSeconds'] as num?)?.toDouble() ?? safeStart)
+          .clamp(safeStart, safeEnd).toDouble();
+      _overlayText.text = data['overlayText'] as String? ?? '';
+      _caption.text = data['caption'] as String? ?? '';
+      _hashtags.text = (data['hashtags'] as List? ?? const []).join(' ');
+      _audioId = data['audioId'] as String?;
+      _idempotencyKey = data['idempotencyKey'] as String?;
+      final reelId = data['reelId'] as String?;
+      final storagePath = data['storagePath'] as String?;
+      _session = reelId != null && storagePath != null
+          ? KirariUploadSession(reelId: reelId, storagePath: storagePath)
+          : null;
+      _status = KirariCopy.of(context).resumeUpload;
+      _submitted = false;
+      _error = null;
+    });
+  }
+
+  Future<void> _chooseSavedDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_draftsKey);
+    final decoded = raw == null ? null : jsonDecode(raw);
+    final drafts = decoded is List
+        ? decoded.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+        : <Map<String, dynamic>>[];
+    if (!mounted || drafts.isEmpty) return;
+    final selected = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('Saved drafts'), subtitle: Text('Choose a draft to continue editing')),
+            for (final draft in drafts.reversed)
+              ListTile(
+                leading: const Icon(Icons.video_file_outlined),
+                title: Text((draft['caption'] as String?)?.trim().isNotEmpty == true
+                    ? (draft['caption'] as String).trim()
+                    : 'Untitled video draft'),
+                subtitle: Text((draft['savedAt'] as String?) ?? 'Saved on this device'),
+                onTap: () => Navigator.pop(sheetContext, draft),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected != null && mounted) {
+      await _restoreDraftData(selected);
+      await prefs.setString(_pendingKey, jsonEncode(selected));
     }
   }
 
@@ -210,7 +264,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     final video = _video;
     if (video == null) return;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_pendingKey, jsonEncode(<String, dynamic>{
+    final draft = <String, dynamic>{
       'localPath': video.path,
       'reelId': _session?.reelId,
       'storagePath': _session?.storagePath,
@@ -218,14 +272,36 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       'caption': _caption.text,
       'hashtags': _hashtags.text.split(RegExp(r'[,\\s]+')).where((tag) => tag.isNotEmpty).toList(),
       'audioId': _audioId,
+      'savedAt': DateTime.now().toIso8601String(),
       ..._editorSettings(),
-    }));
+    };
+    await prefs.setString(_pendingKey, jsonEncode(draft));
+    final raw = prefs.getString(_draftsKey);
+    final decoded = raw == null ? null : jsonDecode(raw);
+    final drafts = decoded is List
+        ? decoded.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+        : <Map<String, dynamic>>[];
+    final identity = _idempotencyKey ?? video.path;
+    drafts.removeWhere((item) => (item['idempotencyKey'] ?? item['localPath']) == identity);
+    drafts.add(draft);
+    // Keep a bounded local draft history; source files remain user-owned.
+    final retained = drafts.length > 20 ? drafts.sublist(drafts.length - 20) : drafts;
+    await prefs.setString(_draftsKey, jsonEncode(retained));
+    if (mounted) setState(() => _savedDrafts = retained);
   }
 
   Future<void> _clearPendingUpload({bool deleteLocalFile = true}) async {
     final path = _video?.path;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_pendingKey);
+    final rawDrafts = prefs.getString(_draftsKey);
+    final decodedDrafts = rawDrafts == null ? null : jsonDecode(rawDrafts);
+    if (decodedDrafts is List) {
+      final drafts = decodedDrafts.whereType<Map>()
+          .where((item) => item['localPath'] != path).toList();
+      await prefs.setString(_draftsKey, jsonEncode(drafts));
+      if (mounted) setState(() => _savedDrafts = drafts.map((item) => Map<String, dynamic>.from(item)).toList());
+    }
     if (deleteLocalFile && path != null) {
       await File(path).delete().catchError((_) => File(path));
     }
@@ -469,6 +545,16 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                     ),
             ),
           ),
+          if (_savedDrafts.isNotEmpty) ...[
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _busy ? null : _chooseSavedDraft,
+                icon: const Icon(Icons.folder_open_outlined),
+                label: Text('Saved drafts (${_savedDrafts.length})'),
+              ),
+            ),
+          ],
           if (_video != null) ...[
             const SizedBox(height: 18),
             Text(copy.trim, style: Theme.of(context).textTheme.titleMedium),
