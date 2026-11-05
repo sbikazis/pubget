@@ -97,7 +97,8 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
     final groups = context.read<GroupProvider>();
     Future<void>.microtask(() async {
       builder.start(
-        groupId: widget.groupId,
+        groupId: widget.groupId ??
+            (_selectedGroupIds.length == 1 ? _selectedGroupIds.single : null),
         groupIds: widget.groupIds,
         scope: widget.scope,
         templateId: widget.templateId,
