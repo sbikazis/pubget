@@ -264,6 +264,7 @@ function createNotificationTriggers({ db, builder }) {
     joinRequest,
     joinDecision,
     friendRequest,
+    friendAccepted,
     respectReceived,
   };
 }
