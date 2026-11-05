@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings, rankKirari,
-  isFeedCursorAfter, shouldCountEarlySkip, diversifyKirari, createKirariDomain,
+  isFeedCursorAfter, shouldCountEarlySkip, calculateVerifiedPlayback, diversifyKirari, createKirariDomain,
 } = require("../src/kirariDomain");
 
 class TestHttpsError extends Error {
@@ -430,4 +430,31 @@ test("feed pagination scans beyond a privacy-filtered candidate window without l
   });
   assert.deepEqual(second.items.map((item) => item.id), ["visible_3", "visible_4"]);
   assert.equal(second.hasMore, false);
+});
+
+test("playback retention ignores client claims and is capped by server elapsed time", () => {
+  const progress = calculateVerifiedPlayback({
+    previousCreditedSeconds: 4,
+    lastHeartbeatAt: 1000,
+    now: 6500,
+    durationSeconds: 20,
+  });
+  assert.equal(progress.creditedSeconds, 9.5);
+  assert.equal(progress.creditedDelta, 5.5);
+  assert.equal(progress.verifiedPercent, 47.5);
+  const capped = calculateVerifiedPlayback({
+    previousCreditedSeconds: 2,
+    lastHeartbeatAt: 1000,
+    now: 30000,
+    durationSeconds: 20,
+  });
+  assert.equal(capped.creditedSeconds, 12);
+  const complete = calculateVerifiedPlayback({
+    previousCreditedSeconds: 19,
+    lastHeartbeatAt: 1000,
+    now: 11000,
+    durationSeconds: 20,
+  });
+  assert.equal(complete.creditedSeconds, 20);
+  assert.equal(complete.verifiedPercent, 100);
 });
