@@ -1120,6 +1120,7 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
       final url = await _uploader.uploadOptionImage(
         uid: uid,
         bytes: cropped.bytes,
+        groupId: widget.groupId,
       );
       if (!mounted) return;
       setState(() {
