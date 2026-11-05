@@ -1747,3 +1747,26 @@ test("the mute list is self-scoped and server-owned", async () => {
 
   await assertFails(bob.collection("reelMutes/alice/creators").get());
 });
+
+
+test("account moderation flags and block relationships are never client writable", async () => {
+  await assertFails(db("alice").doc("users/alice").update({
+    isBanned: true,
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    moderationState: "restricted",
+    moderationReason: "forged",
+    restrictedUntil: new Date(Date.now() + 60 * 60 * 1000),
+  }));
+  await assertFails(db("alice").doc("friendships/alice_bob").set({
+    userA: "alice",
+    userB: "bob",
+    userIds: ["alice", "bob"],
+    status: "blocked",
+    blockedBy: "alice",
+  }));
+  await assertFails(db("bob").doc("friendships/alice_bob").update({
+    status: "blocked",
+    blockedBy: "bob",
+  }));
+});
