@@ -10,9 +10,11 @@ import '../../../core/media/r2_media_storage_provider.dart';
 /// is persisted with the event and resolved through the media Worker.
 final class FirebaseEventImageUploader {
   FirebaseEventImageUploader({R2MediaStorageProvider? mediaStorage})
-    : _mediaStorage = mediaStorage ?? createR2MediaStorageProvider();
+    : _providedMediaStorage = mediaStorage;
 
-  final R2MediaStorageProvider _mediaStorage;
+  final R2MediaStorageProvider? _providedMediaStorage;
+  late final R2MediaStorageProvider _mediaStorage =
+      _providedMediaStorage ?? createR2MediaStorageProvider();
 
   static const maxBytes = 5 * 1024 * 1024;
 
