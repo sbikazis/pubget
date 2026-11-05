@@ -1207,6 +1207,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const accepted = [];
     let scanAfterId = cursorId || null;
     let exhausted = false;
+    let stoppedWithMore = false;
     let scanned = 0;
     const scanPageSize = 100;
     const maxScan = 1000;
@@ -1262,11 +1263,13 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
           const enough = type === "forYou"
             ? diversifyKirari(
               accepted.sort((a, b) => b._rank - a._rank || a.id.localeCompare(b.id)),
-              limit + 1, KIRARI.explorationRatio,
-            ).length >= limit + 1
-            : accepted.length >= limit + 1;
+              limit, KIRARI.explorationRatio,
+            ).length >= limit
+            : accepted.length >= limit;
           if (enough) {
             stopScanning = true;
+            const peek = await query.startAfter(doc).limit(1).get();
+            stoppedWithMore = (peek.docs || []).length > 0;
             break;
           }
         }
@@ -1288,7 +1291,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       items.sort((a, b) => b._rank - a._rank || a.id.localeCompare(b.id));
     }
 
-    const hasMore = items.length > limit || (!exhausted && scanned >= maxScan);
+    const hasMore = stoppedWithMore || (!exhausted && scanned >= maxScan);
     const page = items.slice(0, limit).map(({ _rank, _relevant, ...item }) => ({
       ...item, rankingScore: _rank ?? item.rankingScore ?? 0,
     }));
