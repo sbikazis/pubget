@@ -473,3 +473,119 @@ test("playback retention ignores client claims and is capped by server elapsed t
   assert.equal(complete.creditedSeconds, 20);
   assert.equal(complete.verifiedPercent, 100);
 });
+
+
+test("Following feed queries followed creators in bounded chunks and paginates without gaps", async () => {
+  const creatorIds = Array.from({ length: 31 }, (_, index) =>
+    "creator_" + String(index).padStart(2, "0"));
+  const follows = creatorIds.map((toUserId) => ({
+    id: "follow_" + toUserId, data: () => ({ toUserId, value: 5 }),
+  }));
+  const rows = creatorIds.map((creatorId, index) => ({
+    id: "reel_" + String(index).padStart(2, "0"),
+    data: {
+      creatorId, status: "published", moderationStatus: "approved",
+      rankingScore: 100 - index, publishedAt: 1000 - index,
+    },
+  }));
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const chunksSeen = [];
+  const makeEmptyQuery = (docs = []) => ({
+    limit() { return this; },
+    async get() { return { docs }; },
+  });
+  const db = {
+    collection(name) {
+      if (name === "users") return {
+        doc: () => ({
+          async get() { return { data: () => ({}) }; },
+          collection: () => makeEmptyQuery(),
+        }),
+      };
+      if (name === "friendships") return {
+        where() { return makeEmptyQuery(); },
+      };
+      if (name === "respects") return {
+        where() { return makeEmptyQuery(follows); },
+      };
+      if (name === "kirari") return {
+        doc: (id) => ({
+          id,
+          exists: byId.has(id),
+          data: () => byId.get(id)?.data,
+          async get() {
+            const row = byId.get(id);
+            return row
+              ? { id, exists: true, data: () => row.data }
+              : { id, exists: false };
+          },
+        }),
+        where(field, operator, value) {
+          const filters = [];
+          let cursor = null;
+          let pageSize = 100;
+          const query = {
+            where(nextField, nextOperator, nextValue) {
+              filters.push([nextField, nextOperator, nextValue]);
+              if (nextField === "creatorId" && nextOperator === "in") {
+                chunksSeen.push(nextValue.length);
+              }
+              return this;
+            },
+            orderBy() { return this; },
+            startAfter(doc) { cursor = doc; return this; },
+            limit(value) { pageSize = value; return this; },
+            async get() {
+              let selected = rows.filter((row) => filters.every(([key, op, expected]) => {
+                if (op === "in") return expected.includes(row.data[key]);
+                return row.data[key] === expected;
+              }));
+              selected.sort((a, b) =>
+                b.data.rankingScore - a.data.rankingScore ||
+                b.data.publishedAt - a.data.publishedAt ||
+                a.id.localeCompare(b.id));
+              if (cursor) {
+                const cursorRow = byId.get(cursor.id);
+                selected = selected.filter((row) =>
+                  row.data.rankingScore < cursorRow.data.rankingScore ||
+                  (row.data.rankingScore === cursorRow.data.rankingScore &&
+                    (row.data.publishedAt < cursorRow.data.publishedAt ||
+                      (row.data.publishedAt === cursorRow.data.publishedAt &&
+                        row.id.localeCompare(cursor.id) > 0))));
+              }
+              return {
+                docs: selected.slice(0, pageSize).map((row) => ({
+                  id: row.id, exists: true, data: () => row.data,
+                })),
+              };
+            },
+          };
+          if (field) query.where(field, operator, value);
+          return query;
+        },
+      };
+      throw new Error("unexpected collection " + name);
+    },
+  };
+  const domain = createKirariDomain({
+    db, FieldValue: {}, HttpsError: TestHttpsError, bucket: {},
+  });
+  const first = await domain.getFeed({
+    auth: { uid: "viewer" }, data: { type: "following", limit: 3 },
+  });
+  assert.deepEqual(first.items.map((item) => item.id), ["reel_00", "reel_01", "reel_02"]);
+  assert.equal(first.hasMore, true);
+  assert.equal(first.nextCursor.scanAfterId, "reel_02");
+  assert.ok(chunksSeen.length >= 2);
+  assert.ok(chunksSeen.every((size) => size > 0 && size <= 30));
+
+  const second = await domain.getFeed({
+    auth: { uid: "viewer" }, data: { type: "following", limit: 3, ...first.nextCursor },
+  });
+  assert.deepEqual(second.items.map((item) => item.id), ["reel_03", "reel_04", "reel_05"]);
+  assert.equal(second.nextCursor.scanAfterId, "reel_05");
+  assert.equal(new Set([
+    ...first.items.map((item) => item.id),
+    ...second.items.map((item) => item.id),
+  ]).size, 6);
+});
