@@ -69,14 +69,18 @@ final class FirebaseEventImageUploader {
   }) async {
     validate(uid: uid, bytes: bytes);
     final mime = contentType(bytes);
+    final scopedGroupId = groupId?.trim();
+    final uploadGroupId = scopedGroupId == null || scopedGroupId.isEmpty
+        ? null
+        : scopedGroupId;
     return _mediaStorage.upload(
       ownerUid: uid,
       kind: MediaKind.image,
       bytes: bytes,
       contentType: mime,
       extension: extensionFor(mime),
-      scopeType: groupId == null ? null : 'groups',
-      scopeId: groupId,
+      scopeType: uploadGroupId == null ? null : 'groups',
+      scopeId: uploadGroupId,
     );
   }
 }
