@@ -1126,23 +1126,42 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
   async function getFeed(request) {
     const uid = auth(request);
     const type = request.data?.type || "forYou";
-    if (!["forYou", "following", "trending"].includes(type)) fail("invalid-argument", "Unknown Kirari feed.");
+    if (!["forYou", "following", "trending"].includes(type)) {
+      fail("invalid-argument", "Unknown Kirari feed.");
+    }
     const limit = Math.round(clamp(request.data?.limit || KIRARI.feedPageSize, 1, 12));
-    const afterScore = Number(request.data?.afterScore);
-    const afterId = request.data?.afterId || null;
-    const profileSnap = await db.collection("users").doc(uid).get();
-    const profile = profileSnap.data() || {};
+    const cursorId = inputId(
+      request.data?.scanAfterId || request.data?.afterId || "",
+      "scanAfterId",
+    );
     const userRef = db.collection("users").doc(uid);
-    const [blockedByA, blockedByB, blockedByLegacy, interests, follows, muted, notInterested] = await Promise.all([
-      db.collection("friendships").where("userA", "==", uid).get(),
-      db.collection("friendships").where("userB", "==", uid).get(),
-      db.collection("friendships").where("userIds", "array-contains", uid).get(),
-      userRef.collection("kirariInterests").get(),
-      db.collection("respects").where("fromUserId", "==", uid).get(),
-      userRef.collection("kirariMutedCreators").get(),
-      userRef.collection("kirariNotInterested").get(),
-    ]);
-    const blockedDocs = [...(blockedByA.docs || []), ...(blockedByB.docs || []), ...(blockedByLegacy.docs || [])];
+    const [profileSnap, blockedByA, blockedByB, blockedByLegacy, interests, follows, muted, notInterested] =
+      await Promise.all([
+        userRef.get(),
+        db.collection("friendships").where("userA", "==", uid).limit(1000).get(),
+        db.collection("friendships").where("userB", "==", uid).limit(1000).get(),
+        db.collection("friendships").where("userIds", "array-contains", uid).limit(1000).get(),
+        userRef.collection("kirariInterests").limit(500).get(),
+        db.collection("respects").where("fromUserId", "==", uid).limit(1000).get(),
+        userRef.collection("kirariMutedCreators").limit(1000).get(),
+        userRef.collection("kirariNotInterested").limit(1000).get(),
+      ]);
+
+    // Never silently truncate a privacy or relationship source: doing so can
+    // expose blocked/muted creators or omit followed creators from the feed.
+    const boundedSources = [
+      [blockedByA, 1000], [blockedByB, 1000], [blockedByLegacy, 1000],
+      [interests, 500], [follows, 1000], [muted, 1000], [notInterested, 1000],
+    ];
+    if (boundedSources.some(([snap, cap]) => (snap.docs || []).length >= cap)) {
+      fail("resource-exhausted",
+        "Your Kirari feed relationships exceed the safe query window. Please retry after your account data is compacted.");
+    }
+
+    const profile = profileSnap.data() || {};
+    const blockedDocs = [
+      ...(blockedByA.docs || []), ...(blockedByB.docs || []), ...(blockedByLegacy.docs || []),
+    ];
     const blockedIds = new Set(blockedDocs
       .filter((doc) => doc.data()?.status === "blocked")
       .flatMap((doc) => {
@@ -1156,61 +1175,102 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       .map((doc) => doc.data()?.toUserId).filter(Boolean));
     const interestIds = [...new Set([
       ...(interests.docs || []).map((doc) => doc.id),
-      ...(Array.isArray(profile.favoriteAnimeIds) ? profile.favoriteAnimeIds : []),
+      ...(Array.isArray(profile.favoriteAnimeIds) ? profile.favoriteAnimeIds.slice(0, 500) : []),
     ])];
-    const query = reels().where("status", "==", "published")
+
+    // Scan the indexed candidate stream in bounded chunks. Privacy, mute,
+    // not-interested and following filters are applied before a page is
+    // selected, so a blocked-heavy first window cannot starve the feed.
+    // The opaque scan cursor advances by the last scanned document, not by a
+    // locally re-ranked item, preventing duplicates and gaps between pages.
+    let query = reels().where("status", "==", "published")
       .where("moderationStatus", "==", "approved")
       .orderBy(type === "trending" ? "velocityScore" : "rankingScore", "desc")
-      .orderBy("publishedAt", "desc").limit(100);
-    const snap = await query.get();
-    let items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-      .filter((item) => !blockedIds.has(item.creatorId) &&
-        !mutedIds.has(item.creatorId) && !notInterestedIds.has(item.id) &&
-        item.creatorId !== uid)
-      .map((item) => ({
-        ...item,
-        _rank: type === "trending"
-          ? clamp(item.velocityScore, 0, 1000000000)
-          : clamp(item.rankingScore, 0, 100),
-      }));
-    if (type === "following") items = items.filter((item) => creatorIds.has(item.creatorId));
+      .orderBy("publishedAt", "desc").orderBy("__name__", "asc");
+    if (cursorId) {
+      const cursorSnap = await reels().doc(cursorId).get();
+      if (cursorSnap.exists) query = query.startAfter(cursorSnap);
+    }
+
     const now = Date.now();
-    if (type === "forYou") {
-      const profileData = { interests: interestIds, creatorIds: [...creatorIds] };
-      items = items.map((item) => ({ ...item, _rank: rankKirari(item, profileData, now) }))
-        .sort((a, b) => b._rank - a._rank);
-      const seenSnap = await db.collection("users").doc(uid).collection("kirariSeen")
-        .orderBy("seenAt", "asc").limit(550).get();
-      const seen = new Set(seenSnap.docs.map((doc) => doc.id));
-      if (seenSnap.docs.length > 500) {
-        const prune = db.batch();
-        for (const doc of seenSnap.docs.slice(0, seenSnap.docs.length - 500)) prune.delete(doc.ref);
-        await prune.commit();
+    const profileData = { interests: interestIds, creatorIds: [...creatorIds] };
+    const accepted = [];
+    let scanAfterId = cursorId || null;
+    let exhausted = false;
+    let scanned = 0;
+    const scanPageSize = 100;
+    const maxScan = 1000;
+
+    while (accepted.length < limit + 1 && scanned < maxScan && !exhausted) {
+      const batch = await query.limit(Math.min(scanPageSize, maxScan - scanned)).get();
+      const docs = batch.docs || [];
+      if (docs.length === 0) {
+        exhausted = true;
+        break;
       }
-      const fresh = items.filter((item) => !seen.has(item.id)).map((item) => ({
-        ...item,
-        _relevant: interestIds.length > 0 && [
-          ...(item.hashtags || []), ...(item.animeIds || []),
-          ...(item.characterIds || []), item.animeId, item.audioId,
-        ].some((tag) => tag && interestIds.includes(tag)),
-      }));
-      items = fresh.sort((a, b) => b._rank - a._rank || a.id.localeCompare(b.id));
-      items = diversifyKirari(items, limit, KIRARI.explorationRatio);
+      scanAfterId = docs[docs.length - 1].id;
+      scanned += docs.length;
+      query = query.startAfter(docs[docs.length - 1]);
+
+      const candidates = docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((item) => !blockedIds.has(item.creatorId) &&
+          !mutedIds.has(item.creatorId) && !notInterestedIds.has(item.id) &&
+          item.creatorId !== uid &&
+          (type !== "following" || creatorIds.has(item.creatorId)));
+      if (type === "forYou" && candidates.length) {
+        const seenRefs = candidates.map((item) =>
+          userRef.collection("kirariSeen").doc(item.id));
+        const seenSnaps = await Promise.all(seenRefs.map((ref) => ref.get()));
+        const seenIds = new Set(seenSnaps.filter((snap) => snap.exists).map((snap) => snap.id));
+        for (const item of candidates) {
+          if (seenIds.has(item.id)) continue;
+          const tags = [
+            ...(item.hashtags || []), ...(item.animeIds || []),
+            ...(item.characterIds || []), item.animeId, item.audioId,
+          ].filter(Boolean);
+          const relevant = interestIds.length > 0 && tags.some((tag) => interestIds.includes(tag));
+          accepted.push({
+            ...item,
+            _relevant: relevant,
+            _rank: rankKirari(item, profileData, now),
+          });
+        }
+      } else {
+        for (const item of candidates) {
+          accepted.push({
+            ...item,
+            _rank: type === "trending"
+              ? clamp(item.velocityScore, 0, 1000000000)
+              : clamp(item.rankingScore, 0, 100),
+          });
+        }
+      }
+      exhausted = docs.length < Math.min(scanPageSize, maxScan - (scanned - docs.length));
     }
-    // Stable keyset cursor: descending score, then ascending document id.
-    // Do not search for afterId inside a freshly fetched top-N window; it may
-    // have moved or fallen outside that window since the prior request.
-    items.sort((a, b) => b._rank - a._rank || a.id.localeCompare(b.id));
-    if (Number.isFinite(afterScore) && afterId) {
-      items = items.filter((item) => isFeedCursorAfter(item._rank, item.id, afterScore, afterId));
+
+    let items = accepted;
+    if (type === "forYou") {
+      items = diversifyKirari(
+        items.sort((a, b) => b._rank - a._rank || a.id.localeCompare(b.id)),
+        limit + 1,
+        KIRARI.explorationRatio,
+      );
+    } else {
+      items.sort((a, b) => b._rank - a._rank || a.id.localeCompare(b.id));
     }
+
+    const hasMore = items.length > limit || (!exhausted && scanned >= maxScan);
     const page = items.slice(0, limit).map(({ _rank, _relevant, ...item }) => ({
       ...item, rankingScore: _rank ?? item.rankingScore ?? 0,
     }));
     return {
       items: page,
-      hasMore: items.length > limit,
-      nextCursor: page.length ? { afterId: page[page.length - 1].id, afterScore: page[page.length - 1].rankingScore } : null,
+      hasMore,
+      nextCursor: scanAfterId ? {
+        cursorVersion: 2,
+        scanAfterId,
+        afterId: scanAfterId,
+      } : null,
     };
   }
 
