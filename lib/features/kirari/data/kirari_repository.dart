@@ -19,6 +19,10 @@ class KirariReel {
     this.audioId,
     this.audioAttribution = const <String, dynamic>{},
     this.renditionPaths = const <String, String>{},
+    this.creatorUsername = "",
+    this.creatorAvatarUrl = "",
+    this.viewerLiked = false,
+    this.viewerSaved = false,
   });
 
   final String id;
@@ -32,6 +36,32 @@ class KirariReel {
   final String? audioId;
   final Map<String, dynamic> audioAttribution;
   final Map<String, String> renditionPaths;
+  final String creatorUsername;
+  final String creatorAvatarUrl;
+  final bool viewerLiked;
+  final bool viewerSaved;
+
+  KirariReel copyWith({
+    int? likesCount,
+    bool? viewerLiked,
+    bool? viewerSaved,
+  }) => KirariReel(
+    id: id,
+    creatorId: creatorId,
+    caption: caption,
+    videoUrl: videoUrl,
+    coverUrl: coverUrl,
+    durationSeconds: durationSeconds,
+    likesCount: likesCount ?? this.likesCount,
+    commentsCount: commentsCount,
+    audioId: audioId,
+    audioAttribution: audioAttribution,
+    renditionPaths: renditionPaths,
+    creatorUsername: creatorUsername,
+    creatorAvatarUrl: creatorAvatarUrl,
+    viewerLiked: viewerLiked ?? this.viewerLiked,
+    viewerSaved: viewerSaved ?? this.viewerSaved,
+  );
 
   factory KirariReel.fromMap(Map<dynamic, dynamic> map) {
     return KirariReel(
@@ -54,6 +84,10 @@ class KirariReel {
                   key.toString(), value is Map ? (value['path'] as String? ?? '') : '',
                 ))
               : const <String, String>{}),
+      creatorUsername: map['creatorUsername'] as String? ?? '',
+      creatorAvatarUrl: map['creatorAvatarUrl'] as String? ?? '',
+      viewerLiked: map['viewerLiked'] == true,
+      viewerSaved: map['viewerSaved'] == true,
     );
   }
 }
