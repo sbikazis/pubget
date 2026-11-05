@@ -441,6 +441,10 @@ exports.getKirariReel = onCall(
   { region: "us-central1" },
   kirariDomain.getReel,
 );
+exports.getSavedKirariReels = onCall(
+  { region: "us-central1" },
+  kirariDomain.getSavedReels,
+);
 exports.reviewKirariContent = onCall(
   { region: "us-central1" },
   kirariDomain.reviewContent,
