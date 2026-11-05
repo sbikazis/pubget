@@ -382,7 +382,7 @@ class FirebaseKirariRepository implements KirariRepository {
         });
         onProgress(1);
       } finally {
-        await _androidUploadChannel.setMethodCallHandler(null);
+        _androidUploadChannel.setMethodCallHandler(null);
       }
       return;
     }
