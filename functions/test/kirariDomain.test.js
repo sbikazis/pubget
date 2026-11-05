@@ -337,3 +337,97 @@ test("server early-skip policy only counts recent unqualified playback transitio
   assert.equal(shouldCountEarlySkip({ ...valid, lastHeartbeatAt: now - 16000 }), false);
   assert.equal(shouldCountEarlySkip({ ...valid, lastHeartbeatAt: now - 100 }), false);
 });
+
+test("feed pagination scans beyond a privacy-filtered candidate window without losing the next page", async () => {
+  const now = Date.now();
+  const blockedCreators = Array.from({ length: 100 }, (_, i) => "blocked_" + i);
+  const blockedDocs = blockedCreators.map((creatorId) => ({
+    id: "block_" + creatorId,
+    data: () => ({ status: "blocked", userA: "viewer", userB: creatorId }),
+  }));
+  const rows = [
+    ...blockedCreators.map((creatorId, i) => ({
+      id: "blocked_reel_" + i,
+      data: {
+        creatorId, status: "published", moderationStatus: "approved",
+        rankingScore: 1000 - i, velocityScore: 0, publishedAt: now - i,
+        createdAt: now - i, durationSeconds: 20,
+      },
+    })),
+    ...Array.from({ length: 5 }, (_, i) => ({
+      id: "visible_" + i,
+      data: {
+        creatorId: "visible_creator_" + i, status: "published",
+        moderationStatus: "approved", rankingScore: 100 - i,
+        velocityScore: 0, publishedAt: now - 100 - i,
+        createdAt: now - 100 - i, durationSeconds: 20,
+      },
+    })),
+  ];
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const makeEmptyQuery = (docs = []) => ({
+    where() { return this; }, orderBy() { return this; }, limit() { return this; },
+    async get() { return { docs }; },
+  });
+  const db = {
+    collection(name) {
+      if (name === "users") return {
+        doc: (uid) => ({
+          async get() { return { data: () => ({}) }; },
+          collection: (sub) => sub === "kirariSeen" ? {
+            doc: (id) => ({ async get() { return { id, exists: false }; } }),
+            ...makeEmptyQuery(),
+          } : makeEmptyQuery(),
+        }),
+      };
+      if (name === "friendships") return {
+        where(field) { return makeEmptyQuery(field === "userA" ? blockedDocs : []); },
+      };
+      if (name === "respects") return { where() { return makeEmptyQuery(); } };
+      if (name === "kirari") return {
+        doc: (id) => ({
+          async get() {
+            const row = byId.get(id);
+            return row ? { id, exists: true, data: () => row.data } : { exists: false };
+          },
+        }),
+        where() {
+          let pageSize = 100;
+          let cursorId = null;
+          const query = {
+            where() { return this; },
+            orderBy() { return this; },
+            limit(value) { pageSize = value; return this; },
+            startAfter(doc) { cursorId = doc.id; return this; },
+            async get() {
+              const sorted = [...rows].sort((a, b) =>
+                b.data.rankingScore - a.data.rankingScore ||
+                b.data.publishedAt - a.data.publishedAt ||
+                a.id.localeCompare(b.id));
+              const start = cursorId ? sorted.findIndex((row) => row.id === cursorId) + 1 : 0;
+              return { docs: sorted.slice(start, start + pageSize).map((row) => ({
+                id: row.id, data: () => row.data,
+              })) };
+            },
+          };
+          return query;
+        },
+      };
+      throw new Error("unexpected collection " + name);
+    },
+  };
+  const domain = createKirariDomain({
+    db, FieldValue: {}, HttpsError: TestHttpsError, bucket: {},
+  });
+  const first = await domain.getFeed({
+    auth: { uid: "viewer" }, data: { type: "forYou", limit: 3 },
+  });
+  assert.deepEqual(first.items.map((item) => item.id), ["visible_0", "visible_1", "visible_2"]);
+  assert.equal(first.hasMore, true);
+  assert.equal(first.nextCursor.scanAfterId, "visible_2");
+  const second = await domain.getFeed({
+    auth: { uid: "viewer" }, data: { type: "forYou", limit: 3, ...first.nextCursor },
+  });
+  assert.deepEqual(second.items.map((item) => item.id), ["visible_3", "visible_4"]);
+  assert.equal(second.hasMore, false);
+});
