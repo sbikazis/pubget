@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -981,7 +982,7 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
 
   @override
   void dispose() {
-    _fallbackPlayer.dispose();
+    unawaited(_fallbackPlayer.dispose());
     super.dispose();
   }
 
@@ -1000,8 +1001,12 @@ class _VoiceBubbleState extends State<_VoiceBubble> {
     if (reference == null) return;
     final url = await resolveMediaDownloadUrl(reference);
     if (url == null) return;
-    await _fallbackPlayer.play(UrlSource(url));
-    if (mounted) setState(() => _playing = true);
+    try {
+      await _fallbackPlayer.play(UrlSource(url));
+      if (mounted) setState(() => _playing = true);
+    } on Object {
+      if (mounted) setState(() => _playing = false);
+    }
   }
 
   @override
