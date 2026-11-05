@@ -86,7 +86,10 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
       ..fields['kind'] = kind.name
       ..fields['contentType'] = contentType
       ..fields['ext'] = extension
-      ..fields.addAll({if (scopeType != null) 'scopeType': scopeType, if (scopeId != null) 'scopeId': scopeId})
+      ..fields.addAll({
+        if (scopeType != null) 'scopeType': scopeType,
+        if (scopeId != null) 'scopeId': scopeId,
+      })
       ..files.add(
         http.MultipartFile.fromBytes('file', bytes,
             filename: 'upload.$extension', contentType: null),
@@ -136,7 +139,8 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
 
     final putRequest = http.Request('PUT', Uri.parse(uploadUrl))
       ..bodyBytes = bytes
-      ..headers['Content-Type'] = contentType;
+      ..headers['Content-Type'] = contentType
+      ..headers['Authorization'] = 'Bearer $token';
     headers?.forEach((name, value) {
       // The signature covers these exact values, so the worker tells the app
       // which ones to send back. `content-length` and `host` are set by the
