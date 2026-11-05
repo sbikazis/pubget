@@ -287,6 +287,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       if (!controller.value.isInitialized) await controller.initialize();
       await controller.setLooping(true);
       await controller.play();
+      _cacheActiveReel(reel);
       final reporter = KirariPlaybackReporter(_repository, reel.id);
       try {
         await reporter.start();
@@ -309,6 +310,26 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       }
       if (controller != null) await controller.dispose();
     }
+  }
+
+  void _cacheActiveReel(KirariReel reel) {
+    // Cache the active rendition in the background after playback has started.
+    // Playback remains network-first so a slow download never blocks the
+    // first frame on weak mobile connections.
+    unawaited(() async {
+      final quality = await _adaptiveQuality(reel);
+      final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
+      if (cached != null) return;
+      final url = await _repository.getPlaybackUrl(reel, quality: quality);
+      if (url.isEmpty) return;
+      await _videoCache.getOrDownload(
+        reelId: reel.id,
+        quality: quality,
+        source: Uri.parse(url),
+      );
+    }().catchError((Object _) {
+      // Cache is opportunistic; it must never interrupt active playback.
+    }));
   }
 
   void _startReporter() {
