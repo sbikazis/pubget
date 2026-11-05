@@ -14,7 +14,12 @@ void main() {
       final client = MockClient((request) async {
         expect(request.method, 'POST');
         expect(request.url.path, '/upload');
-        expect(request.headers['authorization'], 'Bearer test-token');
+        expect(
+          request.headers.entries
+              .firstWhere((entry) => entry.key.toLowerCase() == 'authorization')
+              .value,
+          'Bearer test-token',
+        );
         final multipart = request as http.MultipartRequest;
         fields = Map<String, String>.from(multipart.fields);
         return http.Response(jsonEncode({'key': 'groups/g1/alice/file.jpg'}), 201);
