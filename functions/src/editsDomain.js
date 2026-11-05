@@ -1121,6 +1121,7 @@ function createEditsDomain({
     }
     const edit = editRef(editId);
     const commentRef = edit.collection("comments").doc(commentId);
+    let reportedComment = null;
     await db.runTransaction(async (tx) => {
       const comment = await tx.get(commentRef);
       if (!comment.exists) return;
@@ -1129,6 +1130,7 @@ function createEditsDomain({
         const existing = await tx.get(reportRef);
         if (existing.exists) return;
         tx.create(reportRef, { actor, createdAt: FieldValue.serverTimestamp() });
+        reportedComment = { creatorId: comment.data()?.authorId || null };
         return;
       }
       if (action === "delete") {
@@ -1151,6 +1153,19 @@ function createEditsDomain({
         tx.update(commentRef, { likesCount: FieldValue.increment(-1) });
       }
     });
+    if (action === "report" && reportedComment) {
+      await enqueueModerationCase({
+        db,
+        FieldValue,
+        type: "editComment",
+        targetId: commentId,
+        targetParentId: editId,
+        reporterId: actor,
+        creatorId: reportedComment.creatorId,
+        reason: "community_report",
+        sourcePath: `edits/${editId}/comments/${commentId}/reports/${actor}`,
+      });
+    }
     return { ok: true };
   }
 

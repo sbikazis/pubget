@@ -1182,6 +1182,7 @@ function createFanWorksDomain({
     }
     const ref = workRef(db, workId);
     const commentRef = ref.collection("comments").doc(commentId);
+    let reportedComment = null;
     await db.runTransaction(async (transaction) => {
       const [work, comment] = await Promise.all([
         transaction.get(ref),
@@ -1213,6 +1214,7 @@ function createFanWorksDomain({
           createdAt: FieldValue.serverTimestamp(),
         });
         transaction.update(commentRef, { reported: true });
+        reportedComment = { creatorId: comment.data()?.authorId || null };
         return;
       }
       const likeRef = commentRef.collection("likes").doc(actor);
@@ -1225,6 +1227,19 @@ function createFanWorksDomain({
         transaction.update(commentRef, { likesCount: FieldValue.increment(-1) });
       }
     });
+    if (action === "report" && reportedComment) {
+      await enqueueModerationCase({
+        db,
+        FieldValue,
+        type: "fanWorkComment",
+        targetId: commentId,
+        targetParentId: workId,
+        reporterId: actor,
+        creatorId: reportedComment.creatorId,
+        reason: "community_report",
+        sourcePath: `fanWorks/${workId}/comments/${commentId}/reports/${actor}`,
+      });
+    }
     return { ok: true };
   }
 

@@ -16,6 +16,8 @@ const CASE_TYPES = Object.freeze([
   "groupMessage",
   "privateMessage",
   "event",
+  "editComment",
+  "fanWorkComment",
 ]);
 
 const CASE_TYPE_SET = new Set(CASE_TYPES);

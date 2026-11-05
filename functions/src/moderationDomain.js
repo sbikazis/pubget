@@ -31,6 +31,8 @@ const REMOVABLE_KINDS = Object.freeze([
   "groupMessage",
   "privateMessage",
   "event",
+  "editComment",
+  "fanWorkComment",
 ]);
 
 const REMOVABLE_KIND_SET = new Set(REMOVABLE_KINDS);
@@ -255,6 +257,19 @@ function createModerationDomain({
     if (kind === "edit") return db.collection("edits").doc(targetId);
     if (kind === "fanWork") return db.collection("fanWorks").doc(targetId);
     if (kind === "event") return db.collection("events").doc(targetId);
+    if (kind === "editComment" || kind === "fanWorkComment") {
+      if (!validId(targetParentId)) {
+        throw new HttpsError(
+          "invalid-argument",
+          "A comment takedown needs its parent content id (targetParentId).",
+        );
+      }
+      const parentCollection = kind === "editComment" ? "edits" : "fanWorks";
+      return db.collection(parentCollection)
+        .doc(targetParentId)
+        .collection("comments")
+        .doc(targetId);
+    }
     if (kind === "animeReview") {
       if (!validId(targetParentId)) {
         throw new HttpsError(
@@ -320,10 +335,14 @@ function createModerationDomain({
     // A removed message must stop rendering its payload immediately; keeping
     // the text "hidden" only by a status flag means every client that already
     // holds the document keeps showing it.
-    if (kind === "groupMessage" || kind === "privateMessage") {
+    if (kind === "groupMessage" || kind === "privateMessage" ||
+        kind === "editComment" || kind === "fanWorkComment") {
       patch.text = null;
       patch.mediaUrl = null;
       patch.thumbnailUrl = null;
+      if (kind === "editComment" || kind === "fanWorkComment") {
+        patch.deletedAt = FieldValue.serverTimestamp();
+      }
     }
     if (kind === "fanWork") {
       patch.visibility = "unpublished";
@@ -409,8 +428,12 @@ function createModerationDomain({
       moderatedBy: staff.uid,
       updatedAt: FieldValue.serverTimestamp(),
     };
-    if (kind === "groupMessage" || kind === "privateMessage") {
+    if (kind === "groupMessage" || kind === "privateMessage" ||
+        kind === "editComment" || kind === "fanWorkComment") {
       if (previous && typeof previous.text === "string") patch.text = previous.text;
+      if (kind === "editComment" || kind === "fanWorkComment") {
+        patch.deletedAt = previous ? previous.deletedAt ?? null : null;
+      }
     }
     if (kind === "fanWork" && previous && typeof previous.visibility === "string") {
       patch.visibility = previous.visibility;
