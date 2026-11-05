@@ -298,7 +298,7 @@ test("For You diversity caps repeated creators and anime while retaining explora
     { id: "e2", creatorId: "explorer-2", animeId: "new-2", _rank: 80, _relevant: false },
   ];
   const page = diversifyKirari(candidates, 5, 0.2);
-  assert.equal(page.length, 5);
+  assert.equal(page.length, 4, "the page should preserve diversity when fewer unique candidates exist");
   assert.ok(page.some((item) => item._relevant === false), "one slot should explore outside interests");
   assert.ok(page.filter((item) => item.creatorId === "same").length <= 2);
   assert.ok(page.filter((item) => item.animeId === "one").length <= 2);
