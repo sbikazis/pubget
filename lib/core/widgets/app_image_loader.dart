@@ -58,8 +58,11 @@ class _AppImageLoaderState extends State<AppImageLoader> {
   void _refreshExpiredUrl() {
     if (_refreshAttempted || !mounted) return;
     _refreshAttempted = true;
-    setState(() {
-      _resolvedUrl = resolveMediaDownloadUrl(widget.imageUrl);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _resolvedUrl = resolveMediaDownloadUrl(widget.imageUrl);
+      });
     });
   }
 
