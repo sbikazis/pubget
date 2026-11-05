@@ -94,15 +94,28 @@ function rankKirari(item, profile, now = Date.now()) {
   );
   const negative = clamp((Number(item.negativeFeedbackCount) || 0) * 5, 0, 40);
   const interests = new Set(profile.interests || []);
-  const tags = [...(item.hashtags || []), item.audioId, item.animeId].filter(Boolean);
+  const tags = [
+    ...(item.hashtags || []), ...(item.animeIds || []), ...(item.characterIds || []),
+    item.audioId, item.animeId,
+  ].filter(Boolean);
   const relevance = tags.length
     ? tags.filter((tag) => interests.has(tag)).length / tags.length * 100 : 25;
   const social = new Set(profile.creatorIds || []).has(item.creatorId) ? 100 : 0;
   const creatorQuality = clamp(item.creatorQuality || 0, 0, 100);
+  // Server-aggregated behavior signals only. Do not accept raw client counters
+  // as ranking inputs: these fields are maintained by qualified playback.
+  const watchSeconds = Math.max(0, Number(item.totalQualifiedWatchSeconds) || 0);
+  const averageWatch = clamp(watchSeconds / views, 0, 60);
+  const watchQuality = clamp(averageWatch / Math.max(3, Number(item.durationSeconds) || 15) * 100, 0, 100);
+  const skips = Math.max(0, Number(item.earlySkipCount) || 0);
+  const skipRate = clamp(skips / views * 100, 0, 100);
+  const replays = Math.max(0, Number(item.replayCount) || 0);
+  const replayRate = clamp(replays / views * 100, 0, 100);
   return clamp(
-    relevance * 0.25 + freshness * 0.15 + completion * 0.15 +
-    engagement * 0.15 + social * 0.10 + creatorQuality * 0.10 -
-    negative * 0.10,
+    relevance * 0.22 + freshness * 0.12 + completion * 0.14 +
+    watchQuality * 0.18 + replayRate * 0.08 + engagement * 0.10 +
+    social * 0.08 + creatorQuality * 0.08 -
+    negative * 0.10 - skipRate * 0.12,
     0, 100,
   );
 }
