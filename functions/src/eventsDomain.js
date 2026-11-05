@@ -533,7 +533,7 @@ function validateConfiguration(type, raw) {
   const options = normalizeOptions(source, { min, max });
   if (!question || !options) return null;
   if (type === "poll" && !options.every(
-    (item) => validHttpsImageUrl(item.imageUrl),
+    (item) => validEventImageReference(item.imageUrl),
   )) {
     return null;
   }
