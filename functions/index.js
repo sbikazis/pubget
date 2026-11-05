@@ -1108,6 +1108,10 @@ exports.onFriendRequest = onDocumentCreated(
   "friendships/{friendshipId}",
   notificationTriggers.friendRequest,
 );
+exports.onFriendRequestAccepted = onDocumentUpdated(
+  "friendships/{friendshipId}",
+  notificationTriggers.friendAccepted,
+);
 exports.onRespectReceived = onDocumentCreated(
   "respects/{respectId}",
   notificationTriggers.respectReceived,
