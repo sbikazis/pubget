@@ -18,6 +18,8 @@ import '../../groups/screens/media_viewer_page.dart';
 import '../../groups/widgets/chat_contrast_theme.dart';
 import '../../groups/widgets/chat_message_bubble.dart';
 import '../../groups/widgets/chat_message_actions_overlay.dart';
+import '../../groups/services/default_voice_capture.dart';
+import '../../groups/services/voice_capture.dart';
 import '../providers/private_chat_list_provider.dart';
 import '../providers/private_chat_provider.dart';
 
@@ -41,6 +43,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   int _lastMarkedReadCount = -1;
   String? _lastNewestMessageId;
   int _newMessagesCount = 0;
+  late final VoiceCapture _voiceCapture = createDeviceVoiceCapture();
+  bool _isRecordingVoice = false;
 
   @override
   void didChangeDependencies() {
@@ -61,6 +65,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   @override
   void dispose() {
     unawaited(context.read<PrivateChatProvider>().leaveChat());
+    unawaited(_voiceCapture.cancel());
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -204,6 +209,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                   controller: _controller,
                   onSend: _sendText,
                   onMedia: _pickMedia,
+                  onToggleVoice: _toggleVoiceRecording,
+                  isRecordingVoice: _isRecordingVoice,
                 ),
               ],
             ),
@@ -357,6 +364,48 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       fileName: selected.name,
       contentType: contentType,
     );
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (!_voiceCapture.isRecording) {
+      try {
+        await _voiceCapture.start();
+        if (mounted) setState(() => _isRecordingVoice = true);
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not start voice recording: $error')),
+          );
+        }
+      }
+      return;
+    }
+
+    try {
+      final clip = await _voiceCapture.stop();
+      if (mounted) setState(() => _isRecordingVoice = false);
+      if (clip == null || !mounted) return;
+      final user = context.read<AuthProvider>().currentUser;
+      if (user == null) return;
+      await context.read<PrivateChatProvider>().sendMedia(
+        chatId: widget.chatId,
+        senderId: user.id,
+        senderName: user.displayName?.trim().isNotEmpty == true
+            ? user.displayName!
+            : user.email,
+        senderAvatar: user.avatarUrl ?? '',
+        bytes: clip.bytes,
+        fileName: clip.fileName,
+        contentType: clip.contentType,
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() => _isRecordingVoice = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not send voice message: $error')),
+        );
+      }
+    }
   }
 
   void _openMedia(ChatMessage message) {
@@ -583,11 +632,15 @@ class _Composer extends StatelessWidget {
     required this.controller,
     required this.onSend,
     required this.onMedia,
+    required this.onToggleVoice,
+    required this.isRecordingVoice,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
   final void Function(ImageSource source, bool video) onMedia;
+  final VoidCallback onToggleVoice;
+  final bool isRecordingVoice;
 
   @override
   Widget build(BuildContext context) {
@@ -628,6 +681,14 @@ class _Composer extends StatelessWidget {
                   isDense: true,
                 ),
               ),
+            ),
+            IconButton(
+              tooltip: isRecordingVoice
+                  ? copy.pick('Stop recording and send', 'إيقاف التسجيل والإرسال')
+                  : copy.pick('Record voice message', 'تسجيل رسالة صوتية'),
+              onPressed: onToggleVoice,
+              color: isRecordingVoice ? Theme.of(context).colorScheme.error : null,
+              icon: Icon(isRecordingVoice ? Icons.stop_circle : Icons.mic),
             ),
             IconButton(
                tooltip: copy.pick('Send message', 'إرسال الرسالة'),
