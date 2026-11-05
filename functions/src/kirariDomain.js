@@ -155,7 +155,13 @@ function diversifyKirari(items, limit, explorationRatio = KIRARI.explorationRati
   if (selected.length < limit) {
     for (const item of [...deferred, ...pool]) {
       if (selected.some((entry) => entry.id === item.id)) continue;
+      const creator = item.creatorId || item.id;
+      const anime = item.animeId || (item.animeIds || [])[0] || null;
+      if ((creatorCounts.get(creator) || 0) >= 2 ||
+          (anime && (animeCounts.get(anime) || 0) >= 2)) continue;
       selected.push(item);
+      creatorCounts.set(creator, (creatorCounts.get(creator) || 0) + 1);
+      if (anime) animeCounts.set(anime, (animeCounts.get(anime) || 0) + 1);
       if (selected.length >= limit) break;
     }
   }
