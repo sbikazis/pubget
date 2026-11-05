@@ -163,27 +163,43 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   }
 
   Future<VideoPlayerController> _makeController(KirariReel reel) async {
-    final preferred = await _adaptiveQuality(reel);
-    final qualities = <int>{preferred, 540, 360, 720};
-    final attemptedUrls = <String>{};
     Object? lastError;
 
-    for (final quality in qualities) {
+    // Try durable local renditions before touching the network. This allows
+    // previously cached videos to play in airplane mode or during outages.
+    for (final quality in const <int>[540, 360, 720]) {
       VideoPlayerController? controller;
       try {
-        final url = await _repository.getPlaybackUrl(reel, quality: quality);
-        if (url.isEmpty || !attemptedUrls.add(url)) continue;
         final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
-        controller = cached == null
-            ? VideoPlayerController.networkUrl(Uri.parse(url))
-            : VideoPlayerController.file(cached);
+        if (cached == null) continue;
+        controller = VideoPlayerController.file(cached);
         await controller.initialize().timeout(const Duration(seconds: 20));
         return controller;
       } catch (error) {
         lastError = error;
-        if (controller != null) {
-          await controller.dispose();
+        if (controller != null) await controller.dispose();
+      }
+    }
+
+    final preferred = await _adaptiveQuality(reel);
+    final qualities = <int>{preferred, 540, 360, 720};
+    final attemptedUrls = <String>{};
+    for (final quality in qualities) {
+      VideoPlayerController? controller;
+      try {
+        final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
+        if (cached != null) {
+          controller = VideoPlayerController.file(cached);
+        } else {
+          final url = await _repository.getPlaybackUrl(reel, quality: quality);
+          if (url.isEmpty || !attemptedUrls.add(url)) continue;
+          controller = VideoPlayerController.networkUrl(Uri.parse(url));
         }
+        await controller.initialize().timeout(const Duration(seconds: 20));
+        return controller;
+      } catch (error) {
+        lastError = error;
+        if (controller != null) await controller.dispose();
       }
     }
 
@@ -196,12 +212,11 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     Object? lastError;
     for (final quality in qualities) {
       try {
-        final url = await _repository.getPlaybackUrl(reel, quality: quality);
-        if (url.isEmpty) continue;
-        final file = await _videoCache.getOrDownload(
+        final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
+        final file = cached ?? await _videoCache.getOrDownload(
           reelId: reel.id,
           quality: quality,
-          source: Uri.parse(url),
+          source: Uri.parse(await _repository.getPlaybackUrl(reel, quality: quality)),
         );
         final controller = VideoPlayerController.file(file);
         try {
