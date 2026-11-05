@@ -275,7 +275,7 @@ async function authorizePublishedOwnerAsset(
   ownerUid: string,
   key: string,
 ): Promise<boolean> {
-  const token = request.headers.get("authorization")?.match(/^Bearer\\s+(.+)$/i)?.[1];
+  const token = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return false;
   const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
   try {
