@@ -363,7 +363,23 @@ class FirebaseKirariRepository implements KirariRepository {
     required void Function(double progress) onProgress,
   }) async {
     final file = File(video.path);
-    final task = _storage.ref(storagePath).putFile(
+    final reference = _storage.ref(storagePath);
+
+    // If the previous attempt completed the object but the app stopped before
+    // finalization, do not upload the same durable local file a second time.
+    try {
+      final metadata = await reference.getMetadata();
+      if (metadata.size == await file.length()) {
+        onProgress(1);
+        return;
+      }
+    } on FirebaseException catch (error) {
+      if (error.code != 'object-not-found' && error.code != 'unauthorized') {
+        rethrow;
+      }
+    }
+
+    final task = reference.putFile(
       file,
       SettableMetadata(contentType: 'video/mp4', customMetadata: {
         'uploadedBy': 'kirari-client',
