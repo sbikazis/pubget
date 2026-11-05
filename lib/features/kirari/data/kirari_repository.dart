@@ -161,22 +161,28 @@ class FirebaseKirariRepository implements KirariRepository {
   Future<List<KirariReel>> _resolveReels(dynamic raw) async {
     if (raw is! List) return const <KirariReel>[];
     final resolved = await Future.wait(raw.whereType<Map>().map((value) async {
-      final map = Map<dynamic, dynamic>.from(value);
-      final variants = map['renditions'];
-      final paths = variants is Map ? variants : const <dynamic, dynamic>{};
-      final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
-      final videoPath = preferred is Map ? preferred['path'] as String? : null;
-      final coverPath = map['coverPath'] as String?;
-      if (videoPath == null || videoPath.isEmpty) return null;
-      final urls = await Future.wait<String>([
-        _downloadUrl(videoPath),
-        if (coverPath != null && coverPath.isNotEmpty) _downloadUrl(coverPath),
-      ]);
-      return KirariReel.fromMap({
-        ...map,
-        'playbackUrl': urls.first,
-        'coverUrl': urls.length > 1 ? urls[1] : '',
-      });
+      try {
+        final map = Map<dynamic, dynamic>.from(value);
+        final variants = map['renditions'];
+        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
+        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
+        final videoPath = preferred is Map ? preferred['path'] as String? : null;
+        final coverPath = map['coverPath'] as String?;
+        if (videoPath == null || videoPath.isEmpty) return null;
+        final videoUrl = _downloadUrl(videoPath);
+        final coverUrl = coverPath == null || coverPath.isEmpty
+            ? Future<String>.value('')
+            : _downloadUrl(coverPath).catchError((_) => '');
+        final urls = await Future.wait<String>([videoUrl, coverUrl]);
+        return KirariReel.fromMap({
+          ...map,
+          'playbackUrl': urls.first,
+          'coverUrl': urls[1],
+        });
+      } catch (_) {
+        // A single unavailable media object must not discard the whole feed.
+        return null;
+      }
     }));
     return resolved.whereType<KirariReel>().toList(growable: false);
   }
@@ -188,27 +194,7 @@ class FirebaseKirariRepository implements KirariRepository {
       'limit': limit,
       if (cursor != null) ...cursor,
     });
-    final raw = result['items'];
-    final sourceItems = raw is List ? raw.whereType<Map>().toList(growable: false) : const <Map>[];
-    final resolved = await Future.wait(sourceItems.map((item) async {
-      final map = Map<dynamic, dynamic>.from(item);
-      final variants = map['renditions'];
-      final paths = variants is Map ? variants : const <dynamic, dynamic>{};
-      final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
-      final videoPath = preferred is Map ? preferred['path'] as String? : null;
-      final coverPath = map['coverPath'] as String?;
-      if (videoPath == null || videoPath.isEmpty) return null;
-      final urls = await Future.wait<String>([
-        _downloadUrl(videoPath),
-        if (coverPath != null && coverPath.isNotEmpty) _downloadUrl(coverPath),
-      ]);
-      return KirariReel.fromMap({
-        ...map,
-        'playbackUrl': urls.first,
-        'coverUrl': urls.length > 1 ? urls[1] : '',
-      });
-    }));
-    final reels = resolved.whereType<KirariReel>().toList(growable: false);
+    final reels = await _resolveReels(result['items']);
     final nextCursor = result['nextCursor'];
     return KirariFeedPageResult(
       reels,
