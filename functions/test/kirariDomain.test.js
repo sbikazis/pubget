@@ -256,10 +256,22 @@ test("Kirari feed fails closed when privacy-filter lookup fails", async () => {
         }),
       };
       if (name === "friendships") return {
-        where: () => ({ get: async () => { throw new Error("privacy lookup unavailable"); } }),
+        where: () => {
+          const query = {
+            limit: () => query,
+            get: async () => { throw new Error("privacy lookup unavailable"); },
+          };
+          return query;
+        },
       };
       if (name === "respects") return {
-        where: () => ({ get: async () => ({ docs: [] }) }),
+        where: () => {
+          const query = {
+            limit: () => query,
+            get: async () => ({ docs: [] }),
+          };
+          return query;
+        },
       };
       throw new Error("unexpected collection " + name);
     },
