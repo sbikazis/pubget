@@ -22,11 +22,14 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _mediaStorage = mediaStorage ?? createR2MediaStorageProvider();
+       _mediaStorage = mediaStorage;
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
-  final R2MediaStorageProvider _mediaStorage;
+  R2MediaStorageProvider? _mediaStorage;
+
+  R2MediaStorageProvider get _mediaStorageProvider =>
+      _mediaStorage ??= createR2MediaStorageProvider();
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
@@ -220,7 +223,7 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
             ? MediaKind.audio
             : MediaKind.image;
     final extension = _extension(fileName, contentType);
-    final path = await _mediaStorage.upload(
+    final path = await _mediaStorageProvider.upload(
       ownerUid: uid,
       kind: kind,
       bytes: bytes,
