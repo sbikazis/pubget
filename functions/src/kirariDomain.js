@@ -1230,9 +1230,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
             acceptedCount < limit + 1) {
           const requestSize = Math.min(scanPageSize, maxScanPerChunk - scanned);
           let pageQuery = streamQuery;
-          if (streamCursor && streamCursor !== cursorSnap) {
-            pageQuery = pageQuery.startAfter(streamCursor);
-          }
+          if (streamCursor) pageQuery = pageQuery.startAfter(streamCursor);
           const batch = await pageQuery.limit(requestSize).get();
           const docs = batch.docs || [];
           if (docs.length === 0) {
