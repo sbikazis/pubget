@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/media/media_kind.dart';
 import 'package:pubget/core/media/media_storage_provider.dart';
+import 'package:pubget/core/media/media_repository_factory.dart';
 
 void main() {
   group('resolveMediaBackendConfig', () {
@@ -50,6 +51,18 @@ void main() {
       expect(config.backend, MediaBackend.r2);
       expect(config.workerUrl, isEmpty);
       expect(config.isConfigured, isFalse);
+    });
+  });
+
+  group('createMediaRepository', () {
+    test('creates the Cloudflare-backed repository by default', () {
+      final repository = createMediaRepository();
+      expect(repository.backend, MediaBackend.r2);
+    });
+
+    test('uses the in-memory backend only when explicitly requested', () {
+      final repository = createMediaRepository(backendOverride: 'memory');
+      expect(repository.backend, MediaBackend.memory);
     });
   });
 }
