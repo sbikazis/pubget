@@ -1197,6 +1197,93 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const creatorIds = new Set((follows.docs || [])
       .filter((doc) => Number(doc.data()?.value || 0) >= 5)
       .map((doc) => doc.data()?.toUserId).filter(Boolean));
+    // Following is queried by creator in Firestore-sized chunks. A single
+    // global ranking scan followed by a client-side creator filter can starve
+    // this feed when followed creators are sparse in the global population.
+    if (type === "following") {
+      const followedIds = [...creatorIds].sort();
+      const chunks = [];
+      for (let index = 0; index < followedIds.length; index += 30) {
+        chunks.push(followedIds.slice(index, index + 30));
+      }
+      if (chunks.length === 0) {
+        return { items: [], hasMore: false, nextCursor: null };
+      }
+
+      const cursorSnap = cursorId ? await reels().doc(cursorId).get() : null;
+      const candidates = [];
+      const scanPageSize = 100;
+      const maxScanPerChunk = 1000;
+      for (const creatorChunk of chunks) {
+        let streamQuery = reels()
+          .where("creatorId", "in", creatorChunk)
+          .where("status", "==", "published")
+          .where("moderationStatus", "==", "approved")
+          .orderBy("rankingScore", "desc")
+          .orderBy("publishedAt", "desc")
+          .orderBy("__name__", "asc");
+        if (cursorSnap?.exists) streamQuery = streamQuery.startAfter(cursorSnap);
+
+        let streamCursor = cursorSnap?.exists ? cursorSnap : null;
+        let scanned = 0;
+        let exhausted = false;
+        let acceptedCount = 0;
+        while (!exhausted && scanned < maxScanPerChunk &&
+            acceptedCount < limit + 1) {
+          const requestSize = Math.min(scanPageSize, maxScanPerChunk - scanned);
+          let pageQuery = streamQuery;
+          if (streamCursor && streamCursor !== cursorSnap) {
+            pageQuery = pageQuery.startAfter(streamCursor);
+          }
+          const batch = await pageQuery.limit(requestSize).get();
+          const docs = batch.docs || [];
+          if (docs.length === 0) {
+            exhausted = true;
+            break;
+          }
+          for (const doc of docs) {
+            scanned += 1;
+            streamCursor = doc;
+            const item = { id: doc.id, ...doc.data() };
+            if (blockedIds.has(item.creatorId) || mutedIds.has(item.creatorId) ||
+                notInterestedIds.has(item.id) || item.creatorId === uid) continue;
+            candidates.push(item);
+            acceptedCount += 1;
+            if (acceptedCount >= limit + 1) break;
+          }
+          if (acceptedCount >= limit + 1) break;
+          exhausted = docs.length < requestSize;
+        }
+        // Never claim a complete page if a heavily filtered stream exceeded
+        // the bounded scan window. The client can retry after data is compacted.
+        if (!exhausted && scanned >= maxScanPerChunk &&
+            acceptedCount < limit + 1) {
+          fail("resource-exhausted",
+            "The Following feed is too large to scan safely. Please retry.");
+        }
+      }
+
+      candidates.sort((a, b) =>
+        (Number(b.rankingScore) || 0) - (Number(a.rankingScore) || 0) ||
+        ((b.publishedAt?.toMillis?.() ?? Number(b.publishedAt) ?? 0) -
+          (a.publishedAt?.toMillis?.() ?? Number(a.publishedAt) ?? 0)) ||
+        a.id.localeCompare(b.id));
+      const hasMore = candidates.length > limit;
+      const page = candidates.slice(0, limit);
+      const last = page[page.length - 1];
+      return {
+        items: page.map((item) => ({
+          ...item, rankingScore: Number(item.rankingScore) || 0,
+        })),
+        hasMore,
+        nextCursor: last ? {
+          cursorVersion: 3,
+          scanAfterId: last.id,
+          afterId: last.id,
+        } : null,
+      };
+    }
+
     const interestIds = [...new Set([
       ...(interests.docs || []).map((doc) => doc.id),
       ...(Array.isArray(profile.favoriteAnimeIds) ? profile.favoriteAnimeIds.slice(0, 500) : []),
