@@ -115,13 +115,25 @@ class MainActivity : FlutterActivity() {
 
                 task.addOnProgressListener { snapshot ->
                     snapshot.uploadSessionUri?.let { uri ->
-                        preferences.edit()
-                            .putString(sessionKey, uri.toString())
-                            .putString(pathKey, source.absolutePath)
-                            .putLong(sizeKey, source.length())
-                            .putLong(modifiedKey, source.lastModified())
-                            .putLong(sessionTimeKey, System.currentTimeMillis())
-                            .apply()
+                        val uriValue = uri.toString()
+                        if (preferences.getString(sessionKey, null) != uriValue) {
+                            // The session URI is the recovery token required to
+                            // continue at Firebase's server-side byte offset after
+                            // Android kills this process. Flush its first write
+                            // synchronously instead of relying on apply()'s
+                            // deferred disk write.
+                            preferences.edit()
+                                .putString(sessionKey, uriValue)
+                                .putString(pathKey, source.absolutePath)
+                                .putLong(sizeKey, source.length())
+                                .putLong(modifiedKey, source.lastModified())
+                                .putLong(sessionTimeKey, System.currentTimeMillis())
+                                .commit()
+                        } else {
+                            preferences.edit()
+                                .putLong(sessionTimeKey, System.currentTimeMillis())
+                                .apply()
+                        }
                     }
                     val total = snapshot.totalByteCount
                     val progress = if (total > 0L) {
