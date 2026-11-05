@@ -374,7 +374,7 @@ class FirebaseKirariRepository implements KirariRepository {
         return;
       }
     } on FirebaseException catch (error) {
-      if (error.code != 'object-not-found' && error.code != 'unauthorized') {
+      if (error.code != 'object-not-found') {
         rethrow;
       }
     }
