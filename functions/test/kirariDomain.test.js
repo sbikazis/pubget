@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings, rankKirari,
-  isFeedCursorAfter, createKirariDomain,
+  isFeedCursorAfter, diversifyKirari, createKirariDomain,
 } = require("../src/kirariDomain");
 
 class TestHttpsError extends Error {
@@ -269,4 +269,53 @@ test("Kirari feed fails closed when privacy-filter lookup fails", async () => {
     domain.getFeed({ auth: { uid: "viewer" }, data: { type: "forYou" } }),
     /privacy lookup unavailable/,
   );
+});
+
+test("For You ranking rewards verified watch time and completion with small-sample smoothing", () => {
+  const now = Date.now();
+  const base = {
+    creatorId: "creator", durationSeconds: 20,
+    createdAt: { toMillis: () => now },
+    qualifiedViewsCount: 100, completionCount: 50,
+    totalQualifiedWatchSeconds: 500, earlySkipCount: 0, replayCount: 0,
+  };
+  const highRetention = rankKirari({
+    ...base, completionCount: 90, totalQualifiedWatchSeconds: 1700, replayCount: 20,
+  }, { interests: [], creatorIds: [] }, now);
+  const lowRetention = rankKirari({
+    ...base, completionCount: 10, totalQualifiedWatchSeconds: 150, earlySkipCount: 70,
+  }, { interests: [], creatorIds: [] }, now);
+  assert.ok(highRetention > lowRetention);
+});
+
+test("For You diversity caps repeated creators and anime while retaining exploration", () => {
+  const candidates = [
+    { id: "r1", creatorId: "same", animeId: "one", _rank: 100, _relevant: true },
+    { id: "r2", creatorId: "same", animeId: "one", _rank: 99, _relevant: true },
+    { id: "r3", creatorId: "same", animeId: "one", _rank: 98, _relevant: true },
+    { id: "r4", creatorId: "other", animeId: "one", _rank: 97, _relevant: true },
+    { id: "e1", creatorId: "explorer", animeId: "new", _rank: 90, _relevant: false },
+    { id: "e2", creatorId: "explorer-2", animeId: "new-2", _rank: 80, _relevant: false },
+  ];
+  const page = diversifyKirari(candidates, 5, 0.2);
+  assert.equal(page.length, 5);
+  assert.ok(page.some((item) => item._relevant === false), "one slot should explore outside interests");
+  assert.ok(page.filter((item) => item.creatorId === "same").length <= 2);
+  assert.ok(page.filter((item) => item.animeId === "one").length <= 2);
+});
+
+test("For You ranking does not consume client-supplied playback counters", () => {
+  const now = Date.now();
+  const base = {
+    creatorId: "creator", durationSeconds: 20,
+    createdAt: { toMillis: () => now },
+    qualifiedViewsCount: 20, completionCount: 10,
+    totalQualifiedWatchSeconds: 200, earlySkipCount: 2, replayCount: 1,
+  };
+  const normal = rankKirari(base, { interests: [], creatorIds: [] }, now);
+  const forged = rankKirari({
+    ...base, clientWatchSeconds: 999999, clientCompletionCount: 999999,
+    clientReplayCount: 999999, clientEarlySkipCount: 0,
+  }, { interests: [], creatorIds: [] }, now);
+  assert.equal(forged, normal);
 });
