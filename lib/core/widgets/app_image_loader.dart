@@ -36,6 +36,7 @@ class AppImageLoader extends StatefulWidget {
 
 class _AppImageLoaderState extends State<AppImageLoader> {
   late Future<String?> _resolvedUrl;
+  bool _refreshAttempted = false;
 
   @override
   void initState() {
@@ -50,7 +51,16 @@ class _AppImageLoaderState extends State<AppImageLoader> {
   }
 
   void _resolve() {
+    _refreshAttempted = false;
     _resolvedUrl = resolveMediaDownloadUrl(widget.imageUrl);
+  }
+
+  void _refreshExpiredUrl() {
+    if (_refreshAttempted || !mounted) return;
+    _refreshAttempted = true;
+    setState(() {
+      _resolvedUrl = resolveMediaDownloadUrl(widget.imageUrl);
+    });
   }
 
   @override
@@ -105,7 +115,10 @@ class _AppImageLoaderState extends State<AppImageLoader> {
                 if (synchronouslyLoaded || frame != null) return image;
                 return loading;
               },
-              errorBuilder: (_, _, _) => fallback,
+              errorBuilder: (_, _, _) {
+                _refreshExpiredUrl();
+                return fallback;
+              },
             );
           },
         );
