@@ -300,10 +300,36 @@ async function authorizePublishedOwnerAsset(
         structuredQuery: {
           from: [{ collectionId: "events" }],
           where: {
-            fieldFilter: {
-              field: { fieldPath: "mediaKeys" },
-              op: "ARRAY_CONTAINS",
-              value: { stringValue: key },
+            compositeFilter: {
+              op: "AND",
+              filters: [
+                {
+                  fieldFilter: {
+                    field: { fieldPath: "mediaKeys" },
+                    op: "ARRAY_CONTAINS",
+                    value: { stringValue: key },
+                  },
+                },
+                {
+                  fieldFilter: {
+                    field: { fieldPath: "scope" },
+                    op: "EQUAL",
+                    value: { stringValue: "global" },
+                  },
+                },
+                {
+                  fieldFilter: {
+                    field: { fieldPath: "status" },
+                    op: "IN",
+                    value: {
+                      arrayValue: {
+                        values: ["ACTIVE", "active", "ENDED", "ended"]
+                          .map((value) => ({ stringValue: value })),
+                      },
+                    },
+                  },
+                },
+              ],
             },
           },
           limit: 5,
