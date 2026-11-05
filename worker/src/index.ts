@@ -398,15 +398,21 @@ async function authorizeConversation(
   const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
   try {
     if (scopeType === "groups") {
-      const [group, member] = await Promise.all([
-        fetch(`${base}/groups/${encodeURIComponent(scopeId)}`, {
+      const groupPath = `${base}/groups/${encodeURIComponent(scopeId)}`;
+      const [group, member, ban] = await Promise.all([
+        fetch(groupPath, {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch(`${base}/groups/${encodeURIComponent(scopeId)}/members/${encodeURIComponent(uid)}`, {
+        fetch(`${groupPath}/members/${encodeURIComponent(uid)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${groupPath}/bans/${encodeURIComponent(uid)}`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
-      if (!group.ok || !member.ok) return false;
+      // Membership alone is insufficient if a stale member record remains
+      // after a ban. Fail closed when the ban lookup itself is not readable.
+      if (!group.ok || !member.ok || ban.ok || ban.status !== 404) return false;
       const data = await group.json() as { fields?: Record<string, { booleanValue?: boolean }> };
       return data.fields?.deletionPending?.booleanValue !== true;
     }
