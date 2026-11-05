@@ -135,6 +135,7 @@ abstract interface class KirariRepository {
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24});
   Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20});
   Future<KirariReel> getReel(String reelId);
+  Future<List<KirariReel>> getSavedReels({int limit = 30});
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality});
   Future<void> giveCreatorRespect({required String creatorId, required int value});
   Future<List<Map<String, dynamic>>> getComments(String reelId, {String? before, int limit = 30});
@@ -275,6 +276,12 @@ class FirebaseKirariRepository implements KirariRepository {
       'coverUrl': coverPath == null || coverPath.isEmpty
           ? '' : await _storage.ref(coverPath).getDownloadURL(),
     });
+  }
+
+  @override
+  Future<List<KirariReel>> getSavedReels({int limit = 30}) async {
+    final result = await _call('getSavedKirariReels', {'limit': limit});
+    return _resolveReels(result['items']);
   }
 
   @override
@@ -563,6 +570,8 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20}) async => throw _unavailable();
   @override
   Future<KirariReel> getReel(String reelId) async => throw _unavailable();
+  @override
+  Future<List<KirariReel>> getSavedReels({int limit = 30}) async => throw _unavailable();
   @override
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24}) async => throw _unavailable();
   @override
