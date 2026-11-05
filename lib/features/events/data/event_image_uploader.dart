@@ -65,6 +65,7 @@ final class FirebaseEventImageUploader {
   Future<String> uploadOptionImage({
     required String uid,
     required Uint8List bytes,
+    String? groupId,
   }) async {
     validate(uid: uid, bytes: bytes);
     final mime = contentType(bytes);
@@ -74,6 +75,8 @@ final class FirebaseEventImageUploader {
       bytes: bytes,
       contentType: mime,
       extension: extensionFor(mime),
+      scopeType: groupId == null ? null : 'groups',
+      scopeId: groupId,
     );
   }
 }
