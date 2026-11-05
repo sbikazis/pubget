@@ -77,9 +77,13 @@ jobs:
           lib/features/home/screens/home_page.dart
           lib/features/social/screens/profile_page.dart
           lib/app/pubget_app.dart
+          lib/app/firebase_bootstrap.dart
+          test/firebase_bootstrap_test.dart
           lib/app/entity_routes.dart
           lib/core/links/pubget_deep_link.dart
           test/reel_entity_surfaces_test.dart
+      - name: Firebase App Check bootstrap tests
+        run: flutter test test/firebase_bootstrap_test.dart
       - name: Kirari integration tests
         run: flutter test test/reel_entity_surfaces_test.dart
       - name: Kirari persistent video cache tests
