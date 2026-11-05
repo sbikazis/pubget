@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/media/media_reference.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -342,7 +343,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final bytes = await selected.readAsBytes();
     final extension = selected.name.split('.').last.toLowerCase();
     final contentType = video
-        ? (extension == 'webm' ? 'video/webm' : 'video/mp4')
+        ? videoContentTypeFor(selected.name)
         : (extension == 'png' ? 'image/png' : 'image/jpeg');
     if (!mounted) return;
     await context.read<PrivateChatProvider>().sendMedia(
