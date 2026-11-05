@@ -1222,8 +1222,6 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
           .orderBy("rankingScore", "desc")
           .orderBy("publishedAt", "desc")
           .orderBy("__name__", "asc");
-        if (cursorSnap?.exists) streamQuery = streamQuery.startAfter(cursorSnap);
-
         let streamCursor = cursorSnap?.exists ? cursorSnap : null;
         let scanned = 0;
         let exhausted = false;
