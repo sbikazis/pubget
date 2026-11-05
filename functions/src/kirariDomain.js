@@ -292,7 +292,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         impressionsCount: 0, viewsCount: 0, qualifiedViewsCount: 0,
         completionCount: 0, replayCount: 0, likesCount: 0,
         commentsCount: 0, savesCount: 0, sharesCount: 0,
-        negativeFeedbackCount: 0, rankingScore: 0,
+        negativeFeedbackCount: 0, earlySkipCount: 0,
+        totalQualifiedWatchSeconds: 0, rankingScore: 0,
       });
       tx.set(lockRef, {
         reelId: ref.id, storagePath,
@@ -696,12 +697,53 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (!snap.exists || snap.data().status !== "published" || snap.data().moderationStatus !== "approved" || await isBlockedPair(uid, snap.data().creatorId)) fail("not-found", "Kirari video not found.");
     const sessionRef = ref.collection("playbackSessions").doc();
     const viewerRef = ref.collection("viewers").doc(uid);
+    const activeRef = db.collection("users").doc(uid)
+      .collection("kirariPlaybackState").doc("active");
     await db.runTransaction(async (tx) => {
-      const [current, viewer] = await Promise.all([tx.get(ref), tx.get(viewerRef)]);
+      const [current, viewer, active] = await Promise.all([
+        tx.get(ref), tx.get(viewerRef), tx.get(activeRef),
+      ]);
       if (!current.exists || current.data().status !== "published" ||
           current.data().moderationStatus !== "approved") {
         fail("not-found", "Kirari video not found.");
       }
+
+      // A server-observed transition to another reel is the only skip signal.
+      // We never accept a client "skip" flag or a client-supplied duration.
+      const activeData = active.data() || {};
+      if (active.exists && activeData.reelId && activeData.sessionId &&
+          activeData.reelId !== reelId) {
+        const previousRef = reelRef(activeData.reelId);
+        const previousSessionRef = previousRef.collection("playbackSessions")
+          .doc(activeData.sessionId);
+        const [previousReel, previousSession] = await Promise.all([
+          tx.get(previousRef), tx.get(previousSessionRef),
+        ]);
+        if (previousReel.exists && previousSession.exists) {
+          const previous = previousSession.data() || {};
+          const lastHeartbeat = previous.lastHeartbeatAt?.toMillis?.() ||
+            previous.startedAt?.toMillis?.() || 0;
+          const sinceHeartbeatMs = Date.now() - lastHeartbeat;
+          const credited = Math.max(0, Number(previous.creditedSeconds) || 0);
+          const shouldCountSkip = previous.viewerId === uid &&
+            previous.qualified !== true && previous.skipCounted !== true &&
+            credited < KIRARI.qualifiedViewSeconds &&
+            sinceHeartbeatMs >= 500 && sinceHeartbeatMs <= 15000 &&
+            previousReel.data()?.creatorId !== uid &&
+            previousReel.data()?.status === "published";
+          if (shouldCountSkip) {
+            tx.update(previousSessionRef, {
+              skipCounted: true,
+              endedByNextPlaybackAt: FieldValue.serverTimestamp(),
+            });
+            tx.update(previousRef, {
+              earlySkipCount: FieldValue.increment(1),
+              velocityScore: FieldValue.increment(-0.25),
+            });
+          }
+        }
+      }
+
       const viewerData = viewer.data() || {};
       const replaySession = viewerData.completed === true;
       const lastImpressionAt = viewerData.lastImpressionAt?.toMillis?.() || 0;
@@ -714,6 +756,11 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         expiresAt: new Date(Date.now() + KIRARI.playbackSessionMs),
         creditedSeconds: 0, qualified: false, completed: false,
         replaySession, replayCounted: false, viewCounted: false,
+        skipCounted: false,
+      });
+      tx.set(activeRef, {
+        reelId, sessionId: sessionRef.id,
+        updatedAt: FieldValue.serverTimestamp(),
       });
       if (countImpression) {
         tx.update(ref, {
