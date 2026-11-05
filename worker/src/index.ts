@@ -241,15 +241,75 @@ async function inspectAndRestoreBody(body: ReadableStream<Uint8Array>): Promise<
 
 function safeKey(key: string): boolean {
   const parts = key.split("/");
-  return parts.length === 3 &&
-    ["images", "reels", "audio"].includes(parts[0]) &&
+  if (parts.length === 3) {
+    return ["images", "reels", "audio"].includes(parts[0]) &&
+      /^[A-Za-z0-9_-]{1,128}$/.test(parts[1]) &&
+      /^[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5}$/.test(parts[2]);
+  }
+  return parts.length === 4 &&
+    ["groups", "privateChats"].includes(parts[0]) &&
     /^[A-Za-z0-9_-]{1,128}$/.test(parts[1]) &&
-    /^[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5}$/.test(parts[2]);
+    /^[A-Za-z0-9_-]{1,128}$/.test(parts[2]) &&
+    /^[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5}$/.test(parts[3]);
 }
 
-function createKey(kind: keyof typeof LIMITS, uid: string, extension: string): string {
+function createKey(
+  kind: keyof typeof LIMITS,
+  uid: string,
+  extension: string,
+  scopeType?: string,
+  scopeId?: string,
+): string {
+  const filename = `${crypto.randomUUID()}.${extension}`;
+  if (scopeType && scopeId) return `${scopeType}/${scopeId}/${uid}/${filename}`;
   const folder = kind === "image" ? "images" : kind;
-  return `${folder}/${uid}/${crypto.randomUUID()}.${extension}`;
+  return `${folder}/${uid}/${filename}`;
+}
+
+/// Uses the caller's Firebase ID token against Firestore's REST API, so the
+/// exact same Firestore Security Rules that protect chat metadata also gate
+/// access to the corresponding R2 objects. No Admin credential is stored here.
+async function authorizeConversation(
+  request: Request,
+  projectId: string,
+  scopeType: string,
+  scopeId: string,
+  uid: string,
+): Promise<boolean> {
+  if (!["groups", "privateChats"].includes(scopeType) ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(scopeId)) return false;
+  const token = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) return false;
+  const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+  try {
+    if (scopeType === "groups") {
+      const [group, member] = await Promise.all([
+        fetch(`${base}/groups/${encodeURIComponent(scopeId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${base}/groups/${encodeURIComponent(scopeId)}/members/${encodeURIComponent(uid)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      if (!group.ok || !member.ok) return false;
+      const data = await group.json() as { fields?: Record<string, { booleanValue?: boolean }> };
+      return data.fields?.deletionPending?.booleanValue !== true;
+    }
+    const chat = await fetch(`${base}/privateChats/${encodeURIComponent(scopeId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!chat.ok) return false;
+    const document = await chat.json() as {
+      fields?: Record<string, { stringValue?: string; arrayValue?: { values?: Array<{ stringValue?: string }> } }>;
+    };
+    const fields = document.fields ?? {};
+    const participants = fields.participantIds?.arrayValue?.values?.map((v) => v.stringValue) ?? [];
+    return participants.includes(uid) ||
+      fields.userA?.stringValue === uid ||
+      fields.userB?.stringValue === uid;
+  } catch {
+    return false;
+  }
 }
 
 export default {
@@ -276,7 +336,14 @@ export default {
         return json({ error: "Unsupported media type or size." }, 400);
       }
 
-      const key = createKey(kind, uid, extension);
+      const scopeType = url.searchParams.get("scopeType") ?? "";
+      const scopeId = url.searchParams.get("scopeId") ?? "";
+      if ((scopeType || scopeId) &&
+          (!scopeType || !scopeId ||
+           !await authorizeConversation(request, env.FIREBASE_PROJECT_ID, scopeType, scopeId, uid))) {
+        return json({ error: "You are not allowed to upload to this conversation." }, 403);
+      }
+      const key = createKey(kind, uid, extension, scopeType || undefined, scopeId || undefined);
       const expires = Math.floor(Date.now() / 1000) + 900;
       const signature = await hmac(env, [key, uid, contentType, size, expires].join("\n"));
       const uploadUrl = `${url.origin}/upload/${encodeURIComponent(key)}?uid=${encodeURIComponent(uid)}&contentType=${encodeURIComponent(contentType)}&sizeBytes=${size}&expires=${expires}&signature=${signature}`;
@@ -299,9 +366,17 @@ export default {
       const parts = key.split("/");
       const now = Math.floor(Date.now() / 1000);
 
-      if (!safeKey(key) || parts[1] !== uid) return json({ error: "Invalid upload key." }, 403);
-      const kind = parts[0] === "images" ? "image" : parts[0] as keyof typeof LIMITS;
-      const extension = parts[2].split(".").pop() ?? "";
+      if (!safeKey(key) || (parts.length === 3 ? parts[1] !== uid : parts[2] !== uid)) return json({ error: "Invalid upload key." }, 403);
+      const scoped = parts.length === 4;
+      const scopeType = scoped ? parts[0] : "";
+      const scopeId = scoped ? parts[1] : "";
+      if (scoped && (!await authorizeConversation(request, env.FIREBASE_PROJECT_ID, scopeType, scopeId, uid))) {
+        return json({ error: "Conversation access denied." }, 403);
+      }
+      const kind = (scoped ? (parts[3].endsWith(".mp4") || parts[3].endsWith(".webm") || parts[3].endsWith(".mov") ? "reels" :
+        parts[3].endsWith(".mp3") || parts[3].endsWith(".m4a") || parts[3].endsWith(".aac") || parts[3].endsWith(".ogg") ? "audio" : "image")
+        : parts[0] === "images" ? "image" : parts[0]) as keyof typeof LIMITS;
+      const extension = (scoped ? parts[3] : parts[2]).split(".").pop() ?? "";
       if (!(kind in LIMITS) || !validUpload(kind, contentType, extension, size) ||
           !Number.isSafeInteger(expires) || expires < now || expires > now + 930) {
         return json({ error: "Invalid or expired upload authorization." }, 403);
@@ -326,7 +401,7 @@ export default {
       }
       await env.MEDIA_BUCKET.put(key, inspected.stream, {
         httpMetadata: { contentType, cacheControl: "private, max-age=0, no-store" },
-        customMetadata: { uploadedBy: uid, mediaKind: parts[0] },
+        customMetadata: { uploadedBy: uid, mediaKind: kind, ...(scoped ? { scopeType, scopeId } : {}) },
       });
       return json({ key }, 201);
     }
@@ -356,10 +431,17 @@ export default {
         return json({ error: "The file contents do not match the declared media type." }, 415);
       }
 
-      const key = createKey(kind, uid, extension);
+      const scopeType = String(form.get("scopeType") ?? "");
+      const scopeId = String(form.get("scopeId") ?? "");
+      if ((scopeType || scopeId) &&
+          (!scopeType || !scopeId ||
+           !await authorizeConversation(request, env.FIREBASE_PROJECT_ID, scopeType, scopeId, uid))) {
+        return json({ error: "You are not allowed to upload to this conversation." }, 403);
+      }
+      const key = createKey(kind, uid, extension, scopeType || undefined, scopeId || undefined);
       await env.MEDIA_BUCKET.put(key, file.stream(), {
         httpMetadata: { contentType, cacheControl: "private, max-age=0, no-store" },
-        customMetadata: { uploadedBy: uid, mediaKind: kind },
+        customMetadata: { uploadedBy: uid, mediaKind: kind, ...(scopeType ? { scopeType, scopeId } : {}) },
       });
       return json({ key }, 201);
     }
@@ -370,11 +452,20 @@ export default {
       const key = url.searchParams.get("key") ?? "";
       const parts = key.split("/");
       if (!safeKey(key)) return json({ error: "Invalid object key." }, 400);
-      // Fail closed until published-reel visibility is verified against the
-      // authoritative Firestore record. A known key must not expose a draft.
-      if (parts[1] !== uid) return json({ error: "Forbidden." }, 403);
+      const scoped = parts.length === 4;
       const object = await env.MEDIA_BUCKET.head(key);
       if (!object) return json({ error: "Media not found." }, 404);
+      if (scoped) {
+        const scopeType = parts[0];
+        const scopeId = parts[1];
+        if (object.customMetadata?.scopeType !== scopeType ||
+            object.customMetadata?.scopeId !== scopeId ||
+            !await authorizeConversation(request, env.FIREBASE_PROJECT_ID, scopeType, scopeId, uid)) {
+          return json({ error: "Forbidden." }, 403);
+        }
+      } else if (parts[1] !== uid) {
+        return json({ error: "Forbidden." }, 403);
+      }
 
       const expires = Math.floor(Date.now() / 1000) + 600;
       const signature = await hmac(env, [key, expires].join("\n"));
