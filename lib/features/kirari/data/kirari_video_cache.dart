@@ -56,6 +56,7 @@ class KirariVideoCache {
       return target;
     }
 
+    await _removeStalePartials(root);
     final temporary = File('${target.path}.part');
     Object? lastError;
     for (var attempt = 0; attempt < 3; attempt++) {
@@ -105,6 +106,20 @@ class KirariVideoCache {
       }
     }
     throw StateError('Unable to cache Kirari video: $lastError');
+  }
+
+  Future<void> _removeStalePartials(Directory root) async {
+    final cutoff = DateTime.now().subtract(const Duration(days: 1));
+    await for (final entity in root.list(followLinks: false)) {
+      if (entity is! File || !entity.path.endsWith('.part')) continue;
+      try {
+        if ((await entity.stat()).modified.isBefore(cutoff)) {
+          await entity.delete();
+        }
+      } catch (_) {
+        // A concurrent writer may still own this temporary file.
+      }
+    }
   }
 
   Future<void> _prune({required String excluding}) async {
