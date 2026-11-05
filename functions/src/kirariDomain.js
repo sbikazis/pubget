@@ -1079,7 +1079,20 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         await isBlockedPair(uid, reel.creatorId)) {
       fail("not-found", "Kirari video not found.");
     }
-    return { id: snap.id, ...reel };
+    const [creator, liked, saved] = await Promise.all([
+      db.collection("public_profiles").doc(reel.creatorId).get(),
+      reelRef(reelId).collection("actions").doc(uid + "_like").get(),
+      reelRef(reelId).collection("actions").doc(uid + "_save").get(),
+    ]);
+    const creatorData = creator.exists ? creator.data() || {} : {};
+    return {
+      id: snap.id,
+      ...reel,
+      creatorUsername: creatorData.username || creatorData.displayName || "",
+      creatorAvatarUrl: creatorData.avatarUrl || "",
+      viewerLiked: liked.exists,
+      viewerSaved: saved.exists,
+    };
   }
 
   async function getReelsByAudio(request) {
