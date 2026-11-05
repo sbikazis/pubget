@@ -113,7 +113,7 @@ function buildAudioAttribution(audioId, audioData) {
   if (!audioId || !audioData) return null;
   return {
     audioId,
-    title: audioData.title || "Original audio",
+    title: audioData.title || audioData.displayName || audioData.name || "Original audio",
     artist: audioData.artist || "",
     license: audioData.license || "unknown",
     attribution: audioData.attribution || "",
