@@ -228,9 +228,17 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const itemRef = reels().doc(item.id);
       const creatorId = item.creatorId;
       if (!creatorProfiles.has(creatorId)) {
-        creatorProfiles.set(creatorId, creatorId
-          ? db.collection("public_profiles").doc(creatorId).get()
-          : Promise.resolve(null));
+        let profilePromise = Promise.resolve(null);
+        if (creatorId) {
+          try {
+            profilePromise = db.collection("public_profiles")
+              .doc(creatorId).get().catch(() => null);
+          } catch (_) {
+            // Lightweight test doubles and unavailable profile projections
+            // must not break an otherwise valid published video feed.
+          }
+        }
+        creatorProfiles.set(creatorId, profilePromise);
       }
       const [liked, saved, creator] = await Promise.all([
         itemRef.collection("actions").doc(uid + "_like").get(),
