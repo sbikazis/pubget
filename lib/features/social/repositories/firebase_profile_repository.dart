@@ -85,7 +85,7 @@ final class FirebaseProfileRepository implements ProfileRepository {
       await _functions.httpsCallable('updateSocialProfile').call<void>(
         <String, dynamic>{...update.toMap()},
       );
-      return getOwnProfile(userId);
+      return await getOwnProfile(userId);
     } on Object catch (error) {
       return FailureResult<PubgetUser>(
         mapFirebaseFailure(error, message: 'Could not update your profile.'),
