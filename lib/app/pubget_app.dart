@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -629,7 +630,6 @@ class PubgetApp extends StatelessWidget {
       ),
       FirebaseProfileRepository(
         firestore: FirebaseFirestore.instance,
-        storage: FirebaseStorage.instance,
       ),
       FirebaseSocialRepository(
         firestore: FirebaseFirestore.instance,
@@ -650,7 +650,6 @@ class PubgetApp extends StatelessWidget {
       FirebaseChatRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
-        storage: FirebaseStorage.instance,
       ),
       FirebaseNotificationRepository(
         firestore: FirebaseFirestore.instance,
@@ -669,7 +668,6 @@ class PubgetApp extends StatelessWidget {
       FirebasePrivateChatRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
-        storage: FirebaseStorage.instance,
       ),
       FirebaseEventRepository(
         firestore: FirebaseFirestore.instance,
