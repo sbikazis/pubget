@@ -6,6 +6,7 @@ import 'firestore_media_metadata_store.dart';
 import 'in_memory_media_metadata_store.dart';
 import 'media_compressor.dart';
 import 'media_repository.dart';
+import 'media_kind.dart';
 import 'media_storage_provider.dart';
 import 'media_upload_service.dart';
 import 'memory_media_storage_provider.dart';
