@@ -407,11 +407,38 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     );
   }
 
-  Future<void> _runAction(String reelId, String kind) async {
+  Future<void> _runAction(
+    String reelId,
+    String kind, {
+    int? index,
+  }) async {
+    KirariReel? previous;
+    var actionKind = kind;
+    if (index != null && index >= 0 && index < _items.length) {
+      previous = _items[index];
+      if (kind == 'like' || kind == 'unlike') {
+        actionKind = previous.viewerLiked ? 'unlike' : 'like';
+        _items[index] = previous.copyWith(
+          viewerLiked: !previous.viewerLiked,
+          likesCount: previous.viewerLiked
+              ? (previous.likesCount > 0 ? previous.likesCount - 1 : 0)
+              : previous.likesCount + 1,
+        );
+      } else if (kind == 'save' || kind == 'unsave') {
+        actionKind = previous.viewerSaved ? 'unsave' : 'save';
+        _items[index] = previous.copyWith(
+          viewerSaved: !previous.viewerSaved,
+        );
+      }
+      if (mounted) setState(() {});
+    }
     try {
-      await _repository.action(reelId, kind);
+      await _repository.action(reelId, actionKind);
     } catch (_) {
       if (!mounted) return;
+      if (previous != null && index != null && index < _items.length) {
+        setState(() => _items[index] = previous!);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(KirariCopy.of(context).actionError)),
       );
@@ -517,8 +544,10 @@ class _KirariFeedPageState extends State<KirariFeedPage>
                 children: [
                   InkWell(
                     onTap: () => AppNavigation.go(context, PubgetLinks.profilePath(reel.creatorId)),
-                    child: Text('@${reel.creatorId}',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      '@${reel.creatorUsername.isNotEmpty ? reel.creatorUsername : reel.creatorId}',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(reel.caption,
@@ -534,18 +563,27 @@ class _KirariFeedPageState extends State<KirariFeedPage>
               child: Column(
                 children: [
                   IconButton(
-                    color: Colors.white,
-                    onPressed: () => _runAction(reel.id, 'like'),
-                    icon: const Icon(Icons.favorite_border, size: 30),
+                    color: reel.viewerLiked ? Colors.redAccent : Colors.white,
+                    onPressed: () => _runAction(reel.id, 'like', index: index),
+                    icon: Icon(
+                      reel.viewerLiked ? Icons.favorite : Icons.favorite_border,
+                      size: 30,
+                    ),
                   ),
                   Text('${reel.likesCount}', style: const TextStyle(color: Colors.white)),
                   const SizedBox(height: 16),
                   IconButton(
-                    color: Colors.white,
-                    onPressed: () => _runAction(reel.id, 'save'),
-                    icon: const Icon(Icons.bookmark_border, size: 28),
+                    color: reel.viewerSaved ? Colors.amber : Colors.white,
+                    onPressed: () => _runAction(reel.id, 'save', index: index),
+                    icon: Icon(
+                      reel.viewerSaved ? Icons.bookmark : Icons.bookmark_border,
+                      size: 28,
+                    ),
                   ),
-                  Text(copy.save, style: const TextStyle(color: Colors.white)),
+                  Text(
+                    reel.viewerSaved ? 'Saved' : copy.save,
+                    style: const TextStyle(color: Colors.white),
+                  ),
                   const SizedBox(height: 16),
                   IconButton(
                     color: Colors.white,
