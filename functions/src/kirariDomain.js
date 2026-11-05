@@ -832,6 +832,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const { creditedSeconds: credited, creditedDelta, verifiedPercent } = progress;
       const viewerData = viewer.data() || {};
       const lastQualifiedAt = viewerData.lastQualifiedAt?.toMillis?.() || 0;
+      const duration = Math.max(3, Number(reel.data().durationSeconds) || 60);
       const qualified = reel.data().creatorId !== uid &&
         !data.qualified && verifiedPercent >= 100 * KIRARI.qualifiedViewSeconds / duration &&
         Date.now() - lastQualifiedAt >= 24 * 60 * 60 * 1000;
