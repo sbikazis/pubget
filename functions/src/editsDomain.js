@@ -1126,11 +1126,15 @@ function createEditsDomain({
       const comment = await tx.get(commentRef);
       if (!comment.exists) return;
       if (action === "report") {
+        if (comment.data()?.authorId === actor) {
+          throw new HttpsError("failed-precondition", "You cannot report your own comment.");
+        }
+        reportedComment = { creatorId: comment.data()?.authorId || null };
         const reportRef = commentRef.collection("reports").doc(actor);
         const existing = await tx.get(reportRef);
-        if (existing.exists) return;
-        tx.create(reportRef, { actor, createdAt: FieldValue.serverTimestamp() });
-        reportedComment = { creatorId: comment.data()?.authorId || null };
+        if (!existing.exists) {
+          tx.create(reportRef, { actor, createdAt: FieldValue.serverTimestamp() });
+        }
         return;
       }
       if (action === "delete") {

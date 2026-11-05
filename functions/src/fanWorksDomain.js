@@ -1203,18 +1203,19 @@ function createFanWorksDomain({
         return;
       }
       if (action === "report") {
-        const reportRef = commentRef.collection("reports").doc(actor);
-        const existing = await transaction.get(reportRef);
-        if (existing.exists) return;
         if (comment.data()?.authorId === actor) {
           throw new HttpsError("failed-precondition", "You cannot report your own comment.");
         }
-        transaction.create(reportRef, {
-          reporterId: actor,
-          createdAt: FieldValue.serverTimestamp(),
-        });
-        transaction.update(commentRef, { reported: true });
         reportedComment = { creatorId: comment.data()?.authorId || null };
+        const reportRef = commentRef.collection("reports").doc(actor);
+        const existing = await transaction.get(reportRef);
+        if (!existing.exists) {
+          transaction.create(reportRef, {
+            reporterId: actor,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+          transaction.update(commentRef, { reported: true });
+        }
         return;
       }
       const likeRef = commentRef.collection("likes").doc(actor);
