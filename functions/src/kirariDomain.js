@@ -179,6 +179,21 @@ function shouldCountEarlySkip({
     reelStatus === "published";
 }
 
+function calculateVerifiedPlayback({
+  previousCreditedSeconds, lastHeartbeatAt, now = Date.now(), durationSeconds,
+}) {
+  const last = Number(lastHeartbeatAt) || now;
+  const elapsed = clamp((now - last) / 1000, 0, KIRARI.maxWatchEventSeconds);
+  const duration = Math.max(3, Number(durationSeconds) || 60);
+  const previousCredited = Math.max(0, Number(previousCreditedSeconds) || 0);
+  const creditedSeconds = Math.min(previousCredited + elapsed, duration);
+  return {
+    creditedSeconds,
+    creditedDelta: Math.max(0, creditedSeconds - previousCredited),
+    verifiedPercent: creditedSeconds / duration * 100,
+  };
+}
+
 function isFeedCursorAfter(score, id, afterScore, afterId) {
   if (!Number.isFinite(afterScore) || !afterId) return true;
   return score < afterScore || (score === afterScore && String(id).localeCompare(String(afterId)) > 0);
@@ -805,16 +820,16 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       if (event.exists) return;
       const data = session.data();
       if (data.expiresAt?.toMillis?.() < Date.now()) fail("failed-precondition", "Playback session expired.");
-      const last = data.lastHeartbeatAt?.toMillis?.() || Date.now();
-      const elapsed = clamp((Date.now() - last) / 1000, 0, KIRARI.maxWatchEventSeconds);
-      const duration = Math.max(3, Number(reel.data().durationSeconds) || 60);
-      const previousCredited = Math.max(0, Number(data.creditedSeconds || 0));
       // Watch duration and completion are derived exclusively from elapsed
       // server time between accepted heartbeats. Client watchSeconds/percent
       // are intentionally ignored so forged percentages cannot qualify views.
-      const credited = Math.min(previousCredited + elapsed, duration);
-      const creditedDelta = Math.max(0, credited - previousCredited);
-      const verifiedPercent = credited / duration * 100;
+      const progress = calculateVerifiedPlayback({
+        previousCreditedSeconds: data.creditedSeconds,
+        lastHeartbeatAt: data.lastHeartbeatAt?.toMillis?.() || Date.now(),
+        now: Date.now(),
+        durationSeconds: reel.data().durationSeconds,
+      });
+      const { creditedSeconds: credited, creditedDelta, verifiedPercent } = progress;
       const viewerData = viewer.data() || {};
       const lastQualifiedAt = viewerData.lastQualifiedAt?.toMillis?.() || 0;
       const qualified = reel.data().creatorId !== uid &&
@@ -1312,5 +1327,5 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
 module.exports = {
   KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings, rankKirari,
-  isFeedCursorAfter, shouldCountEarlySkip, diversifyKirari, createKirariDomain,
+  isFeedCursorAfter, shouldCountEarlySkip, calculateVerifiedPlayback, diversifyKirari, createKirariDomain,
 };
