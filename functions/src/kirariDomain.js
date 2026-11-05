@@ -221,6 +221,33 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return id;
   }
   function reelRef(id) { return reels().doc(inputId(id, "reelId")); }
+
+  async function attachViewerState(items, uid) {
+    const creatorProfiles = new Map();
+    return Promise.all(items.map(async (item) => {
+      const itemRef = reels().doc(item.id);
+      const creatorId = item.creatorId;
+      if (!creatorProfiles.has(creatorId)) {
+        creatorProfiles.set(creatorId, creatorId
+          ? db.collection("public_profiles").doc(creatorId).get()
+          : Promise.resolve(null));
+      }
+      const [liked, saved, creator] = await Promise.all([
+        itemRef.collection("actions").doc(uid + "_like").get(),
+        itemRef.collection("actions").doc(uid + "_save").get(),
+        creatorProfiles.get(creatorId),
+      ]);
+      const creatorData = creator && creator.exists ? creator.data() || {} : {};
+      return {
+        ...item,
+        viewerLiked: liked.exists,
+        viewerSaved: saved.exists,
+        creatorUsername: creatorData.username || creatorData.displayName || "",
+        creatorAvatarUrl: creatorData.avatarUrl || "",
+      };
+    }));
+  }
+
   function assertTransition(from, to) {
     if (!transitionStatus(from, to)) {
       fail("failed-precondition", `Invalid Kirari state transition: ${from} → ${to}.`);
@@ -1008,7 +1035,12 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       .where("status", "==", "published")
       .where("moderationStatus", "==", "approved")
       .orderBy("publishedAt", "desc").limit(limit).get();
-    return { items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
+    return {
+      items: await attachViewerState(
+        snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+        uid,
+      ),
+    };
   }
 
   async function getAudioLibrary(request) {
@@ -1079,20 +1111,10 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         await isBlockedPair(uid, reel.creatorId)) {
       fail("not-found", "Kirari video not found.");
     }
-    const [creator, liked, saved] = await Promise.all([
-      db.collection("public_profiles").doc(reel.creatorId).get(),
-      reelRef(reelId).collection("actions").doc(uid + "_like").get(),
-      reelRef(reelId).collection("actions").doc(uid + "_save").get(),
-    ]);
-    const creatorData = creator.exists ? creator.data() || {} : {};
-    return {
-      id: snap.id,
-      ...reel,
-      creatorUsername: creatorData.username || creatorData.displayName || "",
-      creatorAvatarUrl: creatorData.avatarUrl || "",
-      viewerLiked: liked.exists,
-      viewerSaved: saved.exists,
-    };
+    const [enriched] = await attachViewerState([
+      { id: snap.id, ...reel },
+    ], uid);
+    return enriched;
   }
 
   async function getReelsByAudio(request) {
@@ -1104,8 +1126,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       .where("audioId", "==", audioId)
       .orderBy("publishedAt", "desc").limit(limit).get();
     const excluded = await excludedCreatorIds(uid);
-    return { items: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-      .filter((item) => !excluded.has(item.creatorId)) };
+    const items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      .filter((item) => !excluded.has(item.creatorId));
+    return { items: await attachViewerState(items, uid) };
   }
 
   async function getComments(request) {
@@ -1159,7 +1182,10 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const excluded = await excludedCreatorIds(uid);
     const items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
       .filter((item) => !excluded.has(item.creatorId));
-    return { items: items.slice(0, limit), hasMore: items.length > limit };
+    return {
+      items: await attachViewerState(items.slice(0, limit), uid),
+      hasMore: items.length > limit,
+    };
   }
 
   async function getFeed(request) {
@@ -1281,9 +1307,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const page = candidates.slice(0, limit);
       const last = page[page.length - 1];
       return {
-        items: page.map((item) => ({
+        items: await attachViewerState(page.map((item) => ({
           ...item, rankingScore: Number(item.rankingScore) || 0,
-        })),
+        })), uid),
         hasMore,
         nextCursor: last ? {
           cursorVersion: 3,
@@ -1406,7 +1432,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       ...item, rankingScore: _rank ?? item.rankingScore ?? 0,
     }));
     return {
-      items: page,
+      items: await attachViewerState(page, uid),
       hasMore,
       nextCursor: scanAfterId ? {
         cursorVersion: 2,
