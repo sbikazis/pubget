@@ -1157,7 +1157,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (Number.isFinite(afterScore) && afterId) {
       items = items.filter((item) => isFeedCursorAfter(item._rank, item.id, afterScore, afterId));
     }
-    const page = items.slice(0, limit).map(({ _rank, ...item }) => ({
+    const page = items.slice(0, limit).map(({ _rank, _relevant, ...item }) => ({
       ...item, rankingScore: _rank ?? item.rankingScore ?? 0,
     }));
     return {
