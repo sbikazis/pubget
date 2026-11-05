@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'default_media_repository.dart';
 import 'firestore_media_metadata_store.dart';
+import 'in_memory_media_metadata_store.dart';
 import 'media_compressor.dart';
 import 'media_repository.dart';
 import 'media_storage_provider.dart';
@@ -32,7 +33,7 @@ MediaRepository createMediaRepository({
     );
     return DefaultMediaRepository(
       uploadService: upload,
-      store: FirestoreMediaMetadataStore(firestore: firestore),
+      store: InMemoryMediaMetadataStore(),
       provider: storage,
     );
   }
