@@ -287,6 +287,39 @@ async function authorizePublishedOwnerAsset(
       if (Object.values(document.fields ?? {}).some((value) => value.stringValue === key)) return true;
     }
 
+    // Event options are nested in configuration arrays, so the callable
+    // maintains a compact mediaKeys index. Only published/non-deleted events
+    // make these owner-scoped option images visible to other participants.
+    const eventRefs = await fetch(`${base}:runQuery`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: "events" }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: "mediaKeys" },
+              op: "ARRAY_CONTAINS",
+              value: { stringValue: key },
+            },
+          },
+          limit: 5,
+        },
+      }),
+    });
+    if (eventRefs.ok) {
+      const rows = await eventRefs.json() as Array<{
+        document?: { fields?: Record<string, { stringValue?: string }> };
+      }>;
+      if (rows.some((row) => {
+        const status = row.document?.fields?.status?.stringValue?.toLowerCase();
+        return status != null && !["draft", "deleted", "archived"].includes(status);
+      })) return true;
+    }
+
     // Group and event documents expose only their published image references.
     // Firestore rules still decide whether the caller may query each collection.
     for (const [collection, fields] of [
