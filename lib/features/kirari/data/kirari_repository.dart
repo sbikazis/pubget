@@ -132,6 +132,11 @@ class FirebaseKirariRepository implements KirariRepository {
   final FirebaseFunctions _functions;
   final FirebaseStorage _storage;
   final ImagePicker _picker;
+  final Map<String, Future<String>> _downloadUrlCache = <String, Future<String>>{};
+
+  Future<String> _downloadUrl(String storagePath) {
+    return _downloadUrlCache.putIfAbsent(storagePath, () => _storage.ref(storagePath).getDownloadURL());
+  }
 
   Future<Map<dynamic, dynamic>> _call(String name, Map<String, dynamic> data) async {
     final result = await _functions.httpsCallable(name).call<Map<dynamic, dynamic>>(data);
@@ -156,7 +161,7 @@ class FirebaseKirariRepository implements KirariRepository {
         final videoPath = preferred is Map ? preferred['path'] as String? : null;
         final coverPath = map['coverPath'] as String?;
         if (videoPath == null || videoPath.isEmpty) continue;
-        final videoUrl = await _storage.ref(videoPath).getDownloadURL();
+        final videoUrl = await _downloadUrl(videoPath);
         final coverUrl = coverPath == null || coverPath.isEmpty
             ? ''
             : await _storage.ref(coverPath).getDownloadURL();
@@ -269,7 +274,7 @@ class FirebaseKirariRepository implements KirariRepository {
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality}) async {
     final path = reel.renditionPaths['$quality'];
     if (path == null || path.isEmpty) return reel.videoUrl;
-    return _storage.ref(path).getDownloadURL();
+    return _downloadUrl(path);
   }
 
   @override
@@ -379,11 +384,18 @@ class FirebaseKirariRepository implements KirariRepository {
         'uploadedBy': 'kirari-client',
       }),
     );
-    task.snapshotEvents.listen((snapshot) {
+    // Firebase Storage performs resumable transfers internally. Scope the
+    // progress listener to this task so retries do not retain stale listeners.
+    final subscription = task.snapshotEvents.listen((snapshot) {
       final total = snapshot.totalBytes;
       if (total > 0) onProgress(snapshot.bytesTransferred / total);
     });
-    await task;
+    try {
+      await task;
+      onProgress(1);
+    } finally {
+      await subscription.cancel();
+    }
   }
 
   @override
