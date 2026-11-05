@@ -25,13 +25,15 @@ final class FirebaseProfileRepository implements ProfileRepository {
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _mediaUploader = mediaUploader ?? RepositoryMediaUrlUploader(
-         repository: createMediaRepository(),
-       );
+       _mediaUploader = mediaUploader;
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
-  final MediaUrlUploader _mediaUploader;
+  MediaUrlUploader? _mediaUploader;
+
+  MediaUrlUploader get _uploader => _mediaUploader ??= RepositoryMediaUrlUploader(
+    repository: createMediaRepository(),
+  );
 
   @override
   Future<Result<PublicProfile>> getPublicProfile(String userId) async {
@@ -102,7 +104,7 @@ final class FirebaseProfileRepository implements ProfileRepository {
         ValidationError('Choose a valid profile photo.'),
       );
     }
-    return _mediaUploader.uploadImage(
+    return _uploader.uploadImage(
       ownerUid: userId,
       bytes: bytes,
       claimedContentType: contentType,
@@ -121,7 +123,7 @@ final class FirebaseProfileRepository implements ProfileRepository {
         ValidationError('Choose a valid cover photo.'),
       );
     }
-    final uploaded = await _mediaUploader.uploadImage(
+    final uploaded = await _uploader.uploadImage(
       ownerUid: userId,
       bytes: bytes,
       claimedContentType: contentType,
