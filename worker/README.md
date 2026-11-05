@@ -43,7 +43,10 @@ npx wrangler deploy --config worker/wrangler.toml
 - Signed playback URLs are bearer URLs and expire after ten minutes. Avoid
   logging their query strings.
 - Generic keys (`images/{uid}/{file}`, `reels/{uid}/{file}`,
-  `audio/{uid}/{file}`) are owner-scoped.
+  `audio/{uid}/{file}`) are owner-scoped. Other signed-in users can resolve
+  image keys only when a public profile, published group, or published event
+  explicitly references the key. Event callables maintain a `mediaKeys` index
+  for nested poll-option images; drafts and deleted events are not exposed.
 - Conversation keys use `groups/{groupId}/{uid}/{file}` or
   `privateChats/{chatId}/{uid}/{file}`. Upload and resolve requests re-check
   the caller's Firebase ID token against Firestore Security Rules: group root
