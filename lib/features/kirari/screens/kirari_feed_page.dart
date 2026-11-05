@@ -731,10 +731,26 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                                 trailing: deleted ? null : Wrap(
                                   children: [
                                     IconButton(
-                                      tooltip: 'Like comment',
-                                      icon: const Icon(Icons.favorite_border, size: 19),
+                                      tooltip: item['viewerLiked'] == true
+                                          ? 'Unlike comment'
+                                          : 'Like comment',
+                                      color: item['viewerLiked'] == true
+                                          ? Colors.redAccent
+                                          : null,
+                                      icon: Icon(
+                                        item['viewerLiked'] == true
+                                            ? Icons.favorite
+                                            : Icons.favorite_border,
+                                        size: 19,
+                                      ),
                                       onPressed: () async {
-                                        await widget.repository.commentAction(widget.reel.id, commentId, 'like');
+                                        await widget.repository.commentAction(
+                                          widget.reel.id,
+                                          commentId,
+                                          item['viewerLiked'] == true
+                                              ? 'unlike'
+                                              : 'like',
+                                        );
                                         await _load();
                                       },
                                     ),
