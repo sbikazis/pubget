@@ -48,8 +48,17 @@ test("Kirari ranking is bounded and reacts to relevance and negative feedback", 
   const relevant = rankKirari(base, { interests: ["one_piece"], creatorIds: [] }, now);
   const irrelevant = rankKirari(base, { interests: ["bleach"], creatorIds: [] }, now);
   const negative = rankKirari({ ...base, negativeFeedbackCount: 100 }, { interests: ["one_piece"] }, now);
+  const strongWatch = rankKirari({
+    ...base, durationSeconds: 20, totalQualifiedWatchSeconds: 1800,
+    earlySkipCount: 0, replayCount: 25,
+  }, { interests: ["one_piece"] }, now);
+  const earlySkip = rankKirari({
+    ...base, durationSeconds: 20, totalQualifiedWatchSeconds: 100,
+    earlySkipCount: 80, replayCount: 0,
+  }, { interests: ["one_piece"] }, now);
   assert.ok(relevant > irrelevant);
   assert.ok(relevant > negative);
+  assert.ok(strongWatch > earlySkip, "qualified watch and replay should improve ranking over early skips");
   assert.ok(relevant >= 0 && relevant <= 100);
 });
 
