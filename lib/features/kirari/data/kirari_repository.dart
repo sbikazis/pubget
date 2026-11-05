@@ -135,7 +135,7 @@ abstract interface class KirariRepository {
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24});
   Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20});
   Future<KirariReel> getReel(String reelId);
-  Future<List<KirariReel>> getSavedReels({int limit = 30});
+  Future<KirariFeedPageResult> getSavedReels({int limit = 30, Map<String, dynamic>? cursor});
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality});
   Future<void> giveCreatorRespect({required String creatorId, required int value});
   Future<List<Map<String, dynamic>>> getComments(String reelId, {String? before, int limit = 30});
@@ -279,9 +279,19 @@ class FirebaseKirariRepository implements KirariRepository {
   }
 
   @override
-  Future<List<KirariReel>> getSavedReels({int limit = 30}) async {
-    final result = await _call('getSavedKirariReels', {'limit': limit});
-    return _resolveReels(result['items']);
+  Future<KirariFeedPageResult> getSavedReels({int limit = 30, Map<String, dynamic>? cursor}) async {
+    final result = await _call('getSavedKirariReels', {
+      'limit': limit,
+      if (cursor != null && cursor['cursor'] != null) 'cursor': cursor['cursor'],
+    });
+    final nextCursor = result['nextCursor'];
+    return KirariFeedPageResult(
+      await _resolveReels(result['items']),
+      hasMore: result['hasMore'] == true,
+      nextCursor: nextCursor is String && nextCursor.isNotEmpty
+          ? <String, dynamic>{'cursor': nextCursor}
+          : null,
+    );
   }
 
   @override
@@ -571,7 +581,7 @@ class UnavailableKirariRepository implements KirariRepository {
   @override
   Future<KirariReel> getReel(String reelId) async => throw _unavailable();
   @override
-  Future<List<KirariReel>> getSavedReels({int limit = 30}) async => throw _unavailable();
+  Future<KirariFeedPageResult> getSavedReels({int limit = 30, Map<String, dynamic>? cursor}) async => throw _unavailable();
   @override
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24}) async => throw _unavailable();
   @override
