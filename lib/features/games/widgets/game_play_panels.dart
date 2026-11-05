@@ -694,7 +694,7 @@ class _EmojiGuessPlayState extends State<EmojiGuessPlay> {
 
 bool _online(BuildContext context) {
   try {
-    return context.read<NetworkService>().isOnline;
+    return context.read<NetworkService>().canAttemptNetworkRequest;
   } on ProviderNotFoundException {
     return true;
   }
