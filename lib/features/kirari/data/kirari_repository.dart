@@ -369,8 +369,9 @@ class FirebaseKirariRepository implements KirariRepository {
 
     if (Platform.isAndroid) {
       _androidUploadChannel.setMethodCallHandler((call) async {
-        if (call.method == 'progress' && call.arguments is Map) {
-          final progress = (call.arguments['progress'] as num?)?.toDouble();
+        final arguments = call.arguments;
+        if (call.method == 'progress' && arguments is Map) {
+          final progress = (arguments['progress'] as num?)?.toDouble();
           if (progress != null) onProgress(progress.clamp(0, 1).toDouble());
         }
       });
