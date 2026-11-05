@@ -10,7 +10,7 @@ import 'package:pubget/core/media/r2_media_storage_provider.dart';
 void main() {
   group('R2MediaStorageProvider conversation scope', () {
     test('sends scope identifiers with proxied uploads', () async {
-      late Map<String, String> fields;
+      late String multipartBody;
       final client = MockClient((request) async {
         expect(request.method, 'POST');
         expect(request.url.path, '/upload');
@@ -20,8 +20,9 @@ void main() {
               .value,
           'Bearer test-token',
         );
-        final multipart = request as http.MultipartRequest;
-        fields = Map<String, String>.from(multipart.fields);
+        // MockClient normalizes streamed multipart requests to http.Request.
+        // Inspect the encoded body rather than casting back to MultipartRequest.
+        multipartBody = request.body;
         return http.Response(jsonEncode({'key': 'groups/g1/alice/file.jpg'}), 201);
       });
       final provider = R2MediaStorageProvider(
@@ -41,9 +42,12 @@ void main() {
       );
 
       expect(key, 'groups/g1/alice/file.jpg');
-      expect(fields['scopeType'], 'groups');
-      expect(fields['scopeId'], 'g1');
-      expect(fields['kind'], 'image');
+      expect(multipartBody, contains('name="scopeType"'));
+      expect(multipartBody, contains('groups'));
+      expect(multipartBody, contains('name="scopeId"'));
+      expect(multipartBody, contains('g1'));
+      expect(multipartBody, contains('name="kind"'));
+      expect(multipartBody, contains('image'));
     });
 
     test('resolves a conversation key using the signed-in identity', () async {
