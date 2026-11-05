@@ -82,14 +82,22 @@ class MainActivity : FlutterActivity() {
                 val sessionKey = "session_$key"
                 val pathKey = "path_$key"
                 val sizeKey = "size_$key"
+                val modifiedKey = "modified_$key"
+                val sessionTimeKey = "session_time_$key"
 
-                // Never attach a previous resumable session to a different file.
+                // Never attach a previous session to a different or stale file.
+                val sessionAge = System.currentTimeMillis() -
+                    preferences.getLong(sessionTimeKey, 0L)
                 if (preferences.getString(pathKey, null) != source.absolutePath ||
-                    preferences.getLong(sizeKey, -1L) != source.length()) {
+                    preferences.getLong(sizeKey, -1L) != source.length() ||
+                    preferences.getLong(modifiedKey, -1L) != source.lastModified() ||
+                    sessionAge > 6L * 24L * 60L * 60L * 1000L) {
                     preferences.edit()
                         .remove(sessionKey)
                         .remove(pathKey)
                         .remove(sizeKey)
+                        .remove(modifiedKey)
+                        .remove(sessionTimeKey)
                         .apply()
                 }
 
@@ -111,6 +119,8 @@ class MainActivity : FlutterActivity() {
                             .putString(sessionKey, uri.toString())
                             .putString(pathKey, source.absolutePath)
                             .putLong(sizeKey, source.length())
+                            .putLong(modifiedKey, source.lastModified())
+                            .putLong(sessionTimeKey, System.currentTimeMillis())
                             .apply()
                     }
                     val total = snapshot.totalByteCount
@@ -129,6 +139,8 @@ class MainActivity : FlutterActivity() {
                         .remove(sessionKey)
                         .remove(pathKey)
                         .remove(sizeKey)
+                        .remove(modifiedKey)
+                        .remove(sessionTimeKey)
                         .apply()
                     result.success(null)
                 }
