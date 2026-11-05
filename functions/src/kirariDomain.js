@@ -1130,10 +1130,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       fail("invalid-argument", "Unknown Kirari feed.");
     }
     const limit = Math.round(clamp(request.data?.limit || KIRARI.feedPageSize, 1, 12));
-    const cursorId = inputId(
-      request.data?.scanAfterId || request.data?.afterId || "",
-      "scanAfterId",
-    );
+    const cursorValue = request.data?.scanAfterId || request.data?.afterId || null;
+    const cursorId = cursorValue ? inputId(cursorValue, "scanAfterId") : null;
     const userRef = db.collection("users").doc(uid);
     const [profileSnap, blockedByA, blockedByB, blockedByLegacy, interests, follows, muted, notInterested] =
       await Promise.all([
@@ -1201,51 +1199,70 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const scanPageSize = 100;
     const maxScan = 1000;
 
-    while (accepted.length < limit + 1 && scanned < maxScan && !exhausted) {
-      const batch = await query.limit(Math.min(scanPageSize, maxScan - scanned)).get();
+    while (scanned < maxScan && !exhausted) {
+      const requestSize = Math.min(scanPageSize, maxScan - scanned);
+      const batch = await query.limit(requestSize).get();
       const docs = batch.docs || [];
       if (docs.length === 0) {
         exhausted = true;
         break;
       }
-      scanAfterId = docs[docs.length - 1].id;
-      scanned += docs.length;
-      query = query.startAfter(docs[docs.length - 1]);
-
-      const candidates = docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((item) => !blockedIds.has(item.creatorId) &&
+      const candidates = docs.map((doc) => ({ doc, item: { id: doc.id, ...doc.data() } }))
+        .filter(({ item }) => !blockedIds.has(item.creatorId) &&
           !mutedIds.has(item.creatorId) && !notInterestedIds.has(item.id) &&
           item.creatorId !== uid &&
           (type !== "following" || creatorIds.has(item.creatorId)));
+      const seenIds = new Set();
       if (type === "forYou" && candidates.length) {
-        const seenRefs = candidates.map((item) =>
-          userRef.collection("kirariSeen").doc(item.id));
-        const seenSnaps = await Promise.all(seenRefs.map((ref) => ref.get()));
-        const seenIds = new Set(seenSnaps.filter((snap) => snap.exists).map((snap) => snap.id));
-        for (const item of candidates) {
-          if (seenIds.has(item.id)) continue;
-          const tags = [
-            ...(item.hashtags || []), ...(item.animeIds || []),
-            ...(item.characterIds || []), item.animeId, item.audioId,
-          ].filter(Boolean);
-          const relevant = interestIds.length > 0 && tags.some((tag) => interestIds.includes(tag));
-          accepted.push({
-            ...item,
-            _relevant: relevant,
-            _rank: rankKirari(item, profileData, now),
-          });
-        }
-      } else {
-        for (const item of candidates) {
-          accepted.push({
-            ...item,
-            _rank: type === "trending"
-              ? clamp(item.velocityScore, 0, 1000000000)
-              : clamp(item.rankingScore, 0, 100),
-          });
+        const seenSnaps = await Promise.all(candidates.map(({ item }) =>
+          userRef.collection("kirariSeen").doc(item.id).get()));
+        for (const seen of seenSnaps) if (seen.exists) seenIds.add(seen.id);
+      }
+      let stopScanning = false;
+      let processedInBatch = 0;
+      for (const { doc, item } of docs.map((doc) => ({
+        doc, item: { id: doc.id, ...doc.data() },
+      }))) {
+        scanAfterId = doc.id;
+        scanned += 1;
+        processedInBatch += 1;
+        if (!blockedIds.has(item.creatorId) && !mutedIds.has(item.creatorId) &&
+            !notInterestedIds.has(item.id) && item.creatorId !== uid &&
+            (type !== "following" || creatorIds.has(item.creatorId)) &&
+            !(type === "forYou" && seenIds.has(item.id))) {
+          if (type === "forYou") {
+            const tags = [
+              ...(item.hashtags || []), ...(item.animeIds || []),
+              ...(item.characterIds || []), item.animeId, item.audioId,
+            ].filter(Boolean);
+            const relevant = interestIds.length > 0 && tags.some((tag) => interestIds.includes(tag));
+            accepted.push({
+              ...item, _relevant: relevant, _rank: rankKirari(item, profileData, now),
+            });
+          } else {
+            accepted.push({
+              ...item,
+              _rank: type === "trending"
+                ? clamp(item.velocityScore, 0, 1000000000)
+                : clamp(item.rankingScore, 0, 100),
+            });
+          }
+          const enough = type === "forYou"
+            ? diversifyKirari(
+              accepted.sort((a, b) => b._rank - a._rank || a.id.localeCompare(b.id)),
+              limit + 1, KIRARI.explorationRatio,
+            ).length >= limit + 1
+            : accepted.length >= limit + 1;
+          if (enough) {
+            stopScanning = true;
+            break;
+          }
         }
       }
-      exhausted = docs.length < Math.min(scanPageSize, maxScan - (scanned - docs.length));
+      if (stopScanning) break;
+      exhausted = docs.length < requestSize;
+      query = query.startAfter(docs[docs.length - 1]);
+      if (scanned >= maxScan) break;
     }
 
     let items = accepted;
