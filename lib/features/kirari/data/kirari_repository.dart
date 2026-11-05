@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 class KirariReel {
@@ -132,6 +133,7 @@ class FirebaseKirariRepository implements KirariRepository {
   final FirebaseFunctions _functions;
   final FirebaseStorage _storage;
   final ImagePicker _picker;
+  static const MethodChannel _androidUploadChannel = MethodChannel('pubget/kirari_upload');
   final Map<String, Future<String>> _downloadUrlCache = <String, Future<String>>{};
 
   Future<String> _downloadUrl(String storagePath) async {
@@ -365,6 +367,27 @@ class FirebaseKirariRepository implements KirariRepository {
       }
     }
 
+    if (Platform.isAndroid) {
+      _androidUploadChannel.setMethodCallHandler((call) async {
+        if (call.method == 'progress' && call.arguments is Map) {
+          final progress = (call.arguments['progress'] as num?)?.toDouble();
+          if (progress != null) onProgress(progress.clamp(0, 1).toDouble());
+        }
+      });
+      try {
+        await _androidUploadChannel.invokeMethod<void>('uploadSource', {
+          'storagePath': storagePath,
+          'localPath': file.absolute.path,
+        });
+        onProgress(1);
+      } finally {
+        await _androidUploadChannel.setMethodCallHandler(null);
+      }
+      return;
+    }
+
+    // iOS and other platforms use the Flutter StorageTask implementation.
+    // Android uses the native SDK overload with a persisted upload session URI.
     final task = reference.putFile(
       file,
       SettableMetadata(contentType: 'video/mp4', customMetadata: {
