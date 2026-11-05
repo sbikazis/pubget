@@ -135,10 +135,16 @@ class FirebaseKirariRepository implements KirariRepository {
   final Map<String, Future<String>> _downloadUrlCache = <String, Future<String>>{};
 
   Future<String> _downloadUrl(String storagePath) async {
-    final cached = _downloadUrlCache[storagePath];
-    if (cached != null) return cached;
+    final cached = _downloadUrlCache.remove(storagePath);
+    if (cached != null) {
+      _downloadUrlCache[storagePath] = cached;
+      return cached;
+    }
     final pending = _storage.ref(storagePath).getDownloadURL();
     _downloadUrlCache[storagePath] = pending;
+    while (_downloadUrlCache.length > 128) {
+      _downloadUrlCache.remove(_downloadUrlCache.keys.first);
+    }
     try {
       return await pending;
     } catch (_) {
@@ -150,6 +156,29 @@ class FirebaseKirariRepository implements KirariRepository {
   Future<Map<dynamic, dynamic>> _call(String name, Map<String, dynamic> data) async {
     final result = await _functions.httpsCallable(name).call<Map<dynamic, dynamic>>(data);
     return result.data;
+  }
+
+  Future<List<KirariReel>> _resolveReels(dynamic raw) async {
+    if (raw is! List) return const <KirariReel>[];
+    final resolved = await Future.wait(raw.whereType<Map>().map((value) async {
+      final map = Map<dynamic, dynamic>.from(value);
+      final variants = map['renditions'];
+      final paths = variants is Map ? variants : const <dynamic, dynamic>{};
+      final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
+      final videoPath = preferred is Map ? preferred['path'] as String? : null;
+      final coverPath = map['coverPath'] as String?;
+      if (videoPath == null || videoPath.isEmpty) return null;
+      final urls = await Future.wait<String>([
+        _downloadUrl(videoPath),
+        if (coverPath != null && coverPath.isNotEmpty) _downloadUrl(coverPath),
+      ]);
+      return KirariReel.fromMap({
+        ...map,
+        'playbackUrl': urls.first,
+        'coverUrl': urls.length > 1 ? urls[1] : '',
+      });
+    }));
+    return resolved.whereType<KirariReel>().toList(growable: false);
   }
 
   @override
@@ -191,74 +220,22 @@ class FirebaseKirariRepository implements KirariRepository {
   @override
   Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8}) async {
     final result = await _call('getKirariHashtagFeed', {'hashtag': hashtag, 'limit': limit});
-    final raw = result['items'];
-    final items = <KirariReel>[];
-    if (raw is List) {
-      for (final value in raw.whereType<Map>()) {
-        final map = Map<dynamic, dynamic>.from(value);
-        final variants = map['renditions'];
-        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
-        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
-        final videoPath = preferred is Map ? preferred['path'] as String? : null;
-        final coverPath = map['coverPath'] as String?;
-        if (videoPath == null || videoPath.isEmpty) continue;
-        final videoUrl = await _storage.ref(videoPath).getDownloadURL();
-        final coverUrl = coverPath == null || coverPath.isEmpty
-            ? '' : await _storage.ref(coverPath).getDownloadURL();
-        items.add(KirariReel.fromMap({...map, 'playbackUrl': videoUrl, 'coverUrl': coverUrl}));
-      }
-    }
-    return KirariFeedPageResult(items, hasMore: result['hasMore'] == true);
+    return KirariFeedPageResult(
+      await _resolveReels(result['items']),
+      hasMore: result['hasMore'] == true,
+    );
   }
 
   @override
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24}) async {
     final result = await _call('getKirariReelsByAudio', {'audioId': audioId, 'limit': limit});
-    final raw = result['items'];
-    final items = <KirariReel>[];
-    if (raw is List) {
-      for (final value in raw.whereType<Map>()) {
-        final map = Map<dynamic, dynamic>.from(value);
-        final variants = map['renditions'];
-        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
-        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
-        final videoPath = preferred is Map ? preferred['path'] as String? : null;
-        final coverPath = map['coverPath'] as String?;
-        if (videoPath == null || videoPath.isEmpty) continue;
-        items.add(KirariReel.fromMap({
-          ...map,
-          'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
-          'coverUrl': coverPath == null || coverPath.isEmpty
-              ? '' : await _storage.ref(coverPath).getDownloadURL(),
-        }));
-      }
-    }
-    return items;
+    return _resolveReels(result['items']);
   }
 
   @override
   Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20}) async {
     final result = await _call('getKirariCreatorReels', {'creatorId': creatorId, 'limit': limit});
-    final raw = result['items'];
-    final items = <KirariReel>[];
-    if (raw is List) {
-      for (final value in raw.whereType<Map>()) {
-        final map = Map<dynamic, dynamic>.from(value);
-        final variants = map['renditions'];
-        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
-        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
-        final videoPath = preferred is Map ? preferred['path'] as String? : null;
-        final coverPath = map['coverPath'] as String?;
-        if (videoPath == null || videoPath.isEmpty) continue;
-        items.add(KirariReel.fromMap({
-          ...map,
-          'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
-          'coverUrl': coverPath == null || coverPath.isEmpty
-              ? '' : await _storage.ref(coverPath).getDownloadURL(),
-        }));
-      }
-    }
-    return items;
+    return _resolveReels(result['items']);
   }
 
   @override
