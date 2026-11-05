@@ -12,6 +12,23 @@ import 'memory_media_storage_provider.dart';
 import 'r2_media_storage_provider.dart';
 import 'unavailable_media_repository.dart';
 
+/// Shared production provider used by chat and other feature-specific media
+/// flows that need a conversation-scoped R2 object key.
+R2MediaStorageProvider createR2MediaStorageProvider({
+  FirebaseAuth? auth,
+  String? workerUrlOverride,
+}) {
+  final config = resolveMediaBackendConfig(workerUrlOverride: workerUrlOverride);
+  if (!config.isConfigured) {
+    throw StateError('Cloudflare media storage is not configured.');
+  }
+  final firebaseAuth = auth ?? FirebaseAuth.instance;
+  return R2MediaStorageProvider(
+    workerUrl: config.workerUrl,
+    idTokenProvider: () async => await firebaseAuth.currentUser?.getIdToken(),
+  );
+}
+
 /// Builds the app-wide media repository. Firebase remains the identity and
 /// metadata layer; Cloudflare R2 is the only production destination for bytes.
 MediaRepository createMediaRepository({
@@ -44,12 +61,7 @@ MediaRepository createMediaRepository({
     );
   }
 
-  final firebaseAuth = auth ?? FirebaseAuth.instance;
-  final storage = R2MediaStorageProvider(
-    workerUrl: config.workerUrl,
-    idTokenProvider: () async =>
-        await firebaseAuth.currentUser?.getIdToken(),
-  );
+  final storage = createR2MediaStorageProvider(auth: auth, workerUrlOverride: workerUrlOverride);
   final upload = MediaUploadService(
     provider: storage,
     compressor: const DefaultMediaCompressor(),
