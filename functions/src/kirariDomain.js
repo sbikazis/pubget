@@ -1151,8 +1151,16 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     }
     const snap = await query.get();
     const docs = snap.docs.slice(0, limit);
+    const items = await Promise.all(docs.map(async (doc) => {
+      const like = await doc.ref.collection("likes").doc(uid).get();
+      return {
+        id: doc.id,
+        ...doc.data(),
+        viewerLiked: like.exists,
+      };
+    }));
     return {
-      items: docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+      items,
       hasMore: snap.docs.length > limit,
       nextCursor: docs.length ? docs[docs.length - 1].id : null,
     };
