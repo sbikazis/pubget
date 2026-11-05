@@ -1149,11 +1149,15 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
   async function getSavedReels(request) {
     const uid = auth(request);
     const limit = Math.round(clamp(request.data?.limit || 30, 1, 60));
-    const saved = await db.collection("users").doc(uid)
-      .collection("kirariSaved")
-      .orderBy("savedAt", "desc")
-      .limit(limit + 1)
-      .get();
+    const savedCollection = db.collection("users").doc(uid).collection("kirariSaved");
+    let query = savedCollection.orderBy("savedAt", "desc");
+    if (request.data?.cursor != null) {
+      const cursorId = inputId(request.data.cursor, "cursor");
+      const cursor = await savedCollection.doc(cursorId).get();
+      if (!cursor.exists) fail("invalid-argument", "The saved-video cursor is no longer valid.");
+      query = query.startAfter(cursor);
+    }
+    const saved = await query.limit(limit + 1).get();
     const docs = saved.docs.slice(0, limit);
     const candidates = await Promise.all(docs.map(async (doc) => {
       const reel = await reels().doc(doc.id).get();
@@ -1167,6 +1171,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return {
       items: await attachViewerState(candidates.filter(Boolean), uid),
       hasMore: saved.docs.length > limit,
+      nextCursor: docs.length ? docs[docs.length - 1].id : null,
     };
   }
 
