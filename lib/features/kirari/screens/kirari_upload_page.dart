@@ -193,6 +193,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     final position = controller.value.position.inMilliseconds / 1000;
     if (position >= _trim.end) {
       controller.pause();
+      _audioPreview.stop();
+      controller.setVolume(1);
       controller.seekTo(Duration(milliseconds: (_trim.start * 1000).round()));
       if (mounted) setState(() {});
     }
@@ -405,7 +407,15 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 ListTile(
                   leading: const Icon(Icons.music_note),
                   title: Text(track.title),
-                  subtitle: Text(track.artist + ' · ' + track.license),
+                  subtitle: Text(
+                    [
+                      if (track.artist.isNotEmpty) track.artist,
+                      'License: ${track.license}',
+                      if (track.attribution.isNotEmpty) 'Credit: ${track.attribution}',
+                    ].join(' · '),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   trailing: IconButton(
                     tooltip: 'Preview audio',
                     icon: Icon(_previewingAudioId == track.id ? Icons.stop : Icons.play_arrow),
@@ -523,9 +533,20 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                             onPressed: () async {
                               if (preview.value.isPlaying) {
                                 await preview.pause();
+                                await _audioPreview.stop();
+                                await preview.setVolume(1);
                               } else {
                                 await preview.setPlaybackSpeed(_speed);
                                 await preview.seekTo(Duration(milliseconds: (_trim.start * 1000).round()));
+                                if (selectedTrack != null) {
+                                  await preview.setVolume(0.25);
+                                  await _audioPreview.setReleaseMode(ReleaseMode.loop);
+                                  await _audioPreview.setVolume(0.85);
+                                  await _audioPreview.play(UrlSource(selectedTrack.audioUrl));
+                                } else {
+                                  await preview.setVolume(1);
+                                  await _audioPreview.stop();
+                                }
                                 await preview.play();
                               }
                               if (mounted) setState(() {});
@@ -641,7 +662,15 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               title: Text(copy.audioLibrary),
               subtitle: Text(selectedTrack == null
                   ? copy.originalAudio
-                  : '${selectedTrack.title} · ${selectedTrack.artist} · ${selectedTrack.license}'),
+                  : [
+                      selectedTrack.title,
+                      selectedTrack.artist,
+                      'License: ${selectedTrack.license}',
+                      if (selectedTrack.attribution.isNotEmpty) 'Credit: ${selectedTrack.attribution}',
+                    ].where((value) => value.isNotEmpty).join(' · '),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: _busy ? null : _chooseAudio,
             ),
