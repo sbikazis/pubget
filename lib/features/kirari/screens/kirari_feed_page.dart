@@ -12,6 +12,7 @@ import '../data/kirari_repository.dart';
 import '../data/kirari_video_cache.dart';
 import '../l10n/kirari_copy.dart';
 import 'kirari_upload_page.dart';
+import 'kirari_saved_page.dart';
 
 class KirariFeedPage extends StatefulWidget {
   const KirariFeedPage({super.key});
@@ -369,6 +370,15 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         foregroundColor: Colors.white,
         title: Text(copy.title),
         actions: [
+          IconButton(
+            tooltip: 'Saved videos',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const KirariSavedPage(),
+              ),
+            ),
+            icon: const Icon(Icons.bookmarks_outlined),
+          ),
           IconButton(
             tooltip: copy.create,
             onPressed: () => Navigator.of(context).push(
