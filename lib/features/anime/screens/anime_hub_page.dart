@@ -195,7 +195,7 @@ class _AnimeHubPageState extends State<AnimeHubPage>
   ) {
     if (catalog.fromCache) {
       final network = context.watch<NetworkService>();
-      return AnimeCachedBanner(offline: !network.isOnline);
+      return AnimeCachedBanner(offline: network.isOffline);
     }
     if (destination != AnimeHubDestination.thisSeason) return null;
     if (catalog.items.isEmpty) return null;
