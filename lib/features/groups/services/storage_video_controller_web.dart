@@ -1,16 +1,13 @@
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../core/media/media_reference.dart';
 
 Future<VideoPlayerController> createStorageVideoController(
-  String storagePath,
+  String storagePathOrUrl,
 ) async {
-  final reference = storagePath.trim();
-  // Chat media and edits store a bare Storage path, while legacy chat records
-  // stored a full download URL. Accept both instead of assuming one shape.
-  final url = isRemoteMediaUrl(reference)
-      ? reference
-      : await FirebaseStorage.instance.ref(reference).getDownloadURL();
+  final url = await resolveMediaDownloadUrl(storagePathOrUrl);
+  if (url == null) {
+    throw StateError('This video is unavailable or you do not have access.');
+  }
   return VideoPlayerController.networkUrl(Uri.parse(url));
 }
