@@ -567,8 +567,10 @@ test("the exposed kind lists stay in sync with the supported set", () => {
   assert.deepEqual([...REMOVABLE_KINDS].sort(), [
     "animeReview",
     "edit",
+    "editComment",
     "event",
     "fanWork",
+    "fanWorkComment",
     "groupMessage",
     "privateMessage",
   ]);
