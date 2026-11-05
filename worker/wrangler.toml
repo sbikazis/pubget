@@ -5,6 +5,7 @@ workers_dev = true
 
 [observability]
 enabled = true
+redact_query_string = true
 
 [vars]
 FIREBASE_PROJECT_ID = "pubget-aaf27"
