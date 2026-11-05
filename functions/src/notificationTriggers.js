@@ -164,6 +164,33 @@ function createNotificationTriggers({ db, builder }) {
     });
   }
 
+  async function friendAccepted(event) {
+    const before = event.data && event.data.before.data();
+    const after = event.data && event.data.after.data();
+    if (!before || !after || before.status === after.status ||
+        after.status !== "accepted" || !after.requestedBy) {
+      return;
+    }
+    const participants = after.userIds || [after.userA, after.userB];
+    const accepterId = participants.find((uid) =>
+      uid && uid !== after.requestedBy);
+    if (!accepterId) return;
+    return builder.build({
+      id: `friend_accepted_${event.params.friendshipId}`,
+      recipientIds: [after.requestedBy],
+      type: "friend_accepted",
+      actorId: accepterId,
+      targetId: event.params.friendshipId,
+      action: "friend_accepted",
+      destination: `/profile?uid=${encodeURIComponent(accepterId)}`,
+      metadata: {},
+      groupKey: `friend_accepted_${event.params.friendshipId}`,
+      pushWorthy: true,
+      title: "Pubget",
+      body: "تم قبول طلب الصداقة",
+    });
+  }
+
   async function kirariPublished(event) {
     const before = event.data && event.data.before.data();
     const after = event.data && event.data.after.data();
