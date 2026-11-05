@@ -2,12 +2,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-/// Network image renderer for signed media URLs (including Cloudflare R2).
-///
-/// Legacy opaque Firebase Storage object paths are intentionally not fetched
-/// from the client: old buckets may be inaccessible, and the widget must fail
-/// closed with a placeholder instead of issuing repeated Storage reads.
-class AppImageLoader extends StatelessWidget {
+import '../media/media_reference.dart';
+
+/// Network image renderer for signed Cloudflare R2 URLs and existing HTTPS
+/// media URLs. Bare R2 keys are resolved through the authenticated Worker.
+class AppImageLoader extends StatefulWidget {
   const AppImageLoader({
     required this.imageUrl,
     this.width,
@@ -32,64 +31,92 @@ class AppImageLoader extends StatelessWidget {
   final Widget? errorWidget;
 
   @override
+  State<AppImageLoader> createState() => _AppImageLoaderState();
+}
+
+class _AppImageLoaderState extends State<AppImageLoader> {
+  late Future<String?> _resolvedUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(AppImageLoader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) _resolve();
+  }
+
+  void _resolve() {
+    _resolvedUrl = resolveMediaDownloadUrl(widget.imageUrl);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final fallback = errorWidget ??
+    final fallback = widget.errorWidget ??
         ColoredBox(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: const Center(child: Icon(Icons.broken_image_outlined)),
         );
-    final loading = placeholder ??
+    final loading = widget.placeholder ??
         ColoredBox(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: const Center(child: CircularProgressIndicator()),
         );
 
-    final uri = Uri.tryParse(imageUrl.trim());
-    final isHttpUrl = uri != null &&
-        (uri.scheme == 'https' || uri.scheme == 'http') &&
-        uri.host.isNotEmpty;
-    final child = !isHttpUrl
-        ? fallback
-        : LayoutBuilder(
-            builder: (context, constraints) {
-              final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
-              final logicalWidth = width ??
-                  (constraints.hasBoundedWidth ? constraints.maxWidth : null);
-              final logicalHeight = height ??
-                  (constraints.hasBoundedHeight ? constraints.maxHeight : null);
-              final cacheWidth = memCacheWidth ??
-                  (logicalWidth != null && logicalWidth.isFinite && logicalWidth > 0
-                      ? (logicalWidth * dpr).ceil()
-                      : null);
-              final cacheHeight = cacheWidth == null
-                  ? memCacheHeight ??
-                      (logicalHeight != null &&
-                              logicalHeight.isFinite &&
-                              logicalHeight > 0
-                          ? (logicalHeight * dpr).ceil()
-                          : null)
-                  : null;
+    return FutureBuilder<String?>(
+      future: _resolvedUrl,
+      builder: (context, snapshot) {
+        final url = snapshot.data;
+        if (snapshot.connectionState != ConnectionState.done) return _clip(loading);
+        if (url == null) return _clip(fallback);
 
-              return Image.network(
-                imageUrl,
-                width: width,
-                height: height,
-                fit: fit,
-                cacheWidth: cacheWidth,
-                cacheHeight: cacheHeight,
-                filterQuality: FilterQuality.medium,
-                gaplessPlayback: true,
-                frameBuilder: (context, image, frame, synchronouslyLoaded) {
-                  if (synchronouslyLoaded || frame != null) return image;
-                  return loading;
-                },
-                errorBuilder: (_, _, _) => fallback,
-              );
-            },
-          );
+        final child = LayoutBuilder(
+          builder: (context, constraints) {
+            final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+            final logicalWidth = widget.width ??
+                (constraints.hasBoundedWidth ? constraints.maxWidth : null);
+            final logicalHeight = widget.height ??
+                (constraints.hasBoundedHeight ? constraints.maxHeight : null);
+            final cacheWidth = widget.memCacheWidth ??
+                (logicalWidth != null && logicalWidth.isFinite && logicalWidth > 0
+                    ? (logicalWidth * dpr).ceil()
+                    : null);
+            final cacheHeight = cacheWidth == null
+                ? widget.memCacheHeight ??
+                    (logicalHeight != null &&
+                            logicalHeight.isFinite &&
+                            logicalHeight > 0
+                        ? (logicalHeight * dpr).ceil()
+                        : null)
+                : null;
+            return Image.network(
+              url,
+              width: widget.width,
+              height: widget.height,
+              fit: widget.fit,
+              cacheWidth: cacheWidth,
+              cacheHeight: cacheHeight,
+              filterQuality: FilterQuality.medium,
+              gaplessPlayback: true,
+              frameBuilder: (context, image, frame, synchronouslyLoaded) {
+                if (synchronouslyLoaded || frame != null) return image;
+                return loading;
+              },
+              errorBuilder: (_, _, _) => fallback,
+            );
+          },
+        );
+        return _clip(child);
+      },
+    );
+  }
 
-    if (borderRadius == null) return child;
-    return ClipRRect(borderRadius: borderRadius!, child: child);
+  Widget _clip(Widget child) {
+    final radius = widget.borderRadius;
+    return radius == null ? child : ClipRRect(borderRadius: radius, child: child);
   }
 }
 
