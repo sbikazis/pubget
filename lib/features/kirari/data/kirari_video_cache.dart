@@ -33,6 +33,17 @@ class KirariVideoCache {
     return '$key.mp4';
   }
 
+  Future<File?> getCached({
+    required String reelId,
+    required int quality,
+  }) async {
+    final root = await _root();
+    final file = File('${root.path}/${_fileName(reelId, quality)}');
+    if (!await file.exists() || await file.length() == 0) return null;
+    await file.setLastModified(DateTime.now());
+    return file;
+  }
+
   Future<File> getOrDownload({
     required String reelId,
     required int quality,
