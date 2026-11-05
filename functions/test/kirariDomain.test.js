@@ -638,7 +638,9 @@ test("saved Kirari reels paginate with a document cursor and never repeat entrie
         } }),
       };
       if (name === "kirari") return {
-        doc: (id) => Promise.resolve(reelById.get(id) || { id, exists: false }),
+        doc: (id) => ({
+          async get() { return reelById.get(id) || { id, exists: false }; },
+        }),
       };
       if (name === "friendships") return {
         doc: (id) => ({ async get() { return { id, exists: false }; } }),
