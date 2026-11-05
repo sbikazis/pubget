@@ -83,8 +83,12 @@ function rankKirari(item, profile, now = Date.now()) {
       ? item.createdAt.toMillis() : Number(item.createdAt) || now);
   const ageHours = Math.max(0, (now - created) / 3600000);
   const freshness = 100 * Math.pow(0.5, ageHours / 72);
-  const views = Math.max(1, Number(item.qualifiedViewsCount) || 0);
-  const completion = clamp((Number(item.completionCount) || 0) / views * 100, 0, 100);
+  const views = Math.max(0, Number(item.qualifiedViewsCount) || 0);
+  const priorViews = 5;
+  const completion = clamp(
+    ((Number(item.completionCount) || 0) + 0.5 * priorViews) / (views + priorViews) * 100,
+    0, 100,
+  );
   const engagement = clamp(
     (Number(item.likesCount) || 0) * 2 +
     (Number(item.commentsCount) || 0) * 3 +
@@ -94,32 +98,69 @@ function rankKirari(item, profile, now = Date.now()) {
   );
   const negative = clamp((Number(item.negativeFeedbackCount) || 0) * 5, 0, 40);
   const interests = new Set(profile.interests || []);
-  const tags = [
+  const tags = [...new Set([
     ...(item.hashtags || []), ...(item.animeIds || []), ...(item.characterIds || []),
     item.audioId, item.animeId,
-  ].filter(Boolean);
+  ].filter(Boolean))];
   const relevance = tags.length
     ? tags.filter((tag) => interests.has(tag)).length / tags.length * 100 : 25;
   const social = new Set(profile.creatorIds || []).has(item.creatorId) ? 100 : 0;
   const creatorQuality = clamp(item.creatorQuality || 0, 0, 100);
-  // Server-aggregated behavior signals only. Do not accept raw client counters
-  // as ranking inputs: these fields are maintained by qualified playback.
+  // Only server-maintained aggregates are consumed here. Client-provided
+  // playback percentages and counters are never ranking inputs.
   const watchSeconds = Math.max(0, Number(item.totalQualifiedWatchSeconds) || 0);
-  const averageWatch = clamp(watchSeconds / views, 0, 60);
-  const watchQuality = clamp(averageWatch / Math.max(3, Number(item.durationSeconds) || 15) * 100, 0, 100);
+  const averageWatch = views > 0 ? watchSeconds / views : 0;
+  const watchQuality = clamp(
+    averageWatch / Math.max(3, Number(item.durationSeconds) || 15) * 100, 0, 100,
+  );
   const skips = Math.max(0, Number(item.earlySkipCount) || 0);
-  const skipRate = clamp(skips / views * 100, 0, 100);
+  const skipRate = clamp(skips / Math.max(1, views) * 100, 0, 100);
   const replays = Math.max(0, Number(item.replayCount) || 0);
-  const replayRate = clamp(replays / views * 100, 0, 100);
+  const replayRate = clamp(replays / Math.max(1, views) * 100, 0, 100);
   return clamp(
-    relevance * 0.22 + freshness * 0.12 + completion * 0.14 +
-    watchQuality * 0.18 + replayRate * 0.08 + engagement * 0.10 +
-    social * 0.08 + creatorQuality * 0.08 -
+    relevance * 0.24 + freshness * 0.10 + completion * 0.14 +
+    watchQuality * 0.18 + replayRate * 0.07 + engagement * 0.10 +
+    social * 0.07 + creatorQuality * 0.10 -
     negative * 0.10 - skipRate * 0.12,
     0, 100,
   );
 }
 
+function diversifyKirari(items, limit, explorationRatio = KIRARI.explorationRatio) {
+  const pool = [...items];
+  const relevant = pool.filter((item) => item._relevant === true);
+  const explore = pool.filter((item) => item._relevant !== true);
+  const exploreCount = Math.min(limit, Math.max(0, Math.round(limit * explorationRatio)));
+  const targets = [
+    ...relevant.slice(0, Math.max(0, limit - exploreCount)),
+    ...explore.slice(0, exploreCount),
+  ];
+  const selected = [];
+  const creatorCounts = new Map();
+  const animeCounts = new Map();
+  const deferred = [];
+  for (const item of targets) {
+    const creator = item.creatorId || item.id;
+    const anime = item.animeId || (item.animeIds || [])[0] || null;
+    if ((creatorCounts.get(creator) || 0) >= 2 ||
+        (anime && (animeCounts.get(anime) || 0) >= 2)) {
+      deferred.push(item);
+      continue;
+    }
+    selected.push(item);
+    creatorCounts.set(creator, (creatorCounts.get(creator) || 0) + 1);
+    if (anime) animeCounts.set(anime, (animeCounts.get(anime) || 0) + 1);
+    if (selected.length >= limit) break;
+  }
+  if (selected.length < limit) {
+    for (const item of [...deferred, ...pool]) {
+      if (selected.some((entry) => entry.id === item.id)) continue;
+      selected.push(item);
+      if (selected.length >= limit) break;
+    }
+  }
+  return selected;
+}
 function isFeedCursorAfter(score, id, afterScore, afterId) {
   if (!Number.isFinite(afterScore) || !afterId) return true;
   return score < afterScore || (score === afterScore && String(id).localeCompare(String(afterId)) > 0);
@@ -704,10 +745,12 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const last = data.lastHeartbeatAt?.toMillis?.() || Date.now();
       const elapsed = clamp((Date.now() - last) / 1000, 0, KIRARI.maxWatchEventSeconds);
       const duration = Math.max(3, Number(reel.data().durationSeconds) || 60);
+      const previousCredited = Math.max(0, Number(data.creditedSeconds || 0));
       const credited = Math.min(
-        Number(data.creditedSeconds || 0) + Math.min(watchSeconds, elapsed + 1),
+        previousCredited + Math.min(watchSeconds, elapsed + 1),
         duration,
       );
+      const creditedDelta = Math.max(0, credited - previousCredited);
       const verifiedPercent = Math.min(clientPercent, credited / duration * 100);
       const viewerData = viewer.data() || {};
       const lastQualifiedAt = viewerData.lastQualifiedAt?.toMillis?.() || 0;
@@ -724,13 +767,16 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         completed: data.completed === true || completed,
         replayCounted: data.replayCounted === true || replayed,
       });
-      if (qualified) {
+      if (qualified || (data.qualified === true && creditedDelta > 0)) {
         tx.update(ref, {
-          qualifiedViewsCount: FieldValue.increment(1),
-          viewsCount: FieldValue.increment(1),
-          "counters.qualifiedViews": FieldValue.increment(1),
-          "counters.views": FieldValue.increment(1),
-          velocityScore: FieldValue.increment(1),
+          ...(qualified ? {
+            qualifiedViewsCount: FieldValue.increment(1),
+            viewsCount: FieldValue.increment(1),
+            "counters.qualifiedViews": FieldValue.increment(1),
+            "counters.views": FieldValue.increment(1),
+            velocityScore: FieldValue.increment(1),
+          } : {}),
+          totalQualifiedWatchSeconds: FieldValue.increment(creditedDelta),
         });
       }
       if (completed) {
@@ -1088,20 +1134,15 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         for (const doc of seenSnap.docs.slice(0, seenSnap.docs.length - 500)) prune.delete(doc.ref);
         await prune.commit();
       }
-      const fresh = items.filter((item) => !seen.has(item.id));
-      if (interestIds.length === 0) {
-        items = fresh;
-      } else {
-        const relevant = fresh.filter((item) =>
-          interestIds.some((tag) => (item.hashtags || []).includes(tag) ||
-            item.animeId === tag || item.audioId === tag));
-        const explored = fresh.filter((item) => !relevant.includes(item));
-        const exploreCount = Math.max(1, Math.round(limit * KIRARI.explorationRatio));
-        items = [
-          ...relevant.slice(0, limit - exploreCount),
-          ...explored.slice(0, exploreCount),
-        ].sort((a, b) => b._rank - a._rank);
-      }
+      const fresh = items.filter((item) => !seen.has(item.id)).map((item) => ({
+        ...item,
+        _relevant: interestIds.length > 0 && [
+          ...(item.hashtags || []), ...(item.animeIds || []),
+          ...(item.characterIds || []), item.animeId, item.audioId,
+        ].some((tag) => tag && interestIds.includes(tag)),
+      }));
+      items = fresh.sort((a, b) => b._rank - a._rank || a.id.localeCompare(b.id));
+      items = diversifyKirari(items, limit, KIRARI.explorationRatio);
     }
     // Stable keyset cursor: descending score, then ascending document id.
     // Do not search for afterId inside a freshly fetched top-N window; it may
@@ -1128,5 +1169,5 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
 module.exports = {
   KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings, rankKirari,
-  isFeedCursorAfter, createKirariDomain,
+  isFeedCursorAfter, diversifyKirari, createKirariDomain,
 };
