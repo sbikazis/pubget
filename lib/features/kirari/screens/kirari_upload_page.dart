@@ -411,10 +411,22 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                   ? Stack(
                       fit: StackFit.expand,
                       children: [
-                        if (filter == null)
-                          VideoPlayer(preview!)
-                        else
-                          ColorFiltered(colorFilter: filter, child: VideoPlayer(preview!)),
+                        Center(
+                          child: AspectRatio(
+                            // Keep the source video's real display ratio. The
+                            // preview viewport may be portrait, landscape, or
+                            // square; never stretch the texture to fill it.
+                            aspectRatio: preview!.value.aspectRatio > 0
+                                ? preview.value.aspectRatio
+                                : 9 / 16,
+                            child: filter == null
+                                ? VideoPlayer(preview)
+                                : ColorFiltered(
+                                    colorFilter: filter,
+                                    child: VideoPlayer(preview),
+                                  ),
+                          ),
+                        ),
                         if (_overlayText.text.trim().isNotEmpty)
                           Center(
                             child: Text(
