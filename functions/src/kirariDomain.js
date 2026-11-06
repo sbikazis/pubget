@@ -357,12 +357,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (typeof processVideo !== "function") {
       fail("unavailable", "Kirari processing is temporarily unavailable.");
     }
-    await processVideo({ data: {
-      name: storagePath,
-      bucket: bucket.name,
-      size: Number(metadata.size || 0),
-      contentType: metadata.contentType || "video/mp4",
-    } });
+    await processVideo({ reelId });
     const latest = await ref.get();
     return { status: latest.data()?.status || "processing", reelId };
   }
@@ -416,25 +411,10 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return { ok: true };
   }
 
-  async function revokeReelDownloadTokens(reel) {
-    const paths = [
-      reel.coverPath,
-      ...Object.values(reel.renditions || {}).map((item) => item && item.path),
-    ].filter((value) => typeof value === "string" && value.length > 0);
-    await Promise.all(paths.map(async (storagePath) => {
-      const file = bucket.file(storagePath);
-      try {
-        const [metadata] = await file.getMetadata();
-        await file.setMetadata({
-          metadata: {
-            ...(metadata.metadata || {}),
-            firebaseStorageDownloadTokens: randomUUID(),
-          },
-        });
-      } catch (_) {
-        // A missing rendition does not block moderation or deletion.
-      }
-    }));
+  async function revokeReelDownloadTokens(_reel) {
+    // R2 playback URLs are short-lived signed URLs, not Firebase download
+    // tokens. Changing object metadata is neither required nor supported.
+    return undefined;
   }
 
   async function action(request) {
