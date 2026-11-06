@@ -199,6 +199,53 @@ test.beforeEach(async () => {
 test.after(() => env.cleanup());
 test.afterEach(() => env.clearFirestore());
 
+test("group members can register only their own scoped R2 media keys", async () => {
+  const image = {
+    mediaId: "g-media-1",
+    uploaderId: "alice",
+    mediaType: "image",
+    originalPath: "groups/g1/alice/photo.jpg",
+    thumbnailPath: "groups/g1/alice/photo.jpg",
+    mediumPath: "groups/g1/alice/photo.jpg",
+    status: "ready",
+    contentType: "image/jpeg",
+    sizeBytes: 128,
+    createdAt: serverTimestamp(),
+  };
+  await assertSucceeds(db("alice").doc("groups/g1/media/g-media-1").set(image));
+  await assertSucceeds(db("bob").doc("groups/g1/media/g-media-1").get());
+  await assertFails(db("bob").doc("groups/g1/media/forged").set({
+    ...image,
+    mediaId: "forged",
+    originalPath: "groups/g1/alice/other.jpg",
+    thumbnailPath: "groups/g1/alice/other.jpg",
+    mediumPath: "groups/g1/alice/other.jpg",
+  }));
+});
+
+test("private chat participants can register their own scoped R2 media keys", async () => {
+  const video = {
+    mediaId: "p-media-1",
+    uploaderId: "alice",
+    mediaType: "video",
+    originalPath: "privateChats/c1/alice/clip.mp4",
+    thumbnailPath: null,
+    mediumPath: null,
+    status: "ready",
+    contentType: "video/mp4",
+    sizeBytes: 1024,
+    createdAt: serverTimestamp(),
+  };
+  await assertSucceeds(db("alice").doc("privateChats/c1/media/p-media-1").set(video));
+  await assertSucceeds(db("bob").doc("privateChats/c1/media/p-media-1").get());
+  await assertFails(db("charlie").doc("privateChats/c1/media/outsider").set({
+    ...video,
+    mediaId: "outsider",
+    uploaderId: "charlie",
+    originalPath: "privateChats/c1/charlie/clip.mp4",
+  }));
+});
+
 test("profile owner can change display data but not coins", async () => {
   await assertSucceeds(db("alice").doc("users/alice").update({ bio: "hello" }));
   await assertFails(db("alice").doc("users/alice").update({ coinsBalance: 999999 }));

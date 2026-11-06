@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 
@@ -123,15 +125,41 @@ abstract interface class KirariRepository {
 class FirebaseKirariRepository implements KirariRepository {
   FirebaseKirariRepository({
     FirebaseFunctions? functions,
-    FirebaseStorage? storage,
+    FirebaseAuth? auth,
+    http.Client? httpClient,
     ImagePicker? picker,
+    String workerUrl = 'https://pubget-media.pubget.workers.dev',
   }) : _functions = functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _storage = storage ?? FirebaseStorage.instance,
+       _auth = auth ?? FirebaseAuth.instance,
+       _http = httpClient ?? http.Client(),
+       _workerUrl = workerUrl.substring(0, workerUrl.length - (workerUrl.endsWith('/') ? 1 : 0)),
        _picker = picker ?? ImagePicker();
 
   final FirebaseFunctions _functions;
-  final FirebaseStorage _storage;
+  final FirebaseAuth _auth;
+  final http.Client _http;
+  final String _workerUrl;
   final ImagePicker _picker;
+
+  Future<String> _resolveMediaPath(String key) async {
+    final token = await _auth.currentUser?.getIdToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('Sign in again to play this Kirari media.');
+    }
+    final uri = Uri.parse('$_workerUrl/kirari/resolve')
+        .replace(queryParameters: {'key': key});
+    final response = await _http.get(uri, headers: {'Authorization': 'Bearer $token'})
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw StateError('Kirari playback URL could not be resolved (HTTP ' + response.statusCode.toString() + ').');
+    }
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final url = payload['url'] as String?;
+    if (url == null || !url.startsWith('https://')) {
+      throw StateError('The media service returned an invalid playback URL.');
+    }
+    return url;
+  }
 
   Future<Map<dynamic, dynamic>> _call(String name, Map<String, dynamic> data) async {
     final result = await _functions.httpsCallable(name).call<Map<dynamic, dynamic>>(data);
@@ -156,10 +184,10 @@ class FirebaseKirariRepository implements KirariRepository {
         final videoPath = preferred is Map ? preferred['path'] as String? : null;
         final coverPath = map['coverPath'] as String?;
         if (videoPath == null || videoPath.isEmpty) continue;
-        final videoUrl = await _storage.ref(videoPath).getDownloadURL();
+        final videoUrl = await _resolveMediaPath(videoPath);
         final coverUrl = coverPath == null || coverPath.isEmpty
             ? ''
-            : await _storage.ref(coverPath).getDownloadURL();
+            : await _resolveMediaPath(coverPath);
         reels.add(KirariReel.fromMap({
           ...map,
           'playbackUrl': videoUrl,
@@ -189,9 +217,9 @@ class FirebaseKirariRepository implements KirariRepository {
         final videoPath = preferred is Map ? preferred['path'] as String? : null;
         final coverPath = map['coverPath'] as String?;
         if (videoPath == null || videoPath.isEmpty) continue;
-        final videoUrl = await _storage.ref(videoPath).getDownloadURL();
+        final videoUrl = await _resolveMediaPath(videoPath);
         final coverUrl = coverPath == null || coverPath.isEmpty
-            ? '' : await _storage.ref(coverPath).getDownloadURL();
+            ? '' : await _resolveMediaPath(coverPath);
         items.add(KirariReel.fromMap({...map, 'playbackUrl': videoUrl, 'coverUrl': coverUrl}));
       }
     }
@@ -214,9 +242,9 @@ class FirebaseKirariRepository implements KirariRepository {
         if (videoPath == null || videoPath.isEmpty) continue;
         items.add(KirariReel.fromMap({
           ...map,
-          'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+          'playbackUrl': await _resolveMediaPath(videoPath),
           'coverUrl': coverPath == null || coverPath.isEmpty
-              ? '' : await _storage.ref(coverPath).getDownloadURL(),
+              ? '' : await _resolveMediaPath(coverPath),
         }));
       }
     }
@@ -239,9 +267,9 @@ class FirebaseKirariRepository implements KirariRepository {
         if (videoPath == null || videoPath.isEmpty) continue;
         items.add(KirariReel.fromMap({
           ...map,
-          'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+          'playbackUrl': await _resolveMediaPath(videoPath),
           'coverUrl': coverPath == null || coverPath.isEmpty
-              ? '' : await _storage.ref(coverPath).getDownloadURL(),
+              ? '' : await _resolveMediaPath(coverPath),
         }));
       }
     }
@@ -259,9 +287,9 @@ class FirebaseKirariRepository implements KirariRepository {
     final coverPath = map['coverPath'] as String?;
     return KirariReel.fromMap({
       ...map,
-      'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+      'playbackUrl': await _resolveMediaPath(videoPath),
       'coverUrl': coverPath == null || coverPath.isEmpty
-          ? '' : await _storage.ref(coverPath).getDownloadURL(),
+          ? '' : await _resolveMediaPath(coverPath),
     });
   }
 
@@ -269,7 +297,7 @@ class FirebaseKirariRepository implements KirariRepository {
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality}) async {
     final path = reel.renditionPaths['$quality'];
     if (path == null || path.isEmpty) return reel.videoUrl;
-    return _storage.ref(path).getDownloadURL();
+    return _resolveMediaPath(path);
   }
 
   @override
@@ -304,7 +332,7 @@ class FirebaseKirariRepository implements KirariRepository {
         final map = Map<dynamic, dynamic>.from(value);
         final path = map['audioPath'] as String?;
         if (path == null || path.isEmpty) continue;
-        final url = await _storage.ref(path).getDownloadURL();
+        final url = await _resolveMediaPath(path);
         tracks.add(KirariAudioTrack.fromMap(map, url));
       }
     }
@@ -373,17 +401,99 @@ class FirebaseKirariRepository implements KirariRepository {
     required void Function(double progress) onProgress,
   }) async {
     final file = File(video.path);
-    final task = _storage.ref(storagePath).putFile(
-      file,
-      SettableMetadata(contentType: 'video/mp4', customMetadata: {
-        'uploadedBy': 'kirari-client',
-      }),
-    );
-    task.snapshotEvents.listen((snapshot) {
-      final total = snapshot.totalBytes;
-      if (total > 0) onProgress(snapshot.bytesTransferred / total);
-    });
-    await task;
+    final length = await file.length();
+    if (length <= 0 || length > 500 * 1024 * 1024) {
+      throw StateError('Choose a video no larger than 500 MB.');
+    }
+    final token = await _auth.currentUser?.getIdToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('Sign in again before uploading a Kirari video.');
+    }
+    final segments = storagePath.split('/');
+    if (segments.length != 4 || segments[0] != 'kirari' ||
+        segments[1].isEmpty || segments[2].isEmpty ||
+        segments[3] != 'source.mp4') {
+      throw StateError('The server returned an invalid Kirari upload path.');
+    }
+    final reelId = segments[2];
+    final initUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId');
+    final initResponse = await _http.post(
+      initUri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+        'x-kirari-size': length.toString(),
+      },
+      body: '{}',
+    ).timeout(const Duration(seconds: 30));
+    if (initResponse.statusCode != 201) {
+      throw StateError('Could not start Kirari upload (HTTP ' +
+          initResponse.statusCode.toString() + ').');
+    }
+    final initPayload = jsonDecode(initResponse.body) as Map<String, dynamic>;
+    final uploadId = initPayload['uploadId'] as String?;
+    if (uploadId == null || uploadId.isEmpty) {
+      throw StateError('The media service returned an invalid multipart session.');
+    }
+
+    const chunkSize = 8 * 1024 * 1024;
+    final parts = <Map<String, dynamic>>[];
+    var sent = 0;
+    try {
+      var partNumber = 1;
+      while (sent < length) {
+        final chunkLength = (length - sent).clamp(0, chunkSize).toInt();
+        final partUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId/' +
+            Uri.encodeComponent(uploadId) + '/$partNumber');
+        final request = http.StreamedRequest('PUT', partUri)
+          ..headers['Authorization'] = 'Bearer $token'
+          ..contentLength = chunkLength;
+        final responseFuture = _http.send(request).timeout(const Duration(minutes: 3));
+        final chunkStream = file.openRead(sent, sent + chunkLength).map((chunk) {
+          sent += chunk.length;
+          if (length > 0) onProgress((sent / length).clamp(0, 1).toDouble());
+          return chunk;
+        });
+        await request.sink.addStream(chunkStream);
+        await request.sink.close();
+        final response = await responseFuture;
+        final responseBody = await response.stream.bytesToString();
+        if (response.statusCode != 201) {
+          throw StateError('Kirari upload part failed (HTTP ' +
+              response.statusCode.toString() + '): ' + responseBody);
+        }
+        final payload = jsonDecode(responseBody) as Map<String, dynamic>;
+        final etag = payload['etag'] as String?;
+        final returnedPart = payload['partNumber'] as int?;
+        if (etag == null || returnedPart != partNumber) {
+          throw StateError('The media service returned an invalid upload part.');
+        }
+        parts.add({'partNumber': partNumber, 'etag': etag});
+        partNumber++;
+      }
+
+      final completeUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId/' +
+          Uri.encodeComponent(uploadId) + '/complete');
+      final completeResponse = await _http.post(
+        completeUri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'parts': parts}),
+      ).timeout(const Duration(minutes: 3));
+      if (completeResponse.statusCode != 201) {
+        throw StateError('Kirari upload could not be completed (HTTP ' +
+            completeResponse.statusCode.toString() + ').');
+      }
+      onProgress(1);
+    } catch (_) {
+      final abortUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId/' +
+          Uri.encodeComponent(uploadId) + '/abort');
+      await _http.delete(abortUri, headers: {'Authorization': 'Bearer $token'})
+          .timeout(const Duration(seconds: 30)).catchError((_) => http.Response('', 500));
+      rethrow;
+    }
   }
 
   @override

@@ -169,6 +169,14 @@ function seedChat({ destMember = true } = {}) {
       mediaType: "audio",
       originalPath: "groups/g1/media/ready-audio_original.m4a",
     },
+    "groups/g1/media/ready-video": {
+      status: "ready",
+      uploaderId: "alice",
+      mediaType: "video",
+      originalPath: "groups/g1/alice/ready-video.mp4",
+      thumbnailPath: null,
+      mediumPath: null,
+    },
     "groups/g1/media/ready-gif": {
       status: "ready",
       uploaderId: "alice",
@@ -197,6 +205,23 @@ function chatHandlers(db) {
     randomUUID: () => "fwd-1",
   });
 }
+
+test("R2 video media can be sent without a Firebase-generated thumbnail", async () => {
+  const db = createFakeDb(seedChat());
+  const result = await chatHandlers(db).sendMessage({
+    auth: { uid: "alice" },
+    data: {
+      groupId: "g1",
+      messageId: "m-video-r2",
+      type: "video",
+      mediaId: "ready-video",
+    },
+  });
+  assert.equal(result.ok, true);
+  const stored = db.store.get("groups/g1/messages/m-video-r2");
+  assert.equal(stored.mediaUrl, "groups/g1/alice/ready-video.mp4");
+  assert.equal(stored.thumbnailUrl, null);
+});
 
 test("catalog sticker send stores stickerKey without media", async () => {
   const db = createFakeDb(seedChat());

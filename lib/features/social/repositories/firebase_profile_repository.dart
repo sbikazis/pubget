@@ -2,7 +2,8 @@ import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
-import 'package:firebase_storage/firebase_storage.dart';
+import '../../../core/media/media_repository_factory.dart';
+import '../../../core/media/media_url_uploader.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/firebase_failure_mapper.dart';
@@ -13,23 +14,26 @@ import 'profile_repository.dart';
 
 /// Firebase-backed profile data adapter.
 ///
-/// Profile fields remain in Firestore. Media upload is isolated behind the
-/// repository so the storage provider can be replaced without changing UI
-/// callers; this implementation retains the currently deployed Storage paths
-/// until the R2 profile-key resolver is wired into the app composition.
+/// Profile fields remain in Firestore. Avatar and cover bytes are stored
+/// in Cloudflare R2 through the shared media repository; the public profile
+/// projection stores stable object keys, never expiring signed URLs.
 final class FirebaseProfileRepository implements ProfileRepository {
   FirebaseProfileRepository({
     FirebaseFirestore? firestore,
-    FirebaseStorage? storage,
     FirebaseFunctions? functions,
+    MediaUrlUploader? mediaUploader,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _storage = storage ?? FirebaseStorage.instance,
        _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
+       _mediaUploader = mediaUploader;
 
   final FirebaseFirestore _firestore;
-  final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
+  MediaUrlUploader? _mediaUploader;
+
+  MediaUrlUploader get _uploader => _mediaUploader ??= RepositoryMediaUrlUploader(
+    repository: createMediaRepository(),
+  );
 
   @override
   Future<Result<PublicProfile>> getPublicProfile(String userId) async {
@@ -81,7 +85,7 @@ final class FirebaseProfileRepository implements ProfileRepository {
       await _functions.httpsCallable('updateSocialProfile').call<void>(
         <String, dynamic>{...update.toMap()},
       );
-      return getOwnProfile(userId);
+      return await getOwnProfile(userId);
     } on Object catch (error) {
       return FailureResult<PubgetUser>(
         mapFirebaseFailure(error, message: 'Could not update your profile.'),
@@ -95,23 +99,17 @@ final class FirebaseProfileRepository implements ProfileRepository {
     required Uint8List bytes,
     required String contentType,
   }) async {
-    try {
-      if (userId.trim().isEmpty || bytes.isEmpty) {
-        return const FailureResult<String>(
-          ValidationError('Choose a valid profile photo.'),
-        );
-      }
-      final ref = _storage.ref('users/$userId/avatar.jpg');
-      final snapshot = await ref.putData(
-        bytes,
-        SettableMetadata(contentType: contentType),
-      );
-      return Success<String>(await snapshot.ref.getDownloadURL());
-    } on Object catch (error) {
-      return FailureResult<String>(
-        mapFirebaseFailure(error, message: 'Could not upload your profile photo.'),
+    if (userId.trim().isEmpty || bytes.isEmpty) {
+      return const FailureResult<String>(
+        ValidationError('Choose a valid profile photo.'),
       );
     }
+    return _uploader.uploadImage(
+      ownerUid: userId,
+      bytes: bytes,
+      claimedContentType: contentType,
+      fileName: 'avatar.jpg',
+    );
   }
 
   @override
@@ -125,30 +123,22 @@ final class FirebaseProfileRepository implements ProfileRepository {
         ValidationError('Choose a valid cover photo.'),
       );
     }
-    final ref = _storage.ref('users/$userId/cover.jpg');
+    final uploaded = await _uploader.uploadImage(
+      ownerUid: userId,
+      bytes: bytes,
+      claimedContentType: contentType,
+      fileName: 'cover.jpg',
+    );
+    final key = uploaded.valueOrNull;
+    if (key == null) return uploaded;
     try {
-      final snapshot = await ref.putData(
-        bytes,
-        SettableMetadata(contentType: contentType),
+      await _functions.httpsCallable('updateSocialProfile').call<void>(
+        <String, dynamic>{'coverUrl': key},
       );
-      final url = await snapshot.ref.getDownloadURL();
-      try {
-        await _functions.httpsCallable('updateSocialProfile').call<void>(
-          <String, dynamic>{'coverUrl': url},
-        );
-      } on Object {
-        // Avoid orphaning a newly uploaded cover when profile persistence fails.
-        try {
-          await snapshot.ref.delete();
-        } on Object {
-          // Best effort; surface the original profile-write failure below.
-        }
-        rethrow;
-      }
-      return Success<String>(url);
+      return Success<String>(key);
     } on Object catch (error) {
       return FailureResult<String>(
-        mapFirebaseFailure(error, message: 'Could not upload your cover photo.'),
+        mapFirebaseFailure(error, message: 'Could not save your cover photo.'),
       );
     }
   }

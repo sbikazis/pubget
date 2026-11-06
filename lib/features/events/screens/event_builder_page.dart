@@ -8,6 +8,7 @@ import '../../../app/app_router.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/app_image_loader.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../anime/models/anime_models.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -96,7 +97,8 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
     final groups = context.read<GroupProvider>();
     Future<void>.microtask(() async {
       builder.start(
-        groupId: widget.groupId,
+        groupId: widget.groupId ??
+            (_selectedGroupIds.length == 1 ? _selectedGroupIds.single : null),
         groupIds: widget.groupIds,
         scope: widget.scope,
         templateId: widget.templateId,
@@ -469,11 +471,10 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                     )
                   : form.imageUrl.isEmpty
                       ? const Icon(Icons.add_photo_alternate_outlined)
-                      : Image.network(
-                          form.imageUrl,
+                      : AppImageLoader(
+                          imageUrl: form.imageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) =>
-                              const Icon(Icons.broken_image_outlined),
+                          errorWidget: const Icon(Icons.broken_image_outlined),
                         ),
             ),
           ),
@@ -1120,6 +1121,7 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
       final url = await _uploader.uploadOptionImage(
         uid: uid,
         bytes: cropped.bytes,
+        groupId: widget.groupId,
       );
       if (!mounted) return;
       setState(() {
