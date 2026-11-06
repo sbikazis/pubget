@@ -133,6 +133,26 @@ class FirebaseKirariRepository implements KirariRepository {
        _http = httpClient ?? http.Client(),
        _workerUrl = workerUrl.replaceAll(RegExp(r'/+
 
+  Future<String> _resolveMediaPath(String key) async {
+    final token = await _auth.currentUser?.getIdToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('Sign in again to play this Kirari media.');
+    }
+    final uri = Uri.parse('$_workerUrl/kirari/resolve')
+        .replace(queryParameters: {'key': key});
+    final response = await _http.get(uri, headers: {'Authorization': 'Bearer $token'})
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw StateError('Kirari playback URL could not be resolved (HTTP \${response.statusCode}).');
+    }
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final url = payload['url'] as String?;
+    if (url == null || !url.startsWith('https://')) {
+      throw StateError('The media service returned an invalid playback URL.');
+    }
+    return url;
+  }
+
   Future<Map<dynamic, dynamic>> _call(String name, Map<String, dynamic> data) async {
     final result = await _functions.httpsCallable(name).call<Map<dynamic, dynamic>>(data);
     return result.data;
@@ -156,10 +176,10 @@ class FirebaseKirariRepository implements KirariRepository {
         final videoPath = preferred is Map ? preferred['path'] as String? : null;
         final coverPath = map['coverPath'] as String?;
         if (videoPath == null || videoPath.isEmpty) continue;
-        final videoUrl = await _storage.ref(videoPath).getDownloadURL();
+        final videoUrl = await _resolveMediaPath(videoPath);
         final coverUrl = coverPath == null || coverPath.isEmpty
             ? ''
-            : await _storage.ref(coverPath).getDownloadURL();
+            : await _resolveMediaPath(coverPath);
         reels.add(KirariReel.fromMap({
           ...map,
           'playbackUrl': videoUrl,
@@ -189,9 +209,9 @@ class FirebaseKirariRepository implements KirariRepository {
         final videoPath = preferred is Map ? preferred['path'] as String? : null;
         final coverPath = map['coverPath'] as String?;
         if (videoPath == null || videoPath.isEmpty) continue;
-        final videoUrl = await _storage.ref(videoPath).getDownloadURL();
+        final videoUrl = await _resolveMediaPath(videoPath);
         final coverUrl = coverPath == null || coverPath.isEmpty
-            ? '' : await _storage.ref(coverPath).getDownloadURL();
+            ? '' : await _resolveMediaPath(coverPath);
         items.add(KirariReel.fromMap({...map, 'playbackUrl': videoUrl, 'coverUrl': coverUrl}));
       }
     }
@@ -214,9 +234,9 @@ class FirebaseKirariRepository implements KirariRepository {
         if (videoPath == null || videoPath.isEmpty) continue;
         items.add(KirariReel.fromMap({
           ...map,
-          'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+          'playbackUrl': await _resolveMediaPath(videoPath),
           'coverUrl': coverPath == null || coverPath.isEmpty
-              ? '' : await _storage.ref(coverPath).getDownloadURL(),
+              ? '' : await _resolveMediaPath(coverPath),
         }));
       }
     }
@@ -239,9 +259,9 @@ class FirebaseKirariRepository implements KirariRepository {
         if (videoPath == null || videoPath.isEmpty) continue;
         items.add(KirariReel.fromMap({
           ...map,
-          'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+          'playbackUrl': await _resolveMediaPath(videoPath),
           'coverUrl': coverPath == null || coverPath.isEmpty
-              ? '' : await _storage.ref(coverPath).getDownloadURL(),
+              ? '' : await _resolveMediaPath(coverPath),
         }));
       }
     }
@@ -259,9 +279,9 @@ class FirebaseKirariRepository implements KirariRepository {
     final coverPath = map['coverPath'] as String?;
     return KirariReel.fromMap({
       ...map,
-      'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+      'playbackUrl': await _resolveMediaPath(videoPath),
       'coverUrl': coverPath == null || coverPath.isEmpty
-          ? '' : await _storage.ref(coverPath).getDownloadURL(),
+          ? '' : await _resolveMediaPath(coverPath),
     });
   }
 
@@ -269,7 +289,7 @@ class FirebaseKirariRepository implements KirariRepository {
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality}) async {
     final path = reel.renditionPaths['$quality'];
     if (path == null || path.isEmpty) return reel.videoUrl;
-    return _storage.ref(path).getDownloadURL();
+    return _resolveMediaPath(path);
   }
 
   @override
@@ -304,7 +324,7 @@ class FirebaseKirariRepository implements KirariRepository {
         final map = Map<dynamic, dynamic>.from(value);
         final path = map['audioPath'] as String?;
         if (path == null || path.isEmpty) continue;
-        final url = await _storage.ref(path).getDownloadURL();
+        final url = await _resolveMediaPath(path);
         tracks.add(KirariAudioTrack.fromMap(map, url));
       }
     }
@@ -604,10 +624,10 @@ class UnavailableKirariRepository implements KirariRepository {
         final videoPath = preferred is Map ? preferred['path'] as String? : null;
         final coverPath = map['coverPath'] as String?;
         if (videoPath == null || videoPath.isEmpty) continue;
-        final videoUrl = await _storage.ref(videoPath).getDownloadURL();
+        final videoUrl = await _resolveMediaPath(videoPath);
         final coverUrl = coverPath == null || coverPath.isEmpty
             ? ''
-            : await _storage.ref(coverPath).getDownloadURL();
+            : await _resolveMediaPath(coverPath);
         reels.add(KirariReel.fromMap({
           ...map,
           'playbackUrl': videoUrl,
@@ -637,9 +657,9 @@ class UnavailableKirariRepository implements KirariRepository {
         final videoPath = preferred is Map ? preferred['path'] as String? : null;
         final coverPath = map['coverPath'] as String?;
         if (videoPath == null || videoPath.isEmpty) continue;
-        final videoUrl = await _storage.ref(videoPath).getDownloadURL();
+        final videoUrl = await _resolveMediaPath(videoPath);
         final coverUrl = coverPath == null || coverPath.isEmpty
-            ? '' : await _storage.ref(coverPath).getDownloadURL();
+            ? '' : await _resolveMediaPath(coverPath);
         items.add(KirariReel.fromMap({...map, 'playbackUrl': videoUrl, 'coverUrl': coverUrl}));
       }
     }
@@ -662,9 +682,9 @@ class UnavailableKirariRepository implements KirariRepository {
         if (videoPath == null || videoPath.isEmpty) continue;
         items.add(KirariReel.fromMap({
           ...map,
-          'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+          'playbackUrl': await _resolveMediaPath(videoPath),
           'coverUrl': coverPath == null || coverPath.isEmpty
-              ? '' : await _storage.ref(coverPath).getDownloadURL(),
+              ? '' : await _resolveMediaPath(coverPath),
         }));
       }
     }
@@ -687,9 +707,9 @@ class UnavailableKirariRepository implements KirariRepository {
         if (videoPath == null || videoPath.isEmpty) continue;
         items.add(KirariReel.fromMap({
           ...map,
-          'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+          'playbackUrl': await _resolveMediaPath(videoPath),
           'coverUrl': coverPath == null || coverPath.isEmpty
-              ? '' : await _storage.ref(coverPath).getDownloadURL(),
+              ? '' : await _resolveMediaPath(coverPath),
         }));
       }
     }
@@ -707,9 +727,9 @@ class UnavailableKirariRepository implements KirariRepository {
     final coverPath = map['coverPath'] as String?;
     return KirariReel.fromMap({
       ...map,
-      'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+      'playbackUrl': await _resolveMediaPath(videoPath),
       'coverUrl': coverPath == null || coverPath.isEmpty
-          ? '' : await _storage.ref(coverPath).getDownloadURL(),
+          ? '' : await _resolveMediaPath(coverPath),
     });
   }
 
@@ -717,7 +737,7 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality}) async {
     final path = reel.renditionPaths['$quality'];
     if (path == null || path.isEmpty) return reel.videoUrl;
-    return _storage.ref(path).getDownloadURL();
+    return _resolveMediaPath(path);
   }
 
   @override
@@ -752,7 +772,7 @@ class UnavailableKirariRepository implements KirariRepository {
         final map = Map<dynamic, dynamic>.from(value);
         final path = map['audioPath'] as String?;
         if (path == null || path.isEmpty) continue;
-        final url = await _storage.ref(path).getDownloadURL();
+        final url = await _resolveMediaPath(path);
         tracks.add(KirariAudioTrack.fromMap(map, url));
       }
     }
@@ -821,17 +841,41 @@ class UnavailableKirariRepository implements KirariRepository {
     required void Function(double progress) onProgress,
   }) async {
     final file = File(video.path);
-    final task = _storage.ref(storagePath).putFile(
-      file,
-      SettableMetadata(contentType: 'video/mp4', customMetadata: {
-        'uploadedBy': 'kirari-client',
-      }),
-    );
-    task.snapshotEvents.listen((snapshot) {
-      final total = snapshot.totalBytes;
-      if (total > 0) onProgress(snapshot.bytesTransferred / total);
-    });
-    await task;
+    final length = await file.length();
+    if (length <= 0 || length > 500 * 1024 * 1024) {
+      throw StateError('Choose a video no larger than 500 MB.');
+    }
+    final token = await _auth.currentUser?.getIdToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('Sign in again before uploading a Kirari video.');
+    }
+    final segments = storagePath.split('/');
+    if (segments.length != 4 || segments[0] != 'kirari' ||
+        segments[1].isEmpty || segments[2].isEmpty ||
+        segments[3] != 'source.mp4') {
+      throw StateError('The server returned an invalid Kirari upload path.');
+    }
+    final reelId = segments[2];
+    final request = http.StreamedRequest('PUT', Uri.parse('$_workerUrl/kirari/upload/$reelId'))
+      ..headers['Authorization'] = 'Bearer $token'
+      ..headers['Content-Type'] = 'video/mp4'
+      ..contentLength = length;
+    var sent = 0;
+    final responseFuture = _http.send(request).timeout(const Duration(minutes: 20));
+    await request.sink.addStream(file.openRead().map((chunk) {
+      sent += chunk.length;
+      if (length > 0) onProgress((sent / length).clamp(0, 1).toDouble());
+      return chunk;
+    }));
+    await request.sink.close();
+    final response = await responseFuture;
+    if (response.statusCode != 201) {
+      final body = await response.stream.bytesToString();
+      throw StateError(body.isEmpty
+          ? 'Kirari upload failed (HTTP \${response.statusCode}).'
+          : 'Kirari upload failed: $body');
+    }
+    onProgress(1);
   }
 
   @override
