@@ -156,7 +156,7 @@ function createKirariPipeline({ db, bucket }) {
     if (!snap.exists) return null;
     const reel = snap.data() || {};
     const objectName = reel.originalStoragePath || reel.storagePath || "";
-    const match = /^kirari\\/([^/]+)\\/([^/]+)\\/source\\.mp4$/.exec(objectName);
+    const match = /^kirari\/([^/]+)\/([^/]+)\/source\.mp4$/.exec(objectName);
     if (!match) return null;
     const [, uid] = match;
     if (reel.creatorId !== uid || ["published", "rejected", "deleted"].includes(reel.status)) return null;
