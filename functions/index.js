@@ -16,6 +16,7 @@ const { getMessaging } = require("firebase-admin/messaging");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const { getAuth } = require("firebase-admin/auth");
+const { defineSecret } = require("firebase-functions/params");
 const { randomUUID } = require("node:crypto");
 const {
   createAvatarPrivacySync,
@@ -46,6 +47,7 @@ const { createAudioDomain } = require("./src/audioDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createKirariDomain } = require("./src/kirariDomain");
 const { createKirariPipeline } = require("./src/kirariPipeline");
+const { createR2KirariBucket } = require("./src/r2KirariStorage");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createAnimeCatalogDomain } = require("./src/animeCatalogDomain");
@@ -265,15 +267,19 @@ const processEditVideo = createEditPipeline({
   notifications: notificationBuilder,
   FieldValue,
 });
+const kirariR2ServiceSecret = defineSecret("KIRARI_R2_SERVICE_SECRET");
+const kirariR2Bucket = createR2KirariBucket({
+  secretProvider: () => kirariR2ServiceSecret.value(),
+});
 const processKirariVideo = createKirariPipeline({
-  db: getFirestore(),
-  bucket: getStorage().bucket(),
+  db: lazyFirestore,
+  bucket: kirariR2Bucket,
 });
 const kirariDomain = createKirariDomain({
-  db: getFirestore(),
+  db: lazyFirestore,
   FieldValue,
   HttpsError,
-  bucket: getStorage().bucket(),
+  bucket: kirariR2Bucket,
   processVideo: processKirariVideo,
 });
 const editsDomain = createEditsDomain({
@@ -378,15 +384,15 @@ exports.finalizeKirariUpload = onCall(
   kirariDomain.finalizeUpload,
 );
 exports.retryKirariProcessing = onCall(
-  { region: "us-central1", timeoutSeconds: 540, memory: "2GiB" },
+  { region: "us-central1", secrets: [kirariR2ServiceSecret], timeoutSeconds: 540, memory: "2GiB" },
   kirariDomain.retryProcessing,
 );
 exports.cancelKirariUpload = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: [kirariR2ServiceSecret] },
   kirariDomain.cancelUpload,
 );
 exports.deleteKirariReel = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: [kirariR2ServiceSecret] },
   kirariDomain.deleteReel,
 );
 exports.kirariAction = onCall(
@@ -422,7 +428,7 @@ exports.getKirariAudioLibrary = onCall(
   kirariDomain.getAudioLibrary,
 );
 exports.publishKirariAudioTrack = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: [kirariR2ServiceSecret] },
   kirariDomain.publishAudioTrack,
 );
 exports.getKirariComments = onCall(
@@ -442,20 +448,31 @@ exports.getKirariReel = onCall(
   kirariDomain.getReel,
 );
 exports.reviewKirariContent = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: [kirariR2ServiceSecret] },
   kirariDomain.reviewContent,
 );
 exports.getKirariModerationQueue = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: [kirariR2ServiceSecret] },
   kirariDomain.getModerationQueue,
 );
 exports.setKirariCreatorMute = onCall(
   { region: "us-central1" },
   kirariDomain.setCreatorMute,
 );
-exports.processKirariVideo = onObjectFinalized(
-  { region: "europe-west3", memory: "2GiB", timeoutSeconds: 540 },
-  processKirariVideo,
+exports.processKirariVideo = onDocumentUpdated(
+  {
+    document: "kirari/{reelId}",
+    region: "europe-west3",
+    memory: "2GiB",
+    timeoutSeconds: 540,
+    secrets: [kirariR2ServiceSecret],
+  },
+  async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    if (!after || before?.status === "processing" || after.status !== "processing") return null;
+    return processKirariVideo(event);
+  },
 );
 
 
