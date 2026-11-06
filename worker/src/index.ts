@@ -557,44 +557,76 @@ export default {
       } });
     }
 
-    // Authenticated, streaming source upload for Kirari. The reel document is
-    // read with the caller's Firebase token so Firestore rules remain the
-    // authority for ownership; the object key is never accepted from the client.
-    if (url.pathname.startsWith("/kirari/upload/") && request.method === "PUT") {
+    // Multipart upload keeps each Worker request small while supporting the
+    // full 500 MB Kirari source limit. The object key is always read from the
+    // owner's Firestore reel document; clients never choose it.
+    if (url.pathname.startsWith("/kirari/multipart/")) {
       const uid = await authenticate(request, env.FIREBASE_PROJECT_ID);
       if (!uid) return json({ error: "Authentication required." }, 401);
-      const reelId = decodeURIComponent(url.pathname.slice("/kirari/upload/".length));
-      if (!/^[A-Za-z0-9_-]{1,128}$/.test(reelId)) return json({ error: "Invalid reel id." }, 400);
       const token = request.headers.get("authorization") ?? "";
+      const routeParts = url.pathname.split("/").filter(Boolean);
+      const reelId = routeParts[2] ?? "";
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(reelId)) return json({ error: "Invalid reel id." }, 400);
       const documentUrl = \`https://firestore.googleapis.com/v1/projects/\${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/kirari/\${encodeURIComponent(reelId)}\`;
       const reelResponse = await fetch(documentUrl, { headers: { Authorization: token } });
       if (!reelResponse.ok) return json({ error: "Kirari upload not found or not permitted." }, 403);
-      const reelDocument = await reelResponse.json() as {
-        fields?: Record<string, { stringValue?: string }>;
-      };
+      const reelDocument = await reelResponse.json() as { fields?: Record<string, { stringValue?: string }> };
       const fields = reelDocument.fields ?? {};
-      const creatorId = fields.creatorId?.stringValue;
-      const status = fields.status?.stringValue;
       const key = fields.originalStoragePath?.stringValue ?? fields.storagePath?.stringValue ?? "";
-      if (creatorId !== uid || status !== "uploading" ||
+      if (fields.creatorId?.stringValue !== uid || fields.status?.stringValue !== "uploading" ||
           key !== \`kirari/\${uid}/\${reelId}/source.mp4\` || !validKirariServiceKey(key)) {
         return json({ error: "This Kirari upload is not available." }, 403);
       }
-      const size = Number(request.headers.get("content-length"));
-      const contentType = request.headers.get("content-type") ?? "";
-      if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
-          size > 500 * 1024 * 1024 || contentType !== "video/mp4") {
-        return json({ error: "Choose an MP4 video no larger than 500 MB." }, 400);
+
+      if (routeParts.length === 3 && request.method === "POST") {
+        const size = Number(request.headers.get("x-kirari-size"));
+        if (!Number.isSafeInteger(size) || size <= 0 || size > 500 * 1024 * 1024 ||
+            request.headers.get("content-type") !== "application/json") {
+          return json({ error: "Invalid Kirari source size." }, 400);
+        }
+        const upload = await env.MEDIA_BUCKET.createMultipartUpload(key, {
+          httpMetadata: { contentType: "video/mp4", cacheControl: "private, no-store" },
+          customMetadata: { uploadedBy: uid, reelId, mediaKind: "kirari-source" },
+        });
+        return json({ uploadId: upload.uploadId, key }, 201);
       }
-      const inspected = await inspectAndRestoreBody(request.body);
-      if (!validFileSignature("reels", contentType, inspected.prefix)) {
-        return json({ error: "The file contents do not match MP4." }, 415);
+
+      if (routeParts.length === 5 && request.method === "PUT") {
+        const uploadId = routeParts[3];
+        const partNumber = Number(routeParts[4]);
+        const contentLength = Number(request.headers.get("content-length"));
+        if (!uploadId || !Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000 ||
+            !request.body || !Number.isSafeInteger(contentLength) ||
+            contentLength <= 0 || contentLength > 16 * 1024 * 1024) {
+          return json({ error: "Invalid multipart chunk." }, 400);
+        }
+        const upload = env.MEDIA_BUCKET.resumeMultipartUpload(key, uploadId);
+        const part = await upload.uploadPart(partNumber, request.body);
+        return json({ partNumber, etag: part.etag }, 201);
       }
-      await env.MEDIA_BUCKET.put(key, inspected.stream, {
-        httpMetadata: { contentType, cacheControl: "private, no-store" },
-        customMetadata: { uploadedBy: uid, reelId, mediaKind: "kirari-source" },
-      });
-      return json({ key, sizeBytes: size }, 201);
+
+      if (routeParts.length === 5 && routeParts[4] === "complete" && request.method === "POST") {
+        const uploadId = routeParts[3];
+        let payload: { parts?: Array<{ partNumber?: number; etag?: string }> };
+        try { payload = await request.json() as { parts?: Array<{ partNumber?: number; etag?: string }> }; }
+        catch { return json({ error: "Invalid multipart completion request." }, 400); }
+        const parts = payload.parts ?? [];
+        if (!uploadId || parts.length < 1 || parts.length > 10000 ||
+            parts.some((part) => !Number.isInteger(part.partNumber) || !part.etag ||
+              typeof part.etag !== "string")) {
+          return json({ error: "Invalid multipart completion parts." }, 400);
+        }
+        const upload = env.MEDIA_BUCKET.resumeMultipartUpload(key, uploadId);
+        const object = await upload.complete(parts as Array<{ partNumber: number; etag: string }>);
+        return json({ key, sizeBytes: object.size }, 201);
+      }
+
+      if (routeParts.length === 5 && routeParts[4] === "abort" && request.method === "DELETE") {
+        const upload = env.MEDIA_BUCKET.resumeMultipartUpload(key, routeParts[3]);
+        await upload.abort();
+        return new Response(null, { status: 204, headers: CORS });
+      }
+      return json({ error: "Unsupported Kirari multipart operation." }, 405);
     }
 
     // Private service-to-service R2 bridge for the Kirari FFmpeg pipeline.
