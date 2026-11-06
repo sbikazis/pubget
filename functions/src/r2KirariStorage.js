@@ -74,6 +74,21 @@ function createR2KirariBucket({
         return [destination];
       },
 
+      async getSignedUrl({ expires }) {
+        const expiry = Number(expires);
+        const response = await fetchImpl(`${baseUrl}/_internal/kirari/sign`, {
+          method: "POST",
+          headers: headers({ "content-type": "application/json" }),
+          body: JSON.stringify({ key, expires: Math.floor(expiry / 1000) }),
+        });
+        if (!response.ok) throw new Error(`Kirari R2 signing failed (${response.status}).`);
+        const payload = await response.json();
+        if (!payload.url || typeof payload.url !== "string") {
+          throw new Error("Kirari R2 signer returned an invalid URL.");
+        }
+        return [payload.url];
+      },
+
       async delete({ ignoreNotFound = false } = {}) {
         const response = await fetchImpl(endpoint, { method: "DELETE", headers: headers() });
         if (ignoreNotFound && response.status === 404) return;
