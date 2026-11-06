@@ -441,6 +441,10 @@ exports.getKirariReel = onCall(
   { region: "us-central1" },
   kirariDomain.getReel,
 );
+exports.getSavedKirariReels = onCall(
+  { region: "us-central1" },
+  kirariDomain.getSavedReels,
+);
 exports.reviewKirariContent = onCall(
   { region: "us-central1" },
   kirariDomain.reviewContent,
@@ -1107,6 +1111,10 @@ exports.onJoinRequestDecision = onDocumentUpdated(
 exports.onFriendRequest = onDocumentCreated(
   "friendships/{friendshipId}",
   notificationTriggers.friendRequest,
+);
+exports.onFriendRequestAccepted = onDocumentUpdated(
+  "friendships/{friendshipId}",
+  notificationTriggers.friendAccepted,
 );
 exports.onRespectReceived = onDocumentCreated(
   "respects/{respectId}",

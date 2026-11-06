@@ -9,8 +9,10 @@ import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
 
 import '../data/kirari_repository.dart';
+import '../data/kirari_video_cache.dart';
 import '../l10n/kirari_copy.dart';
 import 'kirari_upload_page.dart';
+import 'kirari_saved_page.dart';
 
 class KirariFeedPage extends StatefulWidget {
   const KirariFeedPage({super.key});
@@ -28,6 +30,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   };
 
   late KirariRepository _repository;
+  final KirariVideoCache _videoCache = KirariVideoCache();
   String _feedType = 'forYou';
   final List<KirariReel> _items = <KirariReel>[];
   VideoPlayerController? _controller;
@@ -161,9 +164,80 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   }
 
   Future<VideoPlayerController> _makeController(KirariReel reel) async {
-    final quality = await _adaptiveQuality(reel);
-    final url = await _repository.getPlaybackUrl(reel, quality: quality);
-    return VideoPlayerController.networkUrl(Uri.parse(url));
+    Object? lastError;
+
+    // Try durable local renditions before touching the network. This allows
+    // previously cached videos to play in airplane mode or during outages.
+    for (final quality in const <int>[540, 360, 720]) {
+      VideoPlayerController? controller;
+      try {
+        final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
+        if (cached == null) continue;
+        controller = VideoPlayerController.file(cached);
+        await controller.initialize().timeout(const Duration(seconds: 20));
+        return controller;
+      } catch (error) {
+        lastError = error;
+        if (controller != null) await controller.dispose();
+      }
+    }
+
+    final preferred = await _adaptiveQuality(reel);
+    final qualities = <int>{preferred, 540, 360, 720};
+    final attemptedUrls = <String>{};
+    for (final quality in qualities) {
+      VideoPlayerController? controller;
+      try {
+        final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
+        if (cached != null) {
+          controller = VideoPlayerController.file(cached);
+        } else {
+          final url = await _repository.getPlaybackUrl(reel, quality: quality);
+          if (url.isEmpty || !attemptedUrls.add(url)) continue;
+          controller = VideoPlayerController.networkUrl(Uri.parse(url));
+        }
+        await controller.initialize().timeout(const Duration(seconds: 20));
+        return controller;
+      } catch (error) {
+        lastError = error;
+        if (controller != null) await controller.dispose();
+      }
+    }
+
+    throw StateError('Kirari playback failed for all available renditions: $lastError');
+  }
+
+  Future<VideoPlayerController> _makeCachedController(KirariReel reel) async {
+    final preferred = await _adaptiveQuality(reel);
+    final qualities = <int>{preferred, 540, 360, 720};
+    Object? lastError;
+    for (final quality in qualities) {
+      try {
+        final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
+        final file = cached ?? await _videoCache.getOrDownload(
+          reelId: reel.id,
+          quality: quality,
+          source: Uri.parse(await _repository.getPlaybackUrl(reel, quality: quality)),
+        );
+        final controller = VideoPlayerController.file(file);
+        try {
+          await controller.initialize().timeout(const Duration(seconds: 20));
+          return controller;
+        } catch (_) {
+          await controller.dispose();
+          rethrow;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    // Disk prefetch is best-effort. A live network controller keeps the feed
+    // usable when the cache download is interrupted by weak connectivity.
+    try {
+      return await _makeController(reel);
+    } catch (error) {
+      throw StateError('Kirari prefetch failed: $lastError; playback: $error');
+    }
   }
 
   Future<void> _prefetchNext(int index) async {
@@ -172,8 +246,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     final reel = _items[index];
     VideoPlayerController? controller;
     try {
-      controller = await _makeController(reel);
-      await controller.initialize();
+      controller = await _makeCachedController(reel);
       await controller.setLooping(true);
       await controller.pause();
       if (!mounted || index == _activeIndex) {
@@ -215,6 +288,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       if (!controller.value.isInitialized) await controller.initialize();
       await controller.setLooping(true);
       await controller.play();
+      _cacheActiveReel(reel);
       final reporter = KirariPlaybackReporter(_repository, reel.id);
       try {
         await reporter.start();
@@ -237,6 +311,26 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       }
       if (controller != null) await controller.dispose();
     }
+  }
+
+  void _cacheActiveReel(KirariReel reel) {
+    // Cache the active rendition in the background after playback has started.
+    // Playback remains network-first so a slow download never blocks the
+    // first frame on weak mobile connections.
+    unawaited(() async {
+      final quality = await _adaptiveQuality(reel);
+      final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
+      if (cached != null) return;
+      final url = await _repository.getPlaybackUrl(reel, quality: quality);
+      if (url.isEmpty) return;
+      await _videoCache.getOrDownload(
+        reelId: reel.id,
+        quality: quality,
+        source: Uri.parse(url),
+      );
+    }().catchError((Object _) {
+      // Cache is opportunistic; it must never interrupt active playback.
+    }));
   }
 
   void _startReporter() {
@@ -277,6 +371,15 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         title: Text(copy.title),
         actions: [
           IconButton(
+            tooltip: 'Saved videos',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const KirariSavedPage(),
+              ),
+            ),
+            icon: const Icon(Icons.bookmarks_outlined),
+          ),
+          IconButton(
             tooltip: copy.create,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
@@ -314,11 +417,38 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     );
   }
 
-  Future<void> _runAction(String reelId, String kind) async {
+  Future<void> _runAction(
+    String reelId,
+    String kind, {
+    int? index,
+  }) async {
+    KirariReel? previous;
+    var actionKind = kind;
+    if (index != null && index >= 0 && index < _items.length) {
+      previous = _items[index];
+      if (kind == 'like' || kind == 'unlike') {
+        actionKind = previous.viewerLiked ? 'unlike' : 'like';
+        _items[index] = previous.copyWith(
+          viewerLiked: !previous.viewerLiked,
+          likesCount: previous.viewerLiked
+              ? (previous.likesCount > 0 ? previous.likesCount - 1 : 0)
+              : previous.likesCount + 1,
+        );
+      } else if (kind == 'save' || kind == 'unsave') {
+        actionKind = previous.viewerSaved ? 'unsave' : 'save';
+        _items[index] = previous.copyWith(
+          viewerSaved: !previous.viewerSaved,
+        );
+      }
+      if (mounted) setState(() {});
+    }
     try {
-      await _repository.action(reelId, kind);
+      await _repository.action(reelId, actionKind);
     } catch (_) {
       if (!mounted) return;
+      if (previous != null && index != null && index < _items.length) {
+        setState(() => _items[index] = previous!);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(KirariCopy.of(context).actionError)),
       );
@@ -424,8 +554,10 @@ class _KirariFeedPageState extends State<KirariFeedPage>
                 children: [
                   InkWell(
                     onTap: () => AppNavigation.go(context, PubgetLinks.profilePath(reel.creatorId)),
-                    child: Text('@${reel.creatorId}',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      '@${reel.creatorUsername.isNotEmpty ? reel.creatorUsername : reel.creatorId}',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(reel.caption,
@@ -441,18 +573,27 @@ class _KirariFeedPageState extends State<KirariFeedPage>
               child: Column(
                 children: [
                   IconButton(
-                    color: Colors.white,
-                    onPressed: () => _runAction(reel.id, 'like'),
-                    icon: const Icon(Icons.favorite_border, size: 30),
+                    color: reel.viewerLiked ? Colors.redAccent : Colors.white,
+                    onPressed: () => _runAction(reel.id, 'like', index: index),
+                    icon: Icon(
+                      reel.viewerLiked ? Icons.favorite : Icons.favorite_border,
+                      size: 30,
+                    ),
                   ),
                   Text('${reel.likesCount}', style: const TextStyle(color: Colors.white)),
                   const SizedBox(height: 16),
                   IconButton(
-                    color: Colors.white,
-                    onPressed: () => _runAction(reel.id, 'save'),
-                    icon: const Icon(Icons.bookmark_border, size: 28),
+                    color: reel.viewerSaved ? Colors.amber : Colors.white,
+                    onPressed: () => _runAction(reel.id, 'save', index: index),
+                    icon: Icon(
+                      reel.viewerSaved ? Icons.bookmark : Icons.bookmark_border,
+                      size: 28,
+                    ),
                   ),
-                  Text(copy.save, style: const TextStyle(color: Colors.white)),
+                  Text(
+                    reel.viewerSaved ? 'Saved' : copy.save,
+                    style: const TextStyle(color: Colors.white),
+                  ),
                   const SizedBox(height: 16),
                   IconButton(
                     color: Colors.white,
@@ -600,10 +741,26 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                                 trailing: deleted ? null : Wrap(
                                   children: [
                                     IconButton(
-                                      tooltip: 'Like comment',
-                                      icon: const Icon(Icons.favorite_border, size: 19),
+                                      tooltip: item['viewerLiked'] == true
+                                          ? 'Unlike comment'
+                                          : 'Like comment',
+                                      color: item['viewerLiked'] == true
+                                          ? Colors.redAccent
+                                          : null,
+                                      icon: Icon(
+                                        item['viewerLiked'] == true
+                                            ? Icons.favorite
+                                            : Icons.favorite_border,
+                                        size: 19,
+                                      ),
                                       onPressed: () async {
-                                        await widget.repository.commentAction(widget.reel.id, commentId, 'like');
+                                        await widget.repository.commentAction(
+                                          widget.reel.id,
+                                          commentId,
+                                          item['viewerLiked'] == true
+                                              ? 'unlike'
+                                              : 'like',
+                                        );
                                         await _load();
                                       },
                                     ),

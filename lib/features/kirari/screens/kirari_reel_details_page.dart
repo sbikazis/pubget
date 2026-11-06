@@ -25,6 +25,62 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
   VideoPlayerController? _controller;
   bool _loading = true;
   String? _error;
+  bool _likeBusy = false;
+  bool _saveBusy = false;
+
+  Future<void> _toggleLike() async {
+    final reel = _reel;
+    if (reel == null || _likeBusy) return;
+    final wasLiked = reel.viewerLiked;
+    final nextCount = wasLiked
+        ? (reel.likesCount > 0 ? reel.likesCount - 1 : 0)
+        : reel.likesCount + 1;
+    setState(() {
+      _likeBusy = true;
+      _reel = reel.copyWith(
+        viewerLiked: !wasLiked,
+        likesCount: nextCount,
+      );
+    });
+    try {
+      await context.read<KirariRepository>().action(
+        reel.id,
+        wasLiked ? 'unlike' : 'like',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _reel = reel);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update your like. Try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => _likeBusy = false);
+    }
+  }
+
+  Future<void> _toggleSave() async {
+    final reel = _reel;
+    if (reel == null || _saveBusy) return;
+    final wasSaved = reel.viewerSaved;
+    setState(() {
+      _saveBusy = true;
+      _reel = reel.copyWith(viewerSaved: !wasSaved);
+    });
+    try {
+      await context.read<KirariRepository>().action(
+        reel.id,
+        wasSaved ? 'unsave' : 'save',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _reel = reel);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update your saved videos. Try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saveBusy = false);
+    }
+  }
 
   @override
   void initState() {
@@ -134,9 +190,21 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
                           InkWell(
                             onTap: () => AppNavigation.go(context, PubgetLinks.profilePath(reel.creatorId)),
                             child: Row(children: [
-                              const CircleAvatar(child: Icon(Icons.person_outline)),
+                              CircleAvatar(
+                                backgroundImage: reel.creatorAvatarUrl.isNotEmpty
+                                    ? NetworkImage(reel.creatorAvatarUrl)
+                                    : null,
+                                child: reel.creatorAvatarUrl.isEmpty
+                                    ? const Icon(Icons.person_outline)
+                                    : null,
+                              ),
                               const SizedBox(width: 10),
-                              Expanded(child: Text('@${reel.creatorId}', style: Theme.of(context).textTheme.titleMedium)),
+                              Expanded(
+                                child: Text(
+                                  '@${reel.creatorUsername.isNotEmpty ? reel.creatorUsername : reel.creatorId}',
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
+                              ),
                             ]),
                           ),
                           if (reel.caption.isNotEmpty) ...[
@@ -160,8 +228,12 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
                           const SizedBox(height: 14),
                           Wrap(spacing: 8, children: [
                             OutlinedButton.icon(
-                              onPressed: () => context.read<KirariRepository>().action(reel.id, 'like'),
-                              icon: const Icon(Icons.favorite_border), label: Text('${reel.likesCount}'),
+                              onPressed: _likeBusy ? null : _toggleLike,
+                              icon: Icon(
+                                reel.viewerLiked ? Icons.favorite : Icons.favorite_border,
+                                color: reel.viewerLiked ? Colors.red : null,
+                              ),
+                              label: Text('${reel.likesCount}'),
                             ),
                             OutlinedButton.icon(
                               onPressed: () => showModalBottomSheet<void>(
@@ -171,8 +243,11 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
                               icon: const Icon(Icons.mode_comment_outlined), label: Text('${reel.commentsCount}'),
                             ),
                             OutlinedButton.icon(
-                              onPressed: () => context.read<KirariRepository>().action(reel.id, 'save'),
-                              icon: const Icon(Icons.bookmark_border), label: Text(copy.save),
+                              onPressed: _saveBusy ? null : _toggleSave,
+                              icon: Icon(
+                                reel.viewerSaved ? Icons.bookmark : Icons.bookmark_border,
+                              ),
+                              label: Text(reel.viewerSaved ? 'Saved' : copy.save),
                             ),
                           ]),
                         ],

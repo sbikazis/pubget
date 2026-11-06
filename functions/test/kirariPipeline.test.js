@@ -53,3 +53,12 @@ test("Kirari reel attribution preserves the license and required credit text", (
   });
   assert.equal(buildAudioAttribution(null, { title: "unused" }), null);
 });
+
+test("Kirari attribution falls back to the catalog display name", () => {
+  assert.equal(buildAudioAttribution("track-2", {
+    displayName: "Community Remix",
+    artist: "Fan Creator",
+    license: "CC BY 4.0",
+    attribution: "Credit required",
+  }).title, "Community Remix");
+});

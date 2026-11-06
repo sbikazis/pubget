@@ -1182,6 +1182,7 @@ function createFanWorksDomain({
     }
     const ref = workRef(db, workId);
     const commentRef = ref.collection("comments").doc(commentId);
+    let reportedComment = null;
     await db.runTransaction(async (transaction) => {
       const [work, comment] = await Promise.all([
         transaction.get(ref),
@@ -1202,17 +1203,19 @@ function createFanWorksDomain({
         return;
       }
       if (action === "report") {
-        const reportRef = commentRef.collection("reports").doc(actor);
-        const existing = await transaction.get(reportRef);
-        if (existing.exists) return;
         if (comment.data()?.authorId === actor) {
           throw new HttpsError("failed-precondition", "You cannot report your own comment.");
         }
-        transaction.create(reportRef, {
-          reporterId: actor,
-          createdAt: FieldValue.serverTimestamp(),
-        });
-        transaction.update(commentRef, { reported: true });
+        reportedComment = { creatorId: comment.data()?.authorId || null };
+        const reportRef = commentRef.collection("reports").doc(actor);
+        const existing = await transaction.get(reportRef);
+        if (!existing.exists) {
+          transaction.create(reportRef, {
+            reporterId: actor,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+          transaction.update(commentRef, { reported: true });
+        }
         return;
       }
       const likeRef = commentRef.collection("likes").doc(actor);
@@ -1225,6 +1228,19 @@ function createFanWorksDomain({
         transaction.update(commentRef, { likesCount: FieldValue.increment(-1) });
       }
     });
+    if (action === "report" && reportedComment) {
+      await enqueueModerationCase({
+        db,
+        FieldValue,
+        type: "fanWorkComment",
+        targetId: commentId,
+        targetParentId: workId,
+        reporterId: actor,
+        creatorId: reportedComment.creatorId,
+        reason: "community_report",
+        sourcePath: `fanWorks/${workId}/comments/${commentId}/reports/${actor}`,
+      });
+    }
     return { ok: true };
   }
 

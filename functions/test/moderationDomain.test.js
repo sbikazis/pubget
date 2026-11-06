@@ -231,6 +231,16 @@ function seedReport() {
       moderationStatus: "flagged",
       visibility: "public",
     },
+    "edits/e1/comments/ec1": {
+      authorId: "creator",
+      text: "harmful edit comment",
+      likesCount: 0,
+    },
+    "fanWorks/w1/comments/fc1": {
+      authorId: "creator",
+      text: "harmful fan work comment",
+      likesCount: 0,
+    },
     "anime_stats/16498/reviews/reviewer": {
       userId: "reviewer",
       moderationStatus: "flagged",
@@ -463,6 +473,31 @@ test("restrict then unrestrict tracks both states in the audit trail", async () 
   assert.deepEqual(actions, ["user_restricted", "user_unrestricted"]);
 });
 
+
+test("comment reports can be removed and restored through their parent content id", async () => {
+  const { domain, db } = handlers({ db: createFakeDb(seedReport()) });
+  const removed = await domain.removeContent({
+    ...staff(),
+    data: { kind: "editComment", targetId: "ec1", targetParentId: "e1", reason: "harassment" },
+  });
+  assert.equal(removed.ok, true);
+  assert.equal(db.store.get("edits/e1/comments/ec1").text, null);
+  assert.ok(db.store.get("edits/e1/comments/ec1").deletedAt);
+
+  const restored = await domain.restoreContent({
+    ...staff(),
+    data: { kind: "editComment", targetId: "ec1", targetParentId: "e1", previous: removed.previous },
+  });
+  assert.equal(restored.ok, true);
+  assert.equal(db.store.get("edits/e1/comments/ec1").text, "harmful edit comment");
+  assert.equal(db.store.get("edits/e1/comments/ec1").deletedAt, null);
+
+  await assert.rejects(
+    domain.removeContent({ ...staff(), data: { kind: "fanWorkComment", targetId: "fc1" } }),
+    (error) => error.code === "invalid-argument",
+  );
+});
+
 test("the needs_review sweep refuses an unknown kind instead of scanning everything", async () => {
   const { domain } = handlers();
   await assert.rejects(
@@ -532,8 +567,10 @@ test("the exposed kind lists stay in sync with the supported set", () => {
   assert.deepEqual([...REMOVABLE_KINDS].sort(), [
     "animeReview",
     "edit",
+    "editComment",
     "event",
     "fanWork",
+    "fanWorkComment",
     "groupMessage",
     "privateMessage",
   ]);

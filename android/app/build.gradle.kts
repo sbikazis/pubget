@@ -85,6 +85,8 @@ dependencies {
     // 🔥 Firebase BOM
     implementation(platform("com.google.firebase:firebase-bom:34.11.0"))
     implementation("com.google.firebase:firebase-analytics")
+    // MainActivity uses the native resumable upload API and session URI.
+    implementation("com.google.firebase:firebase-storage")
 
     // حل مشكلة flutter_local_notifications
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4") // <-- أضفت هذا

@@ -141,7 +141,10 @@ class _NotificationTile extends StatelessWidget {
     'group_message' => Icons.forum_outlined,
     'join_request' => Icons.group_add_outlined,
     'friend_request' => Icons.person_add_outlined,
+    'friend_accepted' => Icons.person_add_alt_1_outlined,
     'respect_received' => Icons.favorite_outline,
+    'kirari_comment' => Icons.mode_comment_outlined,
+    'kirari_published' => Icons.play_circle_outline,
     'game_invite' ||
     'game_started' ||
     'game_completed' => Icons.sports_esports_outlined,
@@ -174,7 +177,10 @@ class _NotificationTile extends StatelessWidget {
       'join_request' => 'Join request',
       'request_accepted' => 'Request accepted',
       'friend_request' => 'Friend request',
+      'friend_accepted' => 'Friend request accepted',
       'respect_received' => 'Respect received',
+      'kirari_comment' => 'New comment on your video',
+      'kirari_published' => 'New video from a creator you follow',
       'game_invite' => 'Game invite',
       'game_started' => 'Game starting',
       'game_completed' => 'Game result',
@@ -190,6 +196,15 @@ class _NotificationTile extends StatelessWidget {
   }
 
   String _body(AppNotification item) {
+    if (item.type == 'friend_accepted') {
+      return 'Your friend request was accepted.';
+    }
+    if (item.type == 'kirari_comment') {
+      return 'Someone commented on your video.';
+    }
+    if (item.type == 'kirari_published') {
+      return 'A creator you follow published a new video.';
+    }
     final fromMeta = _metadataText(item, 'body');
     if (fromMeta.isNotEmpty &&
         (item.type == 'rank_promoted' ||

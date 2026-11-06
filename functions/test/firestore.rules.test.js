@@ -1638,15 +1638,15 @@ test("Kirari documents and interactions are read-only to clients with publicatio
   await assertFails(db("alice").doc("kirariUploadLocks/alice").set({ reelId: "r3" }));
 });
 
-test("Kirari seen markers are owner-scoped and field-limited", async () => {
-  await assertSucceeds(db("alice").doc("users/alice/kirariSeen/r1").set({
+test("Kirari seen markers are server-only", async () => {
+  await assertFails(db("alice").doc("users/alice/kirariSeen/r1").set({
     seenAt: serverTimestamp(),
   }));
   await assertFails(db("bob").doc("users/alice/kirariSeen/r2").set({
     seenAt: serverTimestamp(),
   }));
   await assertFails(db("alice").doc("users/alice/kirariSeen/r3").set({
-    seenAt: serverTimestamp(), forgedScore: 100000,
+    seenAt: serverTimestamp(),
   }));
 });
 
@@ -1746,4 +1746,27 @@ test("the mute list is self-scoped and server-owned", async () => {
   await assertFails(alice.doc("reelMutes/alice").set({ uid: "alice" }));
 
   await assertFails(bob.collection("reelMutes/alice/creators").get());
+});
+
+
+test("account moderation flags and block relationships are never client writable", async () => {
+  await assertFails(db("alice").doc("users/alice").update({
+    isBanned: true,
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    moderationState: "restricted",
+    moderationReason: "forged",
+    restrictedUntil: new Date(Date.now() + 60 * 60 * 1000),
+  }));
+  await assertFails(db("alice").doc("friendships/alice_bob").set({
+    userA: "alice",
+    userB: "bob",
+    userIds: ["alice", "bob"],
+    status: "blocked",
+    blockedBy: "alice",
+  }));
+  await assertFails(db("bob").doc("friendships/alice_bob").update({
+    status: "blocked",
+    blockedBy: "bob",
+  }));
 });
