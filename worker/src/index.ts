@@ -588,7 +588,7 @@ export default {
         }
         const upload = await env.MEDIA_BUCKET.createMultipartUpload(key, {
           httpMetadata: { contentType: "video/mp4", cacheControl: "private, no-store" },
-          customMetadata: { uploadedBy: uid, reelId, mediaKind: "kirari-source" },
+          customMetadata: { uploadedBy: uid, reelId, mediaKind: "kirari-source", declaredSizeBytes: String(size) },
         });
         return json({ uploadId: upload.uploadId, key }, 201);
       }
@@ -603,7 +603,15 @@ export default {
           return json({ error: "Invalid multipart chunk." }, 400);
         }
         const upload = env.MEDIA_BUCKET.resumeMultipartUpload(key, uploadId);
-        const part = await upload.uploadPart(partNumber, request.body);
+        let partBody = request.body;
+        if (partNumber === 1) {
+          const inspected = await inspectAndRestoreBody(partBody);
+          if (!validFileSignature("reels", "video/mp4", inspected.prefix)) {
+            return json({ error: "The source file is not a valid MP4." }, 415);
+          }
+          partBody = inspected.stream;
+        }
+        const part = await upload.uploadPart(partNumber, partBody);
         return json({ partNumber, etag: part.etag }, 201);
       }
 
@@ -620,6 +628,12 @@ export default {
         }
         const upload = env.MEDIA_BUCKET.resumeMultipartUpload(key, uploadId);
         const object = await upload.complete(parts as Array<{ partNumber: number; etag: string }>);
+        const declaredSize = Number(object.customMetadata?.declaredSizeBytes);
+        if (!Number.isSafeInteger(object.size) || object.size <= 0 ||
+            object.size > 500 * 1024 * 1024 || object.size !== declaredSize) {
+          await env.MEDIA_BUCKET.delete(key);
+          return json({ error: "Completed Kirari upload size does not match its declaration." }, 400);
+        }
         return json({ key, sizeBytes: object.size }, 201);
       }
 
