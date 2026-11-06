@@ -2,6 +2,7 @@ export interface Env {
   MEDIA_BUCKET: R2Bucket;
   FIREBASE_PROJECT_ID: string;
   MEDIA_SIGNING_SECRET: string;
+  KIRARI_R2_SERVICE_SECRET: string;
 }
 
 const CORS: Record<string, string> = {
@@ -433,6 +434,19 @@ async function authorizeConversation(
   }
 }
 
+function validKirariServiceKey(key: string): boolean {
+  return /^(?:kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:source\.mp4|[A-Za-z0-9_-]{1,80}\.mp4|cover\.jpg)|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:360|540|720)\.mp4|kirari-audio\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,80}\.(?:mp3|m4a|aac|ogg))$/.test(key);
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+  if (!left || left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index++) {
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return difference === 0;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") {
@@ -440,6 +454,62 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    // Private service-to-service R2 bridge for the Kirari FFmpeg pipeline.
+    // This route never accepts Firebase user tokens and is not exposed to app clients.
+    if (url.pathname.startsWith("/_internal/kirari/objects/")) {
+      const supplied = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "") ?? "";
+      if (!constantTimeEqual(supplied, env.KIRARI_R2_SERVICE_SECRET)) {
+        return json({ error: "Service authentication required." }, 401);
+      }
+      let key: string;
+      try {
+        key = decodeURIComponent(url.pathname.slice("/_internal/kirari/objects/".length));
+      } catch {
+        return json({ error: "Invalid object key." }, 400);
+      }
+      if (!validKirariServiceKey(key)) return json({ error: "Invalid Kirari object key." }, 400);
+
+      if (request.method === "HEAD") {
+        const object = await env.MEDIA_BUCKET.head(key);
+        if (!object) return json({ error: "Not found." }, 404);
+        return new Response(null, {
+          headers: {
+            ...CORS,
+            "content-length": String(object.size),
+            "content-type": object.httpMetadata?.contentType ?? "application/octet-stream",
+          },
+        });
+      }
+      if (request.method === "GET") {
+        const object = await env.MEDIA_BUCKET.get(key);
+        if (!object) return json({ error: "Not found." }, 404);
+        const headers = new Headers(CORS);
+        object.writeHttpMetadata(headers);
+        headers.set("content-length", String(object.size));
+        headers.set("cache-control", "private, no-store");
+        return new Response(object.body, { headers });
+      }
+      if (request.method === "PUT") {
+        const size = Number(request.headers.get("content-length"));
+        const contentType = request.headers.get("content-type") ?? "application/octet-stream";
+        if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
+            size > 500 * 1024 * 1024 ||
+            !["video/mp4", "image/jpeg", "audio/mpeg", "audio/mp4", "audio/aac", "audio/ogg"].includes(contentType)) {
+          return json({ error: "Invalid Kirari upload." }, 400);
+        }
+        await env.MEDIA_BUCKET.put(key, request.body, {
+          httpMetadata: { contentType, cacheControl: "private, no-store" },
+          customMetadata: { pipeline: "kirari-ffmpeg-v1" },
+        });
+        return json({ key }, 201);
+      }
+      if (request.method === "DELETE") {
+        await env.MEDIA_BUCKET.delete(key);
+        return new Response(null, { status: 204, headers: CORS });
+      }
+      return json({ error: "Method not allowed." }, 405);
+    }
 
     if (url.pathname === "/health" && request.method === "GET") {
       return json({ ok: true, service: "pubget-media", storage: "r2", bucket: "pubget-media" });
