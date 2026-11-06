@@ -38,7 +38,6 @@ function createR2KirariBucket({
     if (!valid) throw new Error("Invalid Kirari R2 object key.");
     return key;
   }
-
   function file(key) {
     validateKey(key);
     const endpoint = `${baseUrl}/_internal/kirari/objects/${encodeURIComponent(key)}`;
