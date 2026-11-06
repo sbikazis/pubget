@@ -132,7 +132,14 @@ class FirebaseKirariRepository implements KirariRepository {
   }) : _functions = functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
        _auth = auth ?? FirebaseAuth.instance,
        _http = httpClient ?? http.Client(),
-       _workerUrl = workerUrl.replaceAll(RegExp(r'/+
+       _workerUrl = workerUrl.substring(0, workerUrl.length - (workerUrl.endsWith('/') ? 1 : 0)),
+       _picker = picker ?? ImagePicker();
+
+  final FirebaseFunctions _functions;
+  final FirebaseAuth _auth;
+  final http.Client _http;
+  final String _workerUrl;
+  final ImagePicker _picker;
 
   Future<String> _resolveMediaPath(String key) async {
     final token = await _auth.currentUser?.getIdToken();
@@ -144,7 +151,7 @@ class FirebaseKirariRepository implements KirariRepository {
     final response = await _http.get(uri, headers: {'Authorization': 'Bearer $token'})
         .timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
-      throw StateError('Kirari playback URL could not be resolved (HTTP \${response.statusCode}).');
+      throw StateError('Kirari playback URL could not be resolved (HTTP ' + response.statusCode.toString() + ').');
     }
     final payload = jsonDecode(response.body) as Map<String, dynamic>;
     final url = payload['url'] as String?;
@@ -429,7 +436,7 @@ class FirebaseKirariRepository implements KirariRepository {
       final body = await response.stream.bytesToString();
       throw StateError(
         body.isEmpty
-            ? 'Kirari upload failed (HTTP \${response.statusCode}).'
+            ? 'Kirari upload failed (HTTP ' + response.statusCode.toString() + ').'
             : 'Kirari upload failed: $body',
       );
     }
