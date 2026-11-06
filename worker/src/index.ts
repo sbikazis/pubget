@@ -469,7 +469,7 @@ export default {
       if (parts[0] === "kirari-processed" && parts.length === 4) {
         const [, ownerUid, reelId, filename] = parts;
         const response = await fetch(
-          \`https://firestore.googleapis.com/v1/projects/\${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/kirari/\${encodeURIComponent(reelId)}\`,
+          `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/kirari/${encodeURIComponent(reelId)}`,
           { headers: { Authorization: token } },
         );
         if (response.ok) {
@@ -488,7 +488,7 @@ export default {
       } else if (parts[0] === "kirari-audio" && parts.length === 3) {
         const audioId = parts[1];
         const response = await fetch(
-          \`https://firestore.googleapis.com/v1/projects/\${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/kirariAudio/\${encodeURIComponent(audioId)}\`,
+          `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/kirariAudio/${encodeURIComponent(audioId)}`,
           { headers: { Authorization: token } },
         );
         if (response.ok) {
@@ -501,8 +501,8 @@ export default {
       }
       if (!permitted) return json({ error: "This Kirari media is not available." }, 403);
       const expires = Math.floor(Date.now() / 1000) + 300;
-      const signature = await hmac(env, \`\${key}\n\${expires}\`);
-      return json({ url: \`\${url.origin}/kirari/asset?key=\${encodeURIComponent(key)}&expires=\${expires}&signature=\${signature}\`, expires });
+      const signature = await hmac(env, `${key}\n${expires}`);
+      return json({ url: `${url.origin}/kirari/asset?key=${encodeURIComponent(key)}&expires=${expires}&signature=${signature}`, expires });
     }
 
     // Signed media URLs are deliberately short-lived and support byte ranges
@@ -514,7 +514,7 @@ export default {
       const now = Math.floor(Date.now() / 1000);
       if (!validKirariServiceKey(key) || key.includes("/source.mp4") ||
           !Number.isSafeInteger(expires) || expires < now || expires > now + 360 ||
-          !constantTimeEqual(supplied, await hmac(env, \`\${key}\n\${expires}\`))) {
+          !constantTimeEqual(supplied, await hmac(env, `${key}\n${expires}`))) {
         return json({ error: "Playback link expired or invalid." }, 403);
       }
       const head = await env.MEDIA_BUCKET.head(key);
@@ -530,18 +530,18 @@ export default {
       }
       if (rangeHeader) {
         const match = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader);
-        if (!match) return new Response(null, { status: 416, headers: { "content-range": \`bytes */\${head.size}\` } });
+        if (!match) return new Response(null, { status: 416, headers: { "content-range": `bytes */${head.size}` } });
         const start = Number(match[1]);
         const end = match[2] ? Math.min(Number(match[2]), head.size - 1) : head.size - 1;
         if (start >= head.size || end < start) {
-          return new Response(null, { status: 416, headers: { "content-range": \`bytes */\${head.size}\` } });
+          return new Response(null, { status: 416, headers: { "content-range": `bytes */${head.size}` } });
         }
         const object = await env.MEDIA_BUCKET.get(key, { range: { offset: start, length: end - start + 1 } });
         if (!object) return json({ error: "Not found." }, 404);
         return new Response(object.body, { status: 206, headers: {
           "content-type": object.httpMetadata?.contentType ?? "application/octet-stream",
           "content-length": String(end - start + 1),
-          "content-range": \`bytes \${start}-\${end}/\${head.size}\`,
+          "content-range": `bytes ${start}-${end}/${head.size}`,
           "accept-ranges": "bytes",
           "cache-control": "private, max-age=60",
         } });
@@ -566,14 +566,14 @@ export default {
       const routeParts = url.pathname.split("/").filter(Boolean);
       const reelId = routeParts[2] ?? "";
       if (!/^[A-Za-z0-9_-]{1,128}$/.test(reelId)) return json({ error: "Invalid reel id." }, 400);
-      const documentUrl = \`https://firestore.googleapis.com/v1/projects/\${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/kirari/\${encodeURIComponent(reelId)}\`;
+      const documentUrl = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/kirari/${encodeURIComponent(reelId)}`;
       const reelResponse = await fetch(documentUrl, { headers: { Authorization: token } });
       if (!reelResponse.ok) return json({ error: "Kirari upload not found or not permitted." }, 403);
       const reelDocument = await reelResponse.json() as { fields?: Record<string, { stringValue?: string }> };
       const fields = reelDocument.fields ?? {};
       const key = fields.originalStoragePath?.stringValue ?? fields.storagePath?.stringValue ?? "";
       if (fields.creatorId?.stringValue !== uid || fields.status?.stringValue !== "uploading" ||
-          key !== \`kirari/\${uid}/\${reelId}/source.mp4\` || !validKirariServiceKey(key)) {
+          key !== `kirari/${uid}/${reelId}/source.mp4` || !validKirariServiceKey(key)) {
         return json({ error: "This Kirari upload is not available." }, 403);
       }
 
@@ -645,8 +645,8 @@ export default {
           !Number.isSafeInteger(expires) || expires <= now || expires > now + 360) {
         return json({ error: "Invalid signing request." }, 400);
       }
-      const signature = await hmac(env, \`\${key}\n\${expires}\`);
-      return json({ url: \`\${url.origin}/kirari/asset?key=\${encodeURIComponent(key)}&expires=\${expires}&signature=\${signature}\` });
+      const signature = await hmac(env, `${key}\n${expires}`);
+      return json({ url: `${url.origin}/kirari/asset?key=${encodeURIComponent(key)}&expires=${expires}&signature=${signature}` });
     }
 
     if (url.pathname.startsWith("/_internal/kirari/objects/")) {
