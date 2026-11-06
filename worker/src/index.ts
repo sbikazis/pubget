@@ -522,6 +522,7 @@ export default {
       const rangeHeader = request.headers.get("range");
       if (request.method === "HEAD") {
         return new Response(null, { headers: {
+          ...CORS,
           "content-type": head.httpMetadata?.contentType ?? "application/octet-stream",
           "content-length": String(head.size),
           "accept-ranges": "bytes",
@@ -539,6 +540,7 @@ export default {
         const object = await env.MEDIA_BUCKET.get(key, { range: { offset: start, length: end - start + 1 } });
         if (!object) return json({ error: "Not found." }, 404);
         return new Response(object.body, { status: 206, headers: {
+          ...CORS,
           "content-type": object.httpMetadata?.contentType ?? "application/octet-stream",
           "content-length": String(end - start + 1),
           "content-range": `bytes ${start}-${end}/${head.size}`,
@@ -549,6 +551,7 @@ export default {
       const object = await env.MEDIA_BUCKET.get(key);
       if (!object) return json({ error: "Not found." }, 404);
       return new Response(object.body, { headers: {
+        ...CORS,
         "content-type": object.httpMetadata?.contentType ?? "application/octet-stream",
         "content-length": String(object.size),
         "accept-ranges": "bytes",
