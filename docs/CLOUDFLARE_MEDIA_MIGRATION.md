@@ -56,3 +56,39 @@ that would strand uploads in a non-published state.
   strings are redacted in Worker observability.
 - No live Worker code deployment or Firebase Functions deployment is part of
   this source change. Deploy only after the processing migration and CI pass.
+
+
+## Kirari R2 migration (Cloudflare Worker + Firebase Functions)
+
+Kirari source uploads now use authenticated R2 multipart uploads rather than
+Firebase Storage. Flutter sends 8 MiB chunks to
+`/kirari/multipart/{reelId}`; the Worker verifies the Firebase ID token and
+reads the reel document through Firestore REST before accepting any part. The
+client cannot choose an object key. Finalization changes the reel state to
+`processing`, which wakes the Firestore-triggered FFmpeg pipeline. The
+pipeline downloads the source from R2, creates the 360p/540p/720p renditions
+and cover, and writes the resulting paths to Firestore.
+
+Playback and cover URLs are resolved through `/kirari/resolve`. The Worker
+checks the published reel (or approved reusable audio track) before issuing a
+five-minute signed URL. The media endpoint supports HTTP byte ranges for video
+seeking. Kirari deletion and retry operations use the same authenticated
+server-side R2 adapter.
+
+### Required secret binding
+
+Before deploying the updated Functions or Worker, configure the same
+high-entropy value independently as:
+
+- Firebase Functions Secret Manager secret: `KIRARI_R2_SERVICE_SECRET`
+- Cloudflare Worker secret binding: `KIRARI_R2_SERVICE_SECRET`
+
+This is a service-to-service credential. It is distinct from
+`MEDIA_SIGNING_SECRET`, must never be exposed to Flutter, and must not be
+written into source control. The Worker also requires the existing
+`MEDIA_SIGNING_SECRET` binding for short-lived playback URL signatures.
+
+Do not deploy until both secret bindings are present. The code path is
+validated by CI; production upload, FFmpeg processing, signed playback, retry,
+and deletion still require an end-to-end smoke test after the secret is
+configured.
