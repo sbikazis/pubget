@@ -599,6 +599,25 @@ export default {
 
     // Private service-to-service R2 bridge for the Kirari FFmpeg pipeline.
     // This route never accepts Firebase user tokens and is not exposed to app clients.
+    if (url.pathname === "/_internal/kirari/sign" && request.method === "POST") {
+      const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+      if (!constantTimeEqual(supplied, env.KIRARI_R2_SERVICE_SECRET)) {
+        return json({ error: "Service authentication required." }, 401);
+      }
+      let payload: { key?: string; expires?: number };
+      try { payload = await request.json() as { key?: string; expires?: number }; }
+      catch { return json({ error: "Invalid signing request." }, 400); }
+      const key = payload.key ?? "";
+      const expires = Number(payload.expires);
+      const now = Math.floor(Date.now() / 1000);
+      if (!validKirariServiceKey(key) || key.includes("/source.mp4") ||
+          !Number.isSafeInteger(expires) || expires <= now || expires > now + 360) {
+        return json({ error: "Invalid signing request." }, 400);
+      }
+      const signature = await hmac(env, \`\${key}\n\${expires}\`);
+      return json({ url: \`\${url.origin}/kirari/asset?key=\${encodeURIComponent(key)}&expires=\${expires}&signature=\${signature}\` });
+    }
+
     if (url.pathname.startsWith("/_internal/kirari/objects/")) {
       const supplied = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "") ?? "";
       if (!constantTimeEqual(supplied, env.KIRARI_R2_SERVICE_SECRET)) {
@@ -612,20 +631,7 @@ export default {
       }
       if (!validKirariServiceKey(key)) return json({ error: "Invalid Kirari object key." }, 400);
 
-      if (url.pathname === "/_internal/kirari/sign" && request.method === "POST") {
-        let payload: { key?: string; expires?: number };
-        try { payload = await request.json() as { key?: string; expires?: number }; }
-        catch { return json({ error: "Invalid signing request." }, 400); }
-        const key = payload.key ?? "";
-        const expires = Number(payload.expires);
-        const now = Math.floor(Date.now() / 1000);
-        if (!validKirariServiceKey(key) || key.includes("/source.mp4") ||
-            !Number.isSafeInteger(expires) || expires <= now || expires > now + 360) {
-          return json({ error: "Invalid signing request." }, 400);
-        }
-        const signature = await hmac(env, \`\${key}\n\${expires}\`);
-        return json({ url: \`https://pubget-media.pubget.workers.dev/kirari/asset?key=\${encodeURIComponent(key)}&expires=\${expires}&signature=\${signature}\` });
-      }
+
       if (request.method === "HEAD") {
         const object = await env.MEDIA_BUCKET.head(key);
         if (!object) return json({ error: "Not found." }, 404);
