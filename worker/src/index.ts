@@ -8,7 +8,7 @@ export interface Env {
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, HEAD, POST, PUT, DELETE, OPTIONS",
-  "access-control-allow-headers": "Authorization, Content-Type, Range",
+  "access-control-allow-headers": "Authorization, Content-Type, Range, X-Kirari-Size",
   "access-control-expose-headers": "Content-Length, Content-Type, ETag, Accept-Ranges, Content-Range",
 };
 
