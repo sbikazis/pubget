@@ -416,31 +416,84 @@ class FirebaseKirariRepository implements KirariRepository {
       throw StateError('The server returned an invalid Kirari upload path.');
     }
     final reelId = segments[2];
-    final request = http.StreamedRequest(
-      'PUT',
-      Uri.parse('$_workerUrl/kirari/upload/$reelId'),
-    )
-      ..headers['Authorization'] = 'Bearer $token'
-      ..headers['Content-Type'] = 'video/mp4'
-      ..contentLength = length;
-    var sent = 0;
-    final responseFuture = _http.send(request).timeout(const Duration(minutes: 20));
-    await request.sink.addStream(file.openRead().map((chunk) {
-      sent += chunk.length;
-      if (length > 0) onProgress((sent / length).clamp(0, 1).toDouble());
-      return chunk;
-    }));
-    await request.sink.close();
-    final response = await responseFuture;
-    if (response.statusCode != 201) {
-      final body = await response.stream.bytesToString();
-      throw StateError(
-        body.isEmpty
-            ? 'Kirari upload failed (HTTP ' + response.statusCode.toString() + ').'
-            : 'Kirari upload failed: $body',
-      );
+    final initUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId');
+    final initResponse = await _http.post(
+      initUri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+        'x-kirari-size': length.toString(),
+      },
+      body: '{}',
+    ).timeout(const Duration(seconds: 30));
+    if (initResponse.statusCode != 201) {
+      throw StateError('Could not start Kirari upload (HTTP ' +
+          initResponse.statusCode.toString() + ').');
     }
-    onProgress(1);
+    final initPayload = jsonDecode(initResponse.body) as Map<String, dynamic>;
+    final uploadId = initPayload['uploadId'] as String?;
+    if (uploadId == null || uploadId.isEmpty) {
+      throw StateError('The media service returned an invalid multipart session.');
+    }
+
+    const chunkSize = 8 * 1024 * 1024;
+    final parts = <Map<String, dynamic>>[];
+    var sent = 0;
+    try {
+      var partNumber = 1;
+      while (sent < length) {
+        final chunkLength = (length - sent).clamp(0, chunkSize);
+        final partUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId/' +
+            Uri.encodeComponent(uploadId) + '/$partNumber');
+        final request = http.StreamedRequest('PUT', partUri)
+          ..headers['Authorization'] = 'Bearer $token'
+          ..contentLength = chunkLength;
+        final responseFuture = _http.send(request).timeout(const Duration(minutes: 3));
+        final chunkStream = file.openRead(sent, sent + chunkLength).map((chunk) {
+          sent += chunk.length;
+          if (length > 0) onProgress((sent / length).clamp(0, 1).toDouble());
+          return chunk;
+        });
+        await request.sink.addStream(chunkStream);
+        await request.sink.close();
+        final response = await responseFuture;
+        final responseBody = await response.stream.bytesToString();
+        if (response.statusCode != 201) {
+          throw StateError('Kirari upload part failed (HTTP ' +
+              response.statusCode.toString() + '): ' + responseBody);
+        }
+        final payload = jsonDecode(responseBody) as Map<String, dynamic>;
+        final etag = payload['etag'] as String?;
+        final returnedPart = payload['partNumber'] as int?;
+        if (etag == null || returnedPart != partNumber) {
+          throw StateError('The media service returned an invalid upload part.');
+        }
+        parts.add({'partNumber': partNumber, 'etag': etag});
+        partNumber++;
+      }
+
+      final completeUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId/' +
+          Uri.encodeComponent(uploadId) + '/complete');
+      final completeResponse = await _http.post(
+        completeUri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'parts': parts}),
+      ).timeout(const Duration(minutes: 3));
+      if (completeResponse.statusCode != 201) {
+        throw StateError('Kirari upload could not be completed (HTTP ' +
+            completeResponse.statusCode.toString() + ').');
+      }
+      onProgress(1);
+    } catch (_) {
+      final abortUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId/' +
+          Uri.encodeComponent(uploadId) + '/abort');
+      await _http.delete(abortUri, headers: {'Authorization': 'Bearer $token'})
+          .timeout(const Duration(seconds: 30)).catchError((_) => http.Response('', 500));
+      rethrow;
+    }
   }
 
   @override
