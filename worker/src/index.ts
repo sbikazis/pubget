@@ -435,7 +435,8 @@ async function authorizeConversation(
 }
 
 function validKirariServiceKey(key: string): boolean {
-  return /^(?:kirari\\/[A-Za-z0-9_-]{1,128}\\/[A-Za-z0-9_-]{1,128}\\/source\\.mp4|kirari-processed\\/[A-Za-z0-9_-]{1,128}\\/[A-Za-z0-9_-]{1,128}\\/(?:360|540|720)\\.mp4|kirari-processed\\/[A-Za-z0-9_-]{1,128}\\/[A-Za-z0-9_-]{1,128}\\/cover\\.jpg|kirari-audio\\/[A-Za-z0-9_-]{1,128}\\/audio\\.(?:mp3|m4a|aac|ogg))$/.test(key);
+  return /^(?:kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/source\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:360|540|720)\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/cover\.jpg|kirari-audio\/[A-Za-z0-9_-]{1,128}\/audio\.(?:mp3|m4a|aac|ogg))$/.test(key);
+}
 }
 
 function constantTimeEqual(left: string, right: string): boolean {
