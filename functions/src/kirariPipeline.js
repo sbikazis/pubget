@@ -146,19 +146,32 @@ function editorVideoFilter(width, height, settings) {
 }
 function createKirariPipeline({ db, bucket }) {
   return async (event) => {
-    const object = event.data || event;
-    const objectName = object.name || "";
-    const match = /^kirari\/([^/]+)\/([^/]+)\/source\.mp4$/.exec(objectName);
-    if (!match || !object.bucket || object.bucket !== bucket.name) return null;
-    const [, uid, reelId] = match;
+    // R2 media is processed from a Firestore state transition, not a Firebase
+    // Storage finalize event. The event is intentionally only a wake-up signal;
+    // the canonical source path and metadata are read from the reel and R2.
+    const reelId = event.params?.reelId || event.reelId;
+    if (!reelId) return null;
     const ref = db.collection("kirari").doc(reelId);
     const snap = await ref.get();
     if (!snap.exists) return null;
-    const reel = snap.data();
-    if (reel.creatorId !== uid || reel.originalStoragePath !== objectName) return null;
-    if (["published", "rejected", "deleted"].includes(reel.status)) return null;
-    const sourceSize = Number(object.size || 0);
-    const sourceType = String(object.contentType || "");
+    const reel = snap.data() || {};
+    const objectName = reel.originalStoragePath || reel.storagePath || "";
+    const match = /^kirari\\/([^/]+)\\/([^/]+)\\/source\\.mp4$/.exec(objectName);
+    if (!match) return null;
+    const [, uid] = match;
+    if (reel.creatorId !== uid || ["published", "rejected", "deleted"].includes(reel.status)) return null;
+    if (!["uploading", "processing"].includes(reel.status)) return null;
+    let sourceMeta;
+    try {
+      [sourceMeta] = await bucket.file(objectName).getMetadata();
+    } catch (error) {
+      await ref.update({
+        status: "failed", failureReason: "source-missing", failedAt: new Date(),
+      }).catch(() => {});
+      throw error;
+    }
+    const sourceSize = Number(sourceMeta.size || 0);
+    const sourceType = String(sourceMeta.contentType || "");
     if (sourceSize <= 0 || sourceSize > KIRARI.maxBytes || !sourceType.startsWith("video/")) {
       await ref.update({
         status: "failed",
@@ -170,7 +183,7 @@ function createKirariPipeline({ db, bucket }) {
     }
     if (!["uploading", "processing"].includes(reel.status)) return null;
 
-    const leaseId = String(object.generation || object.metageneration || Date.now());
+    const leaseId = String(event.id || event.params?.reelId || Date.now());
     const leaseAcquired = await db.runTransaction(async (tx) => {
       const current = await tx.get(ref);
       if (!current.exists || !["uploading", "processing"].includes(current.data()?.status)) return false;
