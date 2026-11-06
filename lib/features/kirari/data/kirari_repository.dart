@@ -442,7 +442,7 @@ class FirebaseKirariRepository implements KirariRepository {
     try {
       var partNumber = 1;
       while (sent < length) {
-        final chunkLength = (length - sent).clamp(0, chunkSize);
+        final chunkLength = (length - sent).clamp(0, chunkSize).toInt();
         final partUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId/' +
             Uri.encodeComponent(uploadId) + '/$partNumber');
         final request = http.StreamedRequest('PUT', partUri)
