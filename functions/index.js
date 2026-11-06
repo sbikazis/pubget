@@ -380,7 +380,7 @@ exports.startKirariUpload = onCall(
   kirariDomain.startUpload,
 );
 exports.finalizeKirariUpload = onCall(
-  { region: "us-central1", timeoutSeconds: 60 },
+  { region: "us-central1", secrets: [kirariR2ServiceSecret], timeoutSeconds: 60 },
   kirariDomain.finalizeUpload,
 );
 exports.retryKirariProcessing = onCall(
