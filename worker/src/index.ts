@@ -456,6 +456,46 @@ export default {
 
     const url = new URL(request.url);
 
+    // Authenticated, streaming source upload for Kirari. The reel document is
+    // read with the caller's Firebase token so Firestore rules remain the
+    // authority for ownership; the object key is never accepted from the client.
+    if (url.pathname.startsWith("/kirari/upload/") && request.method === "PUT") {
+      const uid = await authenticate(request, env.FIREBASE_PROJECT_ID);
+      if (!uid) return json({ error: "Authentication required." }, 401);
+      const reelId = decodeURIComponent(url.pathname.slice("/kirari/upload/".length));
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(reelId)) return json({ error: "Invalid reel id." }, 400);
+      const token = request.headers.get("authorization") ?? "";
+      const documentUrl = \`https://firestore.googleapis.com/v1/projects/\${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/kirari/\${encodeURIComponent(reelId)}\`;
+      const reelResponse = await fetch(documentUrl, { headers: { Authorization: token } });
+      if (!reelResponse.ok) return json({ error: "Kirari upload not found or not permitted." }, 403);
+      const reelDocument = await reelResponse.json() as {
+        fields?: Record<string, { stringValue?: string }>;
+      };
+      const fields = reelDocument.fields ?? {};
+      const creatorId = fields.creatorId?.stringValue;
+      const status = fields.status?.stringValue;
+      const key = fields.originalStoragePath?.stringValue ?? fields.storagePath?.stringValue ?? "";
+      if (creatorId !== uid || status !== "uploading" ||
+          key !== \`kirari/\${uid}/\${reelId}/source.mp4\` || !validKirariServiceKey(key)) {
+        return json({ error: "This Kirari upload is not available." }, 403);
+      }
+      const size = Number(request.headers.get("content-length"));
+      const contentType = request.headers.get("content-type") ?? "";
+      if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
+          size > 500 * 1024 * 1024 || contentType !== "video/mp4") {
+        return json({ error: "Choose an MP4 video no larger than 500 MB." }, 400);
+      }
+      const inspected = await inspectAndRestoreBody(request.body);
+      if (!validFileSignature("reels", contentType, inspected.prefix)) {
+        return json({ error: "The file contents do not match MP4." }, 415);
+      }
+      await env.MEDIA_BUCKET.put(key, inspected.stream, {
+        httpMetadata: { contentType, cacheControl: "private, no-store" },
+        customMetadata: { uploadedBy: uid, reelId, mediaKind: "kirari-source" },
+      });
+      return json({ key, sizeBytes: size }, 201);
+    }
+
     // Private service-to-service R2 bridge for the Kirari FFmpeg pipeline.
     // This route never accepts Firebase user tokens and is not exposed to app clients.
     if (url.pathname.startsWith("/_internal/kirari/objects/")) {
