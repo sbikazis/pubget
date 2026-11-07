@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { renditionArgs, editorVideoFilter, outputDurationSeconds, buildAudioAttribution } = require("../src/kirariPipeline");
+const { renditionArgs, editorVideoFilter, outputDurationSeconds, isPortraitVideo, buildAudioAttribution } = require("../src/kirariPipeline");
 
 test("Kirari rendition ladder always outputs vertical 9:16 dimensions", () => {
   const expected = new Map([[360, 202], [540, 302], [720, 404]]);
