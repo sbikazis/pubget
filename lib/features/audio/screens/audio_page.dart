@@ -39,6 +39,7 @@ class _AudioPageState extends State<AudioPage> {
   List<KirariReel> _kirariReels = const <KirariReel>[];
   PublicProfile? _creator;
   Edit? _originalReel;
+  KirariAudioTrack? _audioTrack;
   var _loading = true;
 
   @override
@@ -53,18 +54,23 @@ class _AudioPageState extends State<AudioPage> {
       context.read<EditsRepository>().getEditsByAudio(widget.audioId),
       context.read<KirariRepository>().getReelsByAudio(widget.audioId)
           .catchError((_) => <KirariReel>[]),
+      context.read<KirariRepository>().getAudioLibrary(limit: 50)
+          .catchError((_) => <KirariAudioTrack>[]),
     ]);
     final result = results[0] as dynamic;
     final kirariReels = results[1] as List<KirariReel>;
+    final audioTracks = results[2] as List<KirariAudioTrack>;
+    final audioTrack = audioTracks.where((track) => track.id == widget.audioId).firstOrNull;
     if (!mounted) return;
     final reels = result.valueOrNull ?? const <Edit>[];
     final original = _oldest(reels);
     PublicProfile? creator;
-    if (original != null) {
+    final creatorId = audioTrack?.creatorId ?? (original?.displayCreatorId);
+    if (creatorId != null) {
       try {
         final profiles = context.read<ProfileRepository>();
         creator = (await profiles.getPublicProfile(
-          original.displayCreatorId,
+          creatorId,
         )).valueOrNull;
       } catch (_) {
         creator = null;
@@ -75,6 +81,7 @@ class _AudioPageState extends State<AudioPage> {
       _reels = reels;
       _kirariReels = kirariReels;
       _originalReel = original;
+      _audioTrack = audioTrack;
       _creator = creator;
       _loading = false;
     });
@@ -179,7 +186,7 @@ class _AudioPageState extends State<AudioPage> {
   }
 
   Widget _header(EditCopy copy) {
-    final creatorName = _creator?.primaryName(fallback: '') ?? '';
+    final creatorName = _creator?.primaryName(fallback: '') ?? _audioTrack?.artist ?? '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -189,7 +196,7 @@ class _AudioPageState extends State<AudioPage> {
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
-                copy.originalAudio,
+                _audioTrack?.title ?? copy.originalAudio,
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
             ),
@@ -198,12 +205,13 @@ class _AudioPageState extends State<AudioPage> {
         const SizedBox(height: AppSpacing.sm),
         ReelChip(
           key: const Key('audio-usage'),
-          label: copy.usedInReels(_reels.length + _kirariReels.length),
+          label: copy.usedInReels(_audioTrack?.usageCount ?? (_reels.length + _kirariReels.length)),
           icon: Icons.movie_outlined,
           highlighted: true,
         ),
-        const SizedBox(height: AppSpacing.md),
-        FilledButton.icon(
+        if (_audioTrack != null) ...<Widget>[
+          const SizedBox(height: AppSpacing.md),
+          FilledButton.icon(
           key: const Key('use-kirari-audio'),
           onPressed: () => AppNavigation.go(
             context,
@@ -211,16 +219,17 @@ class _AudioPageState extends State<AudioPage> {
           ),
           icon: const Icon(Icons.music_note),
           label: Text(copy.useAudio),
-        ),
+          ),
+        ],
         if (_kirariReels.isNotEmpty) ...<Widget>[
           const SizedBox(height: AppSpacing.md),
           Builder(builder: (context) {
             final attribution = _kirariReels.first.audioAttribution;
-            final title = attribution['title'] as String? ?? '';
-            final artist = attribution['artist'] as String? ?? '';
-            final license = attribution['license'] as String? ?? '';
-            final credit = attribution['attribution'] as String? ?? '';
-            final sourceCreatorId = attribution['sourceCreatorId'] as String?;
+            final title = _audioTrack?.title ?? attribution['title'] as String? ?? '';
+            final artist = _audioTrack?.artist ?? attribution['artist'] as String? ?? '';
+            final license = _audioTrack?.license ?? attribution['license'] as String? ?? '';
+            final credit = _audioTrack?.attribution ?? attribution['attribution'] as String? ?? '';
+            final sourceCreatorId = _audioTrack?.creatorId ?? attribution['sourceCreatorId'] as String?;
             return ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.verified_outlined),
