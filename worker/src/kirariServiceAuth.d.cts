@@ -3,8 +3,6 @@ export function authenticateKirariService(
   expected: {
     audience: string;
     serviceAccountEmail: string;
-    projectId: string;
-    projectNumber: string;
   },
   fetchImpl?: typeof fetch,
   nowSeconds?: number,
