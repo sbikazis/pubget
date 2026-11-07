@@ -28,6 +28,7 @@ class KirariReel {
     this.characterIds = const <String>[],
     this.animeTitles = const <String>[],
     this.characterNames = const <String>[],
+    this.mentionMetadata = const <Map<String, dynamic>>[],
   });
 
   final String id;
@@ -50,6 +51,7 @@ class KirariReel {
   final List<String> characterIds;
   final List<String> animeTitles;
   final List<String> characterNames;
+  final List<Map<String, dynamic>> mentionMetadata;
 
   KirariReel copyWith({
     int? likesCount,
@@ -76,6 +78,7 @@ class KirariReel {
     characterIds: characterIds,
     animeTitles: animeTitles,
     characterNames: characterNames,
+    mentionMetadata: mentionMetadata,
   );
 
   factory KirariReel.fromMap(Map<dynamic, dynamic> map) {
@@ -110,6 +113,8 @@ class KirariReel {
           .whereType<Map>().map((item) => item['title']).whereType<String>().toList(),
       characterNames: (map['characterMetadata'] as List? ?? const <dynamic>[])
           .whereType<Map>().map((item) => item['name']).whereType<String>().toList(),
+      mentionMetadata: (map['mentionMetadata'] as List? ?? const <dynamic>[])
+          .whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
     );
   }
 }
