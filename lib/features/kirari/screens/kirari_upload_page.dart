@@ -254,6 +254,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   }
 
   Future<void> _pick() async {
+    if (_busy || _session != null) return;
     final picked = await context.read<KirariRepository>().pickGalleryVideo();
     if (picked == null || !mounted) return;
     File? durableFile;
@@ -460,22 +461,21 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     if (session != null) {
       await context.read<KirariRepository>().cancelUpload(session.reelId);
     }
-    await _clearPendingUpload();
-    await _preview?.dispose();
+    await _clearPendingUpload(deleteLocalFile: false);
     if (!mounted) return;
     setState(() {
       _session = null;
-      _video = null;
-      _preview = null;
+      _idempotencyKey = null;
       _error = null;
-      _status = 'Upload canceled.';
+      _status = KirariCopy.of(context).uploadCanceled;
       _progress = 0;
       _submitted = false;
     });
+    await _savePendingUpload();
   }
 
   Future<void> _chooseAnime() async {
-    if (_selectedAnime.length >= 5) return;
+    if (_busy || _session != null || _selectedAnime.length >= 5) return;
     final repository = context.read<AnimeRepository>();
     final controller = TextEditingController();
     var searching = false;
@@ -555,6 +555,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   }
 
   Future<void> _chooseCharacters(Anime anime) async {
+    if (_busy || _session != null) return;
     final result = await context.read<AnimeRepository>().getCharacters(anime.id);
     if (!mounted) return;
     final characters = result.valueOrNull ?? <AnimeCharacter>[];
@@ -619,7 +620,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   }
 
   Future<void> _chooseMention() async {
-    if (_selectedMentions.length >= 20) return;
+    if (_busy || _session != null || _selectedMentions.length >= 20) return;
     final repository = context.read<HomeRepository>();
     final controller = TextEditingController();
     var searching = false;
@@ -705,6 +706,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   }
 
   Future<void> _chooseCoverImage() async {
+    if (_busy || _session != null) return;
     final picked = await context.read<KirariRepository>().pickGalleryImage();
     if (picked == null || !mounted) return;
     try {
@@ -743,6 +745,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   }
 
   Future<void> _chooseAudio() async {
+    if (_busy || _session != null) return;
     final copy = KirariCopy.of(context);
     final selectedId = await showModalBottomSheet<String?>(
       context: context,
@@ -851,7 +854,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         padding: const EdgeInsets.all(16),
         children: [
           GestureDetector(
-            onTap: _busy ? null : _pick,
+            onTap: _busy || _session != null ? null : _pick,
             child: Container(
               height: 390,
               decoration: BoxDecoration(
@@ -951,7 +954,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               divisions: (_duration * 2).round().clamp(6, 120).toInt(),
               values: _trim,
               labels: RangeLabels('${_trim.start.toStringAsFixed(1)}s', '${_trim.end.toStringAsFixed(1)}s'),
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 var start = value.start;
                 var end = value.end;
                 if (end - start < 3) {
@@ -981,7 +984,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 DropdownMenuItem(value: 1.5, child: Text('1.5×')),
                 DropdownMenuItem(value: 2, child: Text('2×')),
               ],
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 if (value == null) return;
                 setState(() => _speed = value);
                 _preview?.setPlaybackSpeed(value);
@@ -993,7 +996,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             Slider(
               min: 0, max: 1, divisions: 20, value: _originalAudioVolume,
               label: '${(_originalAudioVolume * 100).round()}%',
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 setState(() => _originalAudioVolume = value);
                 if (_audioId == null) _preview?.setVolume(value);
                 _savePendingUpload();
@@ -1003,7 +1006,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             Slider(
               min: 0, max: 1, divisions: 20, value: _addedAudioVolume,
               label: '${(_addedAudioVolume * 100).round()}%',
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 setState(() => _addedAudioVolume = value);
                 _audioPreview.setVolume(value);
                 _savePendingUpload();
@@ -1019,7 +1022,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 DropdownMenuItem(value: 'mono', child: Text('Mono')),
                 DropdownMenuItem(value: 'vivid', child: Text('Vivid')),
               ],
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 if (value != null) setState(() => _filter = value);
                 _savePendingUpload();
               },
@@ -1027,6 +1030,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             const SizedBox(height: 12),
             TextField(
               controller: _overlayText,
+              enabled: !_busy && _session == null,
               maxLength: 80,
               decoration: InputDecoration(labelText: copy.overlayText),
               onChanged: (_) {
@@ -1041,7 +1045,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               min: _trim.start, max: _trim.end, divisions: (_duration * 2).round().clamp(6, 120).toInt(),
               value: _overlayStart.clamp(_trim.start, _overlayEnd).toDouble(),
               label: '${_overlayStart.toStringAsFixed(1)}s',
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 setState(() {
                   _overlayStart = value;
                   if (_overlayEnd < value) _overlayEnd = value;
@@ -1086,7 +1090,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               title: Text(copy.chooseCover),
               subtitle: Text(_coverImage == null ? copy.frameCover : copy.customCoverSelected),
               trailing: const Icon(Icons.chevron_right),
-              onTap: _busy ? null : _chooseCoverImage,
+              onTap: _busy || _session != null ? null : _chooseCoverImage,
             ),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
@@ -1115,12 +1119,13 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 overflow: TextOverflow.ellipsis,
               ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: _busy ? null : _chooseAudio,
+              onTap: _busy || _session != null ? null : _chooseAudio,
             ),
           ],
           const SizedBox(height: 16),
           TextField(
             controller: _caption,
+            enabled: !_busy && _session == null,
             maxLength: 2200,
             maxLines: 3,
             decoration: InputDecoration(labelText: copy.caption, border: const OutlineInputBorder()),
@@ -1129,6 +1134,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
           const SizedBox(height: 12),
           TextField(
             controller: _hashtags,
+            enabled: !_busy && _session == null,
             decoration: InputDecoration(
               labelText: copy.hashtags,
               hintText: 'anime, one_piece, edits',
@@ -1166,7 +1172,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 : _selectedAnime.map((item) => item.title).join(' · ')),
             trailing: IconButton(
               tooltip: copy.addAnime,
-              onPressed: _busy || _selectedAnime.length >= 5 ? null : _chooseAnime,
+              onPressed: _busy || _session != null || _selectedAnime.length >= 5 ? null : _chooseAnime,
               icon: const Icon(Icons.add_circle_outline),
             ),
           ),
@@ -1176,8 +1182,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               for (final anime in _selectedAnime)
                 InputChip(
                   label: Text(anime.title),
-                  onPressed: () => _chooseCharacters(anime),
-                  onDeleted: _busy ? null : () {
+                  onPressed: _busy || _session != null ? null : () => _chooseCharacters(anime),
+                  onDeleted: _busy || _session != null ? null : () {
                     setState(() => _selectedAnime = _selectedAnime.where((item) => item.id != anime.id).toList());
                     _savePendingUpload();
                   },
@@ -1192,7 +1198,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 : _selectedCharacters.map((item) => item.name).join(' · ')),
             trailing: IconButton(
               tooltip: copy.addCharacter,
-              onPressed: _busy || _selectedAnime.isEmpty || _selectedCharacters.length >= 20
+              onPressed: _busy || _session != null || _selectedAnime.isEmpty || _selectedCharacters.length >= 20
                   ? null
                   : () => _chooseCharacters(_selectedAnime.last),
               icon: const Icon(Icons.add_circle_outline),
@@ -1204,7 +1210,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               for (final character in _selectedCharacters)
                 InputChip(
                   label: Text(character.name),
-                  onDeleted: _busy ? null : () {
+                  onDeleted: _busy || _session != null ? null : () {
                     setState(() => _selectedCharacters = _selectedCharacters.where((item) => item.id != character.id).toList());
                     _savePendingUpload();
                   },
@@ -1219,7 +1225,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 : _selectedMentions.map((item) => '@${item.username ?? item.uid}').join(' · ')),
             trailing: IconButton(
               tooltip: copy.addMention,
-              onPressed: _busy || _selectedMentions.length >= 20 ? null : _chooseMention,
+              onPressed: _busy || _session != null || _selectedMentions.length >= 20 ? null : _chooseMention,
               icon: const Icon(Icons.person_add_alt_1_outlined),
             ),
           ),
@@ -1249,7 +1255,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
           const SizedBox(height: 18),
-          if (_session != null && _error != null && !_busy)
+          if (_session != null && !_busy)
             TextButton(
               onPressed: _cancelUpload,
               child: Text(copy.cancelUpload),
