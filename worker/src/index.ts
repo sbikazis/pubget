@@ -6,7 +6,6 @@ export interface Env {
   MEDIA_SIGNING_SECRET: string;
   KIRARI_R2_SERVICE_ACCOUNT_EMAIL: string;
   KIRARI_R2_SERVICE_AUDIENCE: string;
-  FIREBASE_PROJECT_NUMBER: string;
 }
 
 const CORS: Record<string, string> = {
@@ -655,8 +654,6 @@ export default {
       if (!await authenticateKirariService(request, {
         audience: env.KIRARI_R2_SERVICE_AUDIENCE,
         serviceAccountEmail: env.KIRARI_R2_SERVICE_ACCOUNT_EMAIL,
-        projectId: env.FIREBASE_PROJECT_ID,
-        projectNumber: env.FIREBASE_PROJECT_NUMBER,
       })) {
         return json({ error: "Service authentication required." }, 401);
       }
@@ -678,8 +675,6 @@ export default {
       if (!await authenticateKirariService(request, {
         audience: env.KIRARI_R2_SERVICE_AUDIENCE,
         serviceAccountEmail: env.KIRARI_R2_SERVICE_ACCOUNT_EMAIL,
-        projectId: env.FIREBASE_PROJECT_ID,
-        projectNumber: env.FIREBASE_PROJECT_NUMBER,
       })) {
         return json({ error: "Service authentication required." }, 401);
       }
