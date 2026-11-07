@@ -151,7 +151,7 @@ abstract interface class KirariRepository {
   Future<void> setCreatorMute({required String creatorId, required bool muted});
   Future<List<Map<String, dynamic>>> getModerationQueue({int limit = 50});
   Future<void> reviewContent({required String reelId, String? commentId, required String decision});
-  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false});
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], String contentCategory = 'anime_edit', String? groupId, String? eventId});
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress});
   Future<void> finalizeUpload(String reelId);
   Future<void> retryProcessing(String reelId);
@@ -389,6 +389,12 @@ class FirebaseKirariRepository implements KirariRepository {
     Map<String, dynamic> editSettings = const <String, dynamic>{},
     String? audioId,
     bool allowOriginalAudioReuse = false,
+    List<String> animeIds = const <String>[],
+    List<String> characterIds = const <String>[],
+    List<String> mentions = const <String>[],
+    String contentCategory = 'anime_edit',
+    String? groupId,
+    String? eventId,
   }) async {
     final result = await _call('startKirariUpload', {
       'caption': caption,
@@ -397,6 +403,12 @@ class FirebaseKirariRepository implements KirariRepository {
       'editSettings': editSettings,
       if (audioId != null) 'audioId': audioId,
       'allowOriginalAudioReuse': allowOriginalAudioReuse,
+      'animeIds': animeIds,
+      'characterIds': characterIds,
+      'mentions': mentions,
+      'contentCategory': contentCategory,
+      if (groupId != null) 'groupId': groupId,
+      if (eventId != null) 'eventId': eventId,
     });
     final path = result['storagePath'] as String?;
     final reelId = result['reelId'] as String?;
@@ -628,7 +640,7 @@ class UnavailableKirariRepository implements KirariRepository {
   @override
   Future<void> setCreatorMute({required String creatorId, required bool muted}) async => throw _unavailable();
   @override
-  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false}) async => throw _unavailable();
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], String contentCategory = 'anime_edit', String? groupId, String? eventId) async => throw _unavailable();
   @override
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress}) async => throw _unavailable();
   @override
