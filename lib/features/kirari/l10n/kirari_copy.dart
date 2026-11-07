@@ -117,7 +117,8 @@ final class KirariCopy {
   String get like => _strings.pick('Like', 'إعجاب');
   String get save => _strings.pick('Save', 'حفظ');
   String get notInterested => _strings.pick('Not interested', 'لست مهتمًا');
-  String get cancelUpload => _strings.pick('Cancel upload', 'إلغاء الرفع');
+  String get cancelUpload => _strings.pick('Cancel upload and edit', 'إلغاء الرفع والتعديل');
+  String get uploadCanceled => _strings.pick('Upload canceled. Your local draft is ready to edit.', 'تم إلغاء الرفع. مسودتك المحلية جاهزة للتعديل.');
   String get uploadReceived => _strings.pick(
     'Kirari upload received.',
     'تم استلام فيديو كيراري.',
