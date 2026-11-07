@@ -42,7 +42,7 @@ class FirebaseResumableUploader {
 
   static int nextOffsetFromRange(String? range) {
     if (range == null || range.isEmpty) return 0;
-    final match = RegExp(r'^bytes=0-(\\d+)$').firstMatch(range.trim());
+    final match = RegExp(r'^bytes=0-(\d+)$').firstMatch(range.trim());
     if (match == null) {
       throw FormatException('Invalid resumable upload Range header: ' + range);
     }
