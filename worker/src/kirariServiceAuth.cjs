@@ -30,8 +30,6 @@ async function authenticateKirariService(
       claims.aud !== expected.audience ||
       claims.email !== expected.serviceAccountEmail ||
       claims.email_verified !== true ||
-      claims.google?.compute_engine?.project_id !== expected.projectId ||
-      String(claims.google?.compute_engine?.project_number) !== String(expected.projectNumber) ||
       typeof claims.sub !== "string" ||
       !claims.sub ||
       !Number.isSafeInteger(claims.iat) ||
