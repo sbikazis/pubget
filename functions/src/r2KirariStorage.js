@@ -13,23 +13,39 @@ const MAX_KIRARI_BYTES = 500 * 1024 * 1024;
  * FFmpeg pipeline. All object bytes flow through authenticated Worker
  * endpoints; no R2 credentials or service secret are exposed to clients.
  *
- * KIRARI_R2_SERVICE_SECRET must be configured as a Firebase Functions secret
- * and as the Worker KIRARI_R2_SERVICE_SECRET binding before deployment.
+ * Firebase Functions obtains a short-lived Google-signed identity token from
+ * the Cloud Run metadata server. No shared Firebase/Worker secret is needed.
  */
 function createR2KirariBucket({
   workerUrl = process.env.KIRARI_R2_WORKER_URL || DEFAULT_WORKER_URL,
-  secretProvider = () => process.env.KIRARI_R2_SERVICE_SECRET || "",
+  tokenProvider,
   fetchImpl = global.fetch,
   tempDir = require("node:os").tmpdir(),
 } = {}) {
   const baseUrl = workerUrl.replace(/\/+$/, "");
 
-  function headers(extra = {}) {
-    const secret = secretProvider();
-    if (!secret || secret.length < 32) {
-      throw new Error("Kirari R2 service authentication is not configured.");
+  async function headers(extra = {}) {
+    const audience = process.env.KIRARI_R2_WORKER_AUDIENCE ||
+      "https://pubget-media.pubget.workers.dev";
+    const getToken = tokenProvider || (async () => {
+      const metadataUrl = new URL(
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity",
+      );
+      metadataUrl.searchParams.set("audience", audience);
+      metadataUrl.searchParams.set("format", "full");
+      const response = await fetchImpl(metadataUrl, {
+        headers: { "Metadata-Flavor": "Google" },
+      });
+      if (!response.ok) {
+        throw new Error(`Google service identity token request failed (${response.status}).`);
+      }
+      return (await response.text()).trim();
+    });
+    const token = await getToken();
+    if (!token || typeof token !== "string" || token.split(".").length !== 3) {
+      throw new Error("Kirari Google service identity is not available.");
     }
-    return { authorization: `Bearer ${secret}`, ...extra };
+    return { authorization: `Bearer ${token}`, ...extra };
   }
 
   function validateKey(key) {
@@ -44,14 +60,14 @@ function createR2KirariBucket({
 
     return {
       async exists() {
-        const response = await fetchImpl(endpoint, { method: "HEAD", headers: headers() });
+        const response = await fetchImpl(endpoint, { method: "HEAD", headers: await headers() });
         if (response.status === 404) return [false];
         if (!response.ok) throw new Error(`Kirari R2 HEAD failed (${response.status}).`);
         return [true];
       },
 
       async getMetadata() {
-        const response = await fetchImpl(endpoint, { method: "HEAD", headers: headers() });
+        const response = await fetchImpl(endpoint, { method: "HEAD", headers: await headers() });
         if (response.status === 404) {
           const error = new Error("Kirari R2 object not found.");
           error.code = 404;
@@ -65,7 +81,7 @@ function createR2KirariBucket({
       },
 
       async download({ destination }) {
-        const response = await fetchImpl(endpoint, { headers: headers() });
+        const response = await fetchImpl(endpoint, { headers: await headers() });
         if (!response.ok || !response.body) {
           throw new Error(`Kirari R2 download failed (${response.status}).`);
         }
@@ -78,7 +94,7 @@ function createR2KirariBucket({
         const expiry = Number(expires);
         const response = await fetchImpl(`${baseUrl}/_internal/kirari/sign`, {
           method: "POST",
-          headers: headers({ "content-type": "application/json" }),
+          headers: await headers({ "content-type": "application/json" }),
           body: JSON.stringify({ key, expires: Math.floor(expiry / 1000) }),
         });
         if (!response.ok) throw new Error(`Kirari R2 signing failed (${response.status}).`);
@@ -90,7 +106,7 @@ function createR2KirariBucket({
       },
 
       async delete({ ignoreNotFound = false } = {}) {
-        const response = await fetchImpl(endpoint, { method: "DELETE", headers: headers() });
+        const response = await fetchImpl(endpoint, { method: "DELETE", headers: await headers() });
         if (ignoreNotFound && response.status === 404) return;
         if (!response.ok && response.status !== 404) {
           throw new Error(`Kirari R2 delete failed (${response.status}).`);
@@ -114,7 +130,7 @@ function createR2KirariBucket({
         `${baseUrl}/_internal/kirari/objects/${encodeURIComponent(destination)}`,
         {
           method: "PUT",
-          headers: headers({
+          headers: await headers({
             "content-type": contentType,
             "content-length": String(stat.size),
           }),
