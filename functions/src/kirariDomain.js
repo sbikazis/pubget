@@ -50,6 +50,41 @@ function normalizeTags(value) {
   ).filter(Boolean))];
 }
 
+const KIRARI_CONTENT_CATEGORIES = new Set([
+  "anime_edit", "amv", "cosplay", "meme", "review",
+  "theory", "recommendation", "fan_art", "other",
+]);
+
+function normalizeEntityIds(value, field, maxItems) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > maxItems) {
+    throw new Error(field + " must be a bounded list.");
+  }
+  const result = [];
+  for (const raw of value) {
+    if (typeof raw !== "string") throw new Error(field + " contains an invalid ID.");
+    const id = raw.trim();
+    if (!/^(jikan|anilist):[1-9]\\d{0,12}$/.test(id)) {
+      throw new Error(field + " contains an invalid catalog ID.");
+    }
+    if (!result.includes(id)) result.push(id);
+  }
+  return result;
+}
+
+function normalizeMentions(value) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > 20) {
+    throw new Error("mentions must be a bounded list.");
+  }
+  return [...new Set(value.map((item) => {
+    if (typeof item !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(item.trim())) {
+      throw new Error("mentions contains an invalid user ID.");
+    }
+    return item.trim();
+  }))];
+}
+
 function normalizeEditSettings(value) {
   const input = value && typeof value === "object" ? value : {};
   const speed = clamp(input.speed ?? 1, 0.5, 2);
@@ -326,6 +361,21 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const editSettings = normalizeEditSettings(request.data?.editSettings);
     const audioId = request.data?.audioId == null ? null : inputId(request.data.audioId, "audioId");
     const allowOriginalAudioReuse = request.data?.allowOriginalAudioReuse === true;
+    let animeIds, characterIds, mentions, contentCategory, groupId, eventId;
+    try {
+      animeIds = normalizeEntityIds(request.data?.animeIds, "animeIds", 5);
+      characterIds = normalizeEntityIds(request.data?.characterIds, "characterIds", 20);
+      mentions = normalizeMentions(request.data?.mentions);
+      contentCategory = request.data?.contentCategory == null
+        ? "anime_edit" : String(request.data.contentCategory);
+      if (!KIRARI_CONTENT_CATEGORIES.has(contentCategory)) {
+        throw new Error("contentCategory is not supported.");
+      }
+      groupId = request.data?.groupId == null ? null : inputString(request.data.groupId, 128, "groupId");
+      eventId = request.data?.eventId == null ? null : inputString(request.data.eventId, 128, "eventId");
+    } catch (error) {
+      fail("invalid-argument", error.message);
+    }
     if (audioId) {
       const audioSnap = await db.collection("kirariAudio").doc(audioId).get();
       if (!audioSnap.exists || audioSnap.data()?.status !== "approved" || audioSnap.data()?.allowReuse !== true) {
@@ -358,7 +408,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         fail("resource-exhausted", "You have reached today's Kirari upload limit.");
       }
       tx.create(ref, {
-        creatorId: uid, caption, hashtags, audioId, editSettings, allowOriginalAudioReuse, status: "uploading",
+        creatorId: uid, caption, hashtags, audioId, editSettings, allowOriginalAudioReuse,
+        animeIds, characterIds, mentions, contentCategory, groupId, eventId,
+        status: "uploading",
         idempotencyKey, quotaDay: day,
         schemaVersion: KIRARI.schemaVersion,
         storagePath, originalStoragePath: storagePath,
