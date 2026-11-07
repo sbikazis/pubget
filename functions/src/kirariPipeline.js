@@ -253,6 +253,46 @@ function createKirariPipeline({ db, bucket }) {
       }
       const audioSource = reel.audioId ? path.join(dir, "selected-audio") : null;
       if (audioSource) await bucket.file(audioData.audioPath).download({ destination: audioSource });
+      const originalAudioId = reel.allowOriginalAudioReuse && metadata.hasAudio
+        ? "original_" + reelId : null;
+      let originalAudioData = null;
+      if (originalAudioId) {
+        const originalAudioFile = path.join(dir, "original-audio.mp3");
+        await run(ffmpeg, [
+          "-ss", String(trimStart), "-i", source, "-t", String(clipDuration),
+          "-map", "0:a:0", "-vn", "-af", "atempo=" + speed,
+          "-c:a", "libmp3lame", "-b:a", "128k", "-y", originalAudioFile,
+        ]);
+        const originalAudioPath = `kirari-audio/${originalAudioId}/audio.mp3`;
+        await bucket.upload(originalAudioFile, {
+          destination: originalAudioPath, resumable: false,
+          metadata: {
+            contentType: "audio/mpeg",
+            metadata: {
+              ownerUid: uid, sourceReelId: reelId,
+              firebaseStorageDownloadTokens: randomUUID(),
+            },
+          },
+        });
+        const userSnap = await db.collection("users").doc(uid).get();
+        const userData = userSnap.exists ? userSnap.data() || {} : {};
+        const creatorName = String(userData.username || userData.displayName || "Pubget creator").slice(0, 120);
+        originalAudioData = {
+          title: creatorName + "'s original audio",
+          artist: creatorName,
+          license: "Uploader-authorized reuse; pending rights review",
+          attribution: "Original audio from @" + creatorName + "'s Kirari Reel",
+          creatorId: uid,
+          sourceReelId: reelId,
+          audioPath: originalAudioPath,
+          allowReuse: false,
+          status: "pending",
+          usageCount: 1,
+          publishedAt: new Date(),
+          updatedAt: new Date(),
+        };
+        await db.collection("kirariAudio").doc(originalAudioId).set(originalAudioData, { merge: true });
+      }
       const variants = {};
       for (const [height, bitrate] of [[360, "650k"], [540, "1200k"], [720, "2500k"]]) {
         const output = path.join(dir, String(height) + ".mp4");
@@ -328,7 +368,13 @@ function createKirariPipeline({ db, bucket }) {
         renditions: variants,
         coverPath,
         editSettings: { ...settings, trimStartSeconds: trimStart, trimEndSeconds: trimEnd, speed, coverTimeSeconds: coverTime },
-        audioAttribution: buildAudioAttribution(reel.audioId, audioData),
+        audioId: reel.audioId || originalAudioId || null,
+        originalAudioId,
+        audioAttribution: buildAudioAttribution(
+          reel.audioId || originalAudioId,
+          reel.audioId ? audioData : originalAudioData,
+        ),
+        audioUsageCounted: Boolean(reel.audioId || originalAudioId),
         publishedAt: new Date(),
         processedAt: new Date(),
         failureReason: null,
