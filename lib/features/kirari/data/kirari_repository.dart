@@ -173,7 +173,7 @@ abstract interface class KirariRepository {
   Future<void> setCreatorMute({required String creatorId, required bool muted});
   Future<List<Map<String, dynamic>>> getModerationQueue({int limit = 50});
   Future<void> reviewContent({required String reelId, String? commentId, required String decision});
-  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], List<Map<String, String>> animeMetadata = const <Map<String, String>>[], List<Map<String, String>> characterMetadata = const <Map<String, String>>[], String contentCategory = 'anime_edit', String? groupId, String? eventId});
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], List<Map<String, String>> animeMetadata = const <Map<String, String>>[], List<Map<String, String>> characterMetadata = const <Map<String, String>>[], List<Map<String, String>> mentionMetadata = const <Map<String, String>>[], String contentCategory = 'anime_edit', String? groupId, String? eventId});
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress});
   Future<void> finalizeUpload(String reelId);
   Future<void> retryProcessing(String reelId);
@@ -416,6 +416,7 @@ class FirebaseKirariRepository implements KirariRepository {
     List<String> mentions = const <String>[],
     List<Map<String, String>> animeMetadata = const <Map<String, String>>[],
     List<Map<String, String>> characterMetadata = const <Map<String, String>>[],
+    List<Map<String, String>> mentionMetadata = const <Map<String, String>>[],
     String contentCategory = 'anime_edit',
     String? groupId,
     String? eventId,
@@ -432,6 +433,7 @@ class FirebaseKirariRepository implements KirariRepository {
       'mentions': mentions,
       'animeMetadata': animeMetadata,
       'characterMetadata': characterMetadata,
+      'mentionMetadata': mentionMetadata,
       'contentCategory': contentCategory,
       if (groupId != null) 'groupId': groupId,
       if (eventId != null) 'eventId': eventId,
@@ -666,7 +668,7 @@ class UnavailableKirariRepository implements KirariRepository {
   @override
   Future<void> setCreatorMute({required String creatorId, required bool muted}) async => throw _unavailable();
   @override
-  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], List<Map<String, String>> animeMetadata = const <Map<String, String>>[], List<Map<String, String>> characterMetadata = const <Map<String, String>>[], String contentCategory = 'anime_edit', String? groupId, String? eventId) async => throw _unavailable();
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], List<Map<String, String>> animeMetadata = const <Map<String, String>>[], List<Map<String, String>> characterMetadata = const <Map<String, String>>[], List<Map<String, String>> mentionMetadata = const <Map<String, String>>[], String contentCategory = 'anime_edit', String? groupId, String? eventId) async => throw _unavailable();
   @override
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress}) async => throw _unavailable();
   @override
