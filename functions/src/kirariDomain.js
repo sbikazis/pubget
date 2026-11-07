@@ -387,6 +387,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const animeMetadata = normalizeCatalogMetadata(request.data?.animeMetadata, animeIds, "animeMetadata", "title");
       const characterMetadata = normalizeCatalogMetadata(request.data?.characterMetadata, characterIds, "characterMetadata", "name");
       mentions = normalizeMentions(request.data?.mentions);
+      const mentionMetadata = normalizeCatalogMetadata(request.data?.mentionMetadata, mentions, "mentionMetadata", "username");
       contentCategory = request.data?.contentCategory == null
         ? "anime_edit" : String(request.data.contentCategory);
       if (!KIRARI_CONTENT_CATEGORIES.has(contentCategory)) {
@@ -431,7 +432,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       tx.create(ref, {
         creatorId: uid, caption, hashtags, audioId, editSettings, allowOriginalAudioReuse,
         animeIds, characterIds, animeMetadata, characterMetadata,
-        mentions, contentCategory, groupId, eventId,
+        mentions, mentionMetadata, contentCategory, groupId, eventId,
         status: "uploading",
         idempotencyKey, quotaDay: day,
         schemaVersion: KIRARI.schemaVersion,
