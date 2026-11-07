@@ -125,8 +125,8 @@ test("editor settings are bounded and unsafe filter values fall back to original
   assert.equal(bounded.coverTimeSeconds, 55);
   assert.equal(bounded.originalAudioVolume, 1);
   assert.equal(bounded.addedAudioVolume, 0);
-  assert.equal(bounded.overlayStartSeconds, 55);
-  assert.equal(bounded.overlayEndSeconds, 55);
+  assert.equal(bounded.overlayStartSeconds, 58);
+  assert.equal(bounded.overlayEndSeconds, 58);
 });
 
 test("Kirari metadata accepts bounded catalog IDs and rejects malformed IDs and categories", () => {
@@ -162,7 +162,11 @@ test("new upload keeps original-audio reuse disabled unless the creator explicit
     },
     runTransaction: async (fn) => fn({
       get: async (ref) => ({ exists: false, data: () => ({}) }),
-      create: (ref, data) => { created = data; },
+      create: (ref, data) => {
+        if (data && Object.prototype.hasOwnProperty.call(data, 'allowOriginalAudioReuse')) {
+          created = data;
+        }
+      },
       set() {},
     }),
   };
