@@ -854,7 +854,6 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/notifications': const NotificationInboxPage(),
         '/edits': const AppShell(),
         '/reels': const AppShell(),
-        '/reels/upload': const KirariUploadPage(),
         '/edits/upload': const EditFeedPage(),
         '/groups': const AppShell(),
         '/joined': const AppShell(),
@@ -870,6 +869,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/economy/history': const EconomyHistoryPage(),
       },
       parameterizedPages: <String, ParameterizedPageBuilder>{
+        '/reels/upload': (parameters) => KirariUploadPage(initialAudioId: parameters['audioId']),
         ...EntityRoutes.pages(),
         '/profile': (parameters) => ProfilePage(userId: parameters['uid']),
         '/groups/create': (parameters) {
