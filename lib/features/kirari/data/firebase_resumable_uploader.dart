@@ -115,11 +115,18 @@ class FirebaseResumableUploader {
           retries = 0;
         } else if (response.statusCode == 308) {
           final committed = nextOffsetFromRange(response.headers['range']);
-          if (committed <= offset || committed > total) {
-            throw HttpException('Storage did not advance the resumable upload offset.');
+          if (committed < offset || committed > total) {
+            throw HttpException('Storage returned an invalid resumable upload offset.');
           }
-          offset = committed;
-          retries = 0;
+          if (committed == offset) {
+            retries++;
+            if (retries > 5) {
+              throw HttpException('Storage did not advance the resumable upload offset.');
+            }
+          } else {
+            offset = committed;
+            retries = 0;
+          }
         } else if (response.statusCode == 404 || response.statusCode == 410) {
           await clearSession(storagePath);
           sessionUrl = await _startSession(
