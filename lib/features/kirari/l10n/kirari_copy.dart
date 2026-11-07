@@ -31,6 +31,15 @@ final class KirariCopy {
   String get coverFrame => _strings.pick('Cover frame', 'إطار الغلاف');
   String get audioLibrary => _strings.pick('Audio library', 'مكتبة الصوت');
   String get originalAudio => _strings.pick('Use original audio', 'استخدم الصوت الأصلي');
+  String get originalVolume => _strings.pick('Original audio volume', 'مستوى صوت الفيديو الأصلي');
+  String get addedVolume => _strings.pick('Added audio volume', 'مستوى صوت الموسيقى المضافة');
+  String get textStart => _strings.pick('Text timing · start', 'بداية ظهور النص');
+  String get textEnd => _strings.pick('Text timing · end', 'نهاية ظهور النص');
+  String get chooseCover => _strings.pick('Choose cover image', 'اختر صورة الغلاف');
+  String get frameCover => _strings.pick('Use a frame from the video', 'استخدم إطارًا من الفيديو');
+  String get customCoverSelected => _strings.pick('Custom 9:16 cover selected', 'تم اختيار غلاف مخصص بنسبة 9:16');
+  String get adjustCover => _strings.pick('Adjust reel cover', 'ضبط غلاف الريل');
+  String get coverError => _strings.pick('Unable to prepare this cover image.', 'تعذّر تجهيز صورة الغلاف.');
   String get chooseAudio => _strings.pick('Choose audio', 'اختر صوتًا');
   String get resumeUpload => _strings.pick('Resume previous upload', 'استئناف الرفع السابق');
   String get comments => _strings.pick('Comments', 'التعليقات');
