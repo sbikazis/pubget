@@ -440,11 +440,11 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         aspectRatio: const CropAspectRatio(ratioX: 9, ratioY: 16),
         uiSettings: [
           AndroidUiSettings(
-            toolbarTitle: 'Adjust reel cover',
+            toolbarTitle: KirariCopy.of(context).adjustCover,
             lockAspectRatio: true,
             hideBottomControls: false,
           ),
-          IOSUiSettings(title: 'Adjust reel cover', aspectRatioLockEnabled: true),
+          IOSUiSettings(title: KirariCopy.of(context).adjustCover, aspectRatioLockEnabled: true),
         ],
       );
       if (cropped == null || !mounted) return;
@@ -463,7 +463,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       }
       await _savePendingUpload();
     } catch (_) {
-      if (mounted) setState(() => _error = 'Unable to prepare this cover image.');
+      if (mounted) setState(() => _error = KirariCopy.of(context).coverError);
     }
   }
 
@@ -714,7 +714,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               },
             ),
             const SizedBox(height: 12),
-            Text('Original audio volume', style: Theme.of(context).textTheme.titleMedium),
+            Text(copy.originalVolume, style: Theme.of(context).textTheme.titleMedium),
             Slider(
               min: 0, max: 1, divisions: 20, value: _originalAudioVolume,
               label: '${(_originalAudioVolume * 100).round()}%',
@@ -724,7 +724,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 _savePendingUpload();
               },
             ),
-            Text('Added audio volume', style: Theme.of(context).textTheme.titleMedium),
+            Text(copy.addedVolume, style: Theme.of(context).textTheme.titleMedium),
             Slider(
               min: 0, max: 1, divisions: 20, value: _addedAudioVolume,
               label: '${(_addedAudioVolume * 100).round()}%',
@@ -761,7 +761,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 _savePendingUpload();
               },
             ),
-            Text('Text timing · start', style: Theme.of(context).textTheme.titleSmall),
+            Text(copy.textStart, style: Theme.of(context).textTheme.titleSmall),
             Slider(
               min: _trim.start, max: _trim.end, divisions: (_duration * 2).round().clamp(6, 120).toInt(),
               value: _overlayStart.clamp(_trim.start, _overlayEnd).toDouble(),
@@ -777,7 +777,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 _savePendingUpload();
               },
             ),
-            Text('Text timing · end', style: Theme.of(context).textTheme.titleSmall),
+            Text(copy.textEnd, style: Theme.of(context).textTheme.titleSmall),
             Slider(
               min: _overlayStart.clamp(_trim.start, _trim.end).toDouble(), max: _trim.end,
               divisions: (_duration * 2).round().clamp(6, 120).toInt(),
@@ -805,9 +805,11 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.image_outlined),
-              title: const Text('Choose cover image'),
-              subtitle: Text(_coverImage == null ? 'Use a frame from the video' : 'Custom 9:16 cover selected'),
+              leading: _coverImage == null
+                  ? const Icon(Icons.image_outlined)
+                  : ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_coverImage!.path), width: 36, height: 54, fit: BoxFit.cover)),
+              title: Text(copy.chooseCover),
+              subtitle: Text(_coverImage == null ? copy.frameCover : copy.customCoverSelected),
               trailing: const Icon(Icons.chevron_right),
               onTap: _busy ? null : _chooseCoverImage,
             ),
