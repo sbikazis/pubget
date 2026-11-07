@@ -381,13 +381,14 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const audioId = request.data?.audioId == null ? null : inputId(request.data.audioId, "audioId");
     const allowOriginalAudioReuse = request.data?.allowOriginalAudioReuse === true;
     let animeIds, characterIds, mentions, contentCategory, groupId, eventId;
+    let animeMetadata, characterMetadata, mentionMetadata;
     try {
       animeIds = normalizeEntityIds(request.data?.animeIds, "animeIds", 5);
       characterIds = normalizeEntityIds(request.data?.characterIds, "characterIds", 20);
-      const animeMetadata = normalizeCatalogMetadata(request.data?.animeMetadata, animeIds, "animeMetadata", "title");
-      const characterMetadata = normalizeCatalogMetadata(request.data?.characterMetadata, characterIds, "characterMetadata", "name");
+      animeMetadata = normalizeCatalogMetadata(request.data?.animeMetadata, animeIds, "animeMetadata", "title");
+      characterMetadata = normalizeCatalogMetadata(request.data?.characterMetadata, characterIds, "characterMetadata", "name");
       mentions = normalizeMentions(request.data?.mentions);
-      const mentionMetadata = normalizeCatalogMetadata(request.data?.mentionMetadata, mentions, "mentionMetadata", "username");
+      mentionMetadata = normalizeCatalogMetadata(request.data?.mentionMetadata, mentions, "mentionMetadata", "username");
       contentCategory = request.data?.contentCategory == null
         ? "anime_edit" : String(request.data.contentCategory);
       if (!KIRARI_CONTENT_CATEGORIES.has(contentCategory)) {
