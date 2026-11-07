@@ -211,6 +211,22 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
                             const SizedBox(height: 14),
                             Text(reel.caption, style: Theme.of(context).textTheme.bodyLarge),
                           ],
+                          if (reel.mentionMetadata.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              children: [
+                                for (final mention in reel.mentionMetadata)
+                                  ActionChip(
+                                    avatar: const Icon(Icons.alternate_email, size: 16),
+                                    label: Text(mention['username'] as String? ?? 'Pubget user'),
+                                    onPressed: mention['id'] is String
+                                        ? () => AppNavigation.go(context, PubgetLinks.profilePath(mention['id'] as String))
+                                        : null,
+                                  ),
+                              ],
+                            ),
+                          ],
                           if (reel.animeTitles.isNotEmpty ||
                               reel.characterNames.isNotEmpty ||
                               reel.contentCategory != 'anime_edit') ...[
