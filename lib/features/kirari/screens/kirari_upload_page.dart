@@ -642,7 +642,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             Text('Original audio volume', style: Theme.of(context).textTheme.titleMedium),
             Slider(
               min: 0, max: 1, divisions: 20, value: _originalAudioVolume,
-              label: '\${(_originalAudioVolume * 100).round()}%',
+              label: '${(_originalAudioVolume * 100).round()}%',
               onChanged: _busy ? null : (value) {
                 setState(() => _originalAudioVolume = value);
                 if (_audioId == null) _preview?.setVolume(value);
@@ -652,7 +652,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             Text('Added audio volume', style: Theme.of(context).textTheme.titleMedium),
             Slider(
               min: 0, max: 1, divisions: 20, value: _addedAudioVolume,
-              label: '\${(_addedAudioVolume * 100).round()}%',
+              label: '${(_addedAudioVolume * 100).round()}%',
               onChanged: _busy ? null : (value) {
                 setState(() => _addedAudioVolume = value);
                 _audioPreview.setVolume(value);
@@ -688,7 +688,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             Slider(
               min: _trim.start, max: _trim.end, divisions: (_duration * 2).round().clamp(6, 120).toInt(),
               value: _overlayStart.clamp(_trim.start, _overlayEnd).toDouble(),
-              label: '\${_overlayStart.toStringAsFixed(1)}s',
+              label: '${_overlayStart.toStringAsFixed(1)}s',
               onChanged: _busy ? null : (value) {
                 setState(() {
                   _overlayStart = value;
@@ -702,7 +702,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               min: _overlayStart.clamp(_trim.start, _trim.end).toDouble(), max: _trim.end,
               divisions: (_duration * 2).round().clamp(6, 120).toInt(),
               value: _overlayEnd.clamp(_overlayStart, _trim.end).toDouble(),
-              label: '\${_overlayEnd.toStringAsFixed(1)}s',
+              label: '${_overlayEnd.toStringAsFixed(1)}s',
               onChanged: _busy ? null : (value) {
                 setState(() => _overlayEnd = value);
                 _savePendingUpload();
