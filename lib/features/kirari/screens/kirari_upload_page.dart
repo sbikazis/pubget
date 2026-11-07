@@ -37,6 +37,10 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   RangeValues _trim = const RangeValues(0, 3);
   double _speed = 1;
   double _coverTime = 0;
+  double _originalAudioVolume = 0.25;
+  double _addedAudioVolume = 0.85;
+  double _overlayStart = 0;
+  double _overlayEnd = 3;
   String _filter = 'none';
   double _duration = 3;
   bool _busy = false;
@@ -125,6 +129,10 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       _filter = data['filter'] as String? ?? 'none';
       _coverTime = ((data['coverTimeSeconds'] as num?)?.toDouble() ?? safeStart)
           .clamp(safeStart, safeEnd).toDouble();
+      _originalAudioVolume = ((data['originalAudioVolume'] as num?)?.toDouble() ?? 0.25).clamp(0, 1).toDouble();
+      _addedAudioVolume = ((data['addedAudioVolume'] as num?)?.toDouble() ?? 0.85).clamp(0, 1).toDouble();
+      _overlayStart = ((data['overlayStartSeconds'] as num?)?.toDouble() ?? safeStart).clamp(safeStart, safeEnd).toDouble();
+      _overlayEnd = ((data['overlayEndSeconds'] as num?)?.toDouble() ?? safeEnd).clamp(_overlayStart, safeEnd).toDouble();
       _overlayText.text = data['overlayText'] as String? ?? '';
       _caption.text = data['caption'] as String? ?? '';
       _hashtags.text = (data['hashtags'] as List? ?? const []).join(' ');
@@ -238,6 +246,10 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         _duration = duration;
         _trim = RangeValues(0, duration);
         _coverTime = 0;
+        _originalAudioVolume = 0.25;
+        _addedAudioVolume = 0.85;
+        _overlayStart = 0;
+        _overlayEnd = duration;
         _session = null;
         _idempotencyKey = 'kirari-' + DateTime.now().microsecondsSinceEpoch.toString();
         _progress = 0;
@@ -260,6 +272,10 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     'filter': _filter,
     'overlayText': _overlayText.text.trim(),
     'coverTimeSeconds': _coverTime,
+    'originalAudioVolume': _originalAudioVolume,
+    'addedAudioVolume': _addedAudioVolume,
+    'overlayStartSeconds': _overlayStart,
+    'overlayEndSeconds': _overlayEnd,
   };
 
   Future<void> _savePendingUpload() async {
@@ -539,12 +555,12 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                                 await preview.setPlaybackSpeed(_speed);
                                 await preview.seekTo(Duration(milliseconds: (_trim.start * 1000).round()));
                                 if (selectedTrack != null) {
-                                  await preview.setVolume(0.25);
+                                  await preview.setVolume(_originalAudioVolume);
                                   await _audioPreview.setReleaseMode(ReleaseMode.loop);
-                                  await _audioPreview.setVolume(0.85);
+                                  await _audioPreview.setVolume(_addedAudioVolume);
                                   await _audioPreview.play(UrlSource(selectedTrack.audioUrl));
                                 } else {
-                                  await preview.setVolume(1);
+                                  await preview.setVolume(_originalAudioVolume);
                                   await _audioPreview.stop();
                                 }
                                 await preview.play();
@@ -621,7 +637,27 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               },
             ),
             const SizedBox(height: 12),
-            Text(copy.filter, style: Theme.of(context).textTheme.titleMedium),
+            Text('Original audio volume', style: Theme.of(context).textTheme.titleMedium),
+            Slider(
+              min: 0, max: 1, divisions: 20, value: _originalAudioVolume,
+              label: '\${(_originalAudioVolume * 100).round()}%',
+              onChanged: _busy ? null : (value) {
+                setState(() => _originalAudioVolume = value);
+                if (_audioId == null) _preview?.setVolume(value);
+                _savePendingUpload();
+              },
+            ),
+            Text('Added audio volume', style: Theme.of(context).textTheme.titleMedium),
+            Slider(
+              min: 0, max: 1, divisions: 20, value: _addedAudioVolume,
+              label: '\${(_addedAudioVolume * 100).round()}%',
+              onChanged: _busy ? null : (value) {
+                setState(() => _addedAudioVolume = value);
+                _audioPreview.setVolume(value);
+                _savePendingUpload();
+              },
+            ),
+                        Text(copy.filter, style: Theme.of(context).textTheme.titleMedium),
             DropdownButtonFormField<String>(
               value: _filter,
               items: const [
@@ -643,6 +679,30 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               decoration: InputDecoration(labelText: copy.overlayText),
               onChanged: (_) {
                 setState(() {});
+                _savePendingUpload();
+              },
+            ),
+            Text('Text timing · start', style: Theme.of(context).textTheme.titleSmall),
+            Slider(
+              min: _trim.start, max: _trim.end, divisions: (_duration * 2).round().clamp(6, 120).toInt(),
+              value: _overlayStart.clamp(_trim.start, _overlayEnd).toDouble(),
+              label: '\${_overlayStart.toStringAsFixed(1)}s',
+              onChanged: _busy ? null : (value) {
+                setState(() {
+                  _overlayStart = value;
+                  if (_overlayEnd < value) _overlayEnd = value;
+                });
+                _savePendingUpload();
+              },
+            ),
+            Text('Text timing · end', style: Theme.of(context).textTheme.titleSmall),
+            Slider(
+              min: _overlayStart.clamp(_trim.start, _trim.end).toDouble(), max: _trim.end,
+              divisions: (_duration * 2).round().clamp(6, 120).toInt(),
+              value: _overlayEnd.clamp(_overlayStart, _trim.end).toDouble(),
+              label: '\${_overlayEnd.toStringAsFixed(1)}s',
+              onChanged: _busy ? null : (value) {
+                setState(() => _overlayEnd = value);
                 _savePendingUpload();
               },
             ),
