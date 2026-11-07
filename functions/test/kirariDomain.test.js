@@ -111,7 +111,22 @@ test("editor settings are bounded and unsafe filter values fall back to original
     filter: "none",
     overlayText: "x".repeat(80),
     coverTimeSeconds: 0,
+    originalAudioVolume: 0.25,
+    addedAudioVolume: 0.85,
+    overlayStartSeconds: 0,
+    overlayEndSeconds: 60,
   });
+  const bounded = normalizeEditSettings({
+    trimStartSeconds: 55, trimEndSeconds: 2, coverTimeSeconds: 0,
+    originalAudioVolume: 4, addedAudioVolume: -2,
+    overlayStartSeconds: 90, overlayEndSeconds: 1,
+  });
+  assert.equal(bounded.trimEndSeconds, 58);
+  assert.equal(bounded.coverTimeSeconds, 55);
+  assert.equal(bounded.originalAudioVolume, 1);
+  assert.equal(bounded.addedAudioVolume, 0);
+  assert.equal(bounded.overlayStartSeconds, 55);
+  assert.equal(bounded.overlayEndSeconds, 55);
 });
 
 test("audio catalog returns only approved reusable tracks with a bounded page size", async () => {
