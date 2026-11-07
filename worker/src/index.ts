@@ -243,7 +243,7 @@ async function inspectAndRestoreBody(body: ReadableStream<Uint8Array>): Promise<
   return { prefix, stream };
 }
 
-function safeKey(key: string): boolean {
+export function isSafeMediaKey(key: string): boolean {
   const parts = key.split("/");
   if (parts.length === 3) {
     return ["images", "reels", "audio"].includes(parts[0]) &&
@@ -774,7 +774,7 @@ export default {
       const parts = key.split("/");
       const now = Math.floor(Date.now() / 1000);
 
-      if (!safeKey(key) || (parts.length === 3 ? parts[1] !== uid : parts[2] !== uid)) return json({ error: "Invalid upload key." }, 403);
+      if (!isSafeMediaKey(key) || (parts.length === 3 ? parts[1] !== uid : parts[2] !== uid)) return json({ error: "Invalid upload key." }, 403);
       const scoped = parts.length === 4;
       const scopeType = scoped ? parts[0] : "";
       const scopeId = scoped ? parts[1] : "";
@@ -859,7 +859,7 @@ export default {
       if (!uid) return json({ error: "Authentication required." }, 401);
       const key = url.searchParams.get("key") ?? "";
       const parts = key.split("/");
-      if (!safeKey(key)) return json({ error: "Invalid object key." }, 400);
+      if (!isSafeMediaKey(key)) return json({ error: "Invalid object key." }, 400);
       const scoped = parts.length === 4;
       const object = await env.MEDIA_BUCKET.head(key);
       if (!object) return json({ error: "Media not found." }, 404);
@@ -892,7 +892,7 @@ export default {
       } catch {
         return json({ error: "Invalid object key." }, 400);
       }
-      if (!safeKey(key)) return json({ error: "Not found." }, 404);
+      if (!isSafeMediaKey(key)) return json({ error: "Not found." }, 404);
 
       const expires = Number(url.searchParams.get("expires"));
       const supplied = url.searchParams.get("signature") ?? "";
@@ -954,7 +954,7 @@ export default {
       } catch {
         return json({ error: "Invalid object key." }, 400);
       }
-      if (!safeKey(key)) return json({ error: "Not found." }, 404);
+      if (!isSafeMediaKey(key)) return json({ error: "Not found." }, 404);
       const parts = key.split("/");
       const object = await env.MEDIA_BUCKET.head(key);
       if (!object) return new Response(null, { status: 204, headers: CORS });
