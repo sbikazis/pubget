@@ -139,8 +139,15 @@ function editorVideoFilter(width, height, settings) {
     case "vivid": filters.push("eq=saturation=1.35:contrast=1.1"); break;
     default: break;
   }
-  if (settings.overlayText) filters.push("drawtext=text='" + escapeDrawtext(settings.overlayText) +
-    "':fontcolor=white:fontsize=42:borderw=3:bordercolor=black@0.7:x=(w-text_w)/2:y=h*0.78");
+  if (settings.overlayText) {
+    const start = Math.max(0, Number(settings.overlayStartSeconds ?? settings.trimStartSeconds ?? 0) -
+      Number(settings.trimStartSeconds || 0));
+    const end = Math.max(start, Number(settings.overlayEndSeconds ?? settings.trimEndSeconds ?? 60) -
+      Number(settings.trimStartSeconds || 0));
+    filters.push("drawtext=text='" + escapeDrawtext(settings.overlayText) +
+      "':fontcolor=white:fontsize=42:borderw=3:bordercolor=black@0.7:x=(w-text_w)/2:y=h*0.78" +
+      ":enable='between(t," + start + "," + end + ")'");
+  }
   filters.push("setpts=PTS/" + settings.speed);
   return filters.join(",");
 }
@@ -255,14 +262,14 @@ function createKirariPipeline({ db, bucket }) {
         args.push("-t", String(outputDuration), "-map", "0:v:0");
         if (audioSource && metadata.hasAudio) {
           args.push("-filter_complex",
-            "[0:a]volume=0.25,atempo=" + speed + "[sourceaudio];" +
-            "[1:a]volume=0.85,atempo=" + speed + "[trackaudio];" +
+            "[0:a]volume=" + Math.max(0, Math.min(1, Number(settings.originalAudioVolume ?? 0.25))) + ",atempo=" + speed + "[sourceaudio];" +
+            "[1:a]volume=" + Math.max(0, Math.min(1, Number(settings.addedAudioVolume ?? 0.85))) + ",atempo=" + speed + "[trackaudio];" +
             "[sourceaudio][trackaudio]amix=inputs=2:duration=first:dropout_transition=2[aout]",
             "-map", "[aout]");
         } else if (audioSource) {
-          args.push("-map", "1:a:0", "-af", "atempo=" + speed);
+          args.push("-map", "1:a:0", "-af", "volume=" + Math.max(0, Math.min(1, Number(settings.addedAudioVolume ?? 0.85))) + ",atempo=" + speed);
         } else if (metadata.hasAudio) {
-          args.push("-map", "0:a:0", "-af", "atempo=" + speed);
+          args.push("-map", "0:a:0", "-af", "volume=" + Math.max(0, Math.min(1, Number(settings.originalAudioVolume ?? 0.25))) + ",atempo=" + speed);
         }
         args.push("-vf", editorVideoFilter(width, height, { ...settings, speed }));
         args.push("-c:v", "libx264", "-preset", "veryfast", "-b:v", bitrate,
