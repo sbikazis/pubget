@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class FirebaseResumableUploader {
   FirebaseResumableUploader({
     required this.bucket,
-    required this.uid,
+    required this.uidProvider,
     required this.getIdToken,
     required this.getAppCheckToken,
     http.Client? client,
@@ -22,7 +22,7 @@ class FirebaseResumableUploader {
        _preferences = preferences;
 
   final String bucket;
-  final String uid;
+  final String Function() uidProvider;
   final Future<String> Function() getIdToken;
   final Future<String?> Function() getAppCheckToken;
   final http.Client _client;
@@ -82,7 +82,16 @@ class FirebaseResumableUploader {
       await prefs.setString(fingerprintKey, fingerprint);
     }
 
-    var offset = await _queryOffset(sessionUrl, total);
+    int offset;
+    try {
+      offset = await _queryOffset(sessionUrl, total);
+    } on _UploadSessionExpired {
+      await clearSession(storagePath);
+      sessionUrl = await _startSession(storagePath: storagePath, total: total, contentType: contentType);
+      await prefs.setString(sessionKey, sessionUrl);
+      await prefs.setString(fingerprintKey, fingerprint);
+      offset = 0;
+    }
     if (offset == total) {
       await clearSession(storagePath);
       onProgress(1);
@@ -91,8 +100,7 @@ class FirebaseResumableUploader {
 
     var retries = 0;
     while (offset < total) {
-      final endExclusive = math.min(offset + chunkSize, total);
-      final endInclusive = endExclusive - 1;
+      final endExclusive = math.min(offset + chunkSize, total).toInt();
       try {
         final response = await _sendChunk(
           sessionUrl: sessionUrl,
@@ -121,20 +129,30 @@ class FirebaseResumableUploader {
           await prefs.setString(fingerprintKey, fingerprint);
           offset = 0;
         } else if (response.statusCode >= 500) {
-          offset = await _queryOffset(sessionUrl, total);
           retries++;
+          if (retries > 5) throw HttpException('Firebase Storage temporarily rejected the upload chunk.');
+          offset = await _queryOffset(sessionUrl, total);
         } else {
           throw HttpException(
             'Firebase Storage resumable upload failed (${response.statusCode}): ${response.body}',
           );
         }
         retries = 0;
-      } catch (_) {
-        retries++;
-        if (retries > 5) rethrow;
-        // The connection may have failed after Storage committed part or all
-        // of the chunk. Always ask Storage before sending bytes again.
-        offset = await _queryOffset(sessionUrl, total);
+      } catch (error) {
+        if (error is _UploadSessionExpired) {
+          await clearSession(storagePath);
+          sessionUrl = await _startSession(storagePath: storagePath, total: total, contentType: contentType);
+          await prefs.setString(sessionKey, sessionUrl);
+          await prefs.setString(fingerprintKey, fingerprint);
+          offset = 0;
+          retries = 0;
+        } else {
+          retries++;
+          if (retries > 5) rethrow;
+          // The connection may have failed after Storage committed part or all
+          // of the chunk. Always ask Storage before sending bytes again.
+          offset = await _queryOffset(sessionUrl, total);
+        }
       }
       onProgress((offset / total).clamp(0, 1).toDouble());
       if (offset == total) break;
@@ -154,6 +172,8 @@ class FirebaseResumableUploader {
   }) async {
     final token = await getIdToken();
     final appCheck = await getAppCheckToken();
+    final ownerUid = uidProvider();
+    if (ownerUid.isEmpty) throw StateError('Sign in before uploading a Kirari reel.');
     final uri = Uri.https(
       'firebasestorage.googleapis.com',
       '/v0/b/$bucket/o',
@@ -174,7 +194,7 @@ class FirebaseResumableUploader {
       ..body = jsonEncode(<String, dynamic>{
         'name': storagePath,
         'contentType': contentType,
-        'metadata': <String, String>{'uploadedBy': uid},
+        'metadata': <String, String>{'uploadedBy': ownerUid},
       });
     final response = await _client.send(request);
     final body = await response.stream.bytesToString();
@@ -205,7 +225,7 @@ class FirebaseResumableUploader {
       return nextOffsetFromRange(response.headers['range']);
     }
     if (response.statusCode == 404 || response.statusCode == 410) {
-      throw const HttpException('Firebase Storage upload session expired.');
+      throw _UploadSessionExpired();
     }
     throw HttpException(
       'Unable to query Firebase Storage upload offset (${response.statusCode}): $body',
@@ -233,3 +253,5 @@ class FirebaseResumableUploader {
     return response;
   }
 }
+
+class _UploadSessionExpired implements Exception {}
