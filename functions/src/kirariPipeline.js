@@ -317,6 +317,9 @@ function createKirariPipeline({ db, bucket }) {
           metadata: { ownerUid: uid, reelId, generatedBy: "kirari-pipeline-v1", firebaseStorageDownloadTokens: randomUUID() },
         },
       });
+      if (hasCustomCover) {
+        await bucket.file(customCoverPath).delete({ ignoreNotFound: true }).catch(() => {});
+      }
       await ref.update({
         status: "published",
         moderationStatus: decision.flagged ? "review_pending" : "approved",
