@@ -202,6 +202,16 @@ class _AudioPageState extends State<AudioPage> {
           icon: Icons.movie_outlined,
           highlighted: true,
         ),
+        const SizedBox(height: AppSpacing.md),
+        FilledButton.icon(
+          key: const Key('use-kirari-audio'),
+          onPressed: () => AppNavigation.go(
+            context,
+            '/reels/upload?audioId=${Uri.encodeComponent(widget.audioId)}',
+          ),
+          icon: const Icon(Icons.music_note),
+          label: Text(copy.useAudio),
+        ),
         if (_kirariReels.isNotEmpty) ...<Widget>[
           const SizedBox(height: AppSpacing.md),
           Builder(builder: (context) {
