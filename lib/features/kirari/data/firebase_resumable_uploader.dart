@@ -63,13 +63,11 @@ class FirebaseResumableUploader {
     final prefs = await _prefs();
     final sessionKey = _sessionKey(storagePath);
     final fingerprintKey = _fingerprintKey(storagePath);
-    var sessionUrl = prefs.getString(sessionKey);
-
-    if (prefs.getString(fingerprintKey) != fingerprint) {
-      await prefs.remove(sessionKey);
-      sessionUrl = null;
-    }
-    if (sessionUrl == null || sessionUrl.isEmpty) {
+    final storedSessionUrl = prefs.getString(sessionKey);
+    final fingerprintMatches = prefs.getString(fingerprintKey) == fingerprint;
+    late String sessionUrl;
+    if (storedSessionUrl == null || storedSessionUrl.isEmpty || !fingerprintMatches) {
+      if (!fingerprintMatches) await prefs.remove(sessionKey);
       sessionUrl = await _startSession(
         storagePath: storagePath,
         total: total,
@@ -77,6 +75,8 @@ class FirebaseResumableUploader {
       );
       await prefs.setString(sessionKey, sessionUrl);
       await prefs.setString(fingerprintKey, fingerprint);
+    } else {
+      sessionUrl = storedSessionUrl;
     }
 
     int offset;
