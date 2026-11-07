@@ -27,10 +27,9 @@
 
 The app is not yet Firebase-Storage-free.
 
-1. Kirari's upload, audio library, rendition and cover paths still rely on
-   Firebase Storage. Its current FFmpeg processing pipeline is triggered by
-   Firebase Storage object-finalize events and writes processed renditions
-   back to that bucket.
+1. Kirari's upload, audio library, rendition and cover paths have been
+   migrated to R2. The FFmpeg pipeline is triggered by Firestore state
+   transitions and uses an authenticated Worker R2 bridge.
 2. The Edits/Reels upload and FFmpeg rendition pipeline also uses Firebase
    Storage as its source and output store.
 3. Legacy storage helpers (including sticker and chat-background services)
@@ -42,11 +41,10 @@ The app is not yet Firebase-Storage-free.
 
 Cloudflare Stream is not enabled for this account (Cloudflare API returned
 `Stream not enabled`). The current plan therefore cannot rely on Stream for
-video transcoding. Before migrating Kirari and Edits, implement and test an
-R2-backed processing adapter for the existing FFmpeg Functions pipeline, or
-enable an approved Cloudflare video-processing service. Do not switch those
-uploaders to raw R2 while leaving the Storage-triggered processor in place:
-that would strand uploads in a non-published state.
+video transcoding. Kirari now uses an R2-backed processing adapter for the existing FFmpeg
+Functions pipeline. Edits still needs a separate processing migration. Do not
+switch the Edits uploader to raw R2 while leaving its Storage-triggered
+processor in place: that would strand uploads in a non-published state.
 
 ## Operational safety
 
@@ -75,20 +73,25 @@ five-minute signed URL. The media endpoint supports HTTP byte ranges for video
 seeking. Kirari deletion and retry operations use the same authenticated
 server-side R2 adapter.
 
-### Required secret binding
+### Kirari service-to-service authentication
 
-Before deploying the updated Functions or Worker, configure the same
-high-entropy value independently as:
+Kirari Functions Gen 2 obtains a short-lived Google-signed ID token from the
+Cloud Run metadata server using the fixed Worker audience and `format=full`.
+The Worker validates the Google signature, issuer, exact audience, verified
+service-account email, and token lifetime before allowing access to the
+private R2 bridge. The current Worker configuration allowlists the default
+Gen 2 runtime account
+`452313838148-compute@developer.gserviceaccount.com`; verify that the
+deployed Functions runtime has not been manually assigned a different account
+before production rollout.
 
-- Firebase Functions Secret Manager secret: `KIRARI_R2_SERVICE_SECRET`
-- Cloudflare Worker secret binding: `KIRARI_R2_SERVICE_SECRET`
+This removes the shared `KIRARI_R2_SERVICE_SECRET` dependency and does not
+require Firebase Secret Manager. The existing `MEDIA_SIGNING_SECRET` remains
+required for signed media URLs and is separate from service identity.
 
-This is a service-to-service credential. It is distinct from
-`MEDIA_SIGNING_SECRET`, must never be exposed to Flutter, and must not be
-written into source control. The Worker also requires the existing
-`MEDIA_SIGNING_SECRET` binding for short-lived playback URL signatures.
-
-Do not deploy until both secret bindings are present. The code path is
-validated by CI; production upload, FFmpeg processing, signed playback, retry,
-and deletion still require an end-to-end smoke test after the secret is
-configured.
+The automated tests cover token issuance configuration, valid identity
+acceptance, and rejection of missing or mismatched credentials. A
+production-like end-to-end smoke test is still required for multipart source
+upload, Firestore-triggered FFmpeg processing, signed playback/seek, retry,
+moderation preview, and deletion. Do not deploy until CI and that runtime
+smoke test pass.
