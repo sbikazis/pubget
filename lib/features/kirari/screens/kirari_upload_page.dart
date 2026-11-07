@@ -37,7 +37,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   RangeValues _trim = const RangeValues(0, 3);
   double _speed = 1;
   double _coverTime = 0;
-  double _originalAudioVolume = 0.25;
+  double _originalAudioVolume = 1.0;
   double _addedAudioVolume = 0.85;
   double _overlayStart = 0;
   double _overlayEnd = 3;
@@ -48,6 +48,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   double _progress = 0;
   String? _error;
   String? _status;
+  bool _overlayVisible = true;
 
   @override
   void initState() {
@@ -129,10 +130,11 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       _filter = data['filter'] as String? ?? 'none';
       _coverTime = ((data['coverTimeSeconds'] as num?)?.toDouble() ?? safeStart)
           .clamp(safeStart, safeEnd).toDouble();
-      _originalAudioVolume = ((data['originalAudioVolume'] as num?)?.toDouble() ?? 0.25).clamp(0, 1).toDouble();
+      _originalAudioVolume = ((data['originalAudioVolume'] as num?)?.toDouble() ?? 1.0).clamp(0, 1).toDouble();
       _addedAudioVolume = ((data['addedAudioVolume'] as num?)?.toDouble() ?? 0.85).clamp(0, 1).toDouble();
       _overlayStart = ((data['overlayStartSeconds'] as num?)?.toDouble() ?? safeStart).clamp(safeStart, safeEnd).toDouble();
       _overlayEnd = ((data['overlayEndSeconds'] as num?)?.toDouble() ?? safeEnd).clamp(_overlayStart, safeEnd).toDouble();
+      _overlayVisible = _overlayStart <= safeStart && _overlayEnd >= safeStart;
       _overlayText.text = data['overlayText'] as String? ?? '';
       _caption.text = data['caption'] as String? ?? '';
       _hashtags.text = (data['hashtags'] as List? ?? const []).join(' ');
@@ -199,12 +201,20 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     final controller = _preview;
     if (controller == null || !controller.value.isInitialized || !controller.value.isPlaying) return;
     final position = controller.value.position.inMilliseconds / 1000;
+    final overlayVisible = _overlayText.text.trim().isNotEmpty &&
+        position >= _overlayStart && position <= _overlayEnd;
+    if (mounted && overlayVisible != _overlayVisible) {
+      setState(() => _overlayVisible = overlayVisible);
+    }
     if (position >= _trim.end) {
       controller.pause();
       _audioPreview.stop();
-      controller.setVolume(1);
+      controller.setVolume(_originalAudioVolume);
       controller.seekTo(Duration(milliseconds: (_trim.start * 1000).round()));
-      if (mounted) setState(() {});
+      if (mounted) setState(() {
+        _overlayVisible = _overlayText.text.trim().isNotEmpty &&
+            _trim.start >= _overlayStart && _trim.start <= _overlayEnd;
+      });
     }
   }
 
@@ -246,10 +256,11 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         _duration = duration;
         _trim = RangeValues(0, duration);
         _coverTime = 0;
-        _originalAudioVolume = 0.25;
+        _originalAudioVolume = 1.0;
         _addedAudioVolume = 0.85;
         _overlayStart = 0;
         _overlayEnd = duration;
+        _overlayVisible = true;
         _session = null;
         _idempotencyKey = 'kirari-' + DateTime.now().microsecondsSinceEpoch.toString();
         _progress = 0;
@@ -460,7 +471,15 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     );
     await _audioPreview.stop();
     if (!mounted || selectedId == null) return;
-    setState(() { _previewingAudioId = null; _audioId = selectedId.isEmpty ? null : selectedId; });
+    setState(() {
+      _previewingAudioId = null;
+      _audioId = selectedId.isEmpty ? null : selectedId;
+      if (_audioId == null) {
+        _originalAudioVolume = 1;
+      } else if (_originalAudioVolume == 1) {
+        _originalAudioVolume = 0.25;
+      }
+    });
     await _savePendingUpload();
   }
 
@@ -529,7 +548,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                                   ),
                           ),
                         ),
-                        if (_overlayText.text.trim().isNotEmpty)
+                        if (_overlayText.text.trim().isNotEmpty && _overlayVisible)
                           Center(
                             child: Text(
                               _overlayText.text,
@@ -680,7 +699,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               maxLength: 80,
               decoration: InputDecoration(labelText: copy.overlayText),
               onChanged: (_) {
-                setState(() {});
+                setState(() => _overlayVisible = _overlayText.text.trim().isNotEmpty &&
+                    _preview?.value.position.inMilliseconds.toDouble().toDouble().isFinite == true);
                 _savePendingUpload();
               },
             ),
