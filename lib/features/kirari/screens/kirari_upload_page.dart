@@ -14,6 +14,8 @@ import '../data/kirari_repository.dart';
 import '../l10n/kirari_copy.dart';
 import '../../anime/models/anime_models.dart';
 import '../../anime/repositories/anime_repository.dart';
+import '../../home/repositories/home_repository.dart';
+import '../../social/models/public_profile.dart';
 
 class KirariUploadPage extends StatefulWidget {
   const KirariUploadPage({super.key, this.initialAudioId});
@@ -58,6 +60,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   bool _allowOriginalAudioReuse = false;
   List<Anime> _selectedAnime = <Anime>[];
   List<AnimeCharacter> _selectedCharacters = <AnimeCharacter>[];
+  List<PublicProfile> _selectedMentions = <PublicProfile>[];
   String _contentCategory = 'anime_edit';
 
   @override
@@ -165,6 +168,11 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
           .whereType<Map>()
           .where((item) => item['id'] is String && item['name'] is String)
           .map((item) => AnimeCharacter(id: item['id'] as String, name: item['name'] as String))
+          .take(20).toList();
+      _selectedMentions = (data['mentions'] as List? ?? const <dynamic>[])
+          .whereType<Map>()
+          .where((item) => item['uid'] is String)
+          .map((item) => PublicProfile(uid: item['uid'] as String, username: item['username'] as String?))
           .take(20).toList();
       _idempotencyKey = data['idempotencyKey'] as String?;
       final reelId = data['reelId'] as String?;
@@ -337,6 +345,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       'contentCategory': _contentCategory,
       'anime': _selectedAnime.map((item) => {'id': item.id, 'title': item.title}).toList(),
       'characters': _selectedCharacters.map((item) => {'id': item.id, 'name': item.name}).toList(),
+      'mentions': _selectedMentions.map((item) => {'uid': item.uid, 'username': item.username ?? ''}).toList(),
       'savedAt': DateTime.now().toIso8601String(),
       ..._editorSettings(),
     };
@@ -402,6 +411,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         characterIds: _selectedCharacters.map((item) => item.id).toList(),
         animeMetadata: _selectedAnime.map((item) => {'id': item.id, 'title': item.title}).toList(),
         characterMetadata: _selectedCharacters.map((item) => {'id': item.id, 'name': item.name}).toList(),
+        mentions: _selectedMentions.map((item) => item.uid).toList(),
+        mentionMetadata: _selectedMentions.map((item) => {'id': item.uid, 'username': item.username ?? item.displayName ?? 'Pubget user'}).toList(),
         contentCategory: _contentCategory,
       );
       _session = session;
@@ -605,6 +616,92 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         },
       ),
     );
+  }
+
+  Future<void> _chooseMention() async {
+    if (_selectedMentions.length >= 20) return;
+    final repository = context.read<HomeRepository>();
+    final controller = TextEditingController();
+    var searching = false;
+    var results = <PublicProfile>[];
+    final selected = await showModalBottomSheet<PublicProfile>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, updateSheet) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16, right: 16, top: 12,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+            ),
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.65,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      labelText: KirariCopy.of(context).searchPeople,
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: () async {
+                          final query = controller.text.trim();
+                          if (query.isEmpty) return;
+                          updateSheet(() => searching = true);
+                          final result = await repository.search(query);
+                          if (!sheetContext.mounted) return;
+                          updateSheet(() {
+                            results = result.valueOrNull?.people ?? <PublicProfile>[];
+                            searching = false;
+                          });
+                        },
+                      ),
+                    ),
+                    onSubmitted: (query) async {
+                      if (query.trim().isEmpty) return;
+                      updateSheet(() => searching = true);
+                      final result = await repository.search(query.trim());
+                      if (!sheetContext.mounted) return;
+                      updateSheet(() {
+                        results = result.valueOrNull?.people ?? <PublicProfile>[];
+                        searching = false;
+                      });
+                    },
+                  ),
+                  if (searching) const LinearProgressIndicator(),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: results.length,
+                      itemBuilder: (context, index) {
+                        final profile = results[index];
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundImage: profile.avatarUrl == null || profile.avatarUrl!.isEmpty
+                                ? null : NetworkImage(profile.avatarUrl!),
+                            child: profile.avatarUrl == null || profile.avatarUrl!.isEmpty
+                                ? const Icon(Icons.person_outline) : null,
+                          ),
+                          title: Text(profile.primaryName()),
+                          subtitle: Text(profile.username == null ? profile.uid : '@${profile.username}'),
+                          onTap: () => Navigator.of(sheetContext).pop(profile),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    controller.dispose();
+    if (!mounted || selected == null ||
+        _selectedMentions.any((item) => item.uid == selected.uid)) return;
+    setState(() => _selectedMentions = [..._selectedMentions, selected]);
+    await _savePendingUpload();
   }
 
   Future<void> _chooseCoverImage() async {
@@ -1109,6 +1206,31 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                   label: Text(character.name),
                   onDeleted: _busy ? null : () {
                     setState(() => _selectedCharacters = _selectedCharacters.where((item) => item.id != character.id).toList());
+                    _savePendingUpload();
+                  },
+                ),
+            ],
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(copy.mentions),
+            subtitle: Text(_selectedMentions.isEmpty
+                ? copy.noMentionsSelected
+                : _selectedMentions.map((item) => '@${item.username ?? item.uid}').join(' · ')),
+            trailing: IconButton(
+              tooltip: copy.addMention,
+              onPressed: _busy || _selectedMentions.length >= 20 ? null : _chooseMention,
+              icon: const Icon(Icons.person_add_alt_1_outlined),
+            ),
+          ),
+          Wrap(
+            spacing: 6, runSpacing: 4,
+            children: [
+              for (final profile in _selectedMentions)
+                InputChip(
+                  label: Text('@${profile.username ?? profile.uid}'),
+                  onDeleted: _busy ? null : () {
+                    setState(() => _selectedMentions = _selectedMentions.where((item) => item.uid != profile.uid).toList());
                     _savePendingUpload();
                   },
                 ),
