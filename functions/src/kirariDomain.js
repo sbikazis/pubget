@@ -60,7 +60,7 @@ function normalizeEditSettings(value) {
   const trimStartSeconds = clamp(input.trimStartSeconds ?? 0, 0, 57);
   const trimEndSeconds = clamp(input.trimEndSeconds ?? 60, trimStartSeconds + 3, 60);
   const coverTimeSeconds = clamp(input.coverTimeSeconds ?? trimStartSeconds, trimStartSeconds, trimEndSeconds);
-  const originalAudioVolume = clamp(input.originalAudioVolume ?? 0.25, 0, 1);
+  const originalAudioVolume = clamp(input.originalAudioVolume ?? 1.0, 0, 1);
   const addedAudioVolume = clamp(input.addedAudioVolume ?? 0.85, 0, 1);
   const overlayStartSeconds = clamp(input.overlayStartSeconds ?? trimStartSeconds, trimStartSeconds, trimEndSeconds);
   const overlayEndSeconds = clamp(input.overlayEndSeconds ?? trimEndSeconds, overlayStartSeconds, trimEndSeconds);
