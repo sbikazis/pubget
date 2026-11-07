@@ -432,4 +432,4 @@ function createKirariPipeline({ db, bucket }) {
   };
 }
 
-module.exports = { createKirariPipeline, probeVideo, renditionArgs, editorVideoFilter, outputDurationSeconds, buildAudioAttribution };
+module.exports = { createKirariPipeline, probeVideo, renditionArgs, editorVideoFilter, outputDurationSeconds, isPortraitVideo, buildAudioAttribution };
