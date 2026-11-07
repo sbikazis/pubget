@@ -43,6 +43,7 @@ final class KirariCopy {
   String get searchAnime => _strings.pick('Search anime', 'ابحث عن أنمي');
   String get searchCharacters => _strings.pick('Search characters', 'ابحث عن الشخصيات');
   String get searchPeople => _strings.pick('Search people', 'ابحث عن الأشخاص');
+  String get mentions => _strings.pick('Mentions', 'الإشارات');
   String get noMentionsSelected => _strings.pick('No people mentioned', 'لم تتم الإشارة إلى أشخاص');
   String get addMention => _strings.pick('Mention a person', 'أشر إلى شخص');
   String get contentCategory => _strings.pick('Content category', 'تصنيف المحتوى');
