@@ -273,6 +273,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         _overlayStart = 0;
         _overlayEnd = duration;
         _overlayVisible = true;
+        _allowOriginalAudioReuse = false;
         _session = null;
         _idempotencyKey = 'kirari-' + DateTime.now().microsecondsSinceEpoch.toString();
         _progress = 0;
@@ -823,12 +824,12 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               value: _allowOriginalAudioReuse,
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 setState(() => _allowOriginalAudioReuse = value == true);
                 _savePendingUpload();
               },
-              title: const Text('Allow others to reuse my original audio'),
-              subtitle: const Text('Only enable this if you own the audio or have permission to share it. New tracks remain private until approved.'),
+              title: Text(copy.allowAudioReuse),
+              subtitle: Text(copy.audioReuseRights),
               controlAffinity: ListTileControlAffinity.leading,
             ),
             ListTile(
