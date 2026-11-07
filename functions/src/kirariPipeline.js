@@ -262,7 +262,7 @@ function createKirariPipeline({ db, bucket }) {
         args.push("-t", String(outputDuration), "-map", "0:v:0");
         if (audioSource && metadata.hasAudio) {
           args.push("-filter_complex",
-            "[0:a]volume=" + Math.max(0, Math.min(1, Number(settings.originalAudioVolume ?? 0.25))) + ",atempo=" + speed + "[sourceaudio];" +
+            "[0:a]volume=" + Math.max(0, Math.min(1, Number(settings.originalAudioVolume ?? 1.0))) + ",atempo=" + speed + "[sourceaudio];" +
             "[1:a]volume=" + Math.max(0, Math.min(1, Number(settings.addedAudioVolume ?? 0.85))) + ",atempo=" + speed + "[trackaudio];" +
             "[sourceaudio][trackaudio]amix=inputs=2:duration=first:dropout_transition=2[aout]",
             "-map", "[aout]");
