@@ -1616,6 +1616,6 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
 module.exports = {
   KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings,
-  normalizeEntityIds, normalizeMentions, rankKirari,
+  normalizeEntityIds, normalizeMentions, normalizeCatalogMetadata, rankKirari,
   isFeedCursorAfter, shouldCountEarlySkip, calculateVerifiedPlayback, diversifyKirari, createKirariDomain,
 };
