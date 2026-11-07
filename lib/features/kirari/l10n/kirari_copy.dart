@@ -58,6 +58,17 @@ final class KirariCopy {
   String get categoryRecommendation => _strings.pick('Recommendation', 'ترشيح');
   String get categoryFanArt => _strings.pick('Fan art', 'فن المعجبين');
   String get categoryOther => _strings.pick('Other', 'أخرى');
+  String categoryLabel(String value) => switch (value) {
+    'anime_edit' => categoryAnimeEdit,
+    'amv' => categoryAmv,
+    'cosplay' => categoryCosplay,
+    'meme' => categoryMeme,
+    'review' => categoryReview,
+    'theory' => categoryTheory,
+    'recommendation' => categoryRecommendation,
+    'fan_art' => categoryFanArt,
+    _ => categoryOther,
+  };
   String get allowAudioReuse => _strings.pick('Allow others to reuse my original audio', 'السماح للآخرين بإعادة استخدام صوتي الأصلي');
   String get audioReuseRights => _strings.pick('Only enable this if you own the audio or have permission to share it. New tracks remain private until approved.', 'فعّل هذا الخيار فقط إذا كنت تملك حقوق الصوت أو تملك إذنًا بمشاركته. ستظل المقاطع الصوتية خاصة حتى مراجعتها والموافقة عليها.');
   String get chooseAudio => _strings.pick('Choose audio', 'اختر صوتًا');
