@@ -15,6 +15,12 @@ test("Kirari rendition ladder always outputs vertical 9:16 dimensions", () => {
   }
 });
 
+test("Kirari accepts portrait sources and rejects landscape or unknown dimensions", () => {
+  assert.equal(isPortraitVideo({ width: 720, height: 1280 }), true);
+  assert.equal(isPortraitVideo({ width: 1280, height: 720 }), false);
+  assert.equal(isPortraitVideo({ width: 0, height: 0 }), false);
+});
+
 test("Kirari editor export applies trim-safe text, color and playback speed filters", () => {
   const filter = editorVideoFilter(404, 720, {
     filter: "warm",
