@@ -64,7 +64,7 @@ function normalizeEntityIds(value, field, maxItems) {
   for (const raw of value) {
     if (typeof raw !== "string") throw new Error(field + " contains an invalid ID.");
     const id = raw.trim();
-    if (!/^(jikan|anilist):[1-9]\\d{0,12}$/.test(id)) {
+    if (!/^(jikan|anilist):[1-9]\d{0,12}$/.test(id)) {
       throw new Error(field + " contains an invalid catalog ID.");
     }
     if (!result.includes(id)) result.push(id);
@@ -1592,6 +1592,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 }
 
 module.exports = {
-  KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings, rankKirari,
+  KIRARI, TRANSITIONS, transitionStatus, normalizeTags, normalizeEditSettings,
+  normalizeEntityIds, normalizeMentions, rankKirari,
   isFeedCursorAfter, shouldCountEarlySkip, calculateVerifiedPlayback, diversifyKirari, createKirariDomain,
 };
