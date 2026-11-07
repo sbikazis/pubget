@@ -129,6 +129,19 @@ test("editor settings are bounded and unsafe filter values fall back to original
   assert.equal(bounded.overlayEndSeconds, 55);
 });
 
+test("Kirari metadata accepts bounded catalog IDs and rejects malformed IDs and categories", () => {
+  assert.deepEqual(require("../src/kirariDomain").normalizeEntityIds(
+    ["jikan:1", "anilist:22", "jikan:1"], "animeIds", 5,
+  ), ["jikan:1", "anilist:22"]);
+  assert.throws(() => require("../src/kirariDomain").normalizeEntityIds(
+    ["not-a-catalog-id"], "animeIds", 5,
+  ));
+  assert.throws(() => require("../src/kirariDomain").normalizeEntityIds(
+    new Array(6).fill("jikan:1"), "animeIds", 5,
+  ));
+  assert.throws(() => require("../src/kirariDomain").normalizeMentions(["bad id"]));
+});
+
 test("new upload keeps original-audio reuse disabled unless the creator explicitly opts in", async () => {
   let created = null;
   const db = {
