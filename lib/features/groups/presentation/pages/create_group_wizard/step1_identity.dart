@@ -312,11 +312,9 @@ class _Step1IdentityState extends State<Step1Identity> {
         kind: isCover ? 'cover' : 'avatar',
       );
       if (!mounted) return;
-      // R2 returns a stable object key rather than a public URL. The shared
-      // AppImageLoader resolves this key through the authenticated media Worker.
-      // Legacy HTTPS URLs remain valid references for previously uploaded media.
+      // R2 returns a stable object key; AppImageLoader resolves it via Worker.
       final mediaReference = url.trim();
-      if (mediaReference.isEmpty || mediaReference.contains('://')) {
+      if (!isRemoteHttpUrl(mediaReference)) {
         setState(() {
           _uploadError = copy.uploadErrorMessage(
             const GroupImageUploadException(
