@@ -129,6 +129,33 @@ test("editor settings are bounded and unsafe filter values fall back to original
   assert.equal(bounded.overlayEndSeconds, 55);
 });
 
+test("new upload keeps original-audio reuse disabled unless the creator explicitly opts in", async () => {
+  let created = null;
+  const db = {
+    collection(name) {
+      if (name === "kirariUploadLocks" || name === "kirariUploadQuotas" || name === "kirariUploadKeys") {
+        return { doc: () => ({ get: async () => ({ exists: false, data: () => ({}) }) }) };
+      }
+      if (name === "kirari") return { doc: () => ({}) };
+      throw new Error("unexpected collection " + name);
+    },
+    runTransaction: async (fn) => fn({
+      get: async (ref) => ({ exists: false, data: () => ({}) }),
+      create: (ref, data) => { created = data; },
+      set() {},
+    }),
+  };
+  const domain = createKirariDomain({
+    db, FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError, bucket: {},
+  });
+  await domain.startUpload({
+    auth: { uid: "creator" },
+    data: { caption: "", hashtags: [], idempotencyKey: "test-upload-key-1" },
+  });
+  assert.equal(created.allowOriginalAudioReuse, false);
+});
+
 test("audio catalog returns only approved reusable tracks with a bounded page size", async () => {
   const filters = [];
   let requestedLimit = 0;
