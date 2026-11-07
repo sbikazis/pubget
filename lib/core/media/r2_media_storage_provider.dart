@@ -36,6 +36,12 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
   /// use a presigned PUT straight to R2.
   final int directUploadMaxBytes;
 
+  /// Releases this provider's HTTP connection pool.
+  ///
+  /// Repositories that share a provider should close it when their owning
+  /// scope is disposed. One-shot URL resolvers must close it after resolving.
+  void close() => _client.close();
+
   @override
   MediaBackend get backend => MediaBackend.r2;
 

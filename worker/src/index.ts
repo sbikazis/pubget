@@ -243,18 +243,31 @@ async function inspectAndRestoreBody(body: ReadableStream<Uint8Array>): Promise<
   return { prefix, stream };
 }
 
-function safeKey(key: string): boolean {
+export function isSafeMediaKey(key: string): boolean {
   const parts = key.split("/");
+  const imageExtension = /^(jpg|jpeg|png|webp|gif)$/;
+  const videoExtension = /^(mp4|webm|mov)$/;
+  const audioExtension = /^(mp3|aac|ogg|m4a)$/;
+  const safeFileName = (name: string, allowed: RegExp): boolean => {
+    const match = /^([A-Za-z0-9_-]{1,80})\.([a-z0-9]{2,5})$/.exec(name);
+    return match != null && allowed.test(match[2]);
+  };
+
   if (parts.length === 3) {
-    return ["images", "reels", "audio"].includes(parts[0]) &&
-      /^[A-Za-z0-9_-]{1,128}$/.test(parts[1]) &&
-      /^[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5}$/.test(parts[2]);
+    const [folder, uid, name] = parts;
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(uid)) return false;
+    if (folder === "images") return safeFileName(name, imageExtension);
+    if (folder === "reels") return safeFileName(name, videoExtension);
+    if (folder === "audio") return safeFileName(name, audioExtension);
+    return false;
   }
-  return parts.length === 4 &&
-    ["groups", "privateChats"].includes(parts[0]) &&
-    /^[A-Za-z0-9_:-]{1,320}$/.test(parts[1]) &&
-    /^[A-Za-z0-9_-]{1,128}$/.test(parts[2]) &&
-    /^[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5}$/.test(parts[3]);
+
+  if (parts.length !== 4) return false;
+  const [scope, scopeId, uid, name] = parts;
+  return ["groups", "privateChats"].includes(scope) &&
+    /^[A-Za-z0-9_:-]{1,320}$/.test(scopeId) &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(uid) &&
+    safeFileName(name, /^(jpg|jpeg|png|webp|gif|mp4|webm|mov|mp3|aac|ogg|m4a)$/);
 }
 
 function createKey(
@@ -774,7 +787,7 @@ export default {
       const parts = key.split("/");
       const now = Math.floor(Date.now() / 1000);
 
-      if (!safeKey(key) || (parts.length === 3 ? parts[1] !== uid : parts[2] !== uid)) return json({ error: "Invalid upload key." }, 403);
+      if (!isSafeMediaKey(key) || (parts.length === 3 ? parts[1] !== uid : parts[2] !== uid)) return json({ error: "Invalid upload key." }, 403);
       const scoped = parts.length === 4;
       const scopeType = scoped ? parts[0] : "";
       const scopeId = scoped ? parts[1] : "";
@@ -859,7 +872,7 @@ export default {
       if (!uid) return json({ error: "Authentication required." }, 401);
       const key = url.searchParams.get("key") ?? "";
       const parts = key.split("/");
-      if (!safeKey(key)) return json({ error: "Invalid object key." }, 400);
+      if (!isSafeMediaKey(key)) return json({ error: "Invalid object key." }, 400);
       const scoped = parts.length === 4;
       const object = await env.MEDIA_BUCKET.head(key);
       if (!object) return json({ error: "Media not found." }, 404);
@@ -892,7 +905,7 @@ export default {
       } catch {
         return json({ error: "Invalid object key." }, 400);
       }
-      if (!safeKey(key)) return json({ error: "Not found." }, 404);
+      if (!isSafeMediaKey(key)) return json({ error: "Not found." }, 404);
 
       const expires = Number(url.searchParams.get("expires"));
       const supplied = url.searchParams.get("signature") ?? "";
@@ -954,7 +967,7 @@ export default {
       } catch {
         return json({ error: "Invalid object key." }, 400);
       }
-      if (!safeKey(key)) return json({ error: "Not found." }, 404);
+      if (!isSafeMediaKey(key)) return json({ error: "Not found." }, 404);
       const parts = key.split("/");
       const object = await env.MEDIA_BUCKET.head(key);
       if (!object) return new Response(null, { status: 204, headers: CORS });

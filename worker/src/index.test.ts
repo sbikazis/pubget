@@ -50,3 +50,26 @@ describe("R2 upload content signatures", () => {
     expect(validFileSignature("reels", "image/png", new TextEncoder().encode("\u0000\u0000\u0000\u0018ftypisom0000"))).toBe(false);
   });
 });
+
+
+describe("R2 object key validation", () => {
+  it("accepts owner-scoped and conversation-scoped media keys", async () => {
+    const { isSafeMediaKey } = await import("./index");
+    expect(isSafeMediaKey("images/alice/123e4567-e89b-42d3-a456-426614174000.jpg")).toBe(true);
+    expect(isSafeMediaKey("reels/alice/123e4567-e89b-42d3-a456-426614174000.mp4")).toBe(true);
+    expect(isSafeMediaKey("audio/alice/123e4567-e89b-42d3-a456-426614174000.m4a")).toBe(true);
+    expect(isSafeMediaKey("groups/group_1/alice/123e4567-e89b-42d3-a456-426614174000.png")).toBe(true);
+    expect(isSafeMediaKey("privateChats/chat:alice:bob/alice/123e4567-e89b-42d3-a456-426614174000.ogg")).toBe(true);
+  });
+
+  it("rejects traversal, unknown prefixes and malformed keys", async () => {
+    const { isSafeMediaKey } = await import("./index");
+    expect(isSafeMediaKey("../alice/file.jpg")).toBe(false);
+    expect(isSafeMediaKey("images/../file.jpg")).toBe(false);
+    expect(isSafeMediaKey("unknown/alice/file.jpg")).toBe(false);
+    expect(isSafeMediaKey("groups/group/alice/../../file.jpg")).toBe(false);
+    expect(isSafeMediaKey("images/alice/not-an-image.exe")).toBe(false);
+    expect(isSafeMediaKey("reels/alice/file.jpg")).toBe(false);
+    expect(isSafeMediaKey("audio/alice/file.mp4")).toBe(false);
+  });
+});

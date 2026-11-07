@@ -4,9 +4,26 @@ import '../../../core/media/media_kind.dart';
 import '../../../core/media/media_repository_factory.dart';
 import '../../../core/media/r2_media_storage_provider.dart';
 
+/// Accepts legacy absolute URLs and stable private R2 object keys.
 bool isRemoteHttpUrl(String? value) {
   final trimmed = value?.trim() ?? '';
-  return trimmed.startsWith('https://') || trimmed.startsWith('http://');
+  if (trimmed.isEmpty) return false;
+  final uri = Uri.tryParse(trimmed);
+  if (uri != null &&
+      (uri.scheme == 'https' || uri.scheme == 'http') &&
+      uri.host.isNotEmpty) return true;
+  if (trimmed.contains('://') || trimmed.startsWith('/')) return false;
+  final parts = trimmed.split('/');
+  final imageKey = parts.length == 3 &&
+      parts[0] == 'images' &&
+      RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(parts[1]) &&
+      RegExp(r'^[A-Za-z0-9_-]{1,80}\.(jpg|jpeg|png|webp|gif)$').hasMatch(parts[2]);
+  final scopedKey = parts.length == 4 &&
+      (parts[0] == 'groups' || parts[0] == 'privateChats') &&
+      RegExp(r'^[A-Za-z0-9_:-]{1,320}$').hasMatch(parts[1]) &&
+      RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(parts[2]) &&
+      RegExp(r'^[A-Za-z0-9_-]{1,80}\.(jpg|jpeg|png|webp|gif|mp4|webm|mov|mp3|m4a|aac|ogg)$').hasMatch(parts[3]);
+  return imageKey || scopedKey;
 }
 
 /// Typed failure for group image uploads — never collapse to a fake "offline".
