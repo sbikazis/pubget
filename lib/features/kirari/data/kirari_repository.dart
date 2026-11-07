@@ -1,10 +1,13 @@
 import 'dart:io';
 
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'firebase_resumable_uploader.dart';
 
 class KirariReel {
   const KirariReel({
@@ -204,6 +207,24 @@ class FirebaseKirariRepository implements KirariRepository {
   final FirebaseFunctions _functions;
   final FirebaseStorage _storage;
   final ImagePicker _picker;
+  late final FirebaseResumableUploader _iosResumableUploader = FirebaseResumableUploader(
+    bucket: _storage.bucket,
+    uidProvider: () => FirebaseAuth.instance.currentUser?.uid ?? '',
+    getIdToken: () async {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw StateError('Sign in before uploading a Kirari reel.');
+      final token = await user.getIdToken();
+      if (token == null || token.isEmpty) throw StateError('Unable to refresh the Firebase sign-in token.');
+      return token;
+    },
+    getAppCheckToken: () async {
+      try {
+        return await FirebaseAppCheck.instance.getToken();
+      } catch (_) {
+        return null;
+      }
+    },
+  );
   static const MethodChannel _androidUploadChannel = MethodChannel('pubget/kirari_upload');
   final Map<String, Future<String>> _downloadUrlCache = <String, Future<String>>{};
 
@@ -465,6 +486,7 @@ class FirebaseKirariRepository implements KirariRepository {
     try {
       final metadata = await reference.getMetadata();
       if (metadata.size == await file.length()) {
+        if (Platform.isIOS) await _iosResumableUploader.clearSession(storagePath);
         onProgress(1);
         return;
       }
@@ -494,8 +516,17 @@ class FirebaseKirariRepository implements KirariRepository {
       return;
     }
 
-    // iOS and other platforms use the Flutter StorageTask implementation.
-    // Android uses the native SDK overload with a persisted upload session URI.
+    if (Platform.isIOS) {
+      await _iosResumableUploader.upload(
+        file: file,
+        storagePath: storagePath,
+        contentType: 'video/mp4',
+        onProgress: onProgress,
+      );
+      return;
+    }
+
+    // Other supported platforms use Firebase Storage's SDK upload task.
     final task = reference.putFile(
       file,
       SettableMetadata(contentType: 'video/mp4', customMetadata: {
@@ -529,6 +560,10 @@ class FirebaseKirariRepository implements KirariRepository {
   @override
   Future<void> cancelUpload(String reelId) async {
     await _call('cancelKirariUpload', {'reelId': reelId});
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      await _iosResumableUploader.clearSession('kirari/$uid/$reelId/source.mp4');
+    }
   }
 
   @override
