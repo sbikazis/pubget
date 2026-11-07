@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import '../../../core/media/media_kind.dart';
+import '../../../core/media/media_repository_factory.dart';
+import '../../../core/media/r2_media_storage_provider.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
@@ -15,15 +17,18 @@ final class FirebaseChatRepository implements ChatRepository {
   FirebaseChatRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
-    FirebaseStorage? storage,
+    R2MediaStorageProvider? mediaStorage,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _storage = storage ?? FirebaseStorage.instance;
+       _mediaStorage = mediaStorage;
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
-  final FirebaseStorage _storage;
+  R2MediaStorageProvider? _mediaStorage;
+
+  R2MediaStorageProvider get _mediaStorageProvider =>
+      _mediaStorage ??= createR2MediaStorageProvider();
 
   CollectionReference<Map<String, dynamic>> _messages(String groupId) =>
       _firestore.collection('groups').doc(groupId).collection('messages');
@@ -237,58 +242,61 @@ final class FirebaseChatRepository implements ChatRepository {
     required void Function(double progress) onProgress,
     void Function()? onBytesUploaded,
   }) => _guard(() async {
-    final extension = _extension(fileName, contentType);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || bytes.isEmpty) {
+      throw const PermissionError('Sign in before sending media.');
+    }
     final type = chatMediaTypeFor(contentType: contentType, fileName: fileName);
-    final path = 'groups/$groupId/media/${mediaId}_original.$extension';
-    final reference = _storage.ref(path);
-    final task = reference.putData(
-      bytes,
-      SettableMetadata(
-        contentType: contentType,
-        customMetadata: <String, String>{
-          'uploadedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
-          'mediaId': mediaId,
-          'pipeline': 'pubget-chat-v1',
-        },
-      ),
+    final kind = type == ChatMessageType.video
+        ? MediaKind.reels
+        : type == ChatMessageType.audio
+            ? MediaKind.audio
+            : MediaKind.image;
+    final extension = _extension(fileName, contentType);
+    final path = await _mediaStorageProvider.upload(
+      ownerUid: uid,
+      kind: kind,
+      bytes: bytes,
+      contentType: contentType,
+      extension: extension,
+      scopeType: 'groups',
+      scopeId: groupId,
+      onProgress: onProgress,
     );
-    task.snapshotEvents.listen((snapshot) {
-      if (snapshot.totalBytes > 0) {
-        onProgress(snapshot.bytesTransferred / snapshot.totalBytes);
-      }
-    });
-    await task;
-    onProgress(1);
     onBytesUploaded?.call();
-    // Client wait for Cloud Function processing. Images/voice usually finish
-    // within a minute, but transcoding videos (ffmpeg) can take longer — give
-    // videos a 3-minute window before surfacing retry UI.
-    final processingDeadline = contentType.startsWith('video/')
-        ? const Duration(minutes: 3)
-        : const Duration(minutes: 1);
-    final mediaSnapshot = await _firestore
+
+    // R2 is the source of truth for bytes. Chat media metadata remains in
+    // Firestore, where existing group-member rules control who can read it.
+    // Until an image/video transformation service is configured, original
+    // objects are used as the display rendition; video bubbles use a poster
+    // placeholder and open the original stream in the viewer.
+    final mediaRef = _firestore
         .collection('groups')
         .doc(groupId)
         .collection('media')
-        .doc(mediaId)
-        .snapshots()
-        .firstWhere(
-          (snapshot) =>
-              snapshot.data()?['status'] == 'ready' ||
-              snapshot.data()?['status'] == 'failed',
-        )
-        .timeout(processingDeadline);
-    final data = mediaSnapshot.data() ?? const <String, dynamic>{};
-    if (data['status'] != 'ready') {
-      throw StateError('Media processing failed.');
-    }
+        .doc(mediaId);
+    await mediaRef.set({
+      'mediaId': mediaId,
+      'uploaderId': uid,
+      'mediaType': type == ChatMessageType.video
+          ? 'video'
+          : type == ChatMessageType.audio
+              ? 'audio'
+              : 'image',
+      'originalPath': path,
+      'thumbnailPath': type == ChatMessageType.image ? path : null,
+      'mediumPath': type == ChatMessageType.image ? path : null,
+      'status': 'ready',
+      'contentType': contentType,
+      'sizeBytes': bytes.length,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    onProgress(1);
     return ChatMediaUpload(
-      mediaUrl: (data['mediumPath'] ?? data['originalPath']) as String,
-      thumbnailUrl: data['thumbnailPath'] as String?,
+      mediaUrl: path,
+      thumbnailUrl: type == ChatMessageType.image ? path : null,
       mediaId: mediaId,
       type: type,
-      width: (data['width'] as num?)?.toInt(),
-      height: (data['height'] as num?)?.toInt(),
     );
   });
 
@@ -320,16 +328,18 @@ final class FirebaseChatRepository implements ChatRepository {
   });
 
   String _extension(String fileName, String contentType) {
-    final candidate = fileName.split('.').last.toLowerCase();
-    if (candidate.length <= 5 && RegExp(r'^[a-z0-9]+$').hasMatch(candidate)) {
-      return candidate;
-    }
-    if (contentType.startsWith('audio/')) return 'm4a';
-    if (contentType == 'image/gif') return 'gif';
+    if (contentType == 'video/quicktime') return 'mov';
+    if (contentType == 'video/webm') return 'webm';
+    if (contentType.startsWith('video/')) return 'mp4';
+    if (contentType == 'audio/mpeg') return 'mp3';
+    if (contentType == 'audio/aac') return 'aac';
+    if (contentType == 'audio/ogg') return 'ogg';
+    if (contentType == 'audio/mp4') return 'm4a';
     if (contentType == 'image/png') return 'png';
+    if (contentType == 'image/webp') return 'webp';
+    if (contentType == 'image/gif') return 'gif';
     return 'jpg';
   }
-
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
       _guard(() async {
         await _functions.httpsCallable(name).call(data);

@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:pubget/core/widgets/pubget_bottom_sheet.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/widgets/app_image_loader.dart';
+import '../../../core/media/media_reference.dart';
 import '../data/sticker_catalog.dart';
 import '../data/user_sticker_store.dart';
 import '../models/chat_models.dart';
@@ -137,20 +137,19 @@ class _StickerDetailSheetState extends State<StickerDetailSheet> {
   Future<Uint8List?> _loadBytes() async {
     final url = (message.mediaUrl ?? message.thumbnailUrl ?? '').trim();
     if (url.isEmpty) return null;
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      final client = HttpClient();
-      try {
-        final request = await client.getUrl(Uri.parse(url));
-        final response = await request.close();
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          return null;
-        }
-        return await consolidateHttpClientResponseBytes(response);
-      } finally {
-        client.close(force: true);
+    final resolvedUrl = await resolveMediaDownloadUrl(url);
+    if (resolvedUrl == null) return null;
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(Uri.parse(resolvedUrl));
+      final response = await request.close();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
       }
+      return await consolidateHttpClientResponseBytes(response);
+    } finally {
+      client.close(force: true);
     }
-    return FirebaseStorage.instance.ref(url).getData(12 * 1024 * 1024);
   }
 
   void _openCreatorProfile() {

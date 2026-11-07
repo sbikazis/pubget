@@ -220,7 +220,9 @@ final class PrivateChatProvider extends ChangeNotifier {
     final replyPreview = _previewFor(_replyTarget);
     final type = contentType.startsWith('video/')
         ? ChatMessageType.video
-        : ChatMessageType.image;
+        : contentType.startsWith('audio/')
+            ? ChatMessageType.audio
+            : ChatMessageType.image;
     final pending = ChatMessage.optimistic(
       id: mediaId,
       senderId: senderId,

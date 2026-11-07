@@ -208,12 +208,6 @@ function assertReadyMedia(media, uid, type, HttpsError) {
       "Media must finish processing and belong to the sender.",
     );
   }
-  if (expectedType === "video" && !validString(media.thumbnailPath, 1024)) {
-    throw new HttpsError(
-      "failed-precondition",
-      "Media must finish processing and belong to the sender.",
-    );
-  }
 }
 
 /**

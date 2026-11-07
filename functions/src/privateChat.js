@@ -356,13 +356,6 @@ function createPrivateChat({ db, FieldValue, HttpsError }) {
             "Media must finish processing and belong to the sender.",
           );
         }
-        if (expectedType === "video" &&
-            !validString(media.thumbnailPath, 1024)) {
-          throw new HttpsError(
-            "failed-precondition",
-            "Media must finish processing and belong to the sender.",
-          );
-        }
       }
       const sender = users[0].data() || {};
       const message = {

@@ -1,54 +1,48 @@
-/// Media references in Firestore come in two shapes and a renderer must never
-/// assume either one:
-///
-/// * a full `https://…` download URL (legacy records, events, avatars), and
-/// * a bare Firebase Storage object path (chat media, edits/reels), which the
-///   server-side pipelines write directly.
-///
-/// Feeding a bare path to `Image.network`/`Uri.parse` throws
-/// `No host specified in URI`, and handing an `https://…` value to
-/// `FirebaseStorage.ref` throws because it is not an object path. These helpers
-/// normalize both shapes so every caller resolves the same way.
+/// Normalizes media references stored by Pubget. New bare object keys are
+/// Cloudflare R2 keys and are resolved through the authenticated media Worker.
+/// Existing full HTTPS URLs remain directly fetchable.
 library;
 
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-/// True when [reference] is a directly fetchable network URL.
+import 'media_storage_provider.dart';
+import 'r2_media_storage_provider.dart';
+
 bool isRemoteMediaUrl(String reference) {
   final value = reference.trim();
-  return value.startsWith('http://') || value.startsWith('https://');
+  final uri = Uri.tryParse(value);
+  return uri != null &&
+      (uri.scheme == 'https' || uri.scheme == 'http') &&
+      uri.host.isNotEmpty;
 }
 
-/// True for values that carry a scheme we cannot fetch, e.g. the `pubget://`
-/// preset avatar/background identifiers. These are identifiers, not media, so a
-/// caller should render its fallback instead of attempting a Storage download.
 bool isOpaqueMediaReference(String reference) {
   final value = reference.trim();
   return !isRemoteMediaUrl(value) && value.contains('://');
 }
 
-/// Resolves [reference] to a fetchable URL, or null when it is empty, an opaque
-/// identifier, or a Storage lookup that fails. Never throws.
+/// Resolves an R2 object key to a short-lived, access-controlled URL.
+/// Full URLs are returned unchanged; unsupported/legacy bare paths fail closed.
 Future<String?> resolveMediaDownloadUrl(String reference) async {
   final value = reference.trim();
   if (value.isEmpty || isOpaqueMediaReference(value)) return null;
   if (isRemoteMediaUrl(value)) return value;
+
+  final config = resolveMediaBackendConfig();
+  if (!config.isConfigured) return null;
   try {
-    return await FirebaseStorage.instance.ref(value).getDownloadURL();
+    final provider = R2MediaStorageProvider(
+      workerUrl: config.workerUrl,
+      idTokenProvider: () async =>
+          await FirebaseAuth.instance.currentUser?.getIdToken(),
+    );
+    return await provider.resolveUrl(value);
   } on Object {
     return null;
   }
 }
 
-/// The Storage metadata content type for a picked video.
-///
-/// The gallery picker hands back the raw file name (e.g. an iOS `.MOV`), and
-/// `'video/${extension}'` produced types such as `video/mov` that the Storage
-/// rules reject (`isVideo()` accepts only `video/mp4`, `video/webm` and
-/// `video/quicktime`), so the upload failed with permission-denied. Map known
-/// containers to a rule-accepted type; the player and the ffmpeg pipeline both
-/// read the container from the bytes, so an mp4 fallback for the long tail
-/// (m4v/3gp/avi/mkv) is safe.
+/// Maps a picked video extension to a Worker-accepted MIME type.
 String videoContentTypeFor(String fileName) {
   final dot = fileName.lastIndexOf('.');
   final ext = dot >= 0 && dot < fileName.length - 1
