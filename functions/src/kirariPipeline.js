@@ -103,6 +103,11 @@ function renditionArgs(source, output, height, bitrate) {
   ];
 }
 
+function isPortraitVideo(metadata) {
+  return Number(metadata?.width) > 0 &&
+    Number(metadata?.height) > Number(metadata?.width);
+}
+
 function outputDurationSeconds(clipDuration, speed) {
   const duration = Math.max(0, Number(clipDuration) || 0);
   const rate = Math.max(0.5, Math.min(2, Number(speed) || 1));
@@ -203,6 +208,18 @@ function createKirariPipeline({ db, bucket }) {
       }).catch(() => {});
       await bucket.file(objectName).download({ destination: source });
       const metadata = await probeVideo(ffmpeg, source);
+      if (!isPortraitVideo(metadata)) {
+        await ref.update({
+          status: "rejected", moderationStatus: "rejected",
+          failureReason: "orientation",
+          moderationReason: "Kirari source videos must be vertical.",
+          rejectedAt: new Date(),
+          processingLeaseId: null,
+          processingLeaseUntil: new Date(0),
+        });
+        await lockRef.delete().catch(() => {});
+        return null;
+      }
       if (metadata.durationSeconds < KIRARI.minDurationSeconds ||
           metadata.durationSeconds > KIRARI.maxDurationSeconds) {
         await ref.update({
