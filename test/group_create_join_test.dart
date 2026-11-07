@@ -36,11 +36,14 @@ void main() {
     expect(GroupFuzzy.matches('lufy', 'Monkey D. Luffy'), isTrue);
   });
 
-  test('group image URLs must be remote http(s), never local paths', () {
+  test('group media references accept R2 keys and legacy URLs only', () {
     expect(isRemoteHttpUrl('https://example.test/a.png'), isTrue);
     expect(isRemoteHttpUrl('http://cdn.test/a.png'), isTrue);
+    expect(isRemoteHttpUrl('images/alice/abc123.jpg'), isTrue);
+    expect(isRemoteHttpUrl('groups/g1/alice/abc123.png'), isTrue);
     expect(isRemoteHttpUrl('/data/user/0/cache/x.jpg'), isFalse);
     expect(isRemoteHttpUrl('file:///tmp/x.jpg'), isFalse);
+    expect(isRemoteHttpUrl('arbitrary/path.jpg'), isFalse);
     expect(isRemoteHttpUrl(''), isFalse);
   });
 

@@ -17,12 +17,12 @@ bool isRemoteHttpUrl(String? value) {
   final imageKey = parts.length == 3 &&
       parts[0] == 'images' &&
       RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(parts[1]) &&
-      RegExp(r'^[A-Za-z0-9_-]{1,80}\\.(jpg|jpeg|png|webp|gif)$').hasMatch(parts[2]);
+      RegExp(r'^[A-Za-z0-9_-]{1,80}\.(jpg|jpeg|png|webp|gif)$').hasMatch(parts[2]);
   final scopedKey = parts.length == 4 &&
       (parts[0] == 'groups' || parts[0] == 'privateChats') &&
       RegExp(r'^[A-Za-z0-9_:-]{1,320}$').hasMatch(parts[1]) &&
       RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(parts[2]) &&
-      RegExp(r'^[A-Za-z0-9_-]{1,80}\\.(jpg|jpeg|png|webp|gif|mp4|webm|mov|mp3|m4a|aac|ogg)$').hasMatch(parts[3]);
+      RegExp(r'^[A-Za-z0-9_-]{1,80}\.(jpg|jpeg|png|webp|gif|mp4|webm|mov|mp3|m4a|aac|ogg)$').hasMatch(parts[3]);
   return imageKey || scopedKey;
 }
 
