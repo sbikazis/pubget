@@ -939,7 +939,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: _busy ? null : _chooseSavedDraft,
+                onPressed: _busy || _session != null ? null : _chooseSavedDraft,
                 icon: const Icon(Icons.folder_open_outlined),
                 label: Text('Saved drafts (${_savedDrafts.length})'),
               ),
@@ -1062,7 +1062,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               divisions: (_duration * 2).round().clamp(6, 120).toInt(),
               value: _overlayEnd.clamp(_overlayStart, _trim.end).toDouble(),
               label: '${_overlayEnd.toStringAsFixed(1)}s',
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 final position = (_preview?.value.position.inMilliseconds ?? 0) / 1000;
                 setState(() {
                   _overlayEnd = value;
@@ -1077,7 +1077,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               min: _trim.start,
               max: _trim.end,
               value: _coverTime.clamp(_trim.start, _trim.end).toDouble(),
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 setState(() => _coverTime = value);
                 _savePendingUpload();
               },
@@ -1158,7 +1158,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               DropdownMenuItem(value: 'fan_art', child: Text(copy.categoryFanArt)),
               DropdownMenuItem(value: 'other', child: Text(copy.categoryOther)),
             ],
-            onChanged: _busy ? null : (value) {
+            onChanged: _busy || _session != null ? null : (value) {
               if (value == null) return;
               setState(() => _contentCategory = value);
               _savePendingUpload();
@@ -1235,7 +1235,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               for (final profile in _selectedMentions)
                 InputChip(
                   label: Text('@${profile.username ?? profile.uid}'),
-                  onDeleted: _busy ? null : () {
+                  onDeleted: _busy || _session != null ? null : () {
                     setState(() => _selectedMentions = _selectedMentions.where((item) => item.uid != profile.uid).toList());
                     _savePendingUpload();
                   },
