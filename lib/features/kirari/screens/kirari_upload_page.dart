@@ -331,7 +331,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       'storagePath': _session?.storagePath,
       'idempotencyKey': _idempotencyKey,
       'caption': _caption.text,
-      'hashtags': _hashtags.text.split(RegExp(r'[,\\s]+')).where((tag) => tag.isNotEmpty).toList(),
+      'hashtags': _hashtags.text.split(RegExp(r'[,\s]+')).where((tag) => tag.isNotEmpty).toList(),
       'audioId': _audioId,
       'allowOriginalAudioReuse': _allowOriginalAudioReuse,
       'contentCategory': _contentCategory,
@@ -389,7 +389,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       final session = _session ?? await repository.startUpload(
         caption: _caption.text.trim(),
         hashtags: _hashtags.text
-            .split(RegExp(r'[,\\s]+'))
+            .split(RegExp(r'[,\s]+'))
             .map((tag) => tag.trim().replaceFirst(RegExp(r'^#'), '').toLowerCase())
             .where((tag) => tag.isNotEmpty)
             .toSet()
