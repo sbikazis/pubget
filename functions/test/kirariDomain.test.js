@@ -133,6 +133,9 @@ test("Kirari metadata accepts bounded catalog IDs and rejects malformed IDs and 
   assert.deepEqual(require("../src/kirariDomain").normalizeEntityIds(
     ["jikan:1", "anilist:22", "jikan:1"], "animeIds", 5,
   ), ["jikan:1", "anilist:22"]);
+  assert.deepEqual(require("../src/kirariDomain").normalizeEntityIds(
+    ["1", "22"], "animeIds", 5,
+  ), ["1", "22"]);
   assert.throws(() => require("../src/kirariDomain").normalizeEntityIds(
     ["not-a-catalog-id"], "animeIds", 5,
   ));
