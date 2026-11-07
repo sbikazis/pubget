@@ -257,6 +257,11 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     if (_busy || _session != null) return;
     final picked = await context.read<KirariRepository>().pickGalleryVideo();
     if (picked == null || !mounted) return;
+    if (!picked.name.toLowerCase().endsWith('.mp4') &&
+        !picked.path.toLowerCase().endsWith('.mp4')) {
+      setState(() => _error = KirariCopy.of(context).videoFormat);
+      return;
+    }
     File? durableFile;
     VideoPlayerController? controller;
     try {
@@ -269,8 +274,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       final sourceController = VideoPlayerController.file(sourceFile);
       await sourceController.initialize();
       final duration = sourceController.value.duration.inMilliseconds / 1000;
+      final isPortrait = sourceController.value.aspectRatio > 0 && sourceController.value.aspectRatio < 1;
       await sourceController.dispose();
-      if (duration < 3 || duration > 60) {
+      if (duration < 3 || duration > 60 || !isPortrait) {
         setState(() => _error = KirariCopy.of(context).videoLimits);
         return;
       }
