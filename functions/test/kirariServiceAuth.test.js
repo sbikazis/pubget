@@ -8,8 +8,6 @@ const { authenticateKirariService } = require("../../worker/src/kirariServiceAut
 const expected = {
   audience: "https://pubget-media.pubget.workers.dev",
   serviceAccountEmail: "452313838148-compute@developer.gserviceaccount.com",
-  projectId: "pubget-aaf27",
-  projectNumber: "452313838148",
 };
 const now = 1_800_000_000;
 
@@ -34,7 +32,6 @@ async function signedRequest(overrides = {}, signingKey) {
     email_verified: true,
     iat: now - 10,
     exp: now + 3500,
-    google: { compute_engine: { project_id: expected.projectId, project_number: 452313838148 } },
     ...overrides,
   };
   const payload = encode(claims);
@@ -71,12 +68,12 @@ test("Worker rejects missing bearer credentials without contacting Google", asyn
   assert.equal(fetched, false);
 });
 
-test("Worker rejects tokens from a different audience, service account, or Firebase project", async (t) => {
+test("Worker rejects tokens with the wrong audience, issuer, service account, or trust claims", async (t) => {
   for (const [name, claims] of [
     ["wrong audience", { aud: "https://attacker.example" }],
     ["wrong service account", { email: "other@developer.gserviceaccount.com" }],
     ["unverified service account email", { email_verified: false }],
-    ["wrong Firebase project", { google: { compute_engine: { project_id: "other-project", project_number: 452313838148 } } }],
+    ["wrong issuer", { iss: "https://malicious.example" }],
     ["expired token", { exp: now - 1 }],
   ]) {
     await t.test(name, async () => {
