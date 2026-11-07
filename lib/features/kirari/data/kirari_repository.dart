@@ -154,6 +154,8 @@ abstract interface class KirariRepository {
   Future<void> recordPlayback({required String reelId, required String sessionId, required String eventId, required double watchSeconds, required double percent});
   Future<void> deleteReel(String reelId);
   Future<XFile?> pickGalleryVideo();
+  Future<XFile?> pickGalleryImage();
+  Future<void> uploadCover({required String storagePath, required XFile image});
 }
 
 class FirebaseKirariRepository implements KirariRepository {
@@ -515,6 +517,24 @@ class FirebaseKirariRepository implements KirariRepository {
     source: ImageSource.gallery,
     maxDuration: const Duration(seconds: 60),
   );
+
+  @override
+  Future<XFile?> pickGalleryImage() => _picker.pickImage(source: ImageSource.gallery);
+
+  @override
+  Future<void> uploadCover({required String storagePath, required XFile image}) async {
+    final file = File(image.path);
+    final size = await file.length();
+    if (size <= 0 || size > 5 * 1024 * 1024) {
+      throw StateError('The cover image must be smaller than 5 MB.');
+    }
+    await _storage.ref(storagePath).putFile(
+      file,
+      SettableMetadata(contentType: 'image/jpeg', customMetadata: {
+        'uploadedBy': 'kirari-client',
+      }),
+    );
+  }
 }
 
 class KirariPlaybackReporter {
@@ -618,4 +638,8 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<void> deleteReel(String reelId) async => throw _unavailable();
   @override
   Future<XFile?> pickGalleryVideo() async => null;
+  @override
+  Future<XFile?> pickGalleryImage() async => null;
+  @override
+  Future<void> uploadCover({required String storagePath, required XFile image}) async => throw _unavailable();
 }
