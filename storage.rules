@@ -355,8 +355,8 @@ service firebase.storage {
     }
 
 
-    // Kirari source upload is owner-only and supports Firebase resumable PUTs.
-    // The backend alone can publish processed renditions and cover images.
+    // Kirari source and custom cover uploads are owner-only and size-bounded.
+    // The backend alone can publish processed renditions.
     match /kirari/{userId}/{reelId}/cover-source.jpg {
       allow read: if signedIn() && request.auth.uid == userId;
       allow create, update: if signedIn() && request.auth.uid == userId &&
