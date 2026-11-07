@@ -1,8 +1,12 @@
+import { authenticateKirariService } from "./kirariServiceAuth.cjs";
+
 export interface Env {
   MEDIA_BUCKET: R2Bucket;
   FIREBASE_PROJECT_ID: string;
   MEDIA_SIGNING_SECRET: string;
-  KIRARI_R2_SERVICE_SECRET: string;
+  KIRARI_R2_SERVICE_ACCOUNT_EMAIL: string;
+  KIRARI_R2_SERVICE_AUDIENCE: string;
+  FIREBASE_PROJECT_NUMBER: string;
 }
 
 const CORS: Record<string, string> = {
@@ -648,8 +652,12 @@ export default {
     // Private service-to-service R2 bridge for the Kirari FFmpeg pipeline.
     // This route never accepts Firebase user tokens and is not exposed to app clients.
     if (url.pathname === "/_internal/kirari/sign" && request.method === "POST") {
-      const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-      if (!constantTimeEqual(supplied, env.KIRARI_R2_SERVICE_SECRET)) {
+      if (!await authenticateKirariService(request, {
+        audience: env.KIRARI_R2_SERVICE_AUDIENCE,
+        serviceAccountEmail: env.KIRARI_R2_SERVICE_ACCOUNT_EMAIL,
+        projectId: env.FIREBASE_PROJECT_ID,
+        projectNumber: env.FIREBASE_PROJECT_NUMBER,
+      })) {
         return json({ error: "Service authentication required." }, 401);
       }
       let payload: { key?: string; expires?: number };
@@ -667,8 +675,12 @@ export default {
     }
 
     if (url.pathname.startsWith("/_internal/kirari/objects/")) {
-      const supplied = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "") ?? "";
-      if (!constantTimeEqual(supplied, env.KIRARI_R2_SERVICE_SECRET)) {
+      if (!await authenticateKirariService(request, {
+        audience: env.KIRARI_R2_SERVICE_AUDIENCE,
+        serviceAccountEmail: env.KIRARI_R2_SERVICE_ACCOUNT_EMAIL,
+        projectId: env.FIREBASE_PROJECT_ID,
+        projectNumber: env.FIREBASE_PROJECT_NUMBER,
+      })) {
         return json({ error: "Service authentication required." }, 401);
       }
       let key: string;
