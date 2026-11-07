@@ -42,6 +42,9 @@ final class KirariCopy {
   String get coverError => _strings.pick('Unable to prepare this cover image.', 'تعذّر تجهيز صورة الغلاف.');
   String get searchAnime => _strings.pick('Search anime', 'ابحث عن أنمي');
   String get searchCharacters => _strings.pick('Search characters', 'ابحث عن الشخصيات');
+  String get searchPeople => _strings.pick('Search people', 'ابحث عن الأشخاص');
+  String get noMentionsSelected => _strings.pick('No people mentioned', 'لم تتم الإشارة إلى أشخاص');
+  String get addMention => _strings.pick('Mention a person', 'أشر إلى شخص');
   String get contentCategory => _strings.pick('Content category', 'تصنيف المحتوى');
   String get animeTags => _strings.pick('Anime tags', 'الأنميات المرتبطة');
   String get characterTags => _strings.pick('Character tags', 'الشخصيات المرتبطة');
