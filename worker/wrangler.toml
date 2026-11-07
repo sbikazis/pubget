@@ -9,7 +9,6 @@ redact_query_string = true
 
 [vars]
 FIREBASE_PROJECT_ID = "pubget-aaf27"
-FIREBASE_PROJECT_NUMBER = "452313838148"
 KIRARI_R2_SERVICE_ACCOUNT_EMAIL = "452313838148-compute@developer.gserviceaccount.com"
 KIRARI_R2_SERVICE_AUDIENCE = "https://pubget-media.pubget.workers.dev"
 
