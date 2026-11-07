@@ -400,6 +400,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         allowOriginalAudioReuse: _allowOriginalAudioReuse,
         animeIds: _selectedAnime.map((item) => item.id).toList(),
         characterIds: _selectedCharacters.map((item) => item.id).toList(),
+        animeMetadata: _selectedAnime.map((item) => {'id': item.id, 'title': item.title}).toList(),
+        characterMetadata: _selectedCharacters.map((item) => {'id': item.id, 'name': item.name}).toList(),
         contentCategory: _contentCategory,
       );
       _session = session;
