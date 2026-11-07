@@ -22,6 +22,10 @@ final class KirariCopy {
     'Vertical video · 3–60 seconds · up to 500 MB',
     'فيديو عمودي · من 3 إلى 60 ثانية · حتى 500 ميغابايت',
   );
+  String get videoFormat => _strings.pick(
+    'Only MP4 videos are supported.',
+    'يدعم النظام فيديوهات MP4 فقط.',
+  );
   String get caption => _strings.pick('Caption', 'الوصف');
   String get hashtags => _strings.pick('Hashtags', 'الوسوم');
   String get trim => _strings.pick('Trim video', 'قص الفيديو');
