@@ -28,6 +28,19 @@ test("Kirari editor export applies trim-safe text, color and playback speed filt
   assert.ok(filter.includes("Anime"));
 });
 
+test("Kirari text overlay is constrained to its selected source interval", () => {
+  const filter = editorVideoFilter(404, 720, {
+    trimStartSeconds: 8,
+    trimEndSeconds: 24,
+    overlayStartSeconds: 12,
+    overlayEndSeconds: 18,
+    speed: 1,
+    filter: "none",
+    overlayText: "Pubget",
+  });
+  assert.match(filter, /enable='between\(t,4,10\)'/);
+});
+
 test("Kirari speed changes preserve the selected source interval", () => {
   assert.equal(outputDurationSeconds(12, 0.5), 24);
   assert.equal(outputDurationSeconds(12, 1), 12);
