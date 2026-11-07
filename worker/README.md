@@ -28,6 +28,18 @@ The Worker needs the R2 bucket binding and
 `FIREBASE_PROJECT_ID=pubget-aaf27`. Firebase Authentication remains the
 identity provider; Firebase Storage is not the media-byte destination.
 
+Kirari's private FFmpeg-to-R2 bridge uses Google service identity, not a
+shared application secret. Firebase Functions Gen 2 requests a short-lived
+Google-signed ID token from the Cloud Run metadata server with
+`audience=https://pubget-media.pubget.workers.dev` and `format=full`.
+The Worker validates the Google signature, issuer, exact audience, verified
+service-account email, and token lifetime. The current source configuration
+allows the project's default Gen 2 runtime account
+`452313838148-compute@developer.gserviceaccount.com`. If a different runtime
+service account is configured outside this source, update the allowlisted
+email before deploying. No `KIRARI_R2_SERVICE_SECRET` is required by this
+code path; `MEDIA_SIGNING_SECRET` remains required for signed media URLs.
+
 ## Deploy
 
 ```sh
