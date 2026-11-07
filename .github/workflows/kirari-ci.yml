@@ -90,6 +90,8 @@ jobs:
         run: flutter test test/reel_entity_surfaces_test.dart
       - name: Kirari persistent video cache tests
         run: flutter test test/kirari_video_cache_test.dart
+      - name: Kirari resumable upload recovery tests
+        run: flutter test test/features/kirari/firebase_resumable_uploader_test.dart
       - name: Android debug build
         run: flutter build apk --debug
       - name: Full Flutter test suite (repository baseline; bounded)
