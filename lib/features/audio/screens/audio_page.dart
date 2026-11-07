@@ -20,9 +20,8 @@ import '../../social/repositories/profile_repository.dart';
 
 /// Canonical `/audio/:audioId` surface.
 ///
-/// The backend records an `audioId` on each Reel; there is no separate audio
-/// document service in this codebase, so attribution, usage and related Reels
-/// are derived from the published Reels that share the id.
+/// Audio pages resolve approved Kirari audio documents and combine their
+/// ownership/usage metadata with the published Reels that reference the id.
 class AudioPage extends StatefulWidget {
   const AudioPage({required this.audioId, super.key});
 
@@ -48,14 +47,21 @@ class _AudioPageState extends State<AudioPage> {
     unawaited(_load());
   }
 
+  Future<List<KirariAudioTrack>> _loadAudioTracks() async {
+    try {
+      return await context.read<KirariRepository>().getAudioLibrary(limit: 50);
+    } catch (_) {
+      return <KirariAudioTrack>[];
+    }
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
     final results = await Future.wait([
       context.read<EditsRepository>().getEditsByAudio(widget.audioId),
       context.read<KirariRepository>().getReelsByAudio(widget.audioId)
           .catchError((_) => <KirariReel>[]),
-      context.read<KirariRepository>().getAudioLibrary(limit: 50)
-          .catchError((_) => <KirariAudioTrack>[]),
+      _loadAudioTracks(),
     ]);
     final result = results[0] as dynamic;
     final kirariReels = results[1] as List<KirariReel>;
