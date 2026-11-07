@@ -325,6 +325,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     }
     const editSettings = normalizeEditSettings(request.data?.editSettings);
     const audioId = request.data?.audioId == null ? null : inputId(request.data.audioId, "audioId");
+    const allowOriginalAudioReuse = request.data?.allowOriginalAudioReuse === true;
     if (audioId) {
       const audioSnap = await db.collection("kirariAudio").doc(audioId).get();
       if (!audioSnap.exists || audioSnap.data()?.status !== "approved" || audioSnap.data()?.allowReuse !== true) {
@@ -357,7 +358,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         fail("resource-exhausted", "You have reached today's Kirari upload limit.");
       }
       tx.create(ref, {
-        creatorId: uid, caption, hashtags, audioId, editSettings, status: "uploading",
+        creatorId: uid, caption, hashtags, audioId, editSettings, allowOriginalAudioReuse, status: "uploading",
         idempotencyKey, quotaDay: day,
         schemaVersion: KIRARI.schemaVersion,
         storagePath, originalStoragePath: storagePath,
