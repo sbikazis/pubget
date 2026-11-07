@@ -60,7 +60,13 @@ class _AudioPageState extends State<AudioPage> {
     final result = results[0] as dynamic;
     final kirariReels = results[1] as List<KirariReel>;
     final audioTracks = results[2] as List<KirariAudioTrack>;
-    final audioTrack = audioTracks.where((track) => track.id == widget.audioId).firstOrNull;
+    KirariAudioTrack? audioTrack;
+    for (final track in audioTracks) {
+      if (track.id == widget.audioId) {
+        audioTrack = track;
+        break;
+      }
+    }
     if (!mounted) return;
     final reels = result.valueOrNull ?? const <Edit>[];
     final original = _oldest(reels);
@@ -205,7 +211,9 @@ class _AudioPageState extends State<AudioPage> {
         const SizedBox(height: AppSpacing.sm),
         ReelChip(
           key: const Key('audio-usage'),
-          label: copy.usedInReels(_audioTrack?.usageCount ?? (_reels.length + _kirariReels.length)),
+          label: copy.usedInReels((_audioTrack?.usageCount ?? 0) > 0
+              ? _audioTrack!.usageCount
+              : _reels.length + _kirariReels.length),
           icon: Icons.movie_outlined,
           highlighted: true,
         ),
