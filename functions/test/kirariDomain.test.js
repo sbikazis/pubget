@@ -111,7 +111,7 @@ test("editor settings are bounded and unsafe filter values fall back to original
     filter: "none",
     overlayText: "x".repeat(80),
     coverTimeSeconds: 0,
-    originalAudioVolume: 0.25,
+    originalAudioVolume: 1,
     addedAudioVolume: 0.85,
     overlayStartSeconds: 0,
     overlayEndSeconds: 60,
