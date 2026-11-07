@@ -1255,7 +1255,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
           const SizedBox(height: 18),
-          if (_session != null && !_busy)
+          if (_session != null && !_busy && !_submitted)
             TextButton(
               onPressed: _cancelUpload,
               child: Text(copy.cancelUpload),
