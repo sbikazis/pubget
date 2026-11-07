@@ -23,6 +23,11 @@ class KirariReel {
     this.creatorAvatarUrl = "",
     this.viewerLiked = false,
     this.viewerSaved = false,
+    this.contentCategory = 'anime_edit',
+    this.animeIds = const <String>[],
+    this.characterIds = const <String>[],
+    this.animeTitles = const <String>[],
+    this.characterNames = const <String>[],
   });
 
   final String id;
@@ -40,6 +45,11 @@ class KirariReel {
   final String creatorAvatarUrl;
   final bool viewerLiked;
   final bool viewerSaved;
+  final String contentCategory;
+  final List<String> animeIds;
+  final List<String> characterIds;
+  final List<String> animeTitles;
+  final List<String> characterNames;
 
   KirariReel copyWith({
     int? likesCount,
@@ -61,6 +71,11 @@ class KirariReel {
     creatorAvatarUrl: creatorAvatarUrl,
     viewerLiked: viewerLiked ?? this.viewerLiked,
     viewerSaved: viewerSaved ?? this.viewerSaved,
+    contentCategory: contentCategory,
+    animeIds: animeIds,
+    characterIds: characterIds,
+    animeTitles: animeTitles,
+    characterNames: characterNames,
   );
 
   factory KirariReel.fromMap(Map<dynamic, dynamic> map) {
@@ -88,6 +103,13 @@ class KirariReel {
       creatorAvatarUrl: map['creatorAvatarUrl'] as String? ?? '',
       viewerLiked: map['viewerLiked'] == true,
       viewerSaved: map['viewerSaved'] == true,
+      contentCategory: map['contentCategory'] as String? ?? 'anime_edit',
+      animeIds: (map['animeIds'] as List? ?? const <dynamic>[]).whereType<String>().toList(),
+      characterIds: (map['characterIds'] as List? ?? const <dynamic>[]).whereType<String>().toList(),
+      animeTitles: (map['animeMetadata'] as List? ?? const <dynamic>[])
+          .whereType<Map>().map((item) => item['title']).whereType<String>().toList(),
+      characterNames: (map['characterMetadata'] as List? ?? const <dynamic>[])
+          .whereType<Map>().map((item) => item['name']).whereType<String>().toList(),
     );
   }
 }
@@ -151,7 +173,7 @@ abstract interface class KirariRepository {
   Future<void> setCreatorMute({required String creatorId, required bool muted});
   Future<List<Map<String, dynamic>>> getModerationQueue({int limit = 50});
   Future<void> reviewContent({required String reelId, String? commentId, required String decision});
-  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], String contentCategory = 'anime_edit', String? groupId, String? eventId});
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], List<Map<String, String>> animeMetadata = const <Map<String, String>>[], List<Map<String, String>> characterMetadata = const <Map<String, String>>[], String contentCategory = 'anime_edit', String? groupId, String? eventId});
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress});
   Future<void> finalizeUpload(String reelId);
   Future<void> retryProcessing(String reelId);
@@ -392,6 +414,8 @@ class FirebaseKirariRepository implements KirariRepository {
     List<String> animeIds = const <String>[],
     List<String> characterIds = const <String>[],
     List<String> mentions = const <String>[],
+    List<Map<String, String>> animeMetadata = const <Map<String, String>>[],
+    List<Map<String, String>> characterMetadata = const <Map<String, String>>[],
     String contentCategory = 'anime_edit',
     String? groupId,
     String? eventId,
@@ -406,6 +430,8 @@ class FirebaseKirariRepository implements KirariRepository {
       'animeIds': animeIds,
       'characterIds': characterIds,
       'mentions': mentions,
+      'animeMetadata': animeMetadata,
+      'characterMetadata': characterMetadata,
       'contentCategory': contentCategory,
       if (groupId != null) 'groupId': groupId,
       if (eventId != null) 'eventId': eventId,
@@ -640,7 +666,7 @@ class UnavailableKirariRepository implements KirariRepository {
   @override
   Future<void> setCreatorMute({required String creatorId, required bool muted}) async => throw _unavailable();
   @override
-  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], String contentCategory = 'anime_edit', String? groupId, String? eventId) async => throw _unavailable();
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], List<Map<String, String>> animeMetadata = const <Map<String, String>>[], List<Map<String, String>> characterMetadata = const <Map<String, String>>[], String contentCategory = 'anime_edit', String? groupId, String? eventId) async => throw _unavailable();
   @override
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress}) async => throw _unavailable();
   @override
