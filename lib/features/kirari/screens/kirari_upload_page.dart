@@ -920,6 +920,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                                 if (selectedTrack != null) {
                                   await preview.setVolume(_originalAudioVolume);
                                   await _audioPreview.setReleaseMode(ReleaseMode.loop);
+                                  await _audioPreview.setPlaybackRate(_speed);
                                   await _audioPreview.setVolume(_addedAudioVolume);
                                   await _audioPreview.play(UrlSource(selectedTrack.audioUrl));
                                 } else {
@@ -998,6 +999,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 if (value == null) return;
                 setState(() => _speed = value);
                 _preview?.setPlaybackSpeed(value);
+                _audioPreview.setPlaybackRate(value);
                 _savePendingUpload();
               },
             ),
