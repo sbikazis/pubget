@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,6 +29,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   final _overlayText = TextEditingController();
   final AudioPlayer _audioPreview = AudioPlayer();
   XFile? _video;
+  XFile? _coverImage;
   VideoPlayerController? _preview;
   KirariUploadSession? _session;
   List<KirariAudioTrack> _audioTracks = const [];
@@ -106,6 +108,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   Future<void> _restoreDraftData(Map<String, dynamic> data) async {
     final path = data['localPath'] as String?;
     if (path == null || !await File(path).exists()) return;
+    final coverPath = data['coverLocalPath'] as String?;
+    _coverImage = coverPath != null && await File(coverPath).exists() ? XFile(coverPath) : null;
     final controller = VideoPlayerController.file(File(path));
     await controller.initialize();
     await controller.setLooping(true);
@@ -295,6 +299,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     final prefs = await SharedPreferences.getInstance();
     final draft = <String, dynamic>{
       'localPath': video.path,
+      'coverLocalPath': _coverImage?.path,
       'reelId': _session?.reelId,
       'storagePath': _session?.storagePath,
       'idempotencyKey': _idempotencyKey,
@@ -321,6 +326,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
 
   Future<void> _clearPendingUpload({bool deleteLocalFile = true}) async {
     final path = _video?.path;
+    final coverPath = _coverImage?.path;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_pendingKey);
     final rawDrafts = prefs.getString(_draftsKey);
@@ -333,6 +339,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     }
     if (deleteLocalFile && path != null) {
       await File(path).delete().catchError((_) => File(path));
+    }
+    if (deleteLocalFile && coverPath != null) {
+      await File(coverPath).delete().catchError((_) => File(coverPath));
     }
   }
 
@@ -362,6 +371,11 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       await _savePendingUpload();
       if (!mounted) return;
       setState(() => _status = 'Uploading video…');
+      final coverImage = _coverImage;
+      if (coverImage != null) {
+        final coverPath = session.storagePath.replaceFirst('/source.mp4', '/cover-source.jpg');
+        await repository.uploadCover(storagePath: coverPath, image: coverImage);
+      }
       await repository.uploadSource(
         storagePath: session.storagePath,
         video: video,
@@ -378,6 +392,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         _status = KirariCopy.of(context).received;
         _submitted = true;
         _video = null;
+        _coverImage = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(KirariCopy.of(context).uploadReceived)),
@@ -409,6 +424,44 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       _progress = 0;
       _submitted = false;
     });
+  }
+
+  Future<void> _chooseCoverImage() async {
+    final picked = await context.read<KirariRepository>().pickGalleryImage();
+    if (picked == null || !mounted) return;
+    try {
+      final cropped = await ImageCropper().cropImage(
+        sourcePath: picked.path,
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 88,
+        aspectRatio: const CropAspectRatio(ratioX: 9, ratioY: 16),
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Adjust reel cover',
+            lockAspectRatio: true,
+            hideBottomControls: false,
+          ),
+          IOSUiSettings(title: 'Adjust reel cover', aspectRatioLockEnabled: true),
+        ],
+      );
+      if (cropped == null || !mounted) return;
+      final durable = await _keepLocalCopy(XFile(cropped.path, name: 'cover.jpg'));
+      if (!mounted) {
+        await durable.delete().catchError((_) => durable);
+        return;
+      }
+      final previous = _coverImage?.path;
+      setState(() {
+        _coverImage = XFile(durable.path);
+        _error = null;
+      });
+      if (previous != null && previous != durable.path) {
+        await File(previous).delete().catchError((_) => File(previous));
+      }
+      await _savePendingUpload();
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Unable to prepare this cover image.');
+    }
   }
 
   Future<void> _chooseAudio() async {
@@ -738,6 +791,14 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 setState(() => _coverTime = value);
                 _savePendingUpload();
               },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('Choose cover image'),
+              subtitle: Text(_coverImage == null ? 'Use a frame from the video' : 'Custom 9:16 cover selected'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _busy ? null : _chooseCoverImage,
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
