@@ -360,6 +360,18 @@ function createKirariPipeline({ db, bucket }) {
       if (hasCustomCover) {
         await bucket.file(customCoverPath).delete({ ignoreNotFound: true }).catch(() => {});
       }
+      if (reel.audioId && audioTrack && audioTrack.exists) {
+        await db.runTransaction(async (tx) => {
+          const [latestReel, latestTrack] = await Promise.all([
+            tx.get(ref), tx.get(audioTrack.ref),
+          ]);
+          if (!latestReel.exists || latestReel.data()?.audioUsageCounted ||
+              !latestTrack.exists) return;
+          const usageCount = Math.max(0, Number(latestTrack.data()?.usageCount) || 0) + 1;
+          tx.update(audioTrack.ref, { usageCount, updatedAt: new Date() });
+          tx.update(ref, { audioUsageCounted: true });
+        });
+      }
       await ref.update({
         status: "published",
         moderationStatus: decision.flagged ? "review_pending" : "approved",
