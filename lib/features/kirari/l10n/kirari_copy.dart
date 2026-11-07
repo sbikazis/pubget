@@ -40,6 +40,8 @@ final class KirariCopy {
   String get customCoverSelected => _strings.pick('Custom 9:16 cover selected', 'تم اختيار غلاف مخصص بنسبة 9:16');
   String get adjustCover => _strings.pick('Adjust reel cover', 'ضبط غلاف الريل');
   String get coverError => _strings.pick('Unable to prepare this cover image.', 'تعذّر تجهيز صورة الغلاف.');
+  String get allowAudioReuse => _strings.pick('Allow others to reuse my original audio', 'السماح للآخرين بإعادة استخدام صوتي الأصلي');
+  String get audioReuseRights => _strings.pick('Only enable this if you own the audio or have permission to share it. New tracks remain private until approved.', 'فعّل هذا الخيار فقط إذا كنت تملك حقوق الصوت أو تملك إذنًا بمشاركته. ستظل المقاطع الصوتية خاصة حتى مراجعتها والموافقة عليها.');
   String get chooseAudio => _strings.pick('Choose audio', 'اختر صوتًا');
   String get resumeUpload => _strings.pick('Resume previous upload', 'استئناف الرفع السابق');
   String get comments => _strings.pick('Comments', 'التعليقات');
