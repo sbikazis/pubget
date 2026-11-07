@@ -64,7 +64,7 @@ function normalizeEntityIds(value, field, maxItems) {
   for (const raw of value) {
     if (typeof raw !== "string") throw new Error(field + " contains an invalid ID.");
     const id = raw.trim();
-    if (!/^(jikan|anilist):[1-9]\d{0,12}$/.test(id)) {
+    if (!/^(?:(?:jikan|anilist):)?[1-9]\d{0,12}$/.test(id)) {
       throw new Error(field + " contains an invalid catalog ID.");
     }
     if (!result.includes(id)) result.push(id);
