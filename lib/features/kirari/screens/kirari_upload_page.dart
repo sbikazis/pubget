@@ -254,7 +254,10 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         await durableFile.delete().catchError((_) => durableFile!);
         return;
       }
+      final oldCoverPath = _coverImage?.path;
+      if (oldCoverPath != null) await File(oldCoverPath).delete().catchError((_) => File(oldCoverPath));
       setState(() {
+        _coverImage = null;
         _video = XFile(durableFile!.path);
         _preview = controller;
         _duration = duration;
@@ -767,6 +770,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 setState(() {
                   _overlayStart = value;
                   if (_overlayEnd < value) _overlayEnd = value;
+                  final position = (_preview?.value.position.inMilliseconds ?? 0) / 1000;
+                  _overlayVisible = _overlayText.text.trim().isNotEmpty &&
+                      position >= _overlayStart && position <= _overlayEnd;
                 });
                 _savePendingUpload();
               },
@@ -778,7 +784,12 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               value: _overlayEnd.clamp(_overlayStart, _trim.end).toDouble(),
               label: '${_overlayEnd.toStringAsFixed(1)}s',
               onChanged: _busy ? null : (value) {
-                setState(() => _overlayEnd = value);
+                final position = (_preview?.value.position.inMilliseconds ?? 0) / 1000;
+                setState(() {
+                  _overlayEnd = value;
+                  _overlayVisible = _overlayText.text.trim().isNotEmpty &&
+                      position >= _overlayStart && position <= _overlayEnd;
+                });
                 _savePendingUpload();
               },
             ),
