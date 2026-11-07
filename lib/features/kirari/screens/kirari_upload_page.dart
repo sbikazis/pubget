@@ -53,6 +53,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   String? _error;
   String? _status;
   bool _overlayVisible = true;
+  bool _allowOriginalAudioReuse = false;
 
   @override
   void initState() {
@@ -146,6 +147,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       _caption.text = data['caption'] as String? ?? '';
       _hashtags.text = (data['hashtags'] as List? ?? const []).join(' ');
       _audioId = data['audioId'] as String?;
+      _allowOriginalAudioReuse = data['allowOriginalAudioReuse'] == true;
       _idempotencyKey = data['idempotencyKey'] as String?;
       final reelId = data['reelId'] as String?;
       final storagePath = data['storagePath'] as String?;
@@ -312,6 +314,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       'caption': _caption.text,
       'hashtags': _hashtags.text.split(RegExp(r'[,\\s]+')).where((tag) => tag.isNotEmpty).toList(),
       'audioId': _audioId,
+      'allowOriginalAudioReuse': _allowOriginalAudioReuse,
       'savedAt': DateTime.now().toIso8601String(),
       ..._editorSettings(),
     };
@@ -372,6 +375,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         idempotencyKey: _idempotencyKey ??= 'kirari-${DateTime.now().microsecondsSinceEpoch}',
         editSettings: _editorSettings(),
         audioId: _audioId,
+        allowOriginalAudioReuse: _allowOriginalAudioReuse,
       );
       _session = session;
       await _savePendingUpload();
@@ -815,6 +819,17 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               subtitle: Text(_coverImage == null ? copy.frameCover : copy.customCoverSelected),
               trailing: const Icon(Icons.chevron_right),
               onTap: _busy ? null : _chooseCoverImage,
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _allowOriginalAudioReuse,
+              onChanged: _busy ? null : (value) {
+                setState(() => _allowOriginalAudioReuse = value == true);
+                _savePendingUpload();
+              },
+              title: const Text('Allow others to reuse my original audio'),
+              subtitle: const Text('Only enable this if you own the audio or have permission to share it. New tracks remain private until approved.'),
+              controlAffinity: ListTileControlAffinity.leading,
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
