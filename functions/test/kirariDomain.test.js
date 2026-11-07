@@ -172,9 +172,21 @@ test("new upload keeps original-audio reuse disabled unless the creator explicit
   });
   await domain.startUpload({
     auth: { uid: "creator" },
-    data: { caption: "", hashtags: [], idempotencyKey: "test-upload-key-1" },
+    data: {
+      caption: "", hashtags: [], idempotencyKey: "test-upload-key-1",
+      animeIds: ["jikan:1"], animeMetadata: [{ id: "jikan:1", title: "One Piece" }],
+      characterIds: ["anilist:22"], characterMetadata: [{ id: "anilist:22", name: "Luffy" }],
+      mentions: ["mentioned-user"], mentionMetadata: [{ id: "mentioned-user", username: "fan" }],
+      contentCategory: "amv",
+    },
   });
   assert.equal(created.allowOriginalAudioReuse, false);
+  assert.deepEqual(created.animeIds, ["jikan:1"]);
+  assert.deepEqual(created.animeMetadata, [{ id: "jikan:1", title: "One Piece" }]);
+  assert.deepEqual(created.characterMetadata, [{ id: "anilist:22", name: "Luffy" }]);
+  assert.deepEqual(created.mentions, ["mentioned-user"]);
+  assert.deepEqual(created.mentionMetadata, [{ id: "mentioned-user", username: "fan" }]);
+  assert.equal(created.contentCategory, "amv");
 });
 
 test("audio catalog returns only approved reusable tracks with a bounded page size", async () => {
