@@ -402,6 +402,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     });
     try {
       final repository = context.read<KirariRepository>();
+      final idempotencyKey = _idempotencyKey ??= 'kirari-${DateTime.now().microsecondsSinceEpoch}';
+      if (_session == null) await _savePendingUpload();
       final session = _session ?? await repository.startUpload(
         caption: _caption.text.trim(),
         hashtags: _hashtags.text
@@ -410,7 +412,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             .where((tag) => tag.isNotEmpty)
             .toSet()
             .toList(),
-        idempotencyKey: _idempotencyKey ??= 'kirari-${DateTime.now().microsecondsSinceEpoch}',
+        idempotencyKey: idempotencyKey,
         editSettings: _editorSettings(),
         audioId: _audioId,
         allowOriginalAudioReuse: _allowOriginalAudioReuse,
@@ -424,8 +426,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       );
       _session = session;
       await _savePendingUpload();
-      if (!mounted) return;
-      setState(() => _status = 'Uploading video…');
+      if (mounted) setState(() => _status = 'Uploading video…');
       final coverImage = _coverImage;
       if (coverImage != null) {
         final coverPath = session.storagePath.replaceFirst('/source.mp4', '/cover-source.jpg');
@@ -438,8 +439,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
           if (mounted) setState(() => _progress = value);
         },
       );
-      if (!mounted) return;
-      setState(() => _status = KirariCopy.of(context).processing);
+      if (mounted) setState(() => _status = KirariCopy.of(context).processing);
       await repository.finalizeUpload(session.reelId);
       await _clearPendingUpload();
       if (!mounted) return;
