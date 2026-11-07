@@ -57,12 +57,17 @@ function normalizeEditSettings(value) {
     ? input.filter : "none";
   const overlayText = typeof input.overlayText === "string"
     ? input.overlayText.trim().slice(0, 80) : "";
-  const trimStartSeconds = clamp(input.trimStartSeconds ?? 0, 0, 60);
-  const trimEndSeconds = clamp(input.trimEndSeconds ?? 60, 3, 60);
-  const coverTimeSeconds = clamp(input.coverTimeSeconds ?? trimStartSeconds, 0, 60);
+  const trimStartSeconds = clamp(input.trimStartSeconds ?? 0, 0, 57);
+  const trimEndSeconds = clamp(input.trimEndSeconds ?? 60, trimStartSeconds + 3, 60);
+  const coverTimeSeconds = clamp(input.coverTimeSeconds ?? trimStartSeconds, trimStartSeconds, trimEndSeconds);
+  const originalAudioVolume = clamp(input.originalAudioVolume ?? 0.25, 0, 1);
+  const addedAudioVolume = clamp(input.addedAudioVolume ?? 0.85, 0, 1);
+  const overlayStartSeconds = clamp(input.overlayStartSeconds ?? trimStartSeconds, trimStartSeconds, trimEndSeconds);
+  const overlayEndSeconds = clamp(input.overlayEndSeconds ?? trimEndSeconds, overlayStartSeconds, trimEndSeconds);
   return {
-    trimStartSeconds, trimEndSeconds, speed, filter,
-    overlayText, coverTimeSeconds,
+    trimStartSeconds, trimEndSeconds, speed, filter, overlayText,
+    coverTimeSeconds, originalAudioVolume, addedAudioVolume,
+    overlayStartSeconds, overlayEndSeconds,
   };
 }
 
