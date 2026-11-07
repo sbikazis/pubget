@@ -140,6 +140,14 @@ test("Kirari metadata accepts bounded catalog IDs and rejects malformed IDs and 
     new Array(6).fill("jikan:1"), "animeIds", 5,
   ));
   assert.throws(() => require("../src/kirariDomain").normalizeMentions(["bad id"]));
+  assert.deepEqual(require("../src/kirariDomain").normalizeCatalogMetadata(
+    [{ id: "jikan:1", title: "One Piece" }],
+    ["jikan:1"], "animeMetadata", "title",
+  ), [{ id: "jikan:1", title: "One Piece" }]);
+  assert.throws(() => require("../src/kirariDomain").normalizeCatalogMetadata(
+    [{ id: "jikan:2", title: "Wrong title" }],
+    ["jikan:1"], "animeMetadata", "title",
+  ));
 });
 
 test("new upload keeps original-audio reuse disabled unless the creator explicitly opts in", async () => {
