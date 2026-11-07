@@ -14,7 +14,7 @@ async function authenticateKirariService(
   fetchImpl = fetch,
   nowSeconds = Math.floor(Date.now() / 1000),
 ) {
-  const token = request.headers.get("authorization")?.match(/^Bearer\\s+(.+)$/i)?.[1];
+  const token = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return false;
 
   try {
