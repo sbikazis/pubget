@@ -211,6 +211,22 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
                             const SizedBox(height: 14),
                             Text(reel.caption, style: Theme.of(context).textTheme.bodyLarge),
                           ],
+                          if (reel.animeTitles.isNotEmpty ||
+                              reel.characterNames.isNotEmpty ||
+                              reel.contentCategory != 'anime_edit') ...[
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                Chip(label: Text(KirariCopy.of(context).categoryLabel(reel.contentCategory))),
+                                for (final title in reel.animeTitles)
+                                  Chip(avatar: const Icon(Icons.movie_outlined, size: 16), label: Text(title)),
+                                for (final name in reel.characterNames)
+                                  Chip(avatar: const Icon(Icons.person_outline, size: 16), label: Text(name)),
+                              ],
+                            ),
+                          ],
                           if (reel.audioId != null) ...[
                             const SizedBox(height: 12),
                             ListTile(
