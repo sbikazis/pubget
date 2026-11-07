@@ -699,8 +699,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               maxLength: 80,
               decoration: InputDecoration(labelText: copy.overlayText),
               onChanged: (_) {
+                final position = (_preview?.value.position.inMilliseconds ?? 0) / 1000;
                 setState(() => _overlayVisible = _overlayText.text.trim().isNotEmpty &&
-                    _preview?.value.position.inMilliseconds.toDouble().toDouble().isFinite == true);
+                    position >= _overlayStart && position <= _overlayEnd);
                 _savePendingUpload();
               },
             ),
