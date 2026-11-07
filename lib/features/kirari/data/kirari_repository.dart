@@ -96,6 +96,7 @@ class KirariAudioTrack {
   const KirariAudioTrack({
     required this.id, required this.title, required this.artist,
     required this.license, required this.attribution, required this.audioUrl,
+    this.creatorId, this.sourceReelId, this.usageCount = 0,
   });
   final String id;
   final String title;
@@ -103,6 +104,9 @@ class KirariAudioTrack {
   final String license;
   final String attribution;
   final String audioUrl;
+  final String? creatorId;
+  final String? sourceReelId;
+  final int usageCount;
 
   factory KirariAudioTrack.fromMap(Map<dynamic, dynamic> map, String url) =>
       KirariAudioTrack(
@@ -112,6 +116,9 @@ class KirariAudioTrack {
         license: map['license'] as String? ?? 'unknown',
         attribution: map['attribution'] as String? ?? '',
         audioUrl: url,
+        creatorId: map['creatorId'] as String?,
+        sourceReelId: map['sourceReelId'] as String?,
+        usageCount: (map['usageCount'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -144,7 +151,7 @@ abstract interface class KirariRepository {
   Future<void> setCreatorMute({required String creatorId, required bool muted});
   Future<List<Map<String, dynamic>>> getModerationQueue({int limit = 50});
   Future<void> reviewContent({required String reelId, String? commentId, required String decision});
-  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId});
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false});
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress});
   Future<void> finalizeUpload(String reelId);
   Future<void> retryProcessing(String reelId);
@@ -381,6 +388,7 @@ class FirebaseKirariRepository implements KirariRepository {
     required String idempotencyKey,
     Map<String, dynamic> editSettings = const <String, dynamic>{},
     String? audioId,
+    bool allowOriginalAudioReuse = false,
   }) async {
     final result = await _call('startKirariUpload', {
       'caption': caption,
@@ -388,6 +396,7 @@ class FirebaseKirariRepository implements KirariRepository {
       'idempotencyKey': idempotencyKey,
       'editSettings': editSettings,
       if (audioId != null) 'audioId': audioId,
+      'allowOriginalAudioReuse': allowOriginalAudioReuse,
     });
     final path = result['storagePath'] as String?;
     final reelId = result['reelId'] as String?;
@@ -619,7 +628,7 @@ class UnavailableKirariRepository implements KirariRepository {
   @override
   Future<void> setCreatorMute({required String creatorId, required bool muted}) async => throw _unavailable();
   @override
-  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId}) async => throw _unavailable();
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false}) async => throw _unavailable();
   @override
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress}) async => throw _unavailable();
   @override
