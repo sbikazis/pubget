@@ -309,7 +309,7 @@ function createKirariPipeline({ db, bucket }) {
         } else if (audioSource) {
           args.push("-map", "1:a:0", "-af", "volume=" + Math.max(0, Math.min(1, Number(settings.addedAudioVolume ?? 0.85))) + ",atempo=" + speed);
         } else if (metadata.hasAudio) {
-          args.push("-map", "0:a:0", "-af", "volume=" + Math.max(0, Math.min(1, Number(settings.originalAudioVolume ?? 0.25))) + ",atempo=" + speed);
+          args.push("-map", "0:a:0", "-af", "volume=" + Math.max(0, Math.min(1, Number(settings.originalAudioVolume ?? 1.0))) + ",atempo=" + speed);
         }
         args.push("-vf", editorVideoFilter(width, height, { ...settings, speed }));
         args.push("-c:v", "libx264", "-preset", "veryfast", "-b:v", bitrate,
