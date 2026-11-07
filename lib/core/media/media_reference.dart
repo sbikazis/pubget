@@ -30,15 +30,19 @@ Future<String?> resolveMediaDownloadUrl(String reference) async {
 
   final config = resolveMediaBackendConfig();
   if (!config.isConfigured) return null;
+  final provider = R2MediaStorageProvider(
+    workerUrl: config.workerUrl,
+    idTokenProvider: () async =>
+        await FirebaseAuth.instance.currentUser?.getIdToken(),
+  );
   try {
-    final provider = R2MediaStorageProvider(
-      workerUrl: config.workerUrl,
-      idTokenProvider: () async =>
-          await FirebaseAuth.instance.currentUser?.getIdToken(),
-    );
     return await provider.resolveUrl(value);
   } on Object {
     return null;
+  } finally {
+    // AppImageLoader resolves every R2 image through this one-shot provider.
+    // Close its HTTP client so a long feed does not accumulate idle pools.
+    provider.close();
   }
 }
 
