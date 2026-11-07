@@ -312,12 +312,16 @@ class _Step1IdentityState extends State<Step1Identity> {
         kind: isCover ? 'cover' : 'avatar',
       );
       if (!mounted) return;
-      if (!isRemoteHttpUrl(url)) {
+      // R2 returns a stable object key rather than a public URL. The shared
+      // AppImageLoader resolves this key through the authenticated media Worker.
+      // Legacy HTTPS URLs remain valid references for previously uploaded media.
+      final mediaReference = url.trim();
+      if (mediaReference.isEmpty || mediaReference.contains('://')) {
         setState(() {
           _uploadError = copy.uploadErrorMessage(
             const GroupImageUploadException(
-              'Upload did not return a download URL.',
-              code: 'missing-url',
+              'Upload completed without a usable media reference.',
+              code: 'missing-reference',
             ),
           );
           _uploadingImage = false;
@@ -325,7 +329,7 @@ class _Step1IdentityState extends State<Step1Identity> {
         return;
       }
       setState(() {
-        target.text = url;
+        target.text = mediaReference;
         _uploadingImage = false;
         _uploadError = null;
       });
