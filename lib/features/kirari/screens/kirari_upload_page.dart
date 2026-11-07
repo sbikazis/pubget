@@ -12,6 +12,8 @@ import 'package:video_player/video_player.dart';
 
 import '../data/kirari_repository.dart';
 import '../l10n/kirari_copy.dart';
+import '../../anime/models/anime_models.dart';
+import '../../anime/repositories/anime_repository.dart';
 
 class KirariUploadPage extends StatefulWidget {
   const KirariUploadPage({super.key, this.initialAudioId});
@@ -54,6 +56,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   String? _status;
   bool _overlayVisible = true;
   bool _allowOriginalAudioReuse = false;
+  List<Anime> _selectedAnime = <Anime>[];
+  List<AnimeCharacter> _selectedCharacters = <AnimeCharacter>[];
+  String _contentCategory = 'anime_edit';
 
   @override
   void initState() {
@@ -148,6 +153,19 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       _hashtags.text = (data['hashtags'] as List? ?? const []).join(' ');
       _audioId = data['audioId'] as String?;
       _allowOriginalAudioReuse = data['allowOriginalAudioReuse'] == true;
+      const categories = {'anime_edit', 'amv', 'cosplay', 'meme', 'review', 'theory', 'recommendation', 'fan_art', 'other'};
+      final category = data['contentCategory'] as String?;
+      _contentCategory = categories.contains(category) ? category! : 'anime_edit';
+      _selectedAnime = (data['anime'] as List? ?? const <dynamic>[])
+          .whereType<Map>()
+          .where((item) => item['id'] is String && item['title'] is String)
+          .map((item) => Anime(id: item['id'] as String, title: item['title'] as String))
+          .take(5).toList();
+      _selectedCharacters = (data['characters'] as List? ?? const <dynamic>[])
+          .whereType<Map>()
+          .where((item) => item['id'] is String && item['name'] is String)
+          .map((item) => AnimeCharacter(id: item['id'] as String, name: item['name'] as String))
+          .take(20).toList();
       _idempotencyKey = data['idempotencyKey'] as String?;
       final reelId = data['reelId'] as String?;
       final storagePath = data['storagePath'] as String?;
@@ -316,6 +334,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       'hashtags': _hashtags.text.split(RegExp(r'[,\\s]+')).where((tag) => tag.isNotEmpty).toList(),
       'audioId': _audioId,
       'allowOriginalAudioReuse': _allowOriginalAudioReuse,
+      'contentCategory': _contentCategory,
+      'anime': _selectedAnime.map((item) => {'id': item.id, 'title': item.title}).toList(),
+      'characters': _selectedCharacters.map((item) => {'id': item.id, 'name': item.name}).toList(),
       'savedAt': DateTime.now().toIso8601String(),
       ..._editorSettings(),
     };
@@ -377,6 +398,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         editSettings: _editorSettings(),
         audioId: _audioId,
         allowOriginalAudioReuse: _allowOriginalAudioReuse,
+        animeIds: _selectedAnime.map((item) => item.id).toList(),
+        characterIds: _selectedCharacters.map((item) => item.id).toList(),
+        contentCategory: _contentCategory,
       );
       _session = session;
       await _savePendingUpload();
@@ -435,6 +459,150 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       _progress = 0;
       _submitted = false;
     });
+  }
+
+  Future<void> _chooseAnime() async {
+    if (_selectedAnime.length >= 5) return;
+    final repository = context.read<AnimeRepository>();
+    final controller = TextEditingController();
+    var searching = false;
+    var results = <Anime>[];
+    final selected = await showModalBottomSheet<Anime>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, updateSheet) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16, right: 16, top: 12,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+            ),
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.65,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      labelText: KirariCopy.of(context).searchAnime,
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: () async {
+                          final query = controller.text.trim();
+                          if (query.isEmpty) return;
+                          updateSheet(() => searching = true);
+                          final result = await repository.searchAnime(query, limit: 10);
+                          if (!sheetContext.mounted) return;
+                          updateSheet(() {
+                            results = result.valueOrNull?.items ?? <Anime>[];
+                            searching = false;
+                          });
+                        },
+                      ),
+                    ),
+                    onSubmitted: (query) async {
+                      if (query.trim().isEmpty) return;
+                      updateSheet(() => searching = true);
+                      final result = await repository.searchAnime(query.trim(), limit: 10);
+                      if (!sheetContext.mounted) return;
+                      updateSheet(() {
+                        results = result.valueOrNull?.items ?? <Anime>[];
+                        searching = false;
+                      });
+                    },
+                  ),
+                  if (searching) const LinearProgressIndicator(),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: results.length,
+                      itemBuilder: (context, index) {
+                        final anime = results[index];
+                        return ListTile(
+                          title: Text(anime.title),
+                          subtitle: Text(anime.subtitle),
+                          onTap: () => Navigator.of(sheetContext).pop(anime),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    controller.dispose();
+    if (!mounted || selected == null ||
+        _selectedAnime.any((item) => item.id == selected.id)) return;
+    setState(() => _selectedAnime = [..._selectedAnime, selected]);
+    await _savePendingUpload();
+  }
+
+  Future<void> _chooseCharacters(Anime anime) async {
+    final result = await context.read<AnimeRepository>().getCharacters(anime.id);
+    if (!mounted) return;
+    final characters = result.valueOrNull ?? <AnimeCharacter>[];
+    var query = '';
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, updateSheet) {
+          final filtered = characters.where((character) {
+            final value = query.trim().toLowerCase();
+            return value.isEmpty ||
+                character.name.toLowerCase().contains(value) ||
+                (character.nameKanji ?? '').toLowerCase().contains(value);
+          }).take(100).toList();
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: TextField(
+                      autofocus: true,
+                      decoration: InputDecoration(labelText: KirariCopy.of(context).searchCharacters),
+                      onChanged: (value) => updateSheet(() => query = value),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final character = filtered[index];
+                        final selected = _selectedCharacters.any((item) => item.id == character.id);
+                        return CheckboxListTile(
+                          value: selected,
+                          title: Text(character.name),
+                          subtitle: character.nameKanji == null ? null : Text(character.nameKanji!),
+                          onChanged: (checked) {
+                            if (_selectedCharacters.length >= 20 && checked == true) return;
+                            setState(() {
+                              if (checked == true) {
+                                if (!selected) _selectedCharacters = [..._selectedCharacters, character];
+                              } else {
+                                _selectedCharacters = _selectedCharacters.where((item) => item.id != character.id).toList();
+                              }
+                            });
+                            updateSheet(() {});
+                            _savePendingUpload();
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _chooseCoverImage() async {
@@ -869,6 +1037,80 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               border: const OutlineInputBorder(),
             ),
             onChanged: (_) => _savePendingUpload(),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _contentCategory,
+            decoration: InputDecoration(labelText: copy.contentCategory),
+            items: [
+              DropdownMenuItem(value: 'anime_edit', child: Text(copy.categoryAnimeEdit)),
+              DropdownMenuItem(value: 'amv', child: Text(copy.categoryAmv)),
+              DropdownMenuItem(value: 'cosplay', child: Text(copy.categoryCosplay)),
+              DropdownMenuItem(value: 'meme', child: Text(copy.categoryMeme)),
+              DropdownMenuItem(value: 'review', child: Text(copy.categoryReview)),
+              DropdownMenuItem(value: 'theory', child: Text(copy.categoryTheory)),
+              DropdownMenuItem(value: 'recommendation', child: Text(copy.categoryRecommendation)),
+              DropdownMenuItem(value: 'fan_art', child: Text(copy.categoryFanArt)),
+              DropdownMenuItem(value: 'other', child: Text(copy.categoryOther)),
+            ],
+            onChanged: _busy ? null : (value) {
+              if (value == null) return;
+              setState(() => _contentCategory = value);
+              _savePendingUpload();
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(copy.animeTags),
+            subtitle: Text(_selectedAnime.isEmpty
+                ? copy.noAnimeSelected
+                : _selectedAnime.map((item) => item.title).join(' · ')),
+            trailing: IconButton(
+              tooltip: copy.addAnime,
+              onPressed: _busy || _selectedAnime.length >= 5 ? null : _chooseAnime,
+              icon: const Icon(Icons.add_circle_outline),
+            ),
+          ),
+          Wrap(
+            spacing: 6, runSpacing: 4,
+            children: [
+              for (final anime in _selectedAnime)
+                InputChip(
+                  label: Text(anime.title),
+                  onPressed: () => _chooseCharacters(anime),
+                  onDeleted: _busy ? null : () {
+                    setState(() => _selectedAnime = _selectedAnime.where((item) => item.id != anime.id).toList());
+                    _savePendingUpload();
+                  },
+                ),
+            ],
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(copy.characterTags),
+            subtitle: Text(_selectedCharacters.isEmpty
+                ? copy.noCharactersSelected
+                : _selectedCharacters.map((item) => item.name).join(' · ')),
+            trailing: IconButton(
+              tooltip: copy.addCharacter,
+              onPressed: _busy || _selectedAnime.isEmpty || _selectedCharacters.length >= 20
+                  ? null
+                  : () => _chooseCharacters(_selectedAnime.last),
+              icon: const Icon(Icons.add_circle_outline),
+            ),
+          ),
+          Wrap(
+            spacing: 6, runSpacing: 4,
+            children: [
+              for (final character in _selectedCharacters)
+                InputChip(
+                  label: Text(character.name),
+                  onDeleted: _busy ? null : () {
+                    setState(() => _selectedCharacters = _selectedCharacters.where((item) => item.id != character.id).toList());
+                    _savePendingUpload();
+                  },
+                ),
+            ],
           ),
           if (_busy || _progress > 0) ...[
             const SizedBox(height: 18),
