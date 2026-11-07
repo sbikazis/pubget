@@ -889,14 +889,18 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                           ),
                         ),
                         if (_overlayText.text.trim().isNotEmpty && _overlayVisible)
-                          Center(
-                            child: Text(
-                              _overlayText.text,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white, fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                shadows: [Shadow(blurRadius: 5, color: Colors.black)],
+                          Align(
+                            alignment: const Alignment(0, 0.56),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 18),
+                              child: Text(
+                                _overlayText.text,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white, fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  shadows: [Shadow(blurRadius: 5, color: Colors.black)],
+                                ),
                               ),
                             ),
                           ),
@@ -1004,7 +1008,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               label: '${(_originalAudioVolume * 100).round()}%',
               onChanged: _busy || _session != null ? null : (value) {
                 setState(() => _originalAudioVolume = value);
-                if (_audioId == null) _preview?.setVolume(value);
+                // Keep the source-audio preview in sync even while a selected
+                // library track is mixed through the separate AudioPlayer.
+                _preview?.setVolume(value);
                 _savePendingUpload();
               },
             ),
