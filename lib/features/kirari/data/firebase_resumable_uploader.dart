@@ -142,7 +142,6 @@ class FirebaseResumableUploader {
             'Firebase Storage resumable upload failed (${response.statusCode}): ${response.body}',
           );
         }
-        retries = 0;
       } catch (error) {
         if (error is _UploadSessionExpired) {
           await clearSession(storagePath);
@@ -238,7 +237,7 @@ class FirebaseResumableUploader {
     );
   }
 
-  Future<http.StreamedResponse> _sendChunk({
+  Future<http.Response> _sendChunk({
     required String sessionUrl,
     required File file,
     required int start,
@@ -253,10 +252,10 @@ class FirebaseResumableUploader {
         'Content-Type': contentType,
         'Content-Range': 'bytes $start-${endExclusive - 1}/$total',
       });
-    final response = _client.send(request);
+    final responseFuture = _client.send(request);
     await request.sink.addStream(file.openRead(start, endExclusive));
     await request.sink.close();
-    return response;
+    return http.Response.fromStream(await responseFuture);
   }
 }
 
