@@ -14,7 +14,9 @@ import '../data/kirari_repository.dart';
 import '../l10n/kirari_copy.dart';
 
 class KirariUploadPage extends StatefulWidget {
-  const KirariUploadPage({super.key});
+  const KirariUploadPage({super.key, this.initialAudioId});
+
+  final String? initialAudioId;
 
   @override
   State<KirariUploadPage> createState() => _KirariUploadPageState();
@@ -55,6 +57,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   @override
   void initState() {
     super.initState();
+    _audioId = widget.initialAudioId;
     _loadAudio();
     _restorePendingUpload();
   }
