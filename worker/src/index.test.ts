@@ -69,5 +69,7 @@ describe("R2 object key validation", () => {
     expect(isSafeMediaKey("unknown/alice/file.jpg")).toBe(false);
     expect(isSafeMediaKey("groups/group/alice/../../file.jpg")).toBe(false);
     expect(isSafeMediaKey("images/alice/not-an-image.exe")).toBe(false);
+    expect(isSafeMediaKey("reels/alice/file.jpg")).toBe(false);
+    expect(isSafeMediaKey("audio/alice/file.mp4")).toBe(false);
   });
 });

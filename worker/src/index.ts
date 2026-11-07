@@ -245,16 +245,29 @@ async function inspectAndRestoreBody(body: ReadableStream<Uint8Array>): Promise<
 
 export function isSafeMediaKey(key: string): boolean {
   const parts = key.split("/");
+  const imageExtension = /^(jpg|jpeg|png|webp|gif)$/;
+  const videoExtension = /^(mp4|webm|mov)$/;
+  const audioExtension = /^(mp3|aac|ogg|m4a)$/;
+  const safeFileName = (name: string, allowed: RegExp): boolean => {
+    const match = /^([A-Za-z0-9_-]{1,80})\.([a-z0-9]{2,5})$/.exec(name);
+    return match != null && allowed.test(match[2]);
+  };
+
   if (parts.length === 3) {
-    return ["images", "reels", "audio"].includes(parts[0]) &&
-      /^[A-Za-z0-9_-]{1,128}$/.test(parts[1]) &&
-      /^[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5}$/.test(parts[2]);
+    const [folder, uid, name] = parts;
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(uid)) return false;
+    if (folder === "images") return safeFileName(name, imageExtension);
+    if (folder === "reels") return safeFileName(name, videoExtension);
+    if (folder === "audio") return safeFileName(name, audioExtension);
+    return false;
   }
-  return parts.length === 4 &&
-    ["groups", "privateChats"].includes(parts[0]) &&
-    /^[A-Za-z0-9_:-]{1,320}$/.test(parts[1]) &&
-    /^[A-Za-z0-9_-]{1,128}$/.test(parts[2]) &&
-    /^[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5}$/.test(parts[3]);
+
+  if (parts.length !== 4) return false;
+  const [scope, scopeId, uid, name] = parts;
+  return ["groups", "privateChats"].includes(scope) &&
+    /^[A-Za-z0-9_:-]{1,320}$/.test(scopeId) &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(uid) &&
+    safeFileName(name, /^(jpg|jpeg|png|webp|gif|mp4|webm|mov|mp3|aac|ogg|m4a)$/);
 }
 
 function createKey(
