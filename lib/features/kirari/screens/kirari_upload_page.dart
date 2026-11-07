@@ -614,6 +614,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 setState(() {
                   _trim = RangeValues(start, end);
                   _coverTime = _coverTime.clamp(start, end).toDouble();
+                  _overlayStart = _overlayStart.clamp(start, end).toDouble();
+                  _overlayEnd = _overlayEnd.clamp(_overlayStart, end).toDouble();
                 });
                 _savePendingUpload();
               },
@@ -657,7 +659,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 _savePendingUpload();
               },
             ),
-                        Text(copy.filter, style: Theme.of(context).textTheme.titleMedium),
+            Text(copy.filter, style: Theme.of(context).textTheme.titleMedium),
             DropdownButtonFormField<String>(
               value: _filter,
               items: const [
