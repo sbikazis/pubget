@@ -72,6 +72,25 @@ function normalizeEntityIds(value, field, maxItems) {
   return result;
 }
 
+function normalizeCatalogMetadata(value, ids, field, labelField) {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > ids.length) {
+    throw new Error(field + " does not match the selected catalog IDs.");
+  }
+  const seen = new Set();
+  return value.map((item) => {
+    if (!item || typeof item !== "object" ||
+        typeof item.id !== "string" || !ids.includes(item.id) ||
+        seen.has(item.id) || typeof item[labelField] !== "string") {
+      throw new Error(field + " contains invalid metadata.");
+    }
+    const label = item[labelField].trim();
+    if (!label || label.length > 120) throw new Error(field + " contains an invalid label.");
+    seen.add(item.id);
+    return { id: item.id, [labelField]: label };
+  });
+}
+
 function normalizeMentions(value) {
   if (value == null) return [];
   if (!Array.isArray(value) || value.length > 20) {
@@ -365,6 +384,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     try {
       animeIds = normalizeEntityIds(request.data?.animeIds, "animeIds", 5);
       characterIds = normalizeEntityIds(request.data?.characterIds, "characterIds", 20);
+      const animeMetadata = normalizeCatalogMetadata(request.data?.animeMetadata, animeIds, "animeMetadata", "title");
+      const characterMetadata = normalizeCatalogMetadata(request.data?.characterMetadata, characterIds, "characterMetadata", "name");
       mentions = normalizeMentions(request.data?.mentions);
       contentCategory = request.data?.contentCategory == null
         ? "anime_edit" : String(request.data.contentCategory);
@@ -409,7 +430,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       }
       tx.create(ref, {
         creatorId: uid, caption, hashtags, audioId, editSettings, allowOriginalAudioReuse,
-        animeIds, characterIds, mentions, contentCategory, groupId, eventId,
+        animeIds, characterIds, animeMetadata, characterMetadata,
+        mentions, contentCategory, groupId, eventId,
         status: "uploading",
         idempotencyKey, quotaDay: day,
         schemaVersion: KIRARI.schemaVersion,
