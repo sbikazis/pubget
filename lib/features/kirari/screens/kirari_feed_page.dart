@@ -368,6 +368,8 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     if (_feedType == type) return;
     _feedType = type;
     _feedGeneration++;
+    _activationGeneration++;
+    _resumeAfterLifecycle = false;
     final current = _controller;
     _controller = null;
     _reporter = null;
