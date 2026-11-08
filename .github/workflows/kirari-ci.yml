@@ -88,6 +88,8 @@ jobs:
         run: flutter test test/firebase_bootstrap_test.dart
       - name: Kirari integration tests
         run: flutter test test/reel_entity_surfaces_test.dart
+      - name: Kirari social state and metadata tests
+        run: flutter test test/kirari_social_state_test.dart
       - name: Kirari persistent video cache tests
         run: flutter test test/kirari_video_cache_test.dart
       - name: Kirari resumable upload recovery tests
