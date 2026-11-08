@@ -27,12 +27,12 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  Uri get uri => Uri.parse('http://${server.address.address}:${server.port}/video.mp4');
+  Uri testUri() => Uri.parse('http://${server.address.address}:${server.port}/video.mp4');
 
   test('stores a complete rendition and reuses it after cache recreation', () async {
     final firstCache = KirariVideoCache(directory: directory);
     final first = await firstCache.getOrDownload(
-      reelId: 'reel-1', quality: 540, source: uri,
+      reelId: 'reel-1', quality: 540, source: testUri(),
     );
     expect(await first.length(), bytes.length);
     expect(await first.readAsBytes(), bytes);
@@ -40,7 +40,7 @@ void main() {
 
     final secondCache = KirariVideoCache(directory: directory);
     final second = await secondCache.getOrDownload(
-      reelId: 'reel-1', quality: 540, source: uri,
+      reelId: 'reel-1', quality: 540, source: testUri(),
     );
     expect(second.path, first.path);
     expect(requests, 1);
@@ -94,11 +94,11 @@ void main() {
       maxFileBytes: 300 * 1024,
     );
     final first = await cache.getOrDownload(
-      reelId: 'old-reel', quality: 360, source: uri,
+      reelId: 'old-reel', quality: 360, source: testUri(),
     );
     await Future<void>.delayed(const Duration(milliseconds: 20));
     final second = await cache.getOrDownload(
-      reelId: 'new-reel', quality: 360, source: uri,
+      reelId: 'new-reel', quality: 360, source: testUri(),
     );
 
     expect(await first.exists(), isFalse);
