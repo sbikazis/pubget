@@ -350,9 +350,25 @@ test("extractAudioFromReel atomically links generated audio and reports extracti
   });
   const result = await audio.extractAudioFromReel({
     auth: { uid: "alice" },
-    data: { reelId: "r-audio", audioName: "My original audio" },
+    data: {
+      reelId: "r-audio",
+      audioName: "My original audio",
+      startMs: 999999,
+      durationMs: 120000,
+    },
   });
   assert.equal(result.status, "failed");
   assert.equal(db.store.get("edits/r-audio").audioId, result.audioId);
-  assert.equal(db.store.get("reelAudios/" + result.audioId).status, "failed");
+  const audioRecord = db.store.get("reelAudios/" + result.audioId);
+  assert.equal(audioRecord.status, "failed");
+  assert.equal(audioRecord.startMs, 29000);
+  assert.equal(audioRecord.durationMs, 1000);
+
+  await assert.rejects(
+    audio.extractAudioFromReel({
+      auth: { uid: "alice" },
+      data: { reelId: "r-audio", startMs: "not-a-number" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
 });
