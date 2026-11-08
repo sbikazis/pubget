@@ -802,3 +802,60 @@ test("saved Kirari pagination rejects a cursor that is not owned by the viewer",
     (error) => error.code === "invalid-argument",
   );
 });
+
+test("deleting an unfinished upload refunds its daily quota exactly once", async () => {
+  const records = {
+    reel: {
+      creatorId: "creator", status: "uploading", quotaDay: "2026-11-08",
+      idempotencyKey: "upload-key-123", storagePath: "kirari/creator/reel-1/source.mp4",
+      originalStoragePath: "kirari/creator/reel-1/source.mp4", renditions: {},
+    },
+    quota: { count: 4 },
+    lock: { reelId: "reel-1" },
+    key: { reelId: "reel-1" },
+  };
+  const refs = {
+    reel: { kind: "reel" }, quota: { kind: "quota" },
+    lock: { kind: "lock" }, key: { kind: "key" },
+  };
+  const db = {
+    collection(name) {
+      return {
+        doc(id) {
+          if (name === "kirari") return refs.reel;
+          if (name === "kirariUploadQuotas") return refs.quota;
+          if (name === "kirariUploadLocks") return refs.lock;
+          if (name === "kirariUploadKeys") return refs.key;
+          throw new Error("unexpected collection " + name);
+        },
+      };
+    },
+    async runTransaction(work) {
+      const tx = {
+        async get(ref) {
+          const value = records[ref.kind];
+          return { exists: value != null, data: () => value ? { ...value } : undefined };
+        },
+        update(ref, patch) { Object.assign(records[ref.kind], patch); },
+        delete(ref) { delete records[ref.kind]; },
+      };
+      return work(tx);
+    },
+  };
+  const deletedObjects = [];
+  const domain = createKirariDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+    bucket: { file: (path) => ({
+      delete: async () => { deletedObjects.push(path); },
+    }) },
+  });
+  await domain.deleteReel({ auth: { uid: "creator" }, data: { reelId: "reel-1" } });
+  await domain.deleteReel({ auth: { uid: "creator" }, data: { reelId: "reel-1" } });
+  assert.equal(records.reel.status, "deleted");
+  assert.equal(records.quota.count, 3);
+  assert.equal(records.lock, undefined);
+  assert.equal(records.key, undefined);
+  assert.equal(deletedObjects.length, 1, "storage cleanup runs only for the first successful deletion");
+});
