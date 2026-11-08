@@ -9,8 +9,10 @@ import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
 
 import '../data/kirari_repository.dart';
+import '../data/kirari_video_cache.dart';
 import '../l10n/kirari_copy.dart';
 import 'kirari_upload_page.dart';
+import 'kirari_saved_page.dart';
 
 class KirariFeedPage extends StatefulWidget {
   const KirariFeedPage({super.key});
@@ -28,6 +30,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   };
 
   late KirariRepository _repository;
+  final KirariVideoCache _videoCache = KirariVideoCache();
   String _feedType = 'forYou';
   final List<KirariReel> _items = <KirariReel>[];
   VideoPlayerController? _controller;
@@ -38,10 +41,15 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   static DateTime? _measuredAt;
   Timer? _reportTimer;
   int _activeIndex = 0;
+  int _activationGeneration = 0;
+  int _feedGeneration = 0;
+  bool _resumeAfterLifecycle = false;
+  bool _isAppForeground = true;
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = true;
   String? _error;
+  String? _playbackError;
   Map<String, dynamic>? _cursor;
 
   @override
@@ -65,16 +73,28 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
       _reportTimer?.cancel();
-      _controller?.pause();
+      final controller = _controller;
+      _isAppForeground = false;
+      _resumeAfterLifecycle =
+          _resumeAfterLifecycle || controller?.value.isPlaying == true;
+      if (controller?.value.isPlaying == true) unawaited(controller!.pause());
     } else if (state == AppLifecycleState.resumed) {
-      _controller?.play();
-      _startReporter();
+      _isAppForeground = true;
+      final controller = _controller;
+      if (_resumeAfterLifecycle && controller != null &&
+          controller.value.isInitialized) {
+        _resumeAfterLifecycle = false;
+        unawaited(controller.play());
+        _startReporter();
+      }
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _activationGeneration++;
+    _feedGeneration++;
     _reportTimer?.cancel();
     final controller = _controller;
     _controller = null;
@@ -86,7 +106,9 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   }
 
   Future<void> _load({required bool reset}) async {
-    if (_loadingMore || (!reset && !_hasMore)) return;
+    if (!reset && (_loadingMore || !_hasMore)) return;
+    if (reset) _feedGeneration++;
+    final generation = _feedGeneration;
     setState(() {
       if (reset) {
         _loading = true;
@@ -104,7 +126,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         type: _feedType,
         cursor: reset ? null : _cursor,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _feedGeneration) return;
       setState(() {
         _items.addAll(page.items);
         _cursor = page.nextCursor;
@@ -118,7 +140,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         unawaited(_prefetchNext(_activeIndex + 1));
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _feedGeneration) return;
       setState(() {
         _loading = false;
         _loadingMore = false;
@@ -161,22 +183,67 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   }
 
   Future<VideoPlayerController> _makeController(KirariReel reel) async {
-    final quality = await _adaptiveQuality(reel);
-    final url = await _repository.getPlaybackUrl(reel, quality: quality);
-    return VideoPlayerController.networkUrl(Uri.parse(url));
+    Object? lastError;
+
+    // Try durable local renditions before touching the network. This allows
+    // previously cached videos to play in airplane mode or during outages.
+    for (final quality in const <int>[540, 360, 720]) {
+      VideoPlayerController? controller;
+      try {
+        final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
+        if (cached == null) continue;
+        controller = VideoPlayerController.file(cached);
+        await controller.initialize().timeout(const Duration(seconds: 20));
+        return controller;
+      } catch (error) {
+        lastError = error;
+        if (controller != null) await controller.dispose();
+      }
+    }
+
+    final preferred = await _adaptiveQuality(reel);
+    final qualities = <int>{preferred, 540, 360, 720};
+    final attemptedUrls = <String>{};
+    for (final quality in qualities) {
+      VideoPlayerController? controller;
+      try {
+        final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
+        if (cached != null) {
+          controller = VideoPlayerController.file(cached);
+        } else {
+          final url = await _repository.getPlaybackUrl(reel, quality: quality);
+          if (url.isEmpty || !attemptedUrls.add(url)) continue;
+          controller = VideoPlayerController.networkUrl(Uri.parse(url));
+        }
+        await controller.initialize().timeout(const Duration(seconds: 20));
+        return controller;
+      } catch (error) {
+        lastError = error;
+        if (controller != null) await controller.dispose();
+      }
+    }
+
+    throw StateError('Kirari playback failed for all available renditions: $lastError');
+  }
+
+  Future<VideoPlayerController> _makeCachedController(KirariReel reel) {
+    // Initialize the next controller from a cached file when available, or
+    // directly from the adaptive network rendition. Never download an entire
+    // next video before allowing the user to swipe to it.
+    return _makeController(reel);
   }
 
   Future<void> _prefetchNext(int index) async {
     if (index < 0 || index >= _items.length ||
-        _prefetchController != null || index == _activeIndex) return;
+        _prefetchController != null || index != _activeIndex + 1) return;
     final reel = _items[index];
     VideoPlayerController? controller;
     try {
-      controller = await _makeController(reel);
-      await controller.initialize();
+      controller = await _makeCachedController(reel);
       await controller.setLooping(true);
       await controller.pause();
-      if (!mounted || index == _activeIndex) {
+      if (!mounted || index >= _items.length ||
+          index != _activeIndex + 1 || _items[index].id != reel.id) {
         await controller.dispose();
         return;
       }
@@ -190,12 +257,14 @@ class _KirariFeedPageState extends State<KirariFeedPage>
 
   Future<void> _activate(int index) async {
     if (index < 0 || index >= _items.length) return;
+    final generation = ++_activationGeneration;
+    _playbackError = null;
     _reportTimer?.cancel();
     final previous = _controller;
     _controller = null;
     _reporter = null;
     if (previous != null) await previous.dispose();
-    if (!mounted) return;
+    if (!mounted || generation != _activationGeneration) return;
     VideoPlayerController? controller;
     if (_prefetchIndex == index) {
       controller = _prefetchController;
@@ -210,33 +279,78 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     final reel = _items[index];
     try {
       controller ??= await _makeController(reel);
+      if (!mounted || generation != _activationGeneration) {
+        await controller.dispose();
+        return;
+      }
       _controller = controller;
       setState(() => _activeIndex = index);
-      if (!controller.value.isInitialized) await controller.initialize();
+      if (!controller.value.isInitialized) {
+        await controller.initialize().timeout(const Duration(seconds: 20));
+      }
+      if (!mounted || generation != _activationGeneration ||
+          !identical(_controller, controller)) {
+        await controller.dispose();
+        return;
+      }
       await controller.setLooping(true);
-      await controller.play();
+      if (_isAppForeground) {
+        await controller.play();
+        _resumeAfterLifecycle = false;
+      } else {
+        _resumeAfterLifecycle = true;
+      }
+      if (controller.value.isPlaying) _cacheActiveReel(reel);
       final reporter = KirariPlaybackReporter(_repository, reel.id);
       try {
         await reporter.start();
         if (mounted && identical(_controller, controller)) {
           _reporter = reporter;
-          _startReporter();
+          if (_isAppForeground && controller.value.isPlaying) {
+            _startReporter();
+          }
         }
       } catch (_) {
         // Playback must remain available when analytics is temporarily offline.
       }
-      if (!mounted || !identical(_controller, controller)) {
+      if (!mounted || generation != _activationGeneration ||
+          !identical(_controller, controller)) {
         await controller.dispose();
         return;
       }
       setState(() {});
       unawaited(_prefetchNext(index + 1));
     } catch (_) {
-      if (identical(_controller, controller)) {
-        setState(() => _error = KirariCopy.of(context).playbackError);
+      if (mounted && generation == _activationGeneration &&
+          identical(_controller, controller)) {
+        _controller = null;
+        setState(() => _playbackError = KirariCopy.of(context).playbackError);
       }
       if (controller != null) await controller.dispose();
     }
+  }
+
+  void _cacheActiveReel(KirariReel reel) {
+    // Cache the active rendition in the background after playback has started.
+    // Playback remains network-first so a slow download never blocks the
+    // first frame on weak mobile connections.
+    unawaited(() async {
+      final quality = await _adaptiveQuality(reel);
+      // Do not compete with active playback on a weak connection. Disk
+      // caching is opportunistic and reserved for fast, stable links.
+      if ((_measuredMbps ?? 0) < 5.0) return;
+      final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
+      if (cached != null) return;
+      final url = await _repository.getPlaybackUrl(reel, quality: quality);
+      if (url.isEmpty) return;
+      await _videoCache.getOrDownload(
+        reelId: reel.id,
+        quality: quality,
+        source: Uri.parse(url),
+      );
+    }().catchError((Object _) {
+      // Cache is opportunistic; it must never interrupt active playback.
+    }));
   }
 
   void _startReporter() {
@@ -253,6 +367,9 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   Future<void> _switchFeed(String type) async {
     if (_feedType == type) return;
     _feedType = type;
+    _feedGeneration++;
+    _activationGeneration++;
+    _resumeAfterLifecycle = false;
     final current = _controller;
     _controller = null;
     _reporter = null;
@@ -276,6 +393,15 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         foregroundColor: Colors.white,
         title: Text(copy.title),
         actions: [
+          IconButton(
+            tooltip: 'Saved videos',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const KirariSavedPage(),
+              ),
+            ),
+            icon: const Icon(Icons.bookmarks_outlined),
+          ),
           IconButton(
             tooltip: copy.create,
             onPressed: () => Navigator.of(context).push(
@@ -314,11 +440,38 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     );
   }
 
-  Future<void> _runAction(String reelId, String kind) async {
+  Future<void> _runAction(
+    String reelId,
+    String kind, {
+    int? index,
+  }) async {
+    KirariReel? previous;
+    var actionKind = kind;
+    if (index != null && index >= 0 && index < _items.length) {
+      previous = _items[index];
+      if (kind == 'like' || kind == 'unlike') {
+        actionKind = previous.viewerLiked ? 'unlike' : 'like';
+        _items[index] = previous.copyWith(
+          viewerLiked: !previous.viewerLiked,
+          likesCount: previous.viewerLiked
+              ? (previous.likesCount > 0 ? previous.likesCount - 1 : 0)
+              : previous.likesCount + 1,
+        );
+      } else if (kind == 'save' || kind == 'unsave') {
+        actionKind = previous.viewerSaved ? 'unsave' : 'save';
+        _items[index] = previous.copyWith(
+          viewerSaved: !previous.viewerSaved,
+        );
+      }
+      if (mounted) setState(() {});
+    }
     try {
-      await _repository.action(reelId, kind);
+      await _repository.action(reelId, actionKind);
     } catch (_) {
       if (!mounted) return;
+      if (previous != null && index != null && index < _items.length) {
+        setState(() => _items[index] = previous!);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(KirariCopy.of(context).actionError)),
       );
@@ -424,8 +577,10 @@ class _KirariFeedPageState extends State<KirariFeedPage>
                 children: [
                   InkWell(
                     onTap: () => AppNavigation.go(context, PubgetLinks.profilePath(reel.creatorId)),
-                    child: Text('@${reel.creatorId}',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      '@${reel.creatorUsername.isNotEmpty ? reel.creatorUsername : reel.creatorId}',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(reel.caption,
@@ -441,18 +596,27 @@ class _KirariFeedPageState extends State<KirariFeedPage>
               child: Column(
                 children: [
                   IconButton(
-                    color: Colors.white,
-                    onPressed: () => _runAction(reel.id, 'like'),
-                    icon: const Icon(Icons.favorite_border, size: 30),
+                    color: reel.viewerLiked ? Colors.redAccent : Colors.white,
+                    onPressed: () => _runAction(reel.id, 'like', index: index),
+                    icon: Icon(
+                      reel.viewerLiked ? Icons.favorite : Icons.favorite_border,
+                      size: 30,
+                    ),
                   ),
                   Text('${reel.likesCount}', style: const TextStyle(color: Colors.white)),
                   const SizedBox(height: 16),
                   IconButton(
-                    color: Colors.white,
-                    onPressed: () => _runAction(reel.id, 'save'),
-                    icon: const Icon(Icons.bookmark_border, size: 28),
+                    color: reel.viewerSaved ? Colors.amber : Colors.white,
+                    onPressed: () => _runAction(reel.id, 'save', index: index),
+                    icon: Icon(
+                      reel.viewerSaved ? Icons.bookmark : Icons.bookmark_border,
+                      size: 28,
+                    ),
                   ),
-                  Text(copy.save, style: const TextStyle(color: Colors.white)),
+                  Text(
+                    reel.viewerSaved ? 'Saved' : copy.save,
+                    style: const TextStyle(color: Colors.white),
+                  ),
                   const SizedBox(height: 16),
                   IconButton(
                     color: Colors.white,
@@ -496,7 +660,25 @@ class _KirariFeedPageState extends State<KirariFeedPage>
               ),
             ),
             if (active && (controller == null || !controller.value.isInitialized))
-              const Center(child: CircularProgressIndicator()),
+              Center(
+                child: _playbackError == null
+                    ? const CircularProgressIndicator()
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _playbackError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: () => _activate(index),
+                            child: Text(copy.retry),
+                          ),
+                        ],
+                      ),
+              ),
           ],
         );
       },
@@ -600,10 +782,26 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                                 trailing: deleted ? null : Wrap(
                                   children: [
                                     IconButton(
-                                      tooltip: 'Like comment',
-                                      icon: const Icon(Icons.favorite_border, size: 19),
+                                      tooltip: item['viewerLiked'] == true
+                                          ? 'Unlike comment'
+                                          : 'Like comment',
+                                      color: item['viewerLiked'] == true
+                                          ? Colors.redAccent
+                                          : null,
+                                      icon: Icon(
+                                        item['viewerLiked'] == true
+                                            ? Icons.favorite
+                                            : Icons.favorite_border,
+                                        size: 19,
+                                      ),
                                       onPressed: () async {
-                                        await widget.repository.commentAction(widget.reel.id, commentId, 'like');
+                                        await widget.repository.commentAction(
+                                          widget.reel.id,
+                                          commentId,
+                                          item['viewerLiked'] == true
+                                              ? 'unlike'
+                                              : 'like',
+                                        );
                                         await _load();
                                       },
                                     ),
