@@ -222,8 +222,20 @@ function createNotificationTriggers({ db, builder }) {
     const reelId = event.params.reelId;
     const creatorId = after.creatorId;
     if (!creatorId) return;
-    const followers = await db.collection("respects").where("toUserId", "==", creatorId).where("value", ">=", 5).limit(100).get();
-    let recipientIds = [...new Set(followers.docs.map((doc) => doc.data()?.fromUserId).filter((uid) => uid && uid !== creatorId))];
+    const followerQuery = db.collection("respects")
+      .where("toUserId", "==", creatorId)
+      .where("value", ">=", 5);
+    let followerPage = await followerQuery.limit(200).get();
+    const followerDocs = [...(followerPage.docs || [])];
+    while ((followerPage.docs || []).length === 200) {
+      followerPage = await followerQuery
+        .startAfter(followerPage.docs[followerPage.docs.length - 1])
+        .limit(200).get();
+      followerDocs.push(...(followerPage.docs || []));
+    }
+    let recipientIds = [...new Set(followerDocs
+      .map((doc) => doc.data()?.fromUserId)
+      .filter((uid) => uid && uid !== creatorId))];
     if (!recipientIds.length) return;
     const [muted, creatorBlocksA, creatorBlocksB] = await Promise.all([
       db.collectionGroup("kirariMutedCreators").where("creatorId", "==", creatorId).get(),
@@ -328,6 +340,9 @@ function createNotificationTriggers({ db, builder }) {
   }
 
   async function kirariCommentLike(event) {
+    const reel = await db.collection("kirari").doc(event.params.reelId).get();
+    if (!reel.exists || reel.data()?.status !== "published" ||
+        reel.data()?.moderationStatus !== "approved") return;
     const comment = await db.collection("kirari").doc(event.params.reelId)
       .collection("comments").doc(event.params.commentId).get();
     if (!comment.exists || comment.data()?.status !== "published") return;
