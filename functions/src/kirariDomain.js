@@ -805,7 +805,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       }
       if (parentId) {
         const parent = await tx.get(ref.collection("comments").doc(parentId));
-        if (!parent.exists || parent.data().status === "deleted") {
+        if (!parent.exists || parent.data()?.status !== "published") {
           fail("not-found", "The comment you're replying to is unavailable.");
         }
       }
@@ -845,6 +845,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       ]);
       if (!reel.exists || reel.data()?.status !== "published" || reel.data()?.moderationStatus !== "approved" || !comment.exists) fail("not-found", "Comment not found.");
       const data = comment.data();
+      if (kind !== "delete" && data.status !== "published") {
+        fail("not-found", "Comment not found.");
+      }
       if (kind === "delete") {
         if (data.authorId !== uid && reel.data().creatorId !== uid) {
           fail("permission-denied", "You cannot delete this comment.");
@@ -1325,7 +1328,10 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const before = await ref.collection("comments").doc(
         inputId(request.data.before, "before"),
       ).get();
-      if (before.exists) query = query.startAfter(before);
+      if (!before.exists || before.data()?.status !== "published") {
+        fail("invalid-argument", "The comment cursor is no longer valid.");
+      }
+      query = query.startAfter(before);
     }
     const snap = await query.get();
     const docs = snap.docs.slice(0, limit);
