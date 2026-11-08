@@ -857,5 +857,5 @@ test("deleting an unfinished upload refunds its daily quota exactly once", async
   assert.equal(records.quota.count, 3);
   assert.equal(records.lock, undefined);
   assert.equal(records.key, undefined);
-  assert.equal(deletedObjects.length, 2, "storage cleanup runs only for the first successful deletion");
+  assert.equal(deletedObjects.length, 4, "storage cleanup is retried while the quota refund remains single-use");
 });
