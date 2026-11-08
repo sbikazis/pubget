@@ -49,8 +49,8 @@ void main() {
   test('deduplicates simultaneous downloads for the same rendition', () async {
     final cache = KirariVideoCache(directory: directory);
     final results = await Future.wait([
-      cache.getOrDownload(reelId: 'reel-2', quality: 360, source: uri),
-      cache.getOrDownload(reelId: 'reel-2', quality: 360, source: uri),
+      cache.getOrDownload(reelId: 'reel-2', quality: 360, source: testUri()),
+      cache.getOrDownload(reelId: 'reel-2', quality: 360, source: testUri()),
     ]);
     expect(results[0].path, results[1].path);
     expect(requests, 1);
@@ -63,7 +63,7 @@ void main() {
       maxFileBytes: 128 * 1024,
     );
     await expectLater(
-      cache.getOrDownload(reelId: 'reel-3', quality: 360, source: uri),
+      cache.getOrDownload(reelId: 'reel-3', quality: 360, source: testUri()),
       throwsA(isA<StateError>()),
     );
     expect(await Directory(directory.path).list().toList(), isEmpty);
@@ -81,7 +81,7 @@ void main() {
 
     final cache = KirariVideoCache(directory: directory);
     await expectLater(
-      cache.getOrDownload(reelId: 'reel-4', quality: 360, source: uri),
+      cache.getOrDownload(reelId: 'reel-4', quality: 360, source: testUri()),
       throwsA(isA<StateError>()),
     );
     expect(await Directory(directory.path).list().toList(), isEmpty);
