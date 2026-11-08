@@ -138,3 +138,23 @@ test("Respect notifications are emitted for changed positive values only", async
   });
   assert.equal(calls.length, 1);
 });
+
+
+test("Kirari comment likes notify the comment author, not the liker", async () => {
+  const { triggers, calls } = setup({
+    "kirari/reel-1": {
+      creatorId: "creator", status: "published", moderationStatus: "approved",
+    },
+    "kirari/reel-1/comments/comment-1": {
+      authorId: "commentAuthor", status: "published",
+    },
+  });
+  await triggers.kirariCommentLike({
+    id: "comment-like-event",
+    params: { reelId: "reel-1", commentId: "comment-1", uid: "fan" },
+  });
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].recipientIds, ["commentAuthor"]);
+  assert.equal(calls[0].type, "kirari_comment_like");
+  assert.equal(calls[0].actorId, "fan");
+});
