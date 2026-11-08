@@ -107,10 +107,14 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
     const creatorId = uid(request);
     const reelId = string(request.data?.reelId, 128);
     const audioName = string(request.data?.audioName || "", 128);
-    const startMs = request.data?.startMs == null ? 0 : Number(request.data.startMs);
-    const durationMs = request.data?.durationMs == null ? 15000 : Number(request.data.durationMs);
+    const requestedStartMs = request.data?.startMs == null ? 0 : Number(request.data.startMs);
+    const requestedDurationMs = request.data?.durationMs == null ? 15000 : Number(request.data.durationMs);
 
     if (!reelId) throw new HttpsError("invalid-argument", "reelId is required.");
+    if (!Number.isFinite(requestedStartMs) || !Number.isFinite(requestedDurationMs) ||
+        requestedStartMs < 0 || requestedDurationMs < 1000) {
+      throw new HttpsError("invalid-argument", "Audio start and duration must be valid positive millisecond values.");
+    }
 
     const reel = await reelRef(reelId).get();
     if (!reel.exists) throw new HttpsError("not-found", "Reel not found.");
@@ -127,6 +131,14 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
       throw new HttpsError("failed-precondition", "Video file not available.");
     }
 
+    const reelDurationMs = Math.max(0, Number(reelData.durationSeconds) * 1000 || 0);
+    if (reelDurationMs < 1000) {
+      throw new HttpsError("failed-precondition", "The source Reel duration is unavailable.");
+    }
+    const startMs = Math.min(requestedStartMs, Math.max(0, reelDurationMs - 1000));
+    const durationMs = Math.max(1000, Math.min(
+      requestedDurationMs, 60000, reelDurationMs - startMs,
+    ));
     const audioId = db.collection(AUDIO_COLLECTION).doc().id;
     const audioPath = `reelAudios/${creatorId}/${audioId}.m4a`;
 
@@ -138,8 +150,8 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
         name: audioName || `Audio from ${reelData.caption?.slice(0, 30) || "Reel"}`,
         displayName: audioName || `Original Audio`,
         storagePath: audioPath,
-        durationMs: Math.min(durationMs, 60000),
-        startMs: Math.max(0, Math.min(startMs, (reelData.durationSeconds || 0) * 1000 - 1000)),
+        durationMs,
+        startMs,
         usageCount: 0,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
