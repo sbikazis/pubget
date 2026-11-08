@@ -644,7 +644,8 @@ class KirariPlaybackReporter {
 
   Future<void> report(VideoPlayerController controller) async {
     final session = _sessionId;
-    if (session == null || _busy || !controller.value.isInitialized) return;
+    if (session == null || _busy || !controller.value.isInitialized ||
+        !controller.value.isPlaying) return;
     final duration = controller.value.duration.inMilliseconds / 1000;
     final position = controller.value.position.inMilliseconds / 1000;
     if (duration <= 0) return;
@@ -655,7 +656,6 @@ class KirariPlaybackReporter {
     if (position <= _lastPosition) return;
     final watched = (position - _lastPosition).clamp(0, 5).toDouble();
     if (watched <= 0) return;
-    _lastPosition = position;
     _busy = true;
     try {
       await repository.recordPlayback(
@@ -665,6 +665,10 @@ class KirariPlaybackReporter {
         watchSeconds: watched,
         percent: (position / duration * 100).clamp(0, 100).toDouble(),
       );
+      _lastPosition = position;
+    } catch (_) {
+      // Keep the last acknowledged position so the next heartbeat retries
+      // without turning a temporary network failure into lost watch progress.
     } finally {
       _busy = false;
     }
