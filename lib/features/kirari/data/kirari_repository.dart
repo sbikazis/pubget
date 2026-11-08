@@ -20,6 +20,16 @@ class KirariReel {
     this.audioId,
     this.audioAttribution = const <String, dynamic>{},
     this.renditionPaths = const <String, String>{},
+    this.creatorUsername = "",
+    this.creatorAvatarUrl = "",
+    this.viewerLiked = false,
+    this.viewerSaved = false,
+    this.contentCategory = 'anime_edit',
+    this.animeIds = const <String>[],
+    this.characterIds = const <String>[],
+    this.animeTitles = const <String>[],
+    this.characterNames = const <String>[],
+    this.mentionMetadata = const <Map<String, dynamic>>[],
   });
 
   final String id;
@@ -33,6 +43,44 @@ class KirariReel {
   final String? audioId;
   final Map<String, dynamic> audioAttribution;
   final Map<String, String> renditionPaths;
+  final String creatorUsername;
+  final String creatorAvatarUrl;
+  final bool viewerLiked;
+  final bool viewerSaved;
+  final String contentCategory;
+  final List<String> animeIds;
+  final List<String> characterIds;
+  final List<String> animeTitles;
+  final List<String> characterNames;
+  final List<Map<String, dynamic>> mentionMetadata;
+
+  KirariReel copyWith({
+    int? likesCount,
+    bool? viewerLiked,
+    bool? viewerSaved,
+  }) => KirariReel(
+    id: id,
+    creatorId: creatorId,
+    caption: caption,
+    videoUrl: videoUrl,
+    coverUrl: coverUrl,
+    durationSeconds: durationSeconds,
+    likesCount: likesCount ?? this.likesCount,
+    commentsCount: commentsCount,
+    audioId: audioId,
+    audioAttribution: audioAttribution,
+    renditionPaths: renditionPaths,
+    creatorUsername: creatorUsername,
+    creatorAvatarUrl: creatorAvatarUrl,
+    viewerLiked: viewerLiked ?? this.viewerLiked,
+    viewerSaved: viewerSaved ?? this.viewerSaved,
+    contentCategory: contentCategory,
+    animeIds: animeIds,
+    characterIds: characterIds,
+    animeTitles: animeTitles,
+    characterNames: characterNames,
+    mentionMetadata: mentionMetadata,
+  );
 
   factory KirariReel.fromMap(Map<dynamic, dynamic> map) {
     return KirariReel(
@@ -55,6 +103,19 @@ class KirariReel {
                   key.toString(), value is Map ? (value['path'] as String? ?? '') : '',
                 ))
               : const <String, String>{}),
+      creatorUsername: map['creatorUsername'] as String? ?? '',
+      creatorAvatarUrl: map['creatorAvatarUrl'] as String? ?? '',
+      viewerLiked: map['viewerLiked'] == true,
+      viewerSaved: map['viewerSaved'] == true,
+      contentCategory: map['contentCategory'] as String? ?? 'anime_edit',
+      animeIds: (map['animeIds'] as List? ?? const <dynamic>[]).whereType<String>().toList(),
+      characterIds: (map['characterIds'] as List? ?? const <dynamic>[]).whereType<String>().toList(),
+      animeTitles: (map['animeMetadata'] as List? ?? const <dynamic>[])
+          .whereType<Map>().map((item) => item['title']).whereType<String>().toList(),
+      characterNames: (map['characterMetadata'] as List? ?? const <dynamic>[])
+          .whereType<Map>().map((item) => item['name']).whereType<String>().toList(),
+      mentionMetadata: (map['mentionMetadata'] as List? ?? const <dynamic>[])
+          .whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
     );
   }
 }
@@ -102,6 +163,7 @@ abstract interface class KirariRepository {
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24});
   Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20});
   Future<KirariReel> getReel(String reelId);
+  Future<KirariFeedPageResult> getSavedReels({int limit = 30, Map<String, dynamic>? cursor});
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality});
   Future<void> giveCreatorRespect({required String creatorId, required int value});
   Future<List<Map<String, dynamic>>> getComments(String reelId, {String? before, int limit = 30});
@@ -159,6 +221,29 @@ class FirebaseKirariRepository implements KirariRepository {
       throw StateError('The media service returned an invalid playback URL.');
     }
     return url;
+  }
+
+  Future<List<KirariReel>> _resolveReels(dynamic raw) async {
+    if (raw is! List) return const <KirariReel>[];
+    final resolved = await Future.wait(raw.whereType<Map>().map((value) async {
+      try {
+        final map = Map<dynamic, dynamic>.from(value);
+        final variants = map['renditions'];
+        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
+        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
+        final videoPath = preferred is Map ? preferred['path'] as String? : null;
+        final coverPath = map['coverPath'] as String?;
+        if (videoPath == null || videoPath.isEmpty) return null;
+        final urls = await Future.wait<String>([
+          _resolveMediaPath(videoPath),
+          coverPath == null || coverPath.isEmpty
+              ? Future<String>.value('')
+              : _resolveMediaPath(coverPath).catchError((_) => ''),
+        ]);
+        return KirariReel.fromMap({...map, 'playbackUrl': urls[0], 'coverUrl': urls[1]});
+      } catch (_) { return null; }
+    }));
+    return resolved.whereType<KirariReel>().toList(growable: false);
   }
 
   Future<Map<dynamic, dynamic>> _call(String name, Map<String, dynamic> data) async {
@@ -620,6 +705,8 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20}) async => throw _unavailable();
   @override
   Future<KirariReel> getReel(String reelId) async => throw _unavailable();
+  @override
+  Future<KirariFeedPageResult> getSavedReels({int limit = 30, Map<String, dynamic>? cursor}) async => throw _unavailable();
   @override
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24}) async => throw _unavailable();
   @override
