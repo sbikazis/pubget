@@ -41,6 +41,9 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   static DateTime? _measuredAt;
   Timer? _reportTimer;
   int _activeIndex = 0;
+  int _activationGeneration = 0;
+  int _feedGeneration = 0;
+  bool _resumeAfterLifecycle = false;
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = true;
@@ -68,16 +71,24 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
       _reportTimer?.cancel();
-      _controller?.pause();
-    } else if (state == AppLifecycleState.resumed) {
-      _controller?.play();
-      _startReporter();
+      final controller = _controller;
+      _resumeAfterLifecycle = controller?.value.isPlaying == true;
+      if (_resumeAfterLifecycle) unawaited(controller!.pause());
+    } else if (state == AppLifecycleState.resumed && _resumeAfterLifecycle) {
+      _resumeAfterLifecycle = false;
+      final controller = _controller;
+      if (controller != null && controller.value.isInitialized) {
+        unawaited(controller.play());
+        _startReporter();
+      }
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _activationGeneration++;
+    _feedGeneration++;
     _reportTimer?.cancel();
     final controller = _controller;
     _controller = null;
@@ -89,7 +100,9 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   }
 
   Future<void> _load({required bool reset}) async {
-    if (_loadingMore || (!reset && !_hasMore)) return;
+    if (!reset && (_loadingMore || !_hasMore)) return;
+    if (reset) _feedGeneration++;
+    final generation = _feedGeneration;
     setState(() {
       if (reset) {
         _loading = true;
@@ -107,7 +120,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         type: _feedType,
         cursor: reset ? null : _cursor,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _feedGeneration) return;
       setState(() {
         _items.addAll(page.items);
         _cursor = page.nextCursor;
@@ -121,7 +134,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         unawaited(_prefetchNext(_activeIndex + 1));
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _feedGeneration) return;
       setState(() {
         _loading = false;
         _loadingMore = false;
@@ -207,49 +220,24 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     throw StateError('Kirari playback failed for all available renditions: $lastError');
   }
 
-  Future<VideoPlayerController> _makeCachedController(KirariReel reel) async {
-    final preferred = await _adaptiveQuality(reel);
-    final qualities = <int>{preferred, 540, 360, 720};
-    Object? lastError;
-    for (final quality in qualities) {
-      try {
-        final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
-        final file = cached ?? await _videoCache.getOrDownload(
-          reelId: reel.id,
-          quality: quality,
-          source: Uri.parse(await _repository.getPlaybackUrl(reel, quality: quality)),
-        );
-        final controller = VideoPlayerController.file(file);
-        try {
-          await controller.initialize().timeout(const Duration(seconds: 20));
-          return controller;
-        } catch (_) {
-          await controller.dispose();
-          rethrow;
-        }
-      } catch (error) {
-        lastError = error;
-      }
-    }
-    // Disk prefetch is best-effort. A live network controller keeps the feed
-    // usable when the cache download is interrupted by weak connectivity.
-    try {
-      return await _makeController(reel);
-    } catch (error) {
-      throw StateError('Kirari prefetch failed: $lastError; playback: $error');
-    }
+  Future<VideoPlayerController> _makeCachedController(KirariReel reel) {
+    // Initialize the next controller from a cached file when available, or
+    // directly from the adaptive network rendition. Never download an entire
+    // next video before allowing the user to swipe to it.
+    return _makeController(reel);
   }
 
   Future<void> _prefetchNext(int index) async {
     if (index < 0 || index >= _items.length ||
-        _prefetchController != null || index == _activeIndex) return;
+        _prefetchController != null || index != _activeIndex + 1) return;
     final reel = _items[index];
     VideoPlayerController? controller;
     try {
       controller = await _makeCachedController(reel);
       await controller.setLooping(true);
       await controller.pause();
-      if (!mounted || index == _activeIndex) {
+      if (!mounted || index != _activeIndex + 1 ||
+          _items[index].id != reel.id) {
         await controller.dispose();
         return;
       }
@@ -263,12 +251,13 @@ class _KirariFeedPageState extends State<KirariFeedPage>
 
   Future<void> _activate(int index) async {
     if (index < 0 || index >= _items.length) return;
+    final generation = ++_activationGeneration;
     _reportTimer?.cancel();
     final previous = _controller;
     _controller = null;
     _reporter = null;
     if (previous != null) await previous.dispose();
-    if (!mounted) return;
+    if (!mounted || generation != _activationGeneration) return;
     VideoPlayerController? controller;
     if (_prefetchIndex == index) {
       controller = _prefetchController;
@@ -283,9 +272,20 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     final reel = _items[index];
     try {
       controller ??= await _makeController(reel);
+      if (!mounted || generation != _activationGeneration) {
+        await controller.dispose();
+        return;
+      }
       _controller = controller;
       setState(() => _activeIndex = index);
-      if (!controller.value.isInitialized) await controller.initialize();
+      if (!controller.value.isInitialized) {
+        await controller.initialize().timeout(const Duration(seconds: 20));
+      }
+      if (!mounted || generation != _activationGeneration ||
+          !identical(_controller, controller)) {
+        await controller.dispose();
+        return;
+      }
       await controller.setLooping(true);
       await controller.play();
       _cacheActiveReel(reel);
@@ -299,14 +299,16 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       } catch (_) {
         // Playback must remain available when analytics is temporarily offline.
       }
-      if (!mounted || !identical(_controller, controller)) {
+      if (!mounted || generation != _activationGeneration ||
+          !identical(_controller, controller)) {
         await controller.dispose();
         return;
       }
       setState(() {});
       unawaited(_prefetchNext(index + 1));
     } catch (_) {
-      if (identical(_controller, controller)) {
+      if (mounted && generation == _activationGeneration &&
+          identical(_controller, controller)) {
         setState(() => _error = KirariCopy.of(context).playbackError);
       }
       if (controller != null) await controller.dispose();
@@ -319,6 +321,9 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     // first frame on weak mobile connections.
     unawaited(() async {
       final quality = await _adaptiveQuality(reel);
+      // Do not compete with active playback on a weak connection. Disk
+      // caching is opportunistic and reserved for fast, stable links.
+      if ((_measuredMbps ?? 0) < 5.0) return;
       final cached = await _videoCache.getCached(reelId: reel.id, quality: quality);
       if (cached != null) return;
       final url = await _repository.getPlaybackUrl(reel, quality: quality);
