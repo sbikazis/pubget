@@ -143,7 +143,8 @@ class _NotificationTile extends StatelessWidget {
     'friend_request' => Icons.person_add_outlined,
     'friend_accepted' => Icons.person_add_alt_1_outlined,
     'respect_received' => Icons.favorite_outline,
-    'kirari_comment' => Icons.mode_comment_outlined,
+    'kirari_comment' || 'kirari_comment_reply' => Icons.mode_comment_outlined,
+    'kirari_comment_like' || 'kirari_like' => Icons.favorite_outline,
     'kirari_published' => Icons.play_circle_outline,
     'game_invite' ||
     'game_started' ||
@@ -180,6 +181,9 @@ class _NotificationTile extends StatelessWidget {
       'friend_accepted' => 'Friend request accepted',
       'respect_received' => 'Respect received',
       'kirari_comment' => 'New comment on your video',
+      'kirari_comment_reply' => 'New reply to a comment',
+      'kirari_comment_like' => 'Someone liked your comment',
+      'kirari_like' => 'Someone liked your video',
       'kirari_published' => 'New video from a creator you follow',
       'game_invite' => 'Game invite',
       'game_started' => 'Game starting',
@@ -201,6 +205,15 @@ class _NotificationTile extends StatelessWidget {
     }
     if (item.type == 'kirari_comment') {
       return 'Someone commented on your video.';
+    }
+    if (item.type == 'kirari_comment_reply') {
+      return 'Someone replied to your comment.';
+    }
+    if (item.type == 'kirari_comment_like') {
+      return 'Someone liked your comment.';
+    }
+    if (item.type == 'kirari_like') {
+      return 'Someone liked your video.';
     }
     if (item.type == 'kirari_published') {
       return 'A creator you follow published a new video.';
