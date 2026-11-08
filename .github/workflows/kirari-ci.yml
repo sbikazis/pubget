@@ -2,7 +2,7 @@ name: Kirari CI
 
 on:
   push:
-    branches: [feat/kirari-system-rebuild, feature/15-kirari-production-rebuild, feature/16-security-moderation-hardening]
+    branches: [feat/kirari-system-rebuild, feature/15-kirari-production-rebuild, feature/16-security-moderation-hardening, feature/17-player-feed-ranking-performance]
     paths:
       - 'test/**'
       - 'lib/features/kirari/**'
