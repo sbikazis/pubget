@@ -24,6 +24,7 @@ class KirariVideoCache {
   final int maxFileBytes;
 
   static final Map<String, Future<File>> _inFlight = <String, Future<File>>{};
+  static Future<void> _pruneQueue = Future<void>.value();
 
   Future<Directory> _root() async {
     final directory = _directory ??
@@ -173,27 +174,35 @@ class KirariVideoCache {
   }
 
   Future<int> _prune({required String excluding}) async {
-    final root = await _root();
-    final files = <({File file, int size, DateTime modified})>[];
-    var total = 0;
-    await for (final entity in root.list(followLinks: false)) {
-      if (entity is! File || !entity.path.endsWith('.mp4')) continue;
-      final stat = await entity.stat();
-      total += stat.size;
-      files.add((file: entity, size: stat.size, modified: stat.modified));
-    }
-    files.sort((a, b) => a.modified.compareTo(b.modified));
-
-    for (final item in files) {
-      if (total <= maxBytes) break;
-      if (item.file.path == excluding) continue;
-      try {
-        await item.file.delete();
-        total -= item.size;
-      } catch (_) {
-        // A file currently held by a player is left in place.
+    final previous = _pruneQueue;
+    final release = Completer<void>();
+    _pruneQueue = release.future;
+    await previous;
+    try {
+      final root = await _root();
+      final files = <({File file, int size, DateTime modified})>[];
+      var total = 0;
+      await for (final entity in root.list(followLinks: false)) {
+        if (entity is! File || !entity.path.endsWith('.mp4')) continue;
+        final stat = await entity.stat();
+        total += stat.size;
+        files.add((file: entity, size: stat.size, modified: stat.modified));
       }
+      files.sort((a, b) => a.modified.compareTo(b.modified));
+
+      for (final item in files) {
+        if (total <= maxBytes) break;
+        if (item.file.path == excluding) continue;
+        try {
+          await item.file.delete();
+          total -= item.size;
+        } catch (_) {
+          // A file currently held by a player is left in place.
+        }
+      }
+      return total;
+    } finally {
+      release.complete();
     }
-    return total;
   }
 }
