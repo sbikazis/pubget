@@ -27,28 +27,46 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  Uri get uri => Uri.parse('http://${server.address.address}:${server.port}/video.mp4');
+
   test('stores a complete rendition and reuses it after cache recreation', () async {
-    final uri = Uri.parse('http://${server.address.address}:${server.port}/video.mp4');
     final firstCache = KirariVideoCache(directory: directory);
     final first = await firstCache.getOrDownload(
-      reelId: 'reel-1',
-      quality: 540,
-      source: uri,
+      reelId: 'reel-1', quality: 540, source: uri,
     );
-
     expect(await first.length(), bytes.length);
     expect(await first.readAsBytes(), bytes);
     expect(requests, 1);
 
     final secondCache = KirariVideoCache(directory: directory);
     final second = await secondCache.getOrDownload(
-      reelId: 'reel-1',
-      quality: 540,
-      source: uri,
+      reelId: 'reel-1', quality: 540, source: uri,
     );
-
     expect(second.path, first.path);
     expect(requests, 1);
+  });
+
+  test('deduplicates simultaneous downloads for the same rendition', () async {
+    final cache = KirariVideoCache(directory: directory);
+    final results = await Future.wait([
+      cache.getOrDownload(reelId: 'reel-2', quality: 360, source: uri),
+      cache.getOrDownload(reelId: 'reel-2', quality: 360, source: uri),
+    ]);
+    expect(results[0].path, results[1].path);
+    expect(requests, 1);
+  });
+
+  test('rejects a rendition larger than the configured cache file limit', () async {
+    final cache = KirariVideoCache(
+      directory: directory,
+      maxBytes: 128 * 1024,
+      maxFileBytes: 128 * 1024,
+    );
+    await expectLater(
+      cache.getOrDownload(reelId: 'reel-3', quality: 360, source: uri),
+      throwsA(isA<StateError>()),
+    );
+    expect(await Directory(directory.path).list().toList(), isEmpty);
   });
 
   test('does not expose a failed partial download as a cache hit', () async {
@@ -62,12 +80,10 @@ void main() {
     });
 
     final cache = KirariVideoCache(directory: directory);
-    final uri = Uri.parse('http://${server.address.address}:${server.port}/video.mp4');
     await expectLater(
-      cache.getOrDownload(reelId: 'reel-2', quality: 360, source: uri),
+      cache.getOrDownload(reelId: 'reel-4', quality: 360, source: uri),
       throwsA(isA<StateError>()),
     );
-
     expect(await Directory(directory.path).list().toList(), isEmpty);
   });
 }
