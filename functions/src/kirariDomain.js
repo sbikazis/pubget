@@ -109,8 +109,9 @@ function normalizeEditSettings(value) {
   const speed = clamp(input.speed ?? 1, 0.5, 2);
   const filter = ["none", "warm", "cool", "mono", "vivid"].includes(input.filter)
     ? input.filter : "none";
+  // Prevent control characters from altering FFmpeg drawtext/filter parsing.
   const overlayText = typeof input.overlayText === "string"
-    ? input.overlayText.trim().slice(0, 80) : "";
+    ? input.overlayText.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 80) : "";
   const trimStartSeconds = clamp(input.trimStartSeconds ?? 0, 0, 57);
   const trimEndSeconds = clamp(input.trimEndSeconds ?? 60, trimStartSeconds + 3, 60);
   const coverTimeSeconds = clamp(input.coverTimeSeconds ?? trimStartSeconds, trimStartSeconds, trimEndSeconds);
