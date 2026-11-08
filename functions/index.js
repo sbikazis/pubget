@@ -1116,7 +1116,7 @@ exports.onFriendRequestAccepted = onDocumentUpdated(
   "friendships/{friendshipId}",
   notificationTriggers.friendAccepted,
 );
-exports.onRespectReceived = onDocumentCreated(
+exports.onRespectReceived = onDocumentWritten(
   "respects/{respectId}",
   notificationTriggers.respectReceived,
 );
@@ -1127,6 +1127,10 @@ exports.onKirariPublished = onDocumentUpdated(
 exports.onKirariComment = onDocumentCreated(
   "kirari/{reelId}/comments/{commentId}",
   notificationTriggers.kirariComment,
+);
+exports.onKirariLike = onDocumentCreated(
+  "kirari/{reelId}/actions/{actionId}",
+  notificationTriggers.kirariLike,
 );
 exports.unblockUser = onCall(
   { region: "us-central1" },
