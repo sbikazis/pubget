@@ -699,7 +699,10 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
   final _controller = TextEditingController();
   List<Map<String, dynamic>> _comments = const [];
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = false;
   bool _sending = false;
+  String? _nextCursor;
   String? _error;
   String? _replyToId;
   String? _replyToAuthor;
@@ -719,9 +722,36 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
   Future<void> _load() async {
     try {
       final comments = await widget.repository.getComments(widget.reel.id);
-      if (mounted) setState(() { _comments = comments; _loading = false; _error = null; });
+      if (mounted) setState(() {
+        _comments = comments;
+        _nextCursor = comments.isEmpty ? null : comments.last['id'] as String?;
+        _hasMore = comments.length >= 30;
+        _loading = false;
+        _error = null;
+      });
     } catch (_) {
       if (mounted) setState(() { _loading = false; _error = 'Could not load comments.'; });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore || _nextCursor == null) return;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await widget.repository.getComments(
+        widget.reel.id, before: _nextCursor,
+      );
+      if (!mounted) return;
+      setState(() {
+        _comments = [..._comments, ...page];
+        _nextCursor = page.isEmpty ? null : page.last['id'] as String?;
+        _hasMore = page.length >= 30;
+        _error = null;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not load more comments. Please retry.');
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
     }
   }
 
@@ -764,8 +794,22 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                     : _comments.isEmpty
                         ? const Center(child: Text('No comments yet.'))
                         : ListView.builder(
-                            itemCount: _comments.length,
+                            itemCount: _comments.length + (_hasMore ? 1 : 0),
                             itemBuilder: (context, index) {
+                              if (index == _comments.length) {
+                                return Center(
+                                  child: TextButton.icon(
+                                    onPressed: _loadingMore ? null : _loadMore,
+                                    icon: _loadingMore
+                                        ? const SizedBox(
+                                            width: 16, height: 16,
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          )
+                                        : const Icon(Icons.expand_more),
+                                    label: Text(_loadingMore ? 'Loading…' : 'Load more comments'),
+                                  ),
+                                );
+                              }
                               final item = _comments[index];
                               final deleted = item['status'] == 'deleted';
                               final commentId = item['id'] as String? ?? '';
