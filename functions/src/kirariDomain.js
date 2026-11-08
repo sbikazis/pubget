@@ -979,13 +979,21 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const eventRef = sessionRef.collection("events").doc(eventId);
     const viewerRef = ref.collection("viewers").doc(uid);
     const seenRef = db.collection("users").doc(uid).collection("kirariSeen").doc(reelId);
+    const activeRef = db.collection("users").doc(uid)
+      .collection("kirariPlaybackState").doc("active");
     await db.runTransaction(async (tx) => {
-      const [reel, session, event, viewer, seen] = await Promise.all([
-        tx.get(ref), tx.get(sessionRef), tx.get(eventRef), tx.get(viewerRef), tx.get(seenRef),
+      const [reel, session, event, viewer, seen, active] = await Promise.all([
+        tx.get(ref), tx.get(sessionRef), tx.get(eventRef), tx.get(viewerRef),
+        tx.get(seenRef), tx.get(activeRef),
       ]);
       if (!reel.exists || reel.data().status !== "published" || reel.data().moderationStatus !== "approved") fail("not-found", "Kirari video not found.");
       if (!session.exists || session.data().viewerId !== uid) fail("permission-denied", "Playback session is invalid.");
       if (event.exists) return;
+      const activeData = active.data() || {};
+      if (!active.exists || activeData.reelId !== reelId ||
+          activeData.sessionId !== sessionId) {
+        fail("failed-precondition", "Playback session is no longer the active session.");
+      }
       const data = session.data();
       if (data.expiresAt?.toMillis?.() < Date.now()) fail("failed-precondition", "Playback session expired.");
       // Watch duration and completion are derived exclusively from elapsed
