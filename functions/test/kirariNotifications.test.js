@@ -93,7 +93,7 @@ test("Kirari publication never notifies before moderation approval", async () =>
 test("Kirari comments notify the video creator but not the commenter", async () => {
   const calls = [];
   const triggers = createNotificationTriggers({
-    db: makeDb({ reel: { creatorId: "creator" } }),
+    db: makeDb({ reel: { creatorId: "creator", status: "published", moderationStatus: "approved" } }),
     builder: { async build(payload) { calls.push(payload); } },
   });
   await triggers.kirariComment({
