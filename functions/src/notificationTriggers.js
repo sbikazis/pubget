@@ -146,19 +146,43 @@ function createNotificationTriggers({ db, builder }) {
     });
   }
 
+  function friendshipDocumentId(first, second) {
+    const [userA, userB] = [first, second].sort();
+    return userA.length + ":" + userA + userB.length + ":" + userB;
+  }
+
+  async function isBlockedPair(first, second) {
+    if (!first || !second || first === second) return false;
+    const relation = await db.collection("friendships")
+      .doc(friendshipDocumentId(first, second)).get().catch(() => null);
+    return Boolean(relation && relation.exists &&
+      relation.data()?.status === "blocked");
+  }
+
+  async function isMuted(recipientId, actorId) {
+    const muted = await db.collection("users").doc(recipientId)
+      .collection("kirariMutedCreators").doc(actorId).get().catch(() => null);
+    return Boolean(muted && muted.exists);
+  }
+
   async function respectReceived(event) {
-    const data = event.data && event.data.data();
-    if (!data || !data.toUserId || !data.fromUserId) return;
+    const after = event.data && event.data.after && event.data.after.data();
+    const before = event.data && event.data.before && event.data.before.data();
+    if (!after || !after.toUserId || !after.fromUserId ||
+        after.fromUserId === after.toUserId ||
+        !(Number(after.value) > 0) ||
+        (before && before.value === after.value)) return;
+    if (await isBlockedPair(after.fromUserId, after.toUserId)) return;
     return builder.build({
-      id: `respect_received_${event.params.respectId}`,
-      recipientIds: [data.toUserId],
+      id: "respect_received_" + event.params.respectId + "_" + event.id,
+      recipientIds: [after.toUserId],
       type: "respect_received",
-      actorId: data.fromUserId,
-      targetId: data.toUserId,
+      actorId: after.fromUserId,
+      targetId: after.toUserId,
       action: "respect_received",
-      destination: `/profile?uid=${encodeURIComponent(data.fromUserId)}`,
-      metadata: { value: data.value || 0 },
-      groupKey: `respect_received_${data.toUserId}`,
+      destination: "/profile?uid=" + encodeURIComponent(after.fromUserId),
+      metadata: { value: after.value },
+      groupKey: "respect_received_" + after.toUserId,
       pushWorthy: true,
       body: "تلقيت Respect جديدًا",
     });
@@ -232,33 +256,81 @@ function createNotificationTriggers({ db, builder }) {
 
   async function kirariComment(event) {
     const comment = event.data && event.data.data();
-    if (!comment || comment.status !== "published") return;
+    if (!comment || comment.status !== "published" || !comment.authorId) return;
     const reelId = event.params.reelId;
     const reel = await db.collection("kirari").doc(reelId).get();
-    if (!reel.exists) return;
+    if (!reel.exists || reel.data()?.status !== "published" ||
+        reel.data()?.moderationStatus !== "approved") return;
     const creatorId = reel.data()?.creatorId;
-    if (!creatorId || creatorId === comment.authorId) return;
-    const [blockedPair, mutedAuthor] = await Promise.all([
-      db.collection("friendships").doc(
-        [creatorId, comment.authorId].sort().map((id) => id.length + ":" + id).join(""),
-      ).get().catch(() => null),
-      db.collection("users").doc(creatorId).collection("kirariMutedCreators")
-        .doc(comment.authorId).get().catch(() => null),
-    ]);
-    if ((blockedPair && blockedPair.exists && blockedPair.data()?.status === "blocked") ||
-        (mutedAuthor && mutedAuthor.exists)) return;
+    const recipients = new Set();
+    if (creatorId) recipients.add(creatorId);
+    if (comment.parentId) {
+      const parent = await db.collection("kirari").doc(reelId)
+        .collection("comments").doc(comment.parentId).get();
+      if (parent.exists && parent.data()?.status === "published" &&
+          parent.data()?.authorId) recipients.add(parent.data().authorId);
+    }
+    recipients.delete(comment.authorId);
+    const allowed = [];
+    for (const recipientId of recipients) {
+      const [blockedAuthor, mutedAuthor, blockedCreator] = await Promise.all([
+        isBlockedPair(recipientId, comment.authorId),
+        isMuted(recipientId, comment.authorId),
+        creatorId && creatorId !== comment.authorId
+          ? isBlockedPair(recipientId, creatorId) : Promise.resolve(false),
+      ]);
+      if (!blockedAuthor && !mutedAuthor && !blockedCreator) allowed.push(recipientId);
+    }
+    if (!allowed.length) return;
     return builder.build({
-      id: "kirari_comment_" + event.params.commentId, recipientIds: [creatorId],
-      type: "kirari_comment", actorId: comment.authorId, targetId: reelId,
-      action: "comment_created", destination: "/reel/" + encodeURIComponent(reelId),
-      metadata: { commentId: event.params.commentId }, groupKey: "kirari_comments_" + reelId,
-      pushWorthy: false, title: "New comment",
+      id: "kirari_comment_" + event.params.commentId,
+      recipientIds: allowed,
+      type: comment.parentId ? "kirari_comment_reply" : "kirari_comment",
+      actorId: comment.authorId, targetId: reelId,
+      action: comment.parentId ? "comment_replied" : "comment_created",
+      destination: "/reel/" + encodeURIComponent(reelId),
+      metadata: { commentId: event.params.commentId, parentId: comment.parentId || null },
+      groupKey: "kirari_comments_" + reelId,
+      pushWorthy: false, title: comment.parentId ? "New reply" : "New comment",
       body: String(comment.text || "Someone commented on your video").slice(0, 180),
     });
   }
+
+  async function kirariLike(event) {
+    const actionData = event.data && event.data.data();
+    if (!actionData || actionData.kind !== "like" || !actionData.uid) return;
+    const reelId = event.params.reelId;
+    const reel = await db.collection("kirari").doc(reelId).get();
+    if (!reel.exists || reel.data()?.status !== "published" ||
+        reel.data()?.moderationStatus !== "approved") return;
+    const creatorId = reel.data()?.creatorId;
+    const actorId = actionData.uid;
+    if (!creatorId || creatorId === actorId) return;
+    const [blocked, muted] = await Promise.all([
+      isBlockedPair(creatorId, actorId),
+      isMuted(creatorId, actorId),
+    ]);
+    if (blocked || muted) return;
+    return builder.build({
+      id: "kirari_like_" + reelId + "_" + event.id,
+      recipientIds: [creatorId],
+      type: "kirari_like",
+      actorId,
+      targetId: reelId,
+      action: "reel_liked",
+      destination: "/reel/" + encodeURIComponent(reelId),
+      metadata: { actionId: event.params.actionId },
+      groupKey: "kirari_likes_" + reelId,
+      pushWorthy: false,
+      title: "Kirari",
+      body: "Someone liked your video",
+    });
+  }
+
   return {
     kirariPublished,
     kirariComment,
+    kirariLike,
     groupMessage,
     privateMessage,
     joinRequest,
