@@ -35,6 +35,25 @@ test("hashtag normalization removes duplicates and unsafe characters", () => {
   assert.deepEqual(normalizeTags(null), []);
   assert.throws(() => normalizeTags(new Array(13).fill("tag")));
 });
+test("Kirari editor metadata clamps settings and strips control characters from overlay text", () => {
+  const settings = normalizeEditSettings({
+    trimStartSeconds: 8, trimEndSeconds: 24, speed: 1.5, filter: "warm",
+    overlayText: "  First line\nSecond\u0000line  ",
+    overlayStartSeconds: 12, overlayEndSeconds: 18, coverTimeSeconds: 20,
+    originalAudioVolume: 1.4, addedAudioVolume: -0.2,
+  });
+  assert.equal(settings.overlayText, "First line Second line");
+  assert.equal(settings.trimStartSeconds, 8);
+  assert.equal(settings.trimEndSeconds, 24);
+  assert.equal(settings.speed, 1.5);
+  assert.equal(settings.filter, "warm");
+  assert.equal(settings.coverTimeSeconds, 20);
+  assert.equal(settings.overlayStartSeconds, 12);
+  assert.equal(settings.overlayEndSeconds, 18);
+  assert.equal(settings.originalAudioVolume, 1);
+  assert.equal(settings.addedAudioVolume, 0);
+  assert.equal(normalizeEditSettings({ overlayText: "x".repeat(100) }).overlayText.length, 80);
+});
 
 test("Kirari ranking is bounded and reacts to relevance and negative feedback", () => {
   const now = Date.now();
