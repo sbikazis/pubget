@@ -524,32 +524,41 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const uid = auth(request);
     const reelId = inputString(request.data?.reelId, 128, "reelId");
     const ref = reelRef(reelId);
-    const snap = await ref.get();
-    if (!snap.exists) return { ok: true };
-    if (snap.data().creatorId !== uid) fail("permission-denied", "Only the creator can delete this video.");
-    const reel = snap.data();
-    if (reel.status !== "deleted") {
-      assertTransition(reel.status, "deleted");
-      await ref.update({ status: "deleted", deletedAt: FieldValue.serverTimestamp() });
-    }
-    if (["uploading", "failed"].includes(reel.status)) {
-      if (reel.quotaDay) {
-        const quotaRef = db.collection("kirariUploadQuotas").doc(uid + "_" + reel.quotaDay);
-        const quota = await quotaRef.get();
-        if (quota.exists) {
-          await quotaRef.update({
-            count: Math.max(0, Number(quota.data()?.count || 0) - 1),
-            updatedAt: FieldValue.serverTimestamp(),
-          });
-        }
-      }
-      if (reel.idempotencyKey) {
-        await db.collection("kirariUploadKeys").doc(uid + "_" + reel.idempotencyKey).delete().catch(() => {});
-      }
-    }
     const lockRef = db.collection("kirariUploadLocks").doc(uid);
-    const lock = await lockRef.get();
-    if (lock.exists && lock.data()?.reelId === reelId) await lockRef.delete();
+    const deletion = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return { existed: false, reel: null };
+      const reel = snap.data();
+      if (reel.creatorId !== uid) fail("permission-denied", "Only the creator can delete this video.");
+      if (reel.status === "deleted") return { existed: true, reel, changed: false };
+      assertTransition(reel.status, "deleted");
+
+      const refundQuota = ["uploading", "failed"].includes(reel.status);
+      const quotaRef = refundQuota && reel.quotaDay
+        ? db.collection("kirariUploadQuotas").doc(uid + "_" + reel.quotaDay) : null;
+      const keyRef = refundQuota && reel.idempotencyKey
+        ? db.collection("kirariUploadKeys").doc(uid + "_" + reel.idempotencyKey) : null;
+      const [lock, quota, key] = await Promise.all([
+        tx.get(lockRef),
+        quotaRef ? tx.get(quotaRef) : Promise.resolve(null),
+        keyRef ? tx.get(keyRef) : Promise.resolve(null),
+      ]);
+
+      tx.update(ref, { status: "deleted", deletedAt: FieldValue.serverTimestamp() });
+      if (lock.exists && lock.data()?.reelId === reelId) tx.delete(lockRef);
+      if (quotaRef && quota?.exists) {
+        tx.update(quotaRef, {
+          count: Math.max(0, Number(quota.data()?.count || 0) - 1),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      if (keyRef && key?.exists) tx.delete(keyRef);
+      return { existed: true, reel, changed: true };
+    });
+
+    if (!deletion.existed) return { ok: true };
+    const reel = deletion.reel;
+    if (!deletion.changed) return { ok: true };
     const paths = [
       reel.originalStoragePath || reel.storagePath,
       `kirari/${uid}/${reelId}/cover-source.jpg`,
