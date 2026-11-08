@@ -29,6 +29,7 @@ class KirariReel {
     this.contentCategory = 'anime_edit',
     this.animeIds = const <String>[],
     this.characterIds = const <String>[],
+    this.hashtags = const <String>[],
     this.animeTitles = const <String>[],
     this.characterNames = const <String>[],
     this.mentionMetadata = const <Map<String, dynamic>>[],
@@ -52,6 +53,7 @@ class KirariReel {
   final String contentCategory;
   final List<String> animeIds;
   final List<String> characterIds;
+  final List<String> hashtags;
   final List<String> animeTitles;
   final List<String> characterNames;
   final List<Map<String, dynamic>> mentionMetadata;
@@ -79,6 +81,7 @@ class KirariReel {
     contentCategory: contentCategory,
     animeIds: animeIds,
     characterIds: characterIds,
+    hashtags: hashtags,
     animeTitles: animeTitles,
     characterNames: characterNames,
     mentionMetadata: mentionMetadata,
@@ -112,6 +115,7 @@ class KirariReel {
       contentCategory: map['contentCategory'] as String? ?? 'anime_edit',
       animeIds: (map['animeIds'] as List? ?? const <dynamic>[]).whereType<String>().toList(),
       characterIds: (map['characterIds'] as List? ?? const <dynamic>[]).whereType<String>().toList(),
+      hashtags: (map['hashtags'] as List? ?? const <dynamic>[]).whereType<String>().toList(),
       animeTitles: (map['animeMetadata'] as List? ?? const <dynamic>[])
           .whereType<Map>().map((item) => item['title']).whereType<String>().toList(),
       characterNames: (map['characterMetadata'] as List? ?? const <dynamic>[])
