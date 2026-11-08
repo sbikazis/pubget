@@ -218,7 +218,10 @@ function createNotificationTriggers({ db, builder }) {
   async function kirariPublished(event) {
     const before = event.data && event.data.before.data();
     const after = event.data && event.data.after.data();
-    if (!after || after.status !== "published" || after.moderationStatus !== "approved" || (before && before.status === "published")) return;
+    if (!after || after.status !== "published" ||
+        after.moderationStatus !== "approved" ||
+        (before && before.status === "published" &&
+          before.moderationStatus === "approved")) return;
     const reelId = event.params.reelId;
     const creatorId = after.creatorId;
     if (!creatorId) return;
