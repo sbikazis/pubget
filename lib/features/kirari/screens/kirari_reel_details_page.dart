@@ -229,6 +229,7 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
                           ],
                           if (reel.animeTitles.isNotEmpty ||
                               reel.characterNames.isNotEmpty ||
+                              reel.hashtags.isNotEmpty ||
                               reel.contentCategory != 'anime_edit') ...[
                             const SizedBox(height: 10),
                             Wrap(
@@ -236,10 +237,37 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
                               runSpacing: 6,
                               children: [
                                 Chip(label: Text(KirariCopy.of(context).categoryLabel(reel.contentCategory))),
-                                for (final title in reel.animeTitles)
-                                  Chip(avatar: const Icon(Icons.movie_outlined, size: 16), label: Text(title)),
-                                for (final name in reel.characterNames)
-                                  Chip(avatar: const Icon(Icons.person_outline, size: 16), label: Text(name)),
+                                for (var animeIndex = 0; animeIndex < reel.animeTitles.length; animeIndex++)
+                                  ActionChip(
+                                    avatar: const Icon(Icons.movie_outlined, size: 16),
+                                    label: Text(reel.animeTitles[animeIndex]),
+                                    onPressed: animeIndex < reel.animeIds.length
+                                        ? () => AppNavigation.go(
+                                              context,
+                                              PubgetLinks.animePath(reel.animeIds[animeIndex]),
+                                            )
+                                        : null,
+                                  ),
+                                for (var characterIndex = 0; characterIndex < reel.characterNames.length; characterIndex++)
+                                  ActionChip(
+                                    avatar: const Icon(Icons.person_outline, size: 16),
+                                    label: Text(reel.characterNames[characterIndex]),
+                                    onPressed: characterIndex < reel.characterIds.length
+                                        ? () => AppNavigation.go(
+                                              context,
+                                              PubgetLinks.characterPath(reel.characterIds[characterIndex]),
+                                            )
+                                        : null,
+                                  ),
+                                for (final tag in reel.hashtags)
+                                  ActionChip(
+                                    avatar: const Icon(Icons.tag, size: 16),
+                                    label: Text('#$tag'),
+                                    onPressed: () => AppNavigation.go(
+                                      context,
+                                      PubgetLinks.hashtagTagPath(tag),
+                                    ),
+                                  ),
                               ],
                             ),
                           ],
