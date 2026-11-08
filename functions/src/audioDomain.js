@@ -147,7 +147,7 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
         schemaVersion: 1,
       });
 
-      await reelRef.update({
+      tx.update(reelRef(reelId), {
         audioId,
         audioExtractedAt: FieldValue.serverTimestamp(),
       });
@@ -157,6 +157,7 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
     const source = path.join(dir, "source.mp4");
     const output = path.join(dir, "audio.m4a");
 
+    let extractionStatus = "ready";
     try {
       await bucket.file(videoPath).download({ destination: source });
       const ffmpeg = ffmpegBinary();
@@ -171,6 +172,7 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
         updatedAt: FieldValue.serverTimestamp(),
       });
     } catch (error) {
+      extractionStatus = "failed";
       await audioRef(audioId).update({
         status: "failed",
         failureReason: error.message,
@@ -181,7 +183,7 @@ function createAudioDomain({ db, bucket, FieldValue, HttpsError, reelCollection 
       await fsp.rm(dir, { recursive: true, force: true });
     }
 
-    return { audioId, status: "ready" };
+    return { audioId, status: extractionStatus };
   }
 
   async function onAudioExtracted(request) {
