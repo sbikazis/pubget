@@ -17,6 +17,7 @@ class TestHttpsError extends Error {
  */
 function createFakeDb(seed = {}) {
   const store = new Map(Object.entries(seed));
+  let generatedId = 0;
   const reads = { count: 0 };
   const writes = [];
   let writesStarted = false;
@@ -28,14 +29,15 @@ function createFakeDb(seed = {}) {
     collection(name) {
       return {
         doc(id) {
-          const path = `${name}/${id}`;
+          const resolvedId = id ?? `generated-${++generatedId}`;
+          const path = `${name}/${resolvedId}`;
           return {
-            id,
+            id: resolvedId,
             path,
             async get() {
               reads.count += 1;
               const data = store.get(path);
-              return { id, exists: store.has(path), data: () => data };
+              return { id: resolvedId, exists: store.has(path), data: () => data };
             },
             async create(data) {
               store.set(path, { ...data });
@@ -120,6 +122,12 @@ function createFakeDb(seed = {}) {
           reads.count += 1;
           const data = store.get(ref.path);
           return { id: ref.id, path: ref.path, exists: store.has(ref.path), data: () => data };
+        },
+        create(ref, data) {
+          writesStarted = true;
+          writes.push({ path: ref.path, data, create: true });
+          if (store.has(ref.path)) throw new Error("document already exists");
+          store.set(ref.path, { ...data });
         },
         update(ref, data) {
           writesStarted = true;
@@ -317,4 +325,34 @@ test("listAudios resolves creator profiles in one batch, not one read per row", 
     db.reads.count <= 2,
     `expected a batched lookup, saw ${db.reads.count} reads for 10 rows`,
   );
+});
+
+
+test("extractAudioFromReel atomically links generated audio and reports extraction failure", async () => {
+  const db = createFakeDb(Object.fromEntries([
+    seedReel("r-audio", "alice", {
+      videoPath: "processed/alice/r-audio.mp4",
+      durationSeconds: 30,
+      caption: "My edit",
+    }),
+  ]));
+  const audio = createAudioDomain({
+    db,
+    bucket: {
+      file() {
+        return { async download() { throw new Error("simulated media read failure"); } };
+      },
+      async upload() { throw new Error("upload should not run"); },
+    },
+    FieldValue: FieldValue(),
+    HttpsError: TestHttpsError,
+    reelCollection: "edits",
+  });
+  const result = await audio.extractAudioFromReel({
+    auth: { uid: "alice" },
+    data: { reelId: "r-audio", audioName: "My original audio" },
+  });
+  assert.equal(result.status, "failed");
+  assert.equal(db.store.get("edits/r-audio").audioId, result.audioId);
+  assert.equal(db.store.get("reelAudios/" + result.audioId).status, "failed");
 });
