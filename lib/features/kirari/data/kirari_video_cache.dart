@@ -192,12 +192,23 @@ class KirariVideoCache {
 
       for (final item in files) {
         if (total <= maxBytes) break;
-        if (item.file.path == excluding) continue;
+        if (item.file.path == excluding ||
+            _inFlight.containsKey(item.file.absolute.path)) continue;
         try {
           await item.file.delete();
           total -= item.size;
         } catch (_) {
           // A file currently held by a player is left in place.
+        }
+      }
+      // If every older file is protected by an in-flight download or player,
+      // reject this new cache entry rather than exceed the global disk budget.
+      if (total > maxBytes) {
+        final current = File(excluding);
+        if (await current.exists()) {
+          final size = await current.length();
+          await current.delete();
+          total -= size;
         }
       }
       return total;
