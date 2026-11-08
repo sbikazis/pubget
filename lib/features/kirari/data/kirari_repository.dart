@@ -362,6 +362,22 @@ class FirebaseKirariRepository implements KirariRepository {
   }
 
   @override
+  @override
+  Future<KirariFeedPageResult> getSavedReels({int limit = 30, Map<String, dynamic>? cursor}) async {
+    final result = await _call('getSavedKirariReels', {
+      'limit': limit,
+      if (cursor != null && cursor['cursor'] != null) 'cursor': cursor['cursor'],
+    });
+    final nextCursor = result['nextCursor'];
+    return KirariFeedPageResult(
+      await _resolveReels(result['items']),
+      hasMore: result['hasMore'] == true,
+      nextCursor: nextCursor is String && nextCursor.isNotEmpty
+          ? <String, dynamic>{'cursor': nextCursor}
+          : null,
+    );
+  }
+
   Future<KirariReel> getReel(String reelId) async {
     final map = await _call('getKirariReel', {'reelId': reelId});
     final variants = map['renditions'];
