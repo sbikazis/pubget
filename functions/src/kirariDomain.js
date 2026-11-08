@@ -558,7 +558,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
     if (!deletion.existed) return { ok: true };
     const reel = deletion.reel;
-    if (!deletion.changed) return { ok: true };
+    // Re-run best-effort object cleanup on repeated delete calls. The quota/key
+    // refund is transactionally guarded above, while storage cleanup is safe to retry.
     const paths = [
       reel.originalStoragePath || reel.storagePath,
       `kirari/${uid}/${reelId}/cover-source.jpg`,
