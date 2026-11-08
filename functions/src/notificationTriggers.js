@@ -327,10 +327,40 @@ function createNotificationTriggers({ db, builder }) {
     });
   }
 
+  async function kirariCommentLike(event) {
+    const comment = await db.collection("kirari").doc(event.params.reelId)
+      .collection("comments").doc(event.params.commentId).get();
+    if (!comment.exists || comment.data()?.status !== "published") return;
+    const recipientId = comment.data()?.authorId;
+    const actorId = event.params.uid;
+    if (!recipientId || !actorId || recipientId === actorId) return;
+    const [blocked, muted] = await Promise.all([
+      isBlockedPair(recipientId, actorId),
+      isMuted(recipientId, actorId),
+    ]);
+    if (blocked || muted) return;
+    return builder.build({
+      id: "kirari_comment_like_" + event.params.reelId + "_" +
+        event.params.commentId + "_" + event.id,
+      recipientIds: [recipientId],
+      type: "kirari_comment_like",
+      actorId,
+      targetId: event.params.reelId,
+      action: "comment_liked",
+      destination: "/reel/" + encodeURIComponent(event.params.reelId),
+      metadata: { commentId: event.params.commentId },
+      groupKey: "kirari_comment_likes_" + event.params.commentId,
+      pushWorthy: false,
+      title: "Kirari",
+      body: "Someone liked your comment",
+    });
+  }
+
   return {
     kirariPublished,
     kirariComment,
     kirariLike,
+    kirariCommentLike,
     groupMessage,
     privateMessage,
     joinRequest,
