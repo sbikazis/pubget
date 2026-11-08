@@ -44,6 +44,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   int _activationGeneration = 0;
   int _feedGeneration = 0;
   bool _resumeAfterLifecycle = false;
+  bool _isAppForeground = true;
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = true;
@@ -72,12 +73,16 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         state == AppLifecycleState.detached) {
       _reportTimer?.cancel();
       final controller = _controller;
-      _resumeAfterLifecycle = controller?.value.isPlaying == true;
-      if (_resumeAfterLifecycle) unawaited(controller!.pause());
-    } else if (state == AppLifecycleState.resumed && _resumeAfterLifecycle) {
-      _resumeAfterLifecycle = false;
+      _isAppForeground = false;
+      _resumeAfterLifecycle =
+          _resumeAfterLifecycle || controller?.value.isPlaying == true;
+      if (controller?.value.isPlaying == true) unawaited(controller!.pause());
+    } else if (state == AppLifecycleState.resumed) {
+      _isAppForeground = true;
       final controller = _controller;
-      if (controller != null && controller.value.isInitialized) {
+      if (_resumeAfterLifecycle && controller != null &&
+          controller.value.isInitialized) {
+        _resumeAfterLifecycle = false;
         unawaited(controller.play());
         _startReporter();
       }
@@ -287,12 +292,18 @@ class _KirariFeedPageState extends State<KirariFeedPage>
         return;
       }
       await controller.setLooping(true);
-      await controller.play();
-      _cacheActiveReel(reel);
+      if (_isAppForeground) {
+        await controller.play();
+        _resumeAfterLifecycle = false;
+      } else {
+        _resumeAfterLifecycle = true;
+      }
+      if (controller.value.isPlaying) _cacheActiveReel(reel);
       final reporter = KirariPlaybackReporter(_repository, reel.id);
       try {
         await reporter.start();
-        if (mounted && identical(_controller, controller)) {
+        if (mounted && _isAppForeground &&
+          identical(_controller, controller) && controller.value.isPlaying) {
           _reporter = reporter;
           _startReporter();
         }
@@ -309,6 +320,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     } catch (_) {
       if (mounted && generation == _activationGeneration &&
           identical(_controller, controller)) {
+        _controller = null;
         setState(() => _error = KirariCopy.of(context).playbackError);
       }
       if (controller != null) await controller.dispose();
@@ -352,6 +364,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   Future<void> _switchFeed(String type) async {
     if (_feedType == type) return;
     _feedType = type;
+    _feedGeneration++;
     final current = _controller;
     _controller = null;
     _reporter = null;
