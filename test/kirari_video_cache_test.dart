@@ -86,4 +86,30 @@ void main() {
     );
     expect(await Directory(directory.path).list().toList(), isEmpty);
   });
+
+  test('evicts the least-recently-used rendition without exceeding the cache budget', () async {
+    final cache = KirariVideoCache(
+      directory: directory,
+      maxBytes: 300 * 1024,
+      maxFileBytes: 300 * 1024,
+    );
+    final first = await cache.getOrDownload(
+      reelId: 'old-reel', quality: 360, source: uri,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final second = await cache.getOrDownload(
+      reelId: 'new-reel', quality: 360, source: uri,
+    );
+
+    expect(await first.exists(), isFalse);
+    expect(await second.exists(), isTrue);
+    final cachedFiles = await Directory(directory.path)
+        .list()
+        .where((entity) => entity.path.endsWith('.mp4'))
+        .cast<File>()
+        .toList();
+    final totalBytes = cachedFiles.fold<int>(0, (sum, file) => sum + file.lengthSync());
+    expect(totalBytes, lessThanOrEqualTo(300 * 1024));
+  });
+
 }
