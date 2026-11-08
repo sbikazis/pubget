@@ -236,8 +236,8 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       controller = await _makeCachedController(reel);
       await controller.setLooping(true);
       await controller.pause();
-      if (!mounted || index != _activeIndex + 1 ||
-          _items[index].id != reel.id) {
+      if (!mounted || index >= _items.length ||
+          index != _activeIndex + 1 || _items[index].id != reel.id) {
         await controller.dispose();
         return;
       }
