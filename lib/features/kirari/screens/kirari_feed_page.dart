@@ -302,10 +302,11 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       final reporter = KirariPlaybackReporter(_repository, reel.id);
       try {
         await reporter.start();
-        if (mounted && _isAppForeground &&
-          identical(_controller, controller) && controller.value.isPlaying) {
+        if (mounted && identical(_controller, controller)) {
           _reporter = reporter;
-          _startReporter();
+          if (_isAppForeground && controller.value.isPlaying) {
+            _startReporter();
+          }
         }
       } catch (_) {
         // Playback must remain available when analytics is temporarily offline.
