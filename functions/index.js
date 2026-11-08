@@ -1132,6 +1132,10 @@ exports.onKirariLike = onDocumentCreated(
   "kirari/{reelId}/actions/{actionId}",
   notificationTriggers.kirariLike,
 );
+exports.onKirariCommentLike = onDocumentCreated(
+  "kirari/{reelId}/comments/{commentId}/likes/{uid}",
+  notificationTriggers.kirariCommentLike,
+);
 exports.unblockUser = onCall(
   { region: "us-central1" },
   socialGraph.unblockUser,
