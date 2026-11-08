@@ -815,8 +815,23 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                               final commentId = item['id'] as String? ?? '';
                               final authorId = item['authorId'] as String? ?? '';
                               return ListTile(
+                                contentPadding: EdgeInsets.only(
+                                  left: item['parentId'] == null ? 16 : 36,
+                                  right: 16,
+                                ),
                                 title: Text(deleted ? 'Comment removed' : item['text'] as String? ?? ''),
-                                subtitle: Text('@' + authorId),
+                                subtitle: Wrap(
+                                  spacing: 8,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text('@' + authorId),
+                                    if (item['creatorComment'] == true)
+                                      const Chip(
+                                        visualDensity: VisualDensity.compact,
+                                        label: Text('Creator'),
+                                      ),
+                                  ],
+                                ),
                                 onTap: deleted || authorId.isEmpty
                                     ? null
                                     : () => AppNavigation.go(
@@ -839,14 +854,20 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                                         size: 19,
                                       ),
                                       onPressed: () async {
-                                        await widget.repository.commentAction(
-                                          widget.reel.id,
-                                          commentId,
-                                          item['viewerLiked'] == true
-                                              ? 'unlike'
-                                              : 'like',
-                                        );
-                                        await _load();
+                                        try {
+                                          await widget.repository.commentAction(
+                                            widget.reel.id,
+                                            commentId,
+                                            item['viewerLiked'] == true
+                                                ? 'unlike'
+                                                : 'like',
+                                          );
+                                          await _load();
+                                        } catch (_) {
+                                          if (mounted) {
+                                            setState(() => _error = 'Could not update comment like. Please retry.');
+                                          }
+                                        }
                                       },
                                     ),
                                     Text((item['likesCount'] ?? 0).toString()),
