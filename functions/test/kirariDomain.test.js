@@ -859,3 +859,82 @@ test("deleting an unfinished upload refunds its daily quota exactly once", async
   assert.equal(records.key, undefined);
   assert.equal(deletedObjects.length, 4, "storage cleanup is retried while the quota refund remains single-use");
 });
+
+
+test("playback heartbeats from a superseded reel session cannot earn views or ranking credit", async () => {
+  const now = Date.now();
+  const refs = new Map();
+  const makeRef = (path) => ({
+    path,
+    id: path.split("/").pop(),
+    collection(name) {
+      return { doc: (id) => makeRef(path + "/" + name + "/" + id) };
+    },
+  });
+  const snapshots = new Map([
+    ["kirari/reel-1", {
+      exists: true,
+      data: () => ({
+        status: "published", moderationStatus: "approved",
+        creatorId: "creator", durationSeconds: 20,
+      }),
+    }],
+    ["kirari/reel-1/playbackSessions/session-1", {
+      exists: true,
+      data: () => ({
+        viewerId: "viewer", creditedSeconds: 2,
+        lastHeartbeatAt: { toMillis: () => now - 2000 },
+        expiresAt: { toMillis: () => now + 60000 },
+      }),
+    }],
+    ["kirari/reel-1/playbackSessions/session-1/events/event-1", {
+      exists: false, data: () => ({}),
+    }],
+    ["kirari/reel-1/viewers/viewer", {
+      exists: false, data: () => ({}),
+    }],
+    ["users/viewer/kirariSeen/reel-1", {
+      exists: false, data: () => ({}),
+    }],
+    ["users/viewer/kirariPlaybackState/active", {
+      exists: true,
+      data: () => ({ reelId: "reel-2", sessionId: "session-2" }),
+    }],
+  ]);
+  let writes = 0;
+  const db = {
+    collection(name) {
+      return {
+        doc: (id) => makeRef(name + "/" + id),
+      };
+    },
+    async runTransaction(callback) {
+      return callback({
+        async get(reference) {
+          return snapshots.get(reference.path) || { exists: false, data: () => ({}) };
+        },
+        update() { writes++; },
+        set() { writes++; },
+        create() { writes++; },
+      });
+    },
+  };
+  const domain = createKirariDomain({
+    db,
+    FieldValue: {
+      serverTimestamp: () => now,
+      increment: (value) => value,
+    },
+    HttpsError: TestHttpsError,
+    bucket: {},
+  });
+
+  await assert.rejects(
+    domain.recordPlayback({
+      auth: { uid: "viewer" },
+      data: { reelId: "reel-1", sessionId: "session-1", eventId: "event-1" },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+  assert.equal(writes, 0, "stale sessions must not write playback counters or events");
+});
