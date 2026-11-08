@@ -49,6 +49,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   bool _loadingMore = false;
   bool _hasMore = true;
   String? _error;
+  String? _playbackError;
   Map<String, dynamic>? _cursor;
 
   @override
@@ -257,6 +258,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   Future<void> _activate(int index) async {
     if (index < 0 || index >= _items.length) return;
     final generation = ++_activationGeneration;
+    _playbackError = null;
     _reportTimer?.cancel();
     final previous = _controller;
     _controller = null;
@@ -322,7 +324,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       if (mounted && generation == _activationGeneration &&
           identical(_controller, controller)) {
         _controller = null;
-        setState(() => _error = KirariCopy.of(context).playbackError);
+        setState(() => _playbackError = KirariCopy.of(context).playbackError);
       }
       if (controller != null) await controller.dispose();
     }
@@ -656,7 +658,25 @@ class _KirariFeedPageState extends State<KirariFeedPage>
               ),
             ),
             if (active && (controller == null || !controller.value.isInitialized))
-              const Center(child: CircularProgressIndicator()),
+              Center(
+                child: _playbackError == null
+                    ? const CircularProgressIndicator()
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _playbackError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: () => _activate(index),
+                            child: Text(copy.retry),
+                          ),
+                        ],
+                      ),
+              ),
           ],
         );
       },
