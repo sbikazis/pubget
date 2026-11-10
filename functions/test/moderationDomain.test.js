@@ -563,6 +563,109 @@ test("case ids are filesystem-safe for hostile target ids", () => {
   assert.equal(id.includes("/"), false);
 });
 
+test("case ids do not collide when hostile ids sanitize to the same legacy value", async () => {
+  const firstId = moderationCaseId({ type: "edit", targetId: "a/b", reporterId: "alice" });
+  const secondId = moderationCaseId({ type: "edit", targetId: "a_b", reporterId: "alice" });
+  assert.notEqual(firstId, secondId);
+  const db = createFakeDb();
+  const first = await enqueueModerationCase({ db, FieldValue, type: "edit", targetId: "a/b", reporterId: "alice", reason: "spam" });
+  const second = await enqueueModerationCase({ db, FieldValue, type: "edit", targetId: "a_b", reporterId: "alice", reason: "harassment" });
+  assert.notEqual(first.caseId, second.caseId);
+  assert.equal(db.store.get("moderation_cases/" + first.caseId).targetId, "a/b");
+  assert.equal(db.store.get("moderation_cases/" + second.caseId).targetId, "a_b");
+});
+
+test("hashed queue ids remain idempotent with an existing legacy case", async () => {
+  const db = createFakeDb({
+    "moderation_cases/edit_e1_alice": { type: "edit", targetId: "e1", reporterId: "alice", status: "open", reason: "spam", repeatCount: 1 },
+  });
+  const result = await enqueueModerationCase({ db, FieldValue, type: "edit", targetId: "e1", reporterId: "alice", reason: "harassment" });
+  assert.equal(result.alreadyReported, true);
+  assert.equal(result.caseId, "edit_e1_alice");
+  assert.equal(db.store.get("moderation_cases/edit_e1_alice").repeatCount, 2);
+  assert.equal(db.store.has("moderation_cases/" + moderationCaseId({ type: "edit", targetId: "e1", reporterId: "alice" })), false);
+});
+
+test("users can appeal only their own active account restriction and duplicates are idempotent", async () => {
+  const { domain, db } = handlers({ db: createFakeDb({
+    "users/alice": { moderationState: "restricted" },
+    "users/bob": { moderationState: "clear" },
+  }) });
+  const first = await domain.submitAppeal({ ...member("alice"), data: {
+    kind: "user", targetId: "alice", reason: "I believe this restriction is mistaken",
+  } });
+  assert.equal(first.status, "pending");
+  const duplicate = await domain.submitAppeal({ ...member("alice"), data: {
+    kind: "user", targetId: "alice", reason: "Additional context",
+  } });
+  assert.equal(duplicate.alreadyPending, true);
+  assert.equal(duplicate.appealId, first.appealId);
+  await assert.rejects(domain.submitAppeal({ ...member("alice"), data: {
+    kind: "user", targetId: "bob", reason: "appeal",
+  } }), (error) => error.code === "permission-denied");
+  await assert.rejects(domain.submitAppeal({ ...member("bob"), data: {
+    kind: "user", targetId: "bob", reason: "appeal",
+  } }), (error) => error.code === "failed-precondition");
+  assert.equal([...db.store.keys()].filter((key) => key.startsWith("moderation_appeals/")).length, 1);
+});
+
+test("only the owner of removed content may appeal, and staff decisions are audited", async () => {
+  const { domain, db } = handlers({ db: createFakeDb({
+    "edits/e1": { creatorId: "alice", moderationStatus: "removed", text: null },
+    "moderation_audit/removal1": { action: "content_removed", kind: "edit", targetId: "e1", targetPath: "edits/e1", previous: { moderationStatus: "approved", text: "original edit" } },
+  }) });
+  const submitted = await domain.submitAppeal({ ...member("alice"), data: {
+    kind: "edit", targetId: "e1", reason: "This edit follows the rules",
+  } });
+  await assert.rejects(domain.submitAppeal({ ...member("mallory"), data: {
+    kind: "edit", targetId: "e1", reason: "not mine",
+  } }), (error) => error.code === "permission-denied");
+  const reviewed = await domain.reviewAppeal({ ...staff(), data: {
+    appealId: submitted.appealId, decision: "approved", note: "Reviewed original context",
+  } });
+  assert.equal(reviewed.decision, "approved");
+  const stored = db.store.get("moderation_appeals/" + submitted.appealId);
+  assert.equal(stored.status, "reviewed");
+  assert.equal(stored.reviewedBy, "mod1");
+  assert.equal(db.store.get("edits/e1").moderationStatus, "approved");
+  assert.equal([...db.store.values()].some((item) => item.action === "appeal_reviewed"), true);
+  const repeated = await domain.reviewAppeal({ ...staff(), data: {
+    appealId: submitted.appealId, decision: "rejected",
+  } });
+  assert.equal(repeated.alreadyReviewed, true);
+  assert.equal(stored.decision, "approved");
+});
+
+test("an approved account appeal clears the restriction", async () => {
+  const { domain, db } = handlers({ db: createFakeDb({
+    "users/alice": { moderationState: "restricted", moderationReason: "harassment" },
+  }) });
+  const submitted = await domain.submitAppeal({ ...member("alice"), data: {
+    kind: "user", targetId: "alice", reason: "The restriction was mistaken",
+  } });
+  const result = await domain.reviewAppeal({ ...staff(), data: {
+    appealId: submitted.appealId, decision: "approved",
+  } });
+  assert.equal(result.decision, "approved");
+  assert.equal(db.store.get("users/alice").moderationState, "clear");
+  assert.equal(db.store.get("moderation_appeals/" + submitted.appealId).status, "reviewed");
+});
+
+test("appeals require authentication and staff-only decisions", async () => {
+  const { domain, db } = handlers({ db: createFakeDb({
+    "users/alice": { moderationState: "restricted" },
+  }) });
+  await assert.rejects(domain.submitAppeal({ data: {
+    kind: "user", targetId: "alice", reason: "appeal",
+  } }), (error) => error.code === "unauthenticated");
+  const submitted = await domain.submitAppeal({ ...member("alice"), data: {
+    kind: "user", targetId: "alice", reason: "appeal",
+  } });
+  await assert.rejects(domain.reviewAppeal({ ...member("alice"), data: {
+    appealId: submitted.appealId, decision: "upheld",
+  } }), (error) => error.code === "permission-denied");
+});
+
 test("the exposed kind lists stay in sync with the supported set", () => {
   assert.deepEqual([...REMOVABLE_KINDS].sort(), [
     "animeReview",
