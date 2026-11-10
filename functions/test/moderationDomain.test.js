@@ -611,7 +611,8 @@ test("users can appeal only their own active account restriction and duplicates 
 
 test("only the owner of removed content may appeal, and staff decisions are audited", async () => {
   const { domain, db } = handlers({ db: createFakeDb({
-    "edits/e1": { creatorId: "alice", moderationStatus: "removed" },
+    "edits/e1": { creatorId: "alice", moderationStatus: "removed", text: null },
+    "moderation_audit/removal1": { action: "content_removed", kind: "edit", targetId: "e1", targetPath: "edits/e1", previous: { moderationStatus: "approved", text: "original edit" } },
   }) });
   const submitted = await domain.submitAppeal({ ...member("alice"), data: {
     kind: "edit", targetId: "e1", reason: "This edit follows the rules",
@@ -620,18 +621,34 @@ test("only the owner of removed content may appeal, and staff decisions are audi
     kind: "edit", targetId: "e1", reason: "not mine",
   } }), (error) => error.code === "permission-denied");
   const reviewed = await domain.reviewAppeal({ ...staff(), data: {
-    appealId: submitted.appealId, decision: "upheld", note: "Reviewed original context",
+    appealId: submitted.appealId, decision: "approved", note: "Reviewed original context",
   } });
   assert.equal(reviewed.decision, "upheld");
   const stored = db.store.get("moderation_appeals/" + submitted.appealId);
   assert.equal(stored.status, "reviewed");
   assert.equal(stored.reviewedBy, "mod1");
+  assert.equal(db.store.get("edits/e1").moderationStatus, "approved");
   assert.equal([...db.store.values()].some((item) => item.action === "appeal_reviewed"), true);
   const repeated = await domain.reviewAppeal({ ...staff(), data: {
     appealId: submitted.appealId, decision: "rejected",
   } });
   assert.equal(repeated.alreadyReviewed, true);
-  assert.equal(stored.decision, "upheld");
+  assert.equal(stored.decision, "approved");
+});
+
+test("an approved account appeal clears the restriction", async () => {
+  const { domain, db } = handlers({ db: createFakeDb({
+    "users/alice": { moderationState: "restricted", moderationReason: "harassment" },
+  }) });
+  const submitted = await domain.submitAppeal({ ...member("alice"), data: {
+    kind: "user", targetId: "alice", reason: "The restriction was mistaken",
+  } });
+  const result = await domain.reviewAppeal({ ...staff(), data: {
+    appealId: submitted.appealId, decision: "approved",
+  } });
+  assert.equal(result.decision, "approved");
+  assert.equal(db.store.get("users/alice").moderationState, "clear");
+  assert.equal(db.store.get("moderation_appeals/" + submitted.appealId).status, "reviewed");
 });
 
 test("appeals require authentication and staff-only decisions", async () => {
