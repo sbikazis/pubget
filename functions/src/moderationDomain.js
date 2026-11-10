@@ -131,6 +131,7 @@ function createModerationDomain({
     targetId = null,
     note = null,
     previous = null,
+    targetPath = null,
   }) {
     await auditRef().add({
       actorId,
@@ -138,6 +139,7 @@ function createModerationDomain({
       caseId,
       kind,
       targetId,
+      targetPath,
       note,
       previous,
       at: FieldValue.serverTimestamp(),
@@ -320,6 +322,8 @@ function createModerationDomain({
       text: data.text == null ? null : data.text,
       caption: data.caption == null ? null : data.caption,
       deletedAt: data.deletedAt == null ? null : data.deletedAt,
+      mediaUrl: data.mediaUrl == null ? null : data.mediaUrl,
+      thumbnailUrl: data.thumbnailUrl == null ? null : data.thumbnailUrl,
     };
   }
 
@@ -386,6 +390,7 @@ function createModerationDomain({
       action: "content_removed",
       kind,
       targetId: ref.id,
+      targetPath: ref.path,
       note: reason,
       previous,
     });
@@ -431,6 +436,8 @@ function createModerationDomain({
     if (kind === "groupMessage" || kind === "privateMessage" ||
         kind === "editComment" || kind === "fanWorkComment") {
       if (previous && typeof previous.text === "string") patch.text = previous.text;
+      if (previous && typeof previous.mediaUrl === "string") patch.mediaUrl = previous.mediaUrl;
+      if (previous && typeof previous.thumbnailUrl === "string") patch.thumbnailUrl = previous.thumbnailUrl;
       if (kind === "editComment" || kind === "fanWorkComment") {
         patch.deletedAt = previous ? previous.deletedAt ?? null : null;
       }
@@ -445,6 +452,7 @@ function createModerationDomain({
       action: "content_restored",
       kind,
       targetId: ref.id,
+      targetPath: ref.path,
       note,
       previous: previousStateOf(kind, current),
     });
@@ -738,8 +746,8 @@ function createModerationDomain({
     const appealId = data.appealId;
     const decision = data.decision;
     if (!validId(appealId)) throw new HttpsError("invalid-argument", "appealId is required.");
-    if (decision !== "upheld" && decision !== "rejected") {
-      throw new HttpsError("invalid-argument", "decision must be upheld or rejected.");
+    if (decision !== "approved" && decision !== "rejected") {
+      throw new HttpsError("invalid-argument", "decision must be approved or rejected.");
     }
     const note = typeof data.note === "string" ? data.note.trim().slice(0, MAX_NOTE) : null;
     const ref = db.collection("moderation_appeals").doc(appealId);
@@ -749,6 +757,45 @@ function createModerationDomain({
     if (appeal.status !== "pending") {
       return { ok: true, alreadyReviewed: true, status: appeal.status, decision: appeal.decision };
     }
+
+    // An approved appeal reverses the appealed action. Content restoration uses
+    // the exact pre-takedown snapshot from the immutable audit entry; it never
+    // guesses media/text fields or restores an unrelated item with the same ID.
+    const staffRequest = {
+      auth: { uid: staff.uid, token: { moderator: true } },
+      data: {},
+    };
+    if (decision === "approved" && appeal.kind === "user") {
+      await unrestrictUser({
+        ...staffRequest,
+        data: { userId: appeal.appellantId, note: "Appeal approved" },
+      });
+    } else if (decision === "approved") {
+      const audit = await db.collection("moderation_audit")
+        .where("targetPath", "==", appeal.targetPath)
+        .where("action", "==", "content_removed")
+        .orderBy("at", "desc")
+        .limit(1)
+        .get();
+      const removal = audit.docs && audit.docs[0] ? audit.docs[0].data() : null;
+      if (!removal || !removal.previous) {
+        throw new HttpsError(
+          "failed-precondition",
+          "The original moderation snapshot is unavailable; the appeal cannot safely restore this content.",
+        );
+      }
+      await restoreContent({
+        ...staffRequest,
+        data: {
+          kind: appeal.kind,
+          targetId: appeal.targetId,
+          targetParentId: appeal.targetParentId,
+          previous: removal.previous,
+          note: "Appeal approved",
+        },
+      });
+    }
+
     await ref.update({
       status: "reviewed",
       decision,
