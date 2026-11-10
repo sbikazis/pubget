@@ -1028,6 +1028,14 @@ exports.getModerationSummary = onCall(
   { region: "us-central1" },
   moderationDomain.getModerationSummary,
 );
+exports.submitModerationAppeal = onCall(
+  { region: "us-central1" },
+  moderationDomain.submitAppeal,
+);
+exports.reviewModerationAppeal = onCall(
+  { region: "us-central1" },
+  moderationDomain.reviewAppeal,
+);
 
 exports.processEventLifecycle = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },
