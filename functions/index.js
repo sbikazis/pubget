@@ -1032,6 +1032,10 @@ exports.submitModerationAppeal = onCall(
   { region: "us-central1" },
   moderationDomain.submitAppeal,
 );
+exports.listModerationAppeals = onCall(
+  { region: "us-central1" },
+  moderationDomain.listAppeals,
+);
 exports.reviewModerationAppeal = onCall(
   { region: "us-central1" },
   moderationDomain.reviewAppeal,
