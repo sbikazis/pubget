@@ -49,6 +49,9 @@ test.beforeEach(async () => {
       action: "content_removed",
       targetId: "e1",
     });
+    await admin.doc("moderation_appeals/appeal1").set({
+      appellantId: "alice", kind: "user", targetId: "alice", status: "pending",
+    });
     await admin.doc("groups/g1").set({ founderId: "alice", name: "G" });
     await admin.doc("groups/g1/members/bob").set({ role: "member", userId: "bob" });
     await admin.doc("groups/g1/messageReports/m1_bob").set({
@@ -85,6 +88,14 @@ test("nobody can write a moderation case from a client", async () => {
   await assertFails(
     db("mod", { moderator: true }).doc("moderation_cases/forged").set({ type: "edit", status: "open" }),
   );
+});
+
+test("appeals are readable only by their appellant and moderation staff", async () => {
+  await assertSucceeds(db("alice", {}).doc("moderation_appeals/appeal1").get());
+  await assertSucceeds(db("mod", { moderator: true }).doc("moderation_appeals/appeal1").get());
+  await assertFails(db("bob", {}).doc("moderation_appeals/appeal1").get());
+  await assertFails(db("alice", {}).doc("moderation_appeals/appeal1").set({ status: "reviewed" }));
+  await assertFails(db("mod", { moderator: true }).doc("moderation_appeals/appeal1").delete());
 });
 
 test("the audit trail is staff-readable and immutable", async () => {
