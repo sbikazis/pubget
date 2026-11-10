@@ -563,6 +563,28 @@ test("case ids are filesystem-safe for hostile target ids", () => {
   assert.equal(id.includes("/"), false);
 });
 
+test("case ids do not collide when hostile ids sanitize to the same legacy value", async () => {
+  const firstId = moderationCaseId({ type: "edit", targetId: "a/b", reporterId: "alice" });
+  const secondId = moderationCaseId({ type: "edit", targetId: "a_b", reporterId: "alice" });
+  assert.notEqual(firstId, secondId);
+  const db = createFakeDb();
+  const first = await enqueueModerationCase({ db, FieldValue, type: "edit", targetId: "a/b", reporterId: "alice", reason: "spam" });
+  const second = await enqueueModerationCase({ db, FieldValue, type: "edit", targetId: "a_b", reporterId: "alice", reason: "harassment" });
+  assert.notEqual(first.caseId, second.caseId);
+  assert.equal(db.store.get("moderation_cases/" + first.caseId).targetId, "a/b");
+  assert.equal(db.store.get("moderation_cases/" + second.caseId).targetId, "a_b");
+});
+
+test("hashed queue ids remain idempotent with an existing legacy case", async () => {
+  const db = createFakeDb({
+    "moderation_cases/edit_e1_alice": { type: "edit", targetId: "e1", reporterId: "alice", status: "open", reason: "spam", repeatCount: 1 },
+  });
+  const result = await enqueueModerationCase({ db, FieldValue, type: "edit", targetId: "e1", reporterId: "alice", reason: "harassment" });
+  assert.equal(result.alreadyReported, true);
+  assert.equal(result.caseId, "edit_e1_alice");
+  assert.equal(db.store.get("moderation_cases/edit_e1_alice").repeatCount, 2);
+  assert.equal(db.store.has("moderation_cases/" + moderationCaseId({ type: "edit", targetId: "e1", reporterId: "alice" })), false);
+});
 test("the exposed kind lists stay in sync with the supported set", () => {
   assert.deepEqual([...REMOVABLE_KINDS].sort(), [
     "animeReview",
