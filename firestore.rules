@@ -711,6 +711,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Appeals are submitted and decided only through authenticated callables.
+    // Appellants can read their own records; moderators can review all.
+    match /moderation_appeals/{appealId} {
+      allow get, list: if isModerator() ||
+        (signedIn() && resource.data.appellantId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
     match /usernames/{username} {
       // Reserved-namespace registry (spec §3.2 uniqueness). Writes are only
       // performed by server functions (reserveUsername callable + the
