@@ -643,6 +643,113 @@ function createModerationDomain({
     return { openCases: total };
   }
 
+
+  // -------------------------------------------------------------- appeals ---
+
+  /**
+   * A user may appeal only a restriction on their own account or a removal
+   * applied to content they own. Appeals are server-created and immutable to
+   * clients; staff decide them through the callable below.
+   */
+  async function submitAppeal(request) {
+    const auth = requireAuth(request);
+    const data = request.data || {};
+    const kind = data.kind;
+    const targetId = data.targetId;
+    const targetParentId = data.targetParentId || null;
+    const reason = typeof data.reason === "string" ? data.reason.trim().slice(0, MAX_NOTE) : "";
+    if (!reason) throw new HttpsError("invalid-argument", "An appeal reason is required.");
+
+    let targetPath;
+    if (kind === "user") {
+      if (targetId !== auth.uid) {
+        throw new HttpsError("permission-denied", "You may appeal only your own account restriction.");
+      }
+      const user = await db.collection("users").doc(auth.uid).get();
+      if (!user.exists || (user.data() || {}).moderationState !== "restricted") {
+        throw new HttpsError("failed-precondition", "Your account has no active restriction to appeal.");
+      }
+      targetPath = "users/" + auth.uid;
+    } else {
+      if (!REMOVABLE_KIND_SET.has(kind) || !validId(targetId)) {
+        throw new HttpsError("invalid-argument", "A supported content kind and targetId are required.");
+      }
+      const ref = targetRefFor(kind, targetId, targetParentId);
+      const target = await ref.get();
+      if (!target.exists) throw new HttpsError("not-found", "Content not found.");
+      const content = target.data() || {};
+      const ownerId = content.creatorId || content.authorId || content.userId || content.senderId;
+      if (ownerId !== auth.uid) {
+        throw new HttpsError("permission-denied", "You may appeal only removal of your own content.");
+      }
+      if (content.moderationStatus !== "removed") {
+        throw new HttpsError("failed-precondition", "This content is not currently removed by moderation.");
+      }
+      targetPath = ref.path;
+    }
+
+    const duplicate = await db.collection("moderation_appeals")
+      .where("appellantId", "==", auth.uid)
+      .where("targetPath", "==", targetPath)
+      .where("status", "==", "pending")
+      .limit(1).get();
+    if (duplicate.docs && duplicate.docs.length) {
+      return { ok: true, alreadyPending: true, appealId: duplicate.docs[0].id };
+    }
+
+    const appeal = {
+      appellantId: auth.uid,
+      kind,
+      targetId,
+      targetParentId,
+      targetPath,
+      reason,
+      status: "pending",
+      decision: null,
+      reviewedBy: null,
+      reviewNote: null,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    const created = await db.collection("moderation_appeals").add(appeal);
+    return { ok: true, appealId: created.id, status: "pending" };
+  }
+
+  async function reviewAppeal(request) {
+    const staff = requireStaff(request);
+    const data = request.data || {};
+    const appealId = data.appealId;
+    const decision = data.decision;
+    if (!validId(appealId)) throw new HttpsError("invalid-argument", "appealId is required.");
+    if (decision !== "upheld" && decision !== "rejected") {
+      throw new HttpsError("invalid-argument", "decision must be upheld or rejected.");
+    }
+    const note = typeof data.note === "string" ? data.note.trim().slice(0, MAX_NOTE) : null;
+    const ref = db.collection("moderation_appeals").doc(appealId);
+    const snapshot = await ref.get();
+    if (!snapshot.exists) throw new HttpsError("not-found", "Appeal not found.");
+    const appeal = snapshot.data() || {};
+    if (appeal.status !== "pending") {
+      return { ok: true, alreadyReviewed: true, status: appeal.status, decision: appeal.decision };
+    }
+    await ref.update({
+      status: "reviewed",
+      decision,
+      reviewedBy: staff.uid,
+      reviewNote: note,
+      reviewedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    await writeAudit({
+      actorId: staff.uid,
+      action: "appeal_reviewed",
+      kind: appeal.kind,
+      targetId: appeal.targetId,
+      note: decision + (note ? ": " + note : ""),
+    });
+    return { ok: true, status: "reviewed", decision };
+  }
+
   return {
     listCases,
     getCase,
@@ -654,6 +761,8 @@ function createModerationDomain({
     unrestrictUser,
     setModeratorRole,
     getModerationSummary,
+    submitAppeal,
+    reviewAppeal,
   };
 }
 
