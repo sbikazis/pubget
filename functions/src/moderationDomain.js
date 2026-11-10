@@ -715,6 +715,23 @@ function createModerationDomain({
     return { ok: true, appealId: created.id, status: "pending" };
   }
 
+  async function listAppeals(request) {
+    requireStaff(request);
+    const data = request.data || {};
+    const status = data.status === "reviewed" ? "reviewed" : "pending";
+    const limit = clampLimit(data.limit);
+    const snapshot = await db.collection("moderation_appeals")
+      .where("status", "==", status)
+      .orderBy("createdAt", "desc")
+      .limit(limit)
+      .get();
+    const appeals = (snapshot.docs || []).map((doc) => ({
+      appealId: doc.id,
+      ...(doc.data() || {}),
+    }));
+    return { status, appeals };
+  }
+
   async function reviewAppeal(request) {
     const staff = requireStaff(request);
     const data = request.data || {};
@@ -762,6 +779,7 @@ function createModerationDomain({
     setModeratorRole,
     getModerationSummary,
     submitAppeal,
+    listAppeals,
     reviewAppeal,
   };
 }
