@@ -623,7 +623,7 @@ test("only the owner of removed content may appeal, and staff decisions are audi
   const reviewed = await domain.reviewAppeal({ ...staff(), data: {
     appealId: submitted.appealId, decision: "approved", note: "Reviewed original context",
   } });
-  assert.equal(reviewed.decision, "upheld");
+  assert.equal(reviewed.decision, "approved");
   const stored = db.store.get("moderation_appeals/" + submitted.appealId);
   assert.equal(stored.status, "reviewed");
   assert.equal(stored.reviewedBy, "mod1");
