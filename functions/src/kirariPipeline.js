@@ -103,6 +103,11 @@ function renditionArgs(source, output, height, bitrate) {
   ];
 }
 
+function isPortraitVideo(metadata) {
+  return Number(metadata?.width) > 0 &&
+    Number(metadata?.height) > Number(metadata?.width);
+}
+
 function outputDurationSeconds(clipDuration, speed) {
   const duration = Math.max(0, Number(clipDuration) || 0);
   const rate = Math.max(0.5, Math.min(2, Number(speed) || 1));
@@ -113,7 +118,7 @@ function buildAudioAttribution(audioId, audioData) {
   if (!audioId || !audioData) return null;
   return {
     audioId,
-    title: audioData.title || "Original audio",
+    title: audioData.title || audioData.displayName || audioData.name || "Original audio",
     artist: audioData.artist || "",
     license: audioData.license || "unknown",
     attribution: audioData.attribution || "",
@@ -139,39 +144,33 @@ function editorVideoFilter(width, height, settings) {
     case "vivid": filters.push("eq=saturation=1.35:contrast=1.1"); break;
     default: break;
   }
-  if (settings.overlayText) filters.push("drawtext=text='" + escapeDrawtext(settings.overlayText) +
-    "':fontcolor=white:fontsize=42:borderw=3:bordercolor=black@0.7:x=(w-text_w)/2:y=h*0.78");
+  if (settings.overlayText) {
+    const start = Math.max(0, Number(settings.overlayStartSeconds ?? settings.trimStartSeconds ?? 0) -
+      Number(settings.trimStartSeconds || 0));
+    const end = Math.max(start, Number(settings.overlayEndSeconds ?? settings.trimEndSeconds ?? 60) -
+      Number(settings.trimStartSeconds || 0));
+    filters.push("drawtext=text='" + escapeDrawtext(settings.overlayText) +
+      "':fontcolor=white:fontsize=42:borderw=3:bordercolor=black@0.7:x=(w-text_w)/2:y=h*0.78" +
+      ":enable='between(t," + start + "," + end + ")'");
+  }
   filters.push("setpts=PTS/" + settings.speed);
   return filters.join(",");
 }
 function createKirariPipeline({ db, bucket }) {
   return async (event) => {
-    // R2 media is processed from a Firestore state transition, not a Firebase
-    // Storage finalize event. The event is intentionally only a wake-up signal;
-    // the canonical source path and metadata are read from the reel and R2.
-    const reelId = event.params?.reelId || event.reelId;
-    if (!reelId) return null;
+    const object = event.data || event;
+    const objectName = object.name || "";
+    const match = /^kirari\/([^/]+)\/([^/]+)\/source\.mp4$/.exec(objectName);
+    if (!match || !object.bucket || object.bucket !== bucket.name) return null;
+    const [, uid, reelId] = match;
     const ref = db.collection("kirari").doc(reelId);
     const snap = await ref.get();
     if (!snap.exists) return null;
-    const reel = snap.data() || {};
-    const objectName = reel.originalStoragePath || reel.storagePath || "";
-    const match = /^kirari\/([^/]+)\/([^/]+)\/source\.mp4$/.exec(objectName);
-    if (!match) return null;
-    const [, uid] = match;
-    if (reel.creatorId !== uid || ["published", "rejected", "deleted"].includes(reel.status)) return null;
-    if (!["uploading", "processing"].includes(reel.status)) return null;
-    let sourceMeta;
-    try {
-      [sourceMeta] = await bucket.file(objectName).getMetadata();
-    } catch (error) {
-      await ref.update({
-        status: "failed", failureReason: "source-missing", failedAt: new Date(),
-      }).catch(() => {});
-      throw error;
-    }
-    const sourceSize = Number(sourceMeta.size || 0);
-    const sourceType = String(sourceMeta.contentType || "");
+    const reel = snap.data();
+    if (reel.creatorId !== uid || reel.originalStoragePath !== objectName) return null;
+    if (["published", "rejected", "deleted"].includes(reel.status)) return null;
+    const sourceSize = Number(object.size || 0);
+    const sourceType = String(object.contentType || "");
     if (sourceSize <= 0 || sourceSize > KIRARI.maxBytes || !sourceType.startsWith("video/")) {
       await ref.update({
         status: "failed",
@@ -183,7 +182,7 @@ function createKirariPipeline({ db, bucket }) {
     }
     if (!["uploading", "processing"].includes(reel.status)) return null;
 
-    const leaseId = String(event.id || event.params?.reelId || Date.now());
+    const leaseId = String(object.generation || object.metageneration || Date.now());
     const leaseAcquired = await db.runTransaction(async (tx) => {
       const current = await tx.get(ref);
       if (!current.exists || !["uploading", "processing"].includes(current.data()?.status)) return false;
@@ -209,6 +208,18 @@ function createKirariPipeline({ db, bucket }) {
       }).catch(() => {});
       await bucket.file(objectName).download({ destination: source });
       const metadata = await probeVideo(ffmpeg, source);
+      if (!isPortraitVideo(metadata)) {
+        await ref.update({
+          status: "rejected", moderationStatus: "rejected",
+          failureReason: "orientation",
+          moderationReason: "Kirari source videos must be vertical.",
+          rejectedAt: new Date(),
+          processingLeaseId: null,
+          processingLeaseUntil: new Date(0),
+        });
+        await lockRef.delete().catch(() => {});
+        return null;
+      }
       if (metadata.durationSeconds < KIRARI.minDurationSeconds ||
           metadata.durationSeconds > KIRARI.maxDurationSeconds) {
         await ref.update({
@@ -259,6 +270,46 @@ function createKirariPipeline({ db, bucket }) {
       }
       const audioSource = reel.audioId ? path.join(dir, "selected-audio") : null;
       if (audioSource) await bucket.file(audioData.audioPath).download({ destination: audioSource });
+      const originalAudioId = reel.allowOriginalAudioReuse && metadata.hasAudio
+        ? "original_" + reelId : null;
+      let originalAudioData = null;
+      if (originalAudioId) {
+        const originalAudioFile = path.join(dir, "original-audio.mp3");
+        await run(ffmpeg, [
+          "-ss", String(trimStart), "-i", source, "-t", String(clipDuration),
+          "-map", "0:a:0", "-vn", "-af", "atempo=" + speed,
+          "-c:a", "libmp3lame", "-b:a", "128k", "-y", originalAudioFile,
+        ]);
+        const originalAudioPath = `kirari-audio/${originalAudioId}/audio.mp3`;
+        await bucket.upload(originalAudioFile, {
+          destination: originalAudioPath, resumable: false,
+          metadata: {
+            contentType: "audio/mpeg",
+            metadata: {
+              ownerUid: uid, sourceReelId: reelId,
+              firebaseStorageDownloadTokens: randomUUID(),
+            },
+          },
+        });
+        const userSnap = await db.collection("users").doc(uid).get();
+        const userData = userSnap.exists ? userSnap.data() || {} : {};
+        const creatorName = String(userData.username || userData.displayName || "Pubget creator").slice(0, 120);
+        originalAudioData = {
+          title: creatorName + "'s original audio",
+          artist: creatorName,
+          license: "Uploader-authorized reuse; pending rights review",
+          attribution: "Original audio from @" + creatorName + "'s Kirari Reel",
+          creatorId: uid,
+          sourceReelId: reelId,
+          audioPath: originalAudioPath,
+          allowReuse: false,
+          status: "pending",
+          usageCount: 1,
+          publishedAt: new Date(),
+          updatedAt: new Date(),
+        };
+        await db.collection("kirariAudio").doc(originalAudioId).set(originalAudioData, { merge: true });
+      }
       const variants = {};
       for (const [height, bitrate] of [[360, "650k"], [540, "1200k"], [720, "2500k"]]) {
         const output = path.join(dir, String(height) + ".mp4");
@@ -268,14 +319,14 @@ function createKirariPipeline({ db, bucket }) {
         args.push("-t", String(outputDuration), "-map", "0:v:0");
         if (audioSource && metadata.hasAudio) {
           args.push("-filter_complex",
-            "[0:a]volume=0.25,atempo=" + speed + "[sourceaudio];" +
-            "[1:a]volume=0.85,atempo=" + speed + "[trackaudio];" +
+            "[0:a]volume=" + Math.max(0, Math.min(1, Number(settings.originalAudioVolume ?? 1.0))) + ",atempo=" + speed + "[sourceaudio];" +
+            "[1:a]volume=" + Math.max(0, Math.min(1, Number(settings.addedAudioVolume ?? 0.85))) + ",atempo=" + speed + "[trackaudio];" +
             "[sourceaudio][trackaudio]amix=inputs=2:duration=first:dropout_transition=2[aout]",
             "-map", "[aout]");
         } else if (audioSource) {
-          args.push("-map", "1:a:0", "-af", "atempo=" + speed);
+          args.push("-map", "1:a:0", "-af", "volume=" + Math.max(0, Math.min(1, Number(settings.addedAudioVolume ?? 0.85))) + ",atempo=" + speed);
         } else if (metadata.hasAudio) {
-          args.push("-map", "0:a:0", "-af", "atempo=" + speed);
+          args.push("-map", "0:a:0", "-af", "volume=" + Math.max(0, Math.min(1, Number(settings.originalAudioVolume ?? 1.0))) + ",atempo=" + speed);
         }
         args.push("-vf", editorVideoFilter(width, height, { ...settings, speed }));
         args.push("-c:v", "libx264", "-preset", "veryfast", "-b:v", bitrate,
@@ -299,11 +350,22 @@ function createKirariPipeline({ db, bucket }) {
       }
       const cover = path.join(dir, "cover.jpg");
       const coverTime = Math.max(trimStart, Math.min(Number(settings.coverTimeSeconds) || trimStart, trimEnd - 0.1));
-      await run(ffmpeg, [
-        "-ss", String(coverTime), "-i", source, "-frames:v", "1",
-        "-vf", editorVideoFilter(404, 720, { ...settings, speed: 1 }),
-        "-q:v", "3", "-y", cover,
-      ]);
+      const customCoverPath = `kirari/${uid}/${reelId}/cover-source.jpg`;
+      const [hasCustomCover] = await bucket.file(customCoverPath).exists();
+      if (hasCustomCover) {
+        await bucket.file(customCoverPath).download({ destination: path.join(dir, "cover-source.jpg") });
+        await run(ffmpeg, [
+          "-i", path.join(dir, "cover-source.jpg"), "-frames:v", "1",
+          "-vf", "scale=404:720:force_original_aspect_ratio=increase,crop=404:720",
+          "-q:v", "3", "-y", cover,
+        ]);
+      } else {
+        await run(ffmpeg, [
+          "-ss", String(coverTime), "-i", source, "-frames:v", "1",
+          "-vf", editorVideoFilter(404, 720, { ...settings, speed: 1 }),
+          "-q:v", "3", "-y", cover,
+        ]);
+      }
       const coverPath = `kirari-processed/${uid}/${reelId}/cover.jpg`;
       await bucket.upload(cover, {
         destination: coverPath, resumable: false,
@@ -312,6 +374,21 @@ function createKirariPipeline({ db, bucket }) {
           metadata: { ownerUid: uid, reelId, generatedBy: "kirari-pipeline-v1", firebaseStorageDownloadTokens: randomUUID() },
         },
       });
+      if (hasCustomCover) {
+        await bucket.file(customCoverPath).delete({ ignoreNotFound: true }).catch(() => {});
+      }
+      if (reel.audioId && audioTrack && audioTrack.exists) {
+        await db.runTransaction(async (tx) => {
+          const [latestReel, latestTrack] = await Promise.all([
+            tx.get(ref), tx.get(audioTrack.ref),
+          ]);
+          if (!latestReel.exists || latestReel.data()?.audioUsageCounted ||
+              !latestTrack.exists) return;
+          const usageCount = Math.max(0, Number(latestTrack.data()?.usageCount) || 0) + 1;
+          tx.update(audioTrack.ref, { usageCount, updatedAt: new Date() });
+          tx.update(ref, { audioUsageCounted: true });
+        });
+      }
       await ref.update({
         status: "published",
         moderationStatus: decision.flagged ? "review_pending" : "approved",
@@ -320,7 +397,13 @@ function createKirariPipeline({ db, bucket }) {
         renditions: variants,
         coverPath,
         editSettings: { ...settings, trimStartSeconds: trimStart, trimEndSeconds: trimEnd, speed, coverTimeSeconds: coverTime },
-        audioAttribution: buildAudioAttribution(reel.audioId, audioData),
+        audioId: reel.audioId || originalAudioId || null,
+        originalAudioId,
+        audioAttribution: buildAudioAttribution(
+          reel.audioId || originalAudioId,
+          reel.audioId ? audioData : originalAudioData,
+        ),
+        audioUsageCounted: Boolean(reel.audioId || originalAudioId),
         publishedAt: new Date(),
         processedAt: new Date(),
         failureReason: null,
@@ -349,4 +432,4 @@ function createKirariPipeline({ db, bucket }) {
   };
 }
 
-module.exports = { createKirariPipeline, probeVideo, renditionArgs, editorVideoFilter, outputDurationSeconds, buildAudioAttribution };
+module.exports = { createKirariPipeline, probeVideo, renditionArgs, editorVideoFilter, outputDurationSeconds, isPortraitVideo, buildAudioAttribution };

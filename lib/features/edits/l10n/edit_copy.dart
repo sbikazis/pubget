@@ -197,6 +197,7 @@ final class EditCopy {
   String get reelDetails => _s.pick('Reel', 'ريل');
   String get creatorFallback => _s.pick('Pubget creator', 'مبدع على Pubget');
   String get originalAudio => _s.pick('Original Audio', 'الصوت الأصلي');
+  String get useAudio => _s.pick('Use this audio', 'استخدم هذا الصوت');
   String get audioSource => _s.pick('Audio source', 'مصدر الصوت');
   String get openOriginalReel =>
       _s.pick('Open original Reel', 'فتح الريل الأصلي');

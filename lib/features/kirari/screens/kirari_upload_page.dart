@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,9 +12,15 @@ import 'package:video_player/video_player.dart';
 
 import '../data/kirari_repository.dart';
 import '../l10n/kirari_copy.dart';
+import '../../anime/models/anime_models.dart';
+import '../../anime/repositories/anime_repository.dart';
+import '../../home/repositories/home_repository.dart';
+import '../../social/models/public_profile.dart';
 
 class KirariUploadPage extends StatefulWidget {
-  const KirariUploadPage({super.key});
+  const KirariUploadPage({super.key, this.initialAudioId});
+
+  final String? initialAudioId;
 
   @override
   State<KirariUploadPage> createState() => _KirariUploadPageState();
@@ -21,11 +28,14 @@ class KirariUploadPage extends StatefulWidget {
 
 class _KirariUploadPageState extends State<KirariUploadPage> {
   static const _pendingKey = 'kirari.pendingUpload.v1';
+  static const _draftsKey = 'kirari.savedDrafts.v1';
+  List<Map<String, dynamic>> _savedDrafts = const [];
   final _caption = TextEditingController();
   final _hashtags = TextEditingController();
   final _overlayText = TextEditingController();
   final AudioPlayer _audioPreview = AudioPlayer();
   XFile? _video;
+  XFile? _coverImage;
   VideoPlayerController? _preview;
   KirariUploadSession? _session;
   List<KirariAudioTrack> _audioTracks = const [];
@@ -35,6 +45,10 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   RangeValues _trim = const RangeValues(0, 3);
   double _speed = 1;
   double _coverTime = 0;
+  double _originalAudioVolume = 1.0;
+  double _addedAudioVolume = 0.85;
+  double _overlayStart = 0;
+  double _overlayEnd = 3;
   String _filter = 'none';
   double _duration = 3;
   bool _busy = false;
@@ -42,10 +56,17 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   double _progress = 0;
   String? _error;
   String? _status;
+  bool _overlayVisible = true;
+  bool _allowOriginalAudioReuse = false;
+  List<Anime> _selectedAnime = <Anime>[];
+  List<AnimeCharacter> _selectedCharacters = <AnimeCharacter>[];
+  List<PublicProfile> _selectedMentions = <PublicProfile>[];
+  String _contentCategory = 'anime_edit';
 
   @override
   void initState() {
     super.initState();
+    _audioId = widget.initialAudioId;
     _loadAudio();
     _restorePendingUpload();
   }
@@ -73,52 +94,130 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
   Future<void> _restorePendingUpload() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final rawDrafts = prefs.getString(_draftsKey);
+      final decodedDrafts = rawDrafts == null ? null : jsonDecode(rawDrafts);
+      if (decodedDrafts is List) {
+        _savedDrafts = decodedDrafts
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .where((item) => item['localPath'] is String)
+            .toList(growable: true);
+      }
       final raw = prefs.getString(_pendingKey);
-      if (raw == null) return;
-      final data = jsonDecode(raw);
-      if (data is! Map) return;
-      final path = data['localPath'] as String?;
-      if (path == null || !await File(path).exists()) {
-        await prefs.remove(_pendingKey);
-        return;
+      Map<String, dynamic>? data;
+      if (raw != null) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) data = Map<String, dynamic>.from(decoded);
       }
-      final file = File(path);
-      final controller = VideoPlayerController.file(file);
-      await controller.initialize();
-      await controller.setLooping(true);
-      controller.addListener(_previewLoop);
-      final seconds = controller.value.duration.inMilliseconds / 1000;
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      final start = (data['trimStartSeconds'] as num?)?.toDouble() ?? 0;
-      final end = (data['trimEndSeconds'] as num?)?.toDouble() ?? seconds;
-      setState(() {
-        _video = XFile(path);
-        _preview = controller;
-        _duration = seconds;
-        _trim = RangeValues(
-          start.clamp(0, seconds - 3).toDouble(),
-          end.clamp(3, seconds).toDouble(),
-        );
-        _speed = (data['speed'] as num?)?.toDouble() ?? 1;
-        _filter = data['filter'] as String? ?? 'none';
-        _coverTime = (data['coverTimeSeconds'] as num?)?.toDouble() ?? 0;
-        _overlayText.text = data['overlayText'] as String? ?? '';
-        _caption.text = data['caption'] as String? ?? '';
-        _hashtags.text = (data['hashtags'] as List? ?? const []).join(' ');
-        _audioId = data['audioId'] as String?;
-        _idempotencyKey = data['idempotencyKey'] as String?;
-        final reelId = data['reelId'] as String?;
-        final storagePath = data['storagePath'] as String?;
-        if (reelId != null && storagePath != null) {
-          _session = KirariUploadSession(reelId: reelId, storagePath: storagePath);
-        }
-        _status = KirariCopy.of(context).resumeUpload;
-      });
+      data ??= _savedDrafts.isNotEmpty ? _savedDrafts.last : null;
+      if (data != null) await _restoreDraftData(data);
+      if (mounted) setState(() {});
     } catch (_) {
       if (mounted) setState(() => _error = KirariCopy.of(context).loadError);
+    }
+  }
+
+  Future<void> _restoreDraftData(Map<String, dynamic> data) async {
+    final path = data['localPath'] as String?;
+    if (path == null || !await File(path).exists()) return;
+    final coverPath = data['coverLocalPath'] as String?;
+    _coverImage = coverPath != null && await File(coverPath).exists() ? XFile(coverPath) : null;
+    final controller = VideoPlayerController.file(File(path));
+    await controller.initialize();
+    await controller.setLooping(true);
+    controller.addListener(_previewLoop);
+    final seconds = controller.value.duration.inMilliseconds / 1000;
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    final start = (data['trimStartSeconds'] as num?)?.toDouble() ?? 0;
+    final end = (data['trimEndSeconds'] as num?)?.toDouble() ?? seconds;
+    final safeStart = start.clamp(0, (seconds - 3).clamp(0, seconds)).toDouble();
+    final safeEnd = end.clamp(safeStart + 3, seconds).toDouble();
+    _preview?.removeListener(_previewLoop);
+    await _preview?.dispose();
+    setState(() {
+      _video = XFile(path);
+      _preview = controller;
+      _duration = seconds;
+      _trim = RangeValues(safeStart, safeEnd);
+      _speed = (data['speed'] as num?)?.toDouble() ?? 1;
+      _filter = data['filter'] as String? ?? 'none';
+      _coverTime = ((data['coverTimeSeconds'] as num?)?.toDouble() ?? safeStart)
+          .clamp(safeStart, safeEnd).toDouble();
+      _originalAudioVolume = ((data['originalAudioVolume'] as num?)?.toDouble() ?? 1.0).clamp(0, 1).toDouble();
+      _addedAudioVolume = ((data['addedAudioVolume'] as num?)?.toDouble() ?? 0.85).clamp(0, 1).toDouble();
+      _overlayStart = ((data['overlayStartSeconds'] as num?)?.toDouble() ?? safeStart).clamp(safeStart, safeEnd).toDouble();
+      _overlayEnd = ((data['overlayEndSeconds'] as num?)?.toDouble() ?? safeEnd).clamp(_overlayStart, safeEnd).toDouble();
+      _overlayVisible = _overlayStart <= safeStart && _overlayEnd >= safeStart;
+      _overlayText.text = data['overlayText'] as String? ?? '';
+      _caption.text = data['caption'] as String? ?? '';
+      _hashtags.text = (data['hashtags'] as List? ?? const []).join(' ');
+      _audioId = data['audioId'] as String?;
+      _allowOriginalAudioReuse = data['allowOriginalAudioReuse'] == true;
+      const categories = {'anime_edit', 'amv', 'cosplay', 'meme', 'review', 'theory', 'recommendation', 'fan_art', 'other'};
+      final category = data['contentCategory'] as String?;
+      _contentCategory = categories.contains(category) ? category! : 'anime_edit';
+      _selectedAnime = (data['anime'] as List? ?? const <dynamic>[])
+          .whereType<Map>()
+          .where((item) => item['id'] is String && item['title'] is String)
+          .map((item) => Anime(id: item['id'] as String, title: item['title'] as String))
+          .take(5).toList();
+      _selectedCharacters = (data['characters'] as List? ?? const <dynamic>[])
+          .whereType<Map>()
+          .where((item) => item['id'] is String && item['name'] is String)
+          .map((item) => AnimeCharacter(id: item['id'] as String, name: item['name'] as String))
+          .take(20).toList();
+      _selectedMentions = (data['mentions'] as List? ?? const <dynamic>[])
+          .whereType<Map>()
+          .where((item) => item['uid'] is String)
+          .map((item) => PublicProfile(uid: item['uid'] as String, username: item['username'] as String?))
+          .take(20).toList();
+      _idempotencyKey = data['idempotencyKey'] as String?;
+      final reelId = data['reelId'] as String?;
+      final storagePath = data['storagePath'] as String?;
+      _session = reelId != null && storagePath != null
+          ? KirariUploadSession(reelId: reelId, storagePath: storagePath)
+          : null;
+      _status = KirariCopy.of(context).resumeUpload;
+      _submitted = false;
+      _error = null;
+    });
+  }
+
+  Future<void> _chooseSavedDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_draftsKey);
+    final decoded = raw == null ? null : jsonDecode(raw);
+    final drafts = decoded is List
+        ? decoded.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+        : <Map<String, dynamic>>[];
+    if (!mounted || drafts.isEmpty) return;
+    final selected = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('Saved drafts'), subtitle: Text('Choose a draft to continue editing')),
+            for (final draft in drafts.reversed)
+              ListTile(
+                leading: const Icon(Icons.video_file_outlined),
+                title: Text((draft['caption'] as String?)?.trim().isNotEmpty == true
+                    ? (draft['caption'] as String).trim()
+                    : 'Untitled video draft'),
+                subtitle: Text((draft['savedAt'] as String?) ?? 'Saved on this device'),
+                onTap: () => Navigator.pop(sheetContext, draft),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected != null && mounted) {
+      await _restoreDraftData(selected);
+      await prefs.setString(_pendingKey, jsonEncode(selected));
     }
   }
 
@@ -137,16 +236,32 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     final controller = _preview;
     if (controller == null || !controller.value.isInitialized || !controller.value.isPlaying) return;
     final position = controller.value.position.inMilliseconds / 1000;
+    final overlayVisible = _overlayText.text.trim().isNotEmpty &&
+        position >= _overlayStart && position <= _overlayEnd;
+    if (mounted && overlayVisible != _overlayVisible) {
+      setState(() => _overlayVisible = overlayVisible);
+    }
     if (position >= _trim.end) {
       controller.pause();
+      _audioPreview.stop();
+      controller.setVolume(_originalAudioVolume);
       controller.seekTo(Duration(milliseconds: (_trim.start * 1000).round()));
-      if (mounted) setState(() {});
+      if (mounted) setState(() {
+        _overlayVisible = _overlayText.text.trim().isNotEmpty &&
+            _trim.start >= _overlayStart && _trim.start <= _overlayEnd;
+      });
     }
   }
 
   Future<void> _pick() async {
+    if (_busy || _session != null) return;
     final picked = await context.read<KirariRepository>().pickGalleryVideo();
     if (picked == null || !mounted) return;
+    if (!picked.name.toLowerCase().endsWith('.mp4') &&
+        !picked.path.toLowerCase().endsWith('.mp4')) {
+      setState(() => _error = KirariCopy.of(context).videoFormat);
+      return;
+    }
     File? durableFile;
     VideoPlayerController? controller;
     try {
@@ -159,8 +274,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       final sourceController = VideoPlayerController.file(sourceFile);
       await sourceController.initialize();
       final duration = sourceController.value.duration.inMilliseconds / 1000;
+      final isPortrait = sourceController.value.aspectRatio > 0 && sourceController.value.aspectRatio < 1;
       await sourceController.dispose();
-      if (duration < 3 || duration > 60) {
+      if (duration < 3 || duration > 60 || !isPortrait) {
         setState(() => _error = KirariCopy.of(context).videoLimits);
         return;
       }
@@ -176,12 +292,21 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         await durableFile.delete().catchError((_) => durableFile!);
         return;
       }
+      final oldCoverPath = _coverImage?.path;
+      if (oldCoverPath != null) await File(oldCoverPath).delete().catchError((_) => File(oldCoverPath));
       setState(() {
+        _coverImage = null;
         _video = XFile(durableFile!.path);
         _preview = controller;
         _duration = duration;
         _trim = RangeValues(0, duration);
         _coverTime = 0;
+        _originalAudioVolume = 1.0;
+        _addedAudioVolume = 0.85;
+        _overlayStart = 0;
+        _overlayEnd = duration;
+        _overlayVisible = true;
+        _allowOriginalAudioReuse = false;
         _session = null;
         _idempotencyKey = 'kirari-' + DateTime.now().microsecondsSinceEpoch.toString();
         _progress = 0;
@@ -204,30 +329,66 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     'filter': _filter,
     'overlayText': _overlayText.text.trim(),
     'coverTimeSeconds': _coverTime,
+    'originalAudioVolume': _originalAudioVolume,
+    'addedAudioVolume': _addedAudioVolume,
+    'overlayStartSeconds': _overlayStart,
+    'overlayEndSeconds': _overlayEnd,
   };
 
   Future<void> _savePendingUpload() async {
     final video = _video;
     if (video == null) return;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_pendingKey, jsonEncode(<String, dynamic>{
+    final draft = <String, dynamic>{
       'localPath': video.path,
+      'coverLocalPath': _coverImage?.path,
       'reelId': _session?.reelId,
       'storagePath': _session?.storagePath,
       'idempotencyKey': _idempotencyKey,
       'caption': _caption.text,
-      'hashtags': _hashtags.text.split(RegExp(r'[,\\s]+')).where((tag) => tag.isNotEmpty).toList(),
+      'hashtags': _hashtags.text.split(RegExp(r'[,\s]+')).where((tag) => tag.isNotEmpty).toList(),
       'audioId': _audioId,
+      'allowOriginalAudioReuse': _allowOriginalAudioReuse,
+      'contentCategory': _contentCategory,
+      'anime': _selectedAnime.map((item) => {'id': item.id, 'title': item.title}).toList(),
+      'characters': _selectedCharacters.map((item) => {'id': item.id, 'name': item.name}).toList(),
+      'mentions': _selectedMentions.map((item) => {'uid': item.uid, 'username': item.username ?? ''}).toList(),
+      'savedAt': DateTime.now().toIso8601String(),
       ..._editorSettings(),
-    }));
+    };
+    await prefs.setString(_pendingKey, jsonEncode(draft));
+    final raw = prefs.getString(_draftsKey);
+    final decoded = raw == null ? null : jsonDecode(raw);
+    final drafts = decoded is List
+        ? decoded.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+        : <Map<String, dynamic>>[];
+    final identity = _idempotencyKey ?? video.path;
+    drafts.removeWhere((item) => (item['idempotencyKey'] ?? item['localPath']) == identity);
+    drafts.add(draft);
+    // Keep a bounded local draft history; source files remain user-owned.
+    final retained = drafts.length > 20 ? drafts.sublist(drafts.length - 20) : drafts;
+    await prefs.setString(_draftsKey, jsonEncode(retained));
+    if (mounted) setState(() => _savedDrafts = retained);
   }
 
   Future<void> _clearPendingUpload({bool deleteLocalFile = true}) async {
     final path = _video?.path;
+    final coverPath = _coverImage?.path;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_pendingKey);
+    final rawDrafts = prefs.getString(_draftsKey);
+    final decodedDrafts = rawDrafts == null ? null : jsonDecode(rawDrafts);
+    if (decodedDrafts is List) {
+      final drafts = decodedDrafts.whereType<Map>()
+          .where((item) => item['localPath'] != path).toList();
+      await prefs.setString(_draftsKey, jsonEncode(drafts));
+      if (mounted) setState(() => _savedDrafts = drafts.map((item) => Map<String, dynamic>.from(item)).toList());
+    }
     if (deleteLocalFile && path != null) {
       await File(path).delete().catchError((_) => File(path));
+    }
+    if (deleteLocalFile && coverPath != null) {
+      await File(coverPath).delete().catchError((_) => File(coverPath));
     }
   }
 
@@ -241,22 +402,36 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     });
     try {
       final repository = context.read<KirariRepository>();
+      final idempotencyKey = _idempotencyKey ??= 'kirari-${DateTime.now().microsecondsSinceEpoch}';
+      if (_session == null) await _savePendingUpload();
       final session = _session ?? await repository.startUpload(
         caption: _caption.text.trim(),
         hashtags: _hashtags.text
-            .split(RegExp(r'[,\\s]+'))
+            .split(RegExp(r'[,\s]+'))
             .map((tag) => tag.trim().replaceFirst(RegExp(r'^#'), '').toLowerCase())
             .where((tag) => tag.isNotEmpty)
             .toSet()
             .toList(),
-        idempotencyKey: _idempotencyKey ??= 'kirari-${DateTime.now().microsecondsSinceEpoch}',
+        idempotencyKey: idempotencyKey,
         editSettings: _editorSettings(),
         audioId: _audioId,
+        allowOriginalAudioReuse: _allowOriginalAudioReuse,
+        animeIds: _selectedAnime.map((item) => item.id).toList(),
+        characterIds: _selectedCharacters.map((item) => item.id).toList(),
+        animeMetadata: _selectedAnime.map((item) => {'id': item.id, 'title': item.title}).toList(),
+        characterMetadata: _selectedCharacters.map((item) => {'id': item.id, 'name': item.name}).toList(),
+        mentions: _selectedMentions.map((item) => item.uid).toList(),
+        mentionMetadata: _selectedMentions.map((item) => {'id': item.uid, 'username': item.username ?? item.displayName ?? 'Pubget user'}).toList(),
+        contentCategory: _contentCategory,
       );
       _session = session;
       await _savePendingUpload();
-      if (!mounted) return;
-      setState(() => _status = 'Uploading video…');
+      if (mounted) setState(() => _status = 'Uploading video…');
+      final coverImage = _coverImage;
+      if (coverImage != null) {
+        final coverPath = session.storagePath.replaceFirst('/source.mp4', '/cover-source.jpg');
+        await repository.uploadCover(storagePath: coverPath, image: coverImage);
+      }
       await repository.uploadSource(
         storagePath: session.storagePath,
         video: video,
@@ -264,8 +439,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
           if (mounted) setState(() => _progress = value);
         },
       );
-      if (!mounted) return;
-      setState(() => _status = KirariCopy.of(context).processing);
+      if (mounted) setState(() => _status = KirariCopy.of(context).processing);
       await repository.finalizeUpload(session.reelId);
       await _clearPendingUpload();
       if (!mounted) return;
@@ -273,6 +447,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         _status = KirariCopy.of(context).received;
         _submitted = true;
         _video = null;
+        _coverImage = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(KirariCopy.of(context).uploadReceived)),
@@ -292,21 +467,291 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     if (session != null) {
       await context.read<KirariRepository>().cancelUpload(session.reelId);
     }
-    await _clearPendingUpload();
-    await _preview?.dispose();
+    await _clearPendingUpload(deleteLocalFile: false);
     if (!mounted) return;
     setState(() {
       _session = null;
-      _video = null;
-      _preview = null;
+      _idempotencyKey = null;
       _error = null;
-      _status = 'Upload canceled.';
+      _status = KirariCopy.of(context).uploadCanceled;
       _progress = 0;
       _submitted = false;
     });
+    await _savePendingUpload();
+  }
+
+  Future<void> _chooseAnime() async {
+    if (_busy || _session != null || _selectedAnime.length >= 5) return;
+    final repository = context.read<AnimeRepository>();
+    final controller = TextEditingController();
+    var searching = false;
+    var results = <Anime>[];
+    final selected = await showModalBottomSheet<Anime>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, updateSheet) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16, right: 16, top: 12,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+            ),
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.65,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      labelText: KirariCopy.of(context).searchAnime,
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: () async {
+                          final query = controller.text.trim();
+                          if (query.isEmpty) return;
+                          updateSheet(() => searching = true);
+                          final result = await repository.searchAnime(query, limit: 10);
+                          if (!sheetContext.mounted) return;
+                          updateSheet(() {
+                            results = result.valueOrNull?.items ?? <Anime>[];
+                            searching = false;
+                          });
+                        },
+                      ),
+                    ),
+                    onSubmitted: (query) async {
+                      if (query.trim().isEmpty) return;
+                      updateSheet(() => searching = true);
+                      final result = await repository.searchAnime(query.trim(), limit: 10);
+                      if (!sheetContext.mounted) return;
+                      updateSheet(() {
+                        results = result.valueOrNull?.items ?? <Anime>[];
+                        searching = false;
+                      });
+                    },
+                  ),
+                  if (searching) const LinearProgressIndicator(),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: results.length,
+                      itemBuilder: (context, index) {
+                        final anime = results[index];
+                        return ListTile(
+                          title: Text(anime.title),
+                          subtitle: Text(anime.subtitle),
+                          onTap: () => Navigator.of(sheetContext).pop(anime),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    controller.dispose();
+    if (!mounted || selected == null ||
+        _selectedAnime.any((item) => item.id == selected.id)) return;
+    setState(() => _selectedAnime = [..._selectedAnime, selected]);
+    await _savePendingUpload();
+  }
+
+  Future<void> _chooseCharacters(Anime anime) async {
+    if (_busy || _session != null) return;
+    final result = await context.read<AnimeRepository>().getCharacters(anime.id);
+    if (!mounted) return;
+    final characters = result.valueOrNull ?? <AnimeCharacter>[];
+    var query = '';
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, updateSheet) {
+          final filtered = characters.where((character) {
+            final value = query.trim().toLowerCase();
+            return value.isEmpty ||
+                character.name.toLowerCase().contains(value) ||
+                (character.nameKanji ?? '').toLowerCase().contains(value);
+          }).take(100).toList();
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: TextField(
+                      autofocus: true,
+                      decoration: InputDecoration(labelText: KirariCopy.of(context).searchCharacters),
+                      onChanged: (value) => updateSheet(() => query = value),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final character = filtered[index];
+                        final selected = _selectedCharacters.any((item) => item.id == character.id);
+                        return CheckboxListTile(
+                          value: selected,
+                          title: Text(character.name),
+                          subtitle: character.nameKanji == null ? null : Text(character.nameKanji!),
+                          onChanged: (checked) {
+                            if (_selectedCharacters.length >= 20 && checked == true) return;
+                            setState(() {
+                              if (checked == true) {
+                                if (!selected) _selectedCharacters = [..._selectedCharacters, character];
+                              } else {
+                                _selectedCharacters = _selectedCharacters.where((item) => item.id != character.id).toList();
+                              }
+                            });
+                            updateSheet(() {});
+                            _savePendingUpload();
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _chooseMention() async {
+    if (_busy || _session != null || _selectedMentions.length >= 20) return;
+    final repository = context.read<HomeRepository>();
+    final controller = TextEditingController();
+    var searching = false;
+    var results = <PublicProfile>[];
+    final selected = await showModalBottomSheet<PublicProfile>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, updateSheet) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16, right: 16, top: 12,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+            ),
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.65,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      labelText: KirariCopy.of(context).searchPeople,
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: () async {
+                          final query = controller.text.trim();
+                          if (query.isEmpty) return;
+                          updateSheet(() => searching = true);
+                          final result = await repository.search(query);
+                          if (!sheetContext.mounted) return;
+                          updateSheet(() {
+                            results = result.valueOrNull?.people ?? <PublicProfile>[];
+                            searching = false;
+                          });
+                        },
+                      ),
+                    ),
+                    onSubmitted: (query) async {
+                      if (query.trim().isEmpty) return;
+                      updateSheet(() => searching = true);
+                      final result = await repository.search(query.trim());
+                      if (!sheetContext.mounted) return;
+                      updateSheet(() {
+                        results = result.valueOrNull?.people ?? <PublicProfile>[];
+                        searching = false;
+                      });
+                    },
+                  ),
+                  if (searching) const LinearProgressIndicator(),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: results.length,
+                      itemBuilder: (context, index) {
+                        final profile = results[index];
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundImage: profile.avatarUrl == null || profile.avatarUrl!.isEmpty
+                                ? null : NetworkImage(profile.avatarUrl!),
+                            child: profile.avatarUrl == null || profile.avatarUrl!.isEmpty
+                                ? const Icon(Icons.person_outline) : null,
+                          ),
+                          title: Text(profile.primaryName()),
+                          subtitle: Text(profile.username == null ? profile.uid : '@${profile.username}'),
+                          onTap: () => Navigator.of(sheetContext).pop(profile),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    controller.dispose();
+    if (!mounted || selected == null ||
+        _selectedMentions.any((item) => item.uid == selected.uid)) return;
+    setState(() => _selectedMentions = [..._selectedMentions, selected]);
+    await _savePendingUpload();
+  }
+
+  Future<void> _chooseCoverImage() async {
+    if (_busy || _session != null) return;
+    final picked = await context.read<KirariRepository>().pickGalleryImage();
+    if (picked == null || !mounted) return;
+    try {
+      final cropped = await ImageCropper().cropImage(
+        sourcePath: picked.path,
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 88,
+        aspectRatio: const CropAspectRatio(ratioX: 9, ratioY: 16),
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: KirariCopy.of(context).adjustCover,
+            lockAspectRatio: true,
+            hideBottomControls: false,
+          ),
+          IOSUiSettings(title: KirariCopy.of(context).adjustCover, aspectRatioLockEnabled: true),
+        ],
+      );
+      if (cropped == null || !mounted) return;
+      final durable = await _keepLocalCopy(XFile(cropped.path, name: 'cover.jpg'));
+      if (!mounted) {
+        await durable.delete().catchError((_) => durable);
+        return;
+      }
+      final previous = _coverImage?.path;
+      setState(() {
+        _coverImage = XFile(durable.path);
+        _error = null;
+      });
+      if (previous != null && previous != durable.path) {
+        await File(previous).delete().catchError((_) => File(previous));
+      }
+      await _savePendingUpload();
+    } catch (_) {
+      if (mounted) setState(() => _error = KirariCopy.of(context).coverError);
+    }
   }
 
   Future<void> _chooseAudio() async {
+    if (_busy || _session != null) return;
     final copy = KirariCopy.of(context);
     final selectedId = await showModalBottomSheet<String?>(
       context: context,
@@ -329,7 +774,15 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 ListTile(
                   leading: const Icon(Icons.music_note),
                   title: Text(track.title),
-                  subtitle: Text(track.artist + ' · ' + track.license),
+                  subtitle: Text(
+                    [
+                      if (track.artist.isNotEmpty) track.artist,
+                      'License: ${track.license}',
+                      if (track.attribution.isNotEmpty) 'Credit: ${track.attribution}',
+                    ].join(' · '),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   trailing: IconButton(
                     tooltip: 'Preview audio',
                     icon: Icon(_previewingAudioId == track.id ? Icons.stop : Icons.play_arrow),
@@ -358,7 +811,15 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     );
     await _audioPreview.stop();
     if (!mounted || selectedId == null) return;
-    setState(() { _previewingAudioId = null; _audioId = selectedId.isEmpty ? null : selectedId; });
+    setState(() {
+      _previewingAudioId = null;
+      _audioId = selectedId.isEmpty ? null : selectedId;
+      if (_audioId == null) {
+        _originalAudioVolume = 1;
+      } else if (_originalAudioVolume == 1) {
+        _originalAudioVolume = 0.25;
+      }
+    });
     await _savePendingUpload();
   }
 
@@ -399,7 +860,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         padding: const EdgeInsets.all(16),
         children: [
           GestureDetector(
-            onTap: _busy ? null : _pick,
+            onTap: _busy || _session != null ? null : _pick,
             child: Container(
               height: 390,
               decoration: BoxDecoration(
@@ -411,19 +872,35 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                   ? Stack(
                       fit: StackFit.expand,
                       children: [
-                        if (filter == null)
-                          VideoPlayer(preview!)
-                        else
-                          ColorFiltered(colorFilter: filter, child: VideoPlayer(preview!)),
-                        if (_overlayText.text.trim().isNotEmpty)
-                          Center(
-                            child: Text(
-                              _overlayText.text,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white, fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                shadows: [Shadow(blurRadius: 5, color: Colors.black)],
+                        Center(
+                          child: AspectRatio(
+                            // Keep the source video's real display ratio. The
+                            // preview viewport may be portrait, landscape, or
+                            // square; never stretch the texture to fill it.
+                            aspectRatio: preview!.value.aspectRatio > 0
+                                ? preview.value.aspectRatio
+                                : 9 / 16,
+                            child: filter == null
+                                ? VideoPlayer(preview)
+                                : ColorFiltered(
+                                    colorFilter: filter,
+                                    child: VideoPlayer(preview),
+                                  ),
+                          ),
+                        ),
+                        if (_overlayText.text.trim().isNotEmpty && _overlayVisible)
+                          Align(
+                            alignment: const Alignment(0, 0.56),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 18),
+                              child: Text(
+                                _overlayText.text,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white, fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  shadows: [Shadow(blurRadius: 5, color: Colors.black)],
+                                ),
                               ),
                             ),
                           ),
@@ -435,9 +912,21 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                             onPressed: () async {
                               if (preview.value.isPlaying) {
                                 await preview.pause();
+                                await _audioPreview.stop();
+                                await preview.setVolume(1);
                               } else {
                                 await preview.setPlaybackSpeed(_speed);
                                 await preview.seekTo(Duration(milliseconds: (_trim.start * 1000).round()));
+                                if (selectedTrack != null) {
+                                  await preview.setVolume(_originalAudioVolume);
+                                  await _audioPreview.setReleaseMode(ReleaseMode.loop);
+                                  await _audioPreview.setPlaybackRate(_speed);
+                                  await _audioPreview.setVolume(_addedAudioVolume);
+                                  await _audioPreview.play(UrlSource(selectedTrack.audioUrl));
+                                } else {
+                                  await preview.setVolume(_originalAudioVolume);
+                                  await _audioPreview.stop();
+                                }
                                 await preview.play();
                               }
                               if (mounted) setState(() {});
@@ -457,6 +946,16 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                     ),
             ),
           ),
+          if (_savedDrafts.isNotEmpty) ...[
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _busy || _session != null ? null : _chooseSavedDraft,
+                icon: const Icon(Icons.folder_open_outlined),
+                label: Text('Saved drafts (${_savedDrafts.length})'),
+              ),
+            ),
+          ],
           if (_video != null) ...[
             const SizedBox(height: 18),
             Text(copy.trim, style: Theme.of(context).textTheme.titleMedium),
@@ -466,7 +965,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               divisions: (_duration * 2).round().clamp(6, 120).toInt(),
               values: _trim,
               labels: RangeLabels('${_trim.start.toStringAsFixed(1)}s', '${_trim.end.toStringAsFixed(1)}s'),
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 var start = value.start;
                 var end = value.end;
                 if (end - start < 3) {
@@ -479,6 +978,8 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 setState(() {
                   _trim = RangeValues(start, end);
                   _coverTime = _coverTime.clamp(start, end).toDouble();
+                  _overlayStart = _overlayStart.clamp(start, end).toDouble();
+                  _overlayEnd = _overlayEnd.clamp(_overlayStart, end).toDouble();
                 });
                 _savePendingUpload();
               },
@@ -494,14 +995,37 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 DropdownMenuItem(value: 1.5, child: Text('1.5×')),
                 DropdownMenuItem(value: 2, child: Text('2×')),
               ],
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 if (value == null) return;
                 setState(() => _speed = value);
                 _preview?.setPlaybackSpeed(value);
+                _audioPreview.setPlaybackRate(value);
                 _savePendingUpload();
               },
             ),
             const SizedBox(height: 12),
+            Text(copy.originalVolume, style: Theme.of(context).textTheme.titleMedium),
+            Slider(
+              min: 0, max: 1, divisions: 20, value: _originalAudioVolume,
+              label: '${(_originalAudioVolume * 100).round()}%',
+              onChanged: _busy || _session != null ? null : (value) {
+                setState(() => _originalAudioVolume = value);
+                // Keep the source-audio preview in sync even while a selected
+                // library track is mixed through the separate AudioPlayer.
+                _preview?.setVolume(value);
+                _savePendingUpload();
+              },
+            ),
+            Text(copy.addedVolume, style: Theme.of(context).textTheme.titleMedium),
+            Slider(
+              min: 0, max: 1, divisions: 20, value: _addedAudioVolume,
+              label: '${(_addedAudioVolume * 100).round()}%',
+              onChanged: _busy || _session != null ? null : (value) {
+                setState(() => _addedAudioVolume = value);
+                _audioPreview.setVolume(value);
+                _savePendingUpload();
+              },
+            ),
             Text(copy.filter, style: Theme.of(context).textTheme.titleMedium),
             DropdownButtonFormField<String>(
               value: _filter,
@@ -512,7 +1036,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 DropdownMenuItem(value: 'mono', child: Text('Mono')),
                 DropdownMenuItem(value: 'vivid', child: Text('Vivid')),
               ],
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 if (value != null) setState(() => _filter = value);
                 _savePendingUpload();
               },
@@ -520,10 +1044,45 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             const SizedBox(height: 12),
             TextField(
               controller: _overlayText,
+              enabled: !_busy && _session == null,
               maxLength: 80,
               decoration: InputDecoration(labelText: copy.overlayText),
               onChanged: (_) {
-                setState(() {});
+                final position = (_preview?.value.position.inMilliseconds ?? 0) / 1000;
+                setState(() => _overlayVisible = _overlayText.text.trim().isNotEmpty &&
+                    position >= _overlayStart && position <= _overlayEnd);
+                _savePendingUpload();
+              },
+            ),
+            Text(copy.textStart, style: Theme.of(context).textTheme.titleSmall),
+            Slider(
+              min: _trim.start, max: _trim.end, divisions: (_duration * 2).round().clamp(6, 120).toInt(),
+              value: _overlayStart.clamp(_trim.start, _overlayEnd).toDouble(),
+              label: '${_overlayStart.toStringAsFixed(1)}s',
+              onChanged: _busy || _session != null ? null : (value) {
+                setState(() {
+                  _overlayStart = value;
+                  if (_overlayEnd < value) _overlayEnd = value;
+                  final position = (_preview?.value.position.inMilliseconds ?? 0) / 1000;
+                  _overlayVisible = _overlayText.text.trim().isNotEmpty &&
+                      position >= _overlayStart && position <= _overlayEnd;
+                });
+                _savePendingUpload();
+              },
+            ),
+            Text(copy.textEnd, style: Theme.of(context).textTheme.titleSmall),
+            Slider(
+              min: _overlayStart.clamp(_trim.start, _trim.end).toDouble(), max: _trim.end,
+              divisions: (_duration * 2).round().clamp(6, 120).toInt(),
+              value: _overlayEnd.clamp(_overlayStart, _trim.end).toDouble(),
+              label: '${_overlayEnd.toStringAsFixed(1)}s',
+              onChanged: _busy || _session != null ? null : (value) {
+                final position = (_preview?.value.position.inMilliseconds ?? 0) / 1000;
+                setState(() {
+                  _overlayEnd = value;
+                  _overlayVisible = _overlayText.text.trim().isNotEmpty &&
+                      position >= _overlayStart && position <= _overlayEnd;
+                });
                 _savePendingUpload();
               },
             ),
@@ -532,10 +1091,31 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               min: _trim.start,
               max: _trim.end,
               value: _coverTime.clamp(_trim.start, _trim.end).toDouble(),
-              onChanged: _busy ? null : (value) {
+              onChanged: _busy || _session != null ? null : (value) {
                 setState(() => _coverTime = value);
                 _savePendingUpload();
               },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: _coverImage == null
+                  ? const Icon(Icons.image_outlined)
+                  : ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(_coverImage!.path), width: 36, height: 54, fit: BoxFit.cover)),
+              title: Text(copy.chooseCover),
+              subtitle: Text(_coverImage == null ? copy.frameCover : copy.customCoverSelected),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _busy || _session != null ? null : _chooseCoverImage,
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _allowOriginalAudioReuse,
+              onChanged: _busy || _session != null ? null : (value) {
+                setState(() => _allowOriginalAudioReuse = value == true);
+                _savePendingUpload();
+              },
+              title: Text(copy.allowAudioReuse),
+              subtitle: Text(copy.audioReuseRights),
+              controlAffinity: ListTileControlAffinity.leading,
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -543,14 +1123,23 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               title: Text(copy.audioLibrary),
               subtitle: Text(selectedTrack == null
                   ? copy.originalAudio
-                  : '${selectedTrack.title} · ${selectedTrack.artist} · ${selectedTrack.license}'),
+                  : [
+                      selectedTrack.title,
+                      selectedTrack.artist,
+                      'License: ${selectedTrack.license}',
+                      if (selectedTrack.attribution.isNotEmpty) 'Credit: ${selectedTrack.attribution}',
+                    ].where((value) => value.isNotEmpty).join(' · '),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: _busy ? null : _chooseAudio,
+              onTap: _busy || _session != null ? null : _chooseAudio,
             ),
           ],
           const SizedBox(height: 16),
           TextField(
             controller: _caption,
+            enabled: !_busy && _session == null,
             maxLength: 2200,
             maxLines: 3,
             decoration: InputDecoration(labelText: copy.caption, border: const OutlineInputBorder()),
@@ -559,6 +1148,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
           const SizedBox(height: 12),
           TextField(
             controller: _hashtags,
+            enabled: !_busy && _session == null,
             decoration: InputDecoration(
               labelText: copy.hashtags,
               hintText: 'anime, one_piece, edits',
@@ -566,6 +1156,105 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
               border: const OutlineInputBorder(),
             ),
             onChanged: (_) => _savePendingUpload(),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _contentCategory,
+            decoration: InputDecoration(labelText: copy.contentCategory),
+            items: [
+              DropdownMenuItem(value: 'anime_edit', child: Text(copy.categoryAnimeEdit)),
+              DropdownMenuItem(value: 'amv', child: Text(copy.categoryAmv)),
+              DropdownMenuItem(value: 'cosplay', child: Text(copy.categoryCosplay)),
+              DropdownMenuItem(value: 'meme', child: Text(copy.categoryMeme)),
+              DropdownMenuItem(value: 'review', child: Text(copy.categoryReview)),
+              DropdownMenuItem(value: 'theory', child: Text(copy.categoryTheory)),
+              DropdownMenuItem(value: 'recommendation', child: Text(copy.categoryRecommendation)),
+              DropdownMenuItem(value: 'fan_art', child: Text(copy.categoryFanArt)),
+              DropdownMenuItem(value: 'other', child: Text(copy.categoryOther)),
+            ],
+            onChanged: _busy || _session != null ? null : (value) {
+              if (value == null) return;
+              setState(() => _contentCategory = value);
+              _savePendingUpload();
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(copy.animeTags),
+            subtitle: Text(_selectedAnime.isEmpty
+                ? copy.noAnimeSelected
+                : _selectedAnime.map((item) => item.title).join(' · ')),
+            trailing: IconButton(
+              tooltip: copy.addAnime,
+              onPressed: _busy || _session != null || _selectedAnime.length >= 5 ? null : _chooseAnime,
+              icon: const Icon(Icons.add_circle_outline),
+            ),
+          ),
+          Wrap(
+            spacing: 6, runSpacing: 4,
+            children: [
+              for (final anime in _selectedAnime)
+                InputChip(
+                  label: Text(anime.title),
+                  onPressed: _busy || _session != null ? null : () => _chooseCharacters(anime),
+                  onDeleted: _busy || _session != null ? null : () {
+                    setState(() => _selectedAnime = _selectedAnime.where((item) => item.id != anime.id).toList());
+                    _savePendingUpload();
+                  },
+                ),
+            ],
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(copy.characterTags),
+            subtitle: Text(_selectedCharacters.isEmpty
+                ? copy.noCharactersSelected
+                : _selectedCharacters.map((item) => item.name).join(' · ')),
+            trailing: IconButton(
+              tooltip: copy.addCharacter,
+              onPressed: _busy || _session != null || _selectedAnime.isEmpty || _selectedCharacters.length >= 20
+                  ? null
+                  : () => _chooseCharacters(_selectedAnime.last),
+              icon: const Icon(Icons.add_circle_outline),
+            ),
+          ),
+          Wrap(
+            spacing: 6, runSpacing: 4,
+            children: [
+              for (final character in _selectedCharacters)
+                InputChip(
+                  label: Text(character.name),
+                  onDeleted: _busy || _session != null ? null : () {
+                    setState(() => _selectedCharacters = _selectedCharacters.where((item) => item.id != character.id).toList());
+                    _savePendingUpload();
+                  },
+                ),
+            ],
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(copy.mentions),
+            subtitle: Text(_selectedMentions.isEmpty
+                ? copy.noMentionsSelected
+                : _selectedMentions.map((item) => '@${item.username ?? item.uid}').join(' · ')),
+            trailing: IconButton(
+              tooltip: copy.addMention,
+              onPressed: _busy || _session != null || _selectedMentions.length >= 20 ? null : _chooseMention,
+              icon: const Icon(Icons.person_add_alt_1_outlined),
+            ),
+          ),
+          Wrap(
+            spacing: 6, runSpacing: 4,
+            children: [
+              for (final profile in _selectedMentions)
+                InputChip(
+                  label: Text('@${profile.username ?? profile.uid}'),
+                  onDeleted: _busy || _session != null ? null : () {
+                    setState(() => _selectedMentions = _selectedMentions.where((item) => item.uid != profile.uid).toList());
+                    _savePendingUpload();
+                  },
+                ),
+            ],
           ),
           if (_busy || _progress > 0) ...[
             const SizedBox(height: 18),
@@ -580,7 +1269,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
             Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
           const SizedBox(height: 18),
-          if (_session != null && _error != null && !_busy)
+          if (_session != null && !_busy && !_submitted)
             TextButton(
               onPressed: _cancelUpload,
               child: Text(copy.cancelUpload),
