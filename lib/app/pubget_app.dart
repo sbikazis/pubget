@@ -616,11 +616,9 @@ class PubgetApp extends StatelessWidget {
       ),
       FirebaseUserRepository(
         firestore: FirebaseFirestore.instance,
-        storage: FirebaseStorage.instance,
       ),
       FirebaseProfileRepository(
         firestore: FirebaseFirestore.instance,
-        storage: FirebaseStorage.instance,
       ),
       FirebaseSocialRepository(
         firestore: FirebaseFirestore.instance,
@@ -641,7 +639,6 @@ class PubgetApp extends StatelessWidget {
       FirebaseChatRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
-        storage: FirebaseStorage.instance,
       ),
       FirebaseNotificationRepository(
         firestore: FirebaseFirestore.instance,
@@ -660,7 +657,6 @@ class PubgetApp extends StatelessWidget {
       FirebasePrivateChatRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
-        storage: FirebaseStorage.instance,
       ),
       FirebaseEventRepository(
         firestore: FirebaseFirestore.instance,
