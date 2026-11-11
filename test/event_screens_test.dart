@@ -17,6 +17,7 @@ import 'package:pubget/features/groups/providers/group_provider.dart';
 import 'package:pubget/features/groups/repositories/group_repository.dart';
 
 import 'authentication_test_support.dart';
+import 'event_strings_test_support.dart';
 
 void main() {
   testWidgets('event list shows empty copy when there are no events', (

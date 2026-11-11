@@ -1253,50 +1253,8 @@ class _MessageListState extends State<_MessageList> {
         icon: Icons.forum_outlined,
       );
     }
-<<<<<<< HEAD
-    final messages = chat.messages;
-    final now = DateTime.now();
-    // item slots: [encryption?] + optional load-more + (date? + message)*
-    final rows = <_ChatListRow>[];
-    rows.add(const _ChatListRow.encryption());
-    if (chat.hasMore) rows.add(const _ChatListRow.loadMore());
-    DateTime? lastDay;
-    for (var i = 0; i < messages.length; i++) {
-      final message = messages[i];
-      final day = message.createdAt == null
-          ? null
-          : DateTime(
-              message.createdAt!.year,
-              message.createdAt!.month,
-              message.createdAt!.day,
-            );
-      if (day != null && (lastDay == null || day != lastDay)) {
-        rows.add(_ChatListRow.date(chatDayLabel(message.createdAt, now: now, copy: AppStrings.of(context))));
-        lastDay = day;
-      }
-      final prev = i > 0 ? messages[i - 1] : null;
-      final next = i + 1 < messages.length ? messages[i + 1] : null;
-      final samePrev =
-          prev != null &&
-          _sameChatCluster(prev, message) &&
-          !message.isDeleted;
-      final sameNext =
-          next != null &&
-          _sameChatCluster(message, next) &&
-          !next.isDeleted;
-      rows.add(
-        _ChatListRow.message(
-          message,
-          showAvatar: !sameNext,
-          showHeader: !samePrev,
-          showTail: !sameNext,
-        ),
-      );
-    }
-=======
     final rows = _rowsFor();
     final highlightId = _highlightedId;
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
 
     return ListView.builder(
       controller: widget.controller,

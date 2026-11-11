@@ -357,6 +357,9 @@ final class AppStrings {
   String get searchHint => pick('Search Pubget', 'ابحث في Pubget');
   String get searchLoadFailed => pick('Search failed.', 'فشل البحث.');
 
+  /// Accessibility label for the unread marker on joined-group cards.
+  String get unreadLabel => pick('Unread', 'غير مقروء');
+
   /// Entity-kind labels for discovery search results (§13.5).
   String searchHitLabel(String type) => switch (type) {
     'group' => pick('Group', 'مجموعة'),
@@ -1326,49 +1329,6 @@ final class AppStrings {
     'Voice message could not be played.',
     'تعذّر تشغيل الرسالة الصوتية.',
   );
-<<<<<<< HEAD
-
-  // Group chat rich-card copy. Keep both locales in the shared string catalog.
-  String get chatGameGenericTitle => pick('Group game', 'لعبة جماعية');
-  String get chatGameWaiting => pick('Waiting for players', 'بانتظار اللاعبين');
-  String get chatGameStarted => pick('Game started', 'بدأت اللعبة');
-  String get chatGameFull => pick('Game is full', 'اللعبة مكتملة');
-  String get chatGameClosed => pick('Game closed', 'اللعبة مغلقة');
-  String get chatGameJoin => pick('Join game', 'انضم للعبة');
-  String get chatGameView => pick('View game', 'عرض اللعبة');
-  String get chatGameViewResult => pick('View result', 'عرض النتيجة');
-  String chatGameHostStarted(String host) =>
-      pick('$host started the game', 'بدأ $host اللعبة');
-  String chatGameStartsAt(int requiredPlayers) => pick(
-    '$requiredPlayers players needed to start',
-    'يلزم $requiredPlayers لاعبين لبدء اللعبة',
-  );
-  String get chatWelcomeNewMember => pick('A new member joined', 'انضم عضو جديد');
-  String get chatWelcomeBadge => pick('WELCOME', 'مرحباً');
-  String get chatWelcomeAction => pick('Welcome', 'رحّب به');
-  String get chatChatAction => pick('Send a message', 'أرسل رسالة');
-  String get chatEventFallbackTitle => pick('Group event', 'فعالية المجموعة');
-  String get chatEventRsvpGoing => pick('Going', 'سأحضر');
-  String get chatEventRsvpMaybe => pick('Maybe', 'ربما');
-  String get chatEventRsvpDeclined => pick('Can’t go', 'لن أحضر');
-  String get chatDebateAgree => pick('Agree', 'موافق');
-  String get chatDebateDisagree => pick('Disagree', 'غير موافق');
-  String get chatDebateAddArgument => pick('Add argument', 'أضف حجة');
-  String get chatSecurityNote => pick(
-    'Keep your account and personal information safe.',
-    'حافظ على أمان حسابك ومعلوماتك الشخصية.',
-  );
-  String get chatDayToday => pick('Today', 'اليوم');
-  String get chatDayYesterday => pick('Yesterday', 'أمس');
-  String chatMonthLabel(int month) {
-    const en = <String>['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const ar = <String>['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-    if (month < 1 || month > 12) return '';
-    return isArabic ? ar[month - 1] : en[month - 1];
-  }
-=======
   String get voiceNoteFailed => pick(
     'Your voice message could not be saved. Please try again.',
     'تعذّر حفظ رسالتك الصوتية. حاول مرة أخرى.',
@@ -1387,6 +1347,16 @@ final class AppStrings {
   String get preview => pick('Preview', 'معاينة');
 
   // —— Group game-lobby / special chat cards ——
+  // Legacy game-card labels. `chat_special_cards.dart` still consumes these
+  // names; keep them alongside the newer `chatGameStatus*`/`chatGameCta*`
+  // strings so both card generations resolve without a compile failure.
+  String get chatGameWaiting => pick('Waiting for players', 'بانتظار اللاعبين');
+  String get chatGameStarted => pick('Game started', 'بدأت اللعبة');
+  String get chatGameFull => pick('Game is full', 'اللعبة مكتملة');
+  String get chatGameClosed => pick('Game closed', 'اللعبة مغلقة');
+  String get chatGameJoin => pick('Join game', 'انضم للعبة');
+  String get chatGameView => pick('View game', 'عرض اللعبة');
+  String get chatGameViewResult => pick('View result', 'عرض النتيجة');
   String get chatGameGenericTitle => pick('Game', 'لعبة');
   String get chatGameStatusWaiting => pick('Waiting room', 'قاعة الانتظار');
   String get chatGameStatusLive => pick('Live now', 'مباشر الآن');
@@ -1909,7 +1879,6 @@ final class AppStrings {
   String get feedForYou => pick('For You', 'لك');
   String get feedFollowing => pick('Following', 'متابَعين');
   String get feedTrending => pick('Trending', 'رائج');
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
 }
 
 const Map<String, String> _mafiaPhasesEn = <String, String>{

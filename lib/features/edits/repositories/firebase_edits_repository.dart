@@ -4,13 +4,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
-<<<<<<< Updated upstream
-import '../../../core/storage/media_upload_service.dart';
-import '../../../core/storage/r2_storage_service.dart';
-=======
 import '../../../core/errors/retry.dart';
 import '../data/edit_storage_put.dart';
->>>>>>> Stashed changes
 import '../models/edit_models.dart';
 import 'edits_repository.dart';
 
@@ -69,11 +64,7 @@ Failure _mapCode(String code, String? message) {
   if (normalized == 'failed-precondition') {
     return ValidationError(
       message ??
-<<<<<<< Updated upstream
-          'This Reel cannot continue yet. Try again or replace the video.',
-=======
           'This Edit cannot continue yet. Try again or replace the video.',
->>>>>>> Stashed changes
     );
   }
   if (normalized == 'not-found') {
@@ -81,8 +72,6 @@ Failure _mapCode(String code, String? message) {
   }
   if (normalized == 'invalid-argument') {
     return ValidationError(message ?? 'That Reel request was invalid.');
-<<<<<<< Updated upstream
-=======
   }
   if (normalized == 'internal' ||
       normalized == 'unknown' ||
@@ -91,7 +80,6 @@ Failure _mapCode(String code, String? message) {
     return const UnavailableError(
       'The upload could not be prepared. Please try again.',
     );
->>>>>>> Stashed changes
   }
   return const UnknownError(
     'Something went wrong while preparing your Reel. Please try again.',
@@ -172,11 +160,8 @@ class FirebaseEditsRepository
     String editId, {
     String? caption,
     String? animeTag,
-<<<<<<< Updated upstream
-=======
     String? hashtags,
     String? characterTags,
->>>>>>> Stashed changes
   }) async {
     final snap = await _firestore.collection(_collection).doc(editId).get();
     if (!snap.exists || snap.data() == null) {
@@ -255,53 +240,6 @@ class FirebaseEditsRepository
       final start = await _functions
           .httpsCallable(_callable('startEditUpload'))
           .call(startPayload);
-<<<<<<< Updated upstream
-      editId = _returnedId(start.data);
-    }
-
-    onStarted?.call(editId, resumeVideoPath ?? '');
-    onProgress?.call(0.3);
-
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    R2UploadResult result;
-    final bytes = source.bytes;
-    final path = source.path;
-    if (path != null && path.isNotEmpty) {
-      result = await _mediaUploadService.uploadReel(
-        userId: uid,
-        video: File(path),
-      );
-    } else if (bytes != null && bytes.isNotEmpty) {
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/$editId.mp4');
-      await file.writeAsBytes(bytes);
-      result = await _mediaUploadService.uploadReel(userId: uid, video: file);
-      await file.delete();
-    } else {
-      throw const UnknownError('No video data to upload');
-    }
-
-    onProgress?.call(0.7);
-
-    try {
-      await _firestore.collection(_collection).doc(editId).set({
-        'videoUrl': result.publicUrl,
-        'mediaKey': result.key,
-        'status': 'processing',
-      }, SetOptions(merge: true));
-    } catch (_) {}
-
-    onProgress?.call(1);
-
-    try {
-      final finalized = await finalizeEditUpload(editId);
-      if (finalized.isSuccess) {
-        return finalized.valueOrNull!;
-      }
-    } catch (_) {}
-
-    return _readEdit(editId, caption: caption, animeTag: animeTag);
-=======
       path = start.data['videoPath'] as String;
       editId = _returnedId(start.data);
     }
@@ -341,7 +279,6 @@ class FirebaseEditsRepository
       hashtags: hashtags,
       characterTags: characterTags,
     );
->>>>>>> Stashed changes
   });
 
   @override
@@ -390,11 +327,6 @@ class FirebaseEditsRepository
   }) => _guard(() async {
         final normalizedHashtag = hashtag?.trim().replaceAll('#', '').toLowerCase();
         try {
-<<<<<<< Updated upstream
-          final result = await _functions
-              .httpsCallable(_callable('getEditFeed'))
-              .call({'limit': limit, if (after != null) 'afterId': after.id});
-=======
           // The server owns both the scope and the ranking strategy. The
           // client only declares what it is asking for.
           final payload = <String, dynamic>{
@@ -412,7 +344,6 @@ class FirebaseEditsRepository
           final result = await _functions
               .httpsCallable(_callable('getEditFeed'))
               .call(payload);
->>>>>>> Stashed changes
           final raw = result.data['items'];
           if (raw is List && raw.isNotEmpty) {
             final items = raw
@@ -432,23 +363,6 @@ class FirebaseEditsRepository
         } on Object {
           // Fall through to the published score query.
         }
-<<<<<<< Updated upstream
-        var query = _firestore
-            .collection(_collection)
-            .where('status', isEqualTo: 'published')
-            .orderBy('score', descending: true)
-            .orderBy('createdAt', descending: true)
-            .orderBy(FieldPath.documentId, descending: true);
-        if (after != null) {
-          query = query.startAfter([after.score, after.createdAt, after.id]);
-        }
-        final snapshot = await query.limit(limit + 1).get();
-        final items = snapshot.docs
-            .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
-            .toList();
-        final more = items.length > limit;
-        return EditPage(more ? items.sublist(0, limit) : items, hasMore: more);
-=======
         // Fallback: keep the server's own score ordering and apply the
         // requested scope in memory. This deliberately does NOT re-rank for
         // feedType — a client-side "trending" guess would be a lie. It also
@@ -462,7 +376,6 @@ class FirebaseEditsRepository
           hashtag: normalizedHashtag,
           creatorId: creatorId,
         );
->>>>>>> Stashed changes
       });
 
   static bool _scopeMatches(

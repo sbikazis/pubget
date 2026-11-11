@@ -8,7 +8,20 @@ import '../events/widgets/event_widgets.dart';
 import '../fan_works/widgets/fan_work_widgets.dart';
 import '../home/models/home_models.dart';
 
-enum SearchHitType { user, group, event, anime, fanWork }
+/// Entity kinds the global discovery surface can return. The last four come
+/// from the Reel/audio/hashtag surfaces (§13.5); keeping them in the shared
+/// enum lets every search tile label itself without a second parallel taxonomy.
+enum SearchHitType {
+  user,
+  group,
+  event,
+  anime,
+  fanWork,
+  character,
+  reel,
+  audio,
+  hashtag,
+}
 
 final class SearchHit {
   const SearchHit({

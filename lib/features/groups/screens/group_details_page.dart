@@ -124,17 +124,9 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             empty: PubgetEmptyState(title: copy.groupUnavailable),
             child: group == null
                 ? const SizedBox.shrink()
-<<<<<<< HEAD
-                : provider.isFounder
-                    ? _FounderPanel(group: group)
-                    : provider.hasEntryHub
-                        ? _GroupEntryHub(group: group)
-                        : _VisitorDetails(group: group),
-=======
                 : provider.hasEntryHub
                 ? _GroupControlPanel(group: group)
                 : _VisitorDetails(group: group),
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
           ),
         ),
       ),

@@ -452,11 +452,9 @@ class _WaGamesSheet extends StatelessWidget {
                     onPressed: () {
                       Navigator.pop(context);
                       Navigator.pop(context);
-                      GameLinks.openCreate(
-                        context,
-                        groupId: groupId,
-                        fromChat: true,
-                      );
+                      // openCreate already stamps the group_chat source marker
+                      // required by the games domain; no extra flag is needed.
+                      GameLinks.openCreate(context, groupId: groupId);
                     },
                     child: Text('لعب', style: GoogleFonts.cairo()),
                   ),

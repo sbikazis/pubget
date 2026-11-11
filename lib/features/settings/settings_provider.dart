@@ -45,6 +45,20 @@ final class SettingsProvider extends ChangeNotifier {
   Future<bool> setLocaleOption(AppLocaleOption option) =>
       _commit(_snapshot.copyWith(localeOption: option));
 
+  /// Seeds the language from the server profile on a fresh device only.
+  /// An explicit device choice always wins (spec §1.4); this is why the
+  /// splash screen can safely call it on every authenticated launch.
+  Future<void> seedLanguageFromServer(String language) async {
+    final normalized = language.trim().toLowerCase();
+    if (normalized != 'ar' && normalized != 'en') return;
+    if (await _repository.hasExplicitLocaleChoice()) return;
+    final option = normalized == 'ar'
+        ? AppLocaleOption.arabic
+        : AppLocaleOption.english;
+    if (_snapshot.localeOption == option) return;
+    await _commit(_snapshot.copyWith(localeOption: option));
+  }
+
   Future<bool> _commit(SettingsSnapshot next) async {
     final previous = _snapshot;
     _snapshot = next;

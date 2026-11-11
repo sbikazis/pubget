@@ -16,6 +16,13 @@ enum MafiaPhase {
   cancelled,
 }
 
+/// Mafia is a 7–15 player game. The server owns the real clamp, so the client
+/// uses these constants instead of repeating numbers that can drift.
+abstract final class MafiaLimits {
+  static const minPlayers = 7;
+  static const maxPlayers = 15;
+}
+
 final class MafiaGame {
   const MafiaGame({
     required this.id,

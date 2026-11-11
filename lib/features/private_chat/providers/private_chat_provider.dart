@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/network/network_service.dart';
@@ -103,9 +104,12 @@ final class PrivateChatProvider extends ChangeNotifier {
           (result) => _receive(result, chatId: chatId, generation: generation),
           onError: (Object error) {
             if (!_isCurrent(chatId, generation)) return;
-            _failure = NetworkError(error.toString());
+            final failure = mapFirebaseFailure(error);
+            _failure = failure;
             _state = _messages.isEmpty
-                ? LoadingState.offline
+                ? (failure is NetworkError
+                      ? LoadingState.offline
+                      : LoadingState.error)
                 : LoadingState.loaded;
             _safeNotify();
           },
@@ -443,6 +447,8 @@ final class PrivateChatProvider extends ChangeNotifier {
     if (_disposed || !_isCurrent(chatId, generation)) return;
     result.fold(
       onSuccess: (incoming) {
+        // A live snapshot arrived: conclusive proof the device is connected.
+        _network?.noteSuccessfulRequest();
         _merge(incoming);
         unawaited(_markDeliveredForSession(
           incoming,
@@ -626,7 +632,7 @@ final class PrivateChatProvider extends ChangeNotifier {
   }
 
   void _onNetworkChanged() {
-    if (_network?.isOnline == true) {
+    if (_network?.canAttemptRequest == true) {
       _kickPendingRetries(forceImmediate: true);
     }
   }

@@ -61,14 +61,14 @@ void main() {
     expect(work.content.pages, isEmpty);
   });
 
-  test('aiCharacter is a distinct typed value', () {
+  test('retired aiCharacter folds into a character with an AI origin', () {
     final work = FanWork.fromMap(const <String, dynamic>{
       'type': 'aiCharacter',
       'title': 'Kiro',
     }, id: 'ai-1');
-    expect(work.type, FanWorkType.aiCharacter);
+    expect(work.type, FanWorkType.character);
     expect(work.isAiAssisted, isTrue);
-    expect(FanWorkTypeCatalog.label(work.type), contains('AI-assisted'));
+    expect(FanWorkTypeCatalog.label(work.type), 'Character');
   });
 
   test('tags are normalized and de-duplicated', () {

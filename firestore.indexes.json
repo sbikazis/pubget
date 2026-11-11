@@ -846,51 +846,12 @@
           "order": "ASCENDING"
         },
         {
-<<<<<<< HEAD
-          "fieldPath": "score",
-=======
           "fieldPath": "usageCount",
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
           "order": "DESCENDING"
         },
         {
           "fieldPath": "createdAt",
           "order": "DESCENDING"
-<<<<<<< HEAD
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-=======
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
-        }
-      ]
-    },
-    {
-      "collectionGroup": "reelAudios",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-<<<<<<< HEAD
-          "fieldPath": "creatorId",
-          "order": "ASCENDING"
-        },
-        {
-=======
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-<<<<<<< HEAD
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-=======
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
         }
       ]
     },
@@ -903,13 +864,20 @@
           "order": "ASCENDING"
         },
         {
-<<<<<<< HEAD
-          "fieldPath": "moderationStatus",
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "reelAudios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "publishedAt",
-=======
           "fieldPath": "usageCount",
           "order": "DESCENDING"
         }
@@ -929,7 +897,6 @@
         },
         {
           "fieldPath": "createdAt",
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
           "order": "DESCENDING"
         },
         {
@@ -939,248 +906,6 @@
       ]
     },
     {
-<<<<<<< HEAD
-      "collectionGroup": "kirari",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "rankingScore",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "kirari",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "velocityScore",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "kirari",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "hashtags",
-          "arrayConfig": "CONTAINS"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "kirari",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "audioId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "kirari",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "hashtags",
-          "arrayConfig": "CONTAINS"
-        },
-        {
-          "fieldPath": "rankingScore",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "kirari",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "moderationStatus",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "rankingScore",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "kirari",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "moderationStatus",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "velocityScore",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "kirari",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "moderationStatus",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "audioId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "kirari",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "moderationStatus",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "hashtags",
-          "arrayConfig": "CONTAINS"
-        },
-        {
-          "fieldPath": "rankingScore",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "respects",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "toUserId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "value",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "comments",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-=======
       "collectionGroup": "edits",
       "queryScope": "COLLECTION",
       "fields": [
@@ -1189,7 +914,6 @@
           "order": "ASCENDING"
         },
         {
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
           "fieldPath": "status",
           "order": "ASCENDING"
         },
@@ -1204,11 +928,7 @@
       ]
     },
     {
-<<<<<<< HEAD
-      "collectionGroup": "kirariModerationQueue",
-=======
       "collectionGroup": "edits",
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -1216,9 +936,6 @@
           "order": "ASCENDING"
         },
         {
-<<<<<<< HEAD
-          "fieldPath": "queuedAt",
-=======
           "fieldPath": "characterIds",
           "arrayConfig": "CONTAINS"
         },
@@ -1276,15 +993,11 @@
         },
         {
           "fieldPath": "__name__",
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
           "order": "ASCENDING"
         }
       ]
     },
     {
-<<<<<<< HEAD
-      "collectionGroup": "kirari",
-=======
       "collectionGroup": "edits",
       "queryScope": "COLLECTION",
       "fields": [
@@ -1452,7 +1165,6 @@
     },
     {
       "collectionGroup": "edits",
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -1464,19 +1176,11 @@
           "order": "ASCENDING"
         },
         {
-<<<<<<< HEAD
-          "fieldPath": "moderationStatus",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-=======
           "fieldPath": "score",
           "order": "DESCENDING"
         },
         {
           "fieldPath": "createdAt",
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
           "order": "DESCENDING"
         },
         {
@@ -1486,30 +1190,11 @@
       ]
     },
     {
-<<<<<<< HEAD
-      "collectionGroup": "kirariAudio",
-=======
       "collectionGroup": "edits",
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
       "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "status",
-<<<<<<< HEAD
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "allowReuse",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "publishedAt",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "DESCENDING"
-=======
           "order": "ASCENDING",
           "arrayConfig": "NONE"
         },
@@ -1815,7 +1500,6 @@
           "fieldPath": "createdAt",
           "order": "DESCENDING",
           "arrayConfig": "NONE"
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
         }
       ]
     }

@@ -10,6 +10,7 @@ import 'package:pubget/features/fan_works/models/fan_work_lifecycle.dart';
 import 'package:pubget/features/fan_works/models/fan_work_models.dart';
 import 'package:pubget/features/fan_works/providers/fan_work_providers.dart';
 import 'package:pubget/features/fan_works/repositories/fan_work_repository.dart';
+import 'package:pubget/features/fan_works/screens/fan_work_reader_page.dart';
 import 'package:pubget/features/fan_works/screens/fan_work_screens.dart';
 
 import 'authentication_test_support.dart';
@@ -69,7 +70,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text(FanWorkTypeCatalog.label(FanWorkType.manga)), findsOneWidget);
-    expect(find.text(FanWorkTypeCatalog.label(FanWorkType.aiCharacter)), findsOneWidget);
+    expect(find.text(FanWorkTypeCatalog.label(FanWorkType.character)), findsOneWidget);
     await tester.tap(find.text(FanWorkTypeCatalog.label(FanWorkType.character)));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('fan-work-character-name')), findsWidgets);
@@ -90,7 +91,7 @@ void main() {
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
           ChangeNotifierProvider<FanWorkDetailsProvider>.value(value: details),
         ],
-        child: const MaterialApp(home: MangaViewerPage(workId: 'manga-1')),
+        child: const MaterialApp(home: FanWorkReaderPage(workId: 'manga-1')),
       ),
     );
     await tester.pumpAndSettle();
@@ -113,7 +114,7 @@ void main() {
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
           ChangeNotifierProvider<FanWorkDetailsProvider>.value(value: details),
         ],
-        child: const MaterialApp(home: StoryReaderPage(workId: 'story-1')),
+        child: const MaterialApp(home: FanWorkReaderPage(workId: 'story-1')),
       ),
     );
     await tester.pumpAndSettle();
@@ -241,6 +242,8 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required String path,
     required FanWorkMediaRole role,
     String caption = '',
+    String characterId = '',
+    int? pageCount,
   }) async => const Success<void>(null);
 
   @override
@@ -369,7 +372,9 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   @override
   Future<Result<FanWorkUploadTicket>> startMediaUpload({
     required String workId,
+    required FanWorkMediaRole role,
     required String contentType,
+    String characterId = '',
   }) async => const FailureResult(UnknownError('unused'));
 
   @override
@@ -377,7 +382,59 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required FanWorkUploadTicket ticket,
     required List<int> bytes,
     required String contentType,
+    FanWorkUploadProgress? onProgress,
   }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> cancelMediaUpload() async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<FanWorkDocumentAccess>> getDocumentAccess({
+    required String workId,
+  }) async => Success(
+    FanWorkDocumentAccess(
+      url: 'https://example.test/documents/$workId',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
+    ),
+  );
+
+  @override
+  Future<Result<FanWorkReadingProgress>> getReadingProgress({
+    required String workId,
+    required String userId,
+  }) async => const Success(FanWorkReadingProgress());
+
+  @override
+  Future<Result<void>> saveReadingProgress({
+    required String workId,
+    required FanWorkReadingProgress progress,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> markAsRead({required String workId}) async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<List<FanWorkRevision>>> getRevisions(String workId) async =>
+      const Success(<FanWorkRevision>[]);
+
+  @override
+  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId) async =>
+      const Success(
+        FanWorkAnalytics(
+          totalWorks: 0,
+          publishedWorks: 0,
+          draftWorks: 0,
+          totalLikes: 0,
+          totalBookmarks: 0,
+          totalComments: 0,
+          totalRatings: 0,
+          averageRating: 0,
+          worksByType: <String, int>{},
+          topWorks: <FanWorkPreview>[],
+        ),
+      );
 
   @override
   Stream<Result<FanWork>> watchWork(String workId) =>

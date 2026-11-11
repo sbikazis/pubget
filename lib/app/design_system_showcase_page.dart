@@ -217,12 +217,7 @@ class _DesignSystemShowcasePageState extends State<DesignSystemShowcasePage> {
                       children: <Widget>[
                         const PubgetHeroBanner(
                           title: 'Your anime world',
-<<<<<<< Updated upstream
-                          subtitle:
-                              'Discover people, groups, Reels, and games.',
-=======
                           subtitle: 'Discover people, groups, Reels, and games.',
->>>>>>> Stashed changes
                         ),
                         const SizedBox(height: AppSpacing.md),
                         PubgetNowActions(

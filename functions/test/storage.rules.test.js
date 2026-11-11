@@ -3,14 +3,11 @@
  * FIREBASE_STORAGE_EMULATOR_HOST=127.0.0.1:9199 \
  * FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node --test test/storage.rules.test.js
  *
-<<<<<<< HEAD
  * The test is run by the CI script test:storage-rules. Both Firestore and
  * Storage emulators must be running because Storage rules consult Firestore.
-=======
  * Wired into package.json as part of the "test:rules" script together with
  * firestore.rules.test.js, executed under the Firebase emulators with
  * --project demo-pubget-security. @firebase/rules-unit-testing is a devDependency.
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -63,12 +60,9 @@ test.before(async () => {
       db.doc("groups/group-owner/members/owner").set({ userId: "owner" }),
       db.doc("groups/group-owner/members/member").set({ userId: "member" }),
       db.doc("privateChats/private-1").set({ userA: "alice", userB: "bob" }),
-<<<<<<< HEAD
       db.doc("kirariAudio/track-1").set({ status: "approved", allowReuse: true }),
       db.doc("kirariAudio/track-pending").set({ status: "pending", allowReuse: true }),
-=======
       db.doc(`groups/${PROBE_GROUP}`).set({ founderId: PROBE_OWNER }),
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
     ]);
   });
   // A *permitted* cross-service write: isGroupOwner() must read the group doc.
@@ -413,7 +407,6 @@ test("fan work media is owner-writable and public only when the work is publishe
     bob.storage().ref("fan_works/alice/w-public/page.jpg").getDownloadURL(),
   );
 });
-<<<<<<< HEAD
 test("Kirari source uploads are owner-only and processed renditions are server-write-only", async () => {
   const owner = env.authenticatedContext("alice");
   const outsider = env.authenticatedContext("mallory");
@@ -446,7 +439,6 @@ test("licensed Kirari audio is readable only after approval and writable only by
   });
   await assertFails(alice.storage().ref("kirari-audio/track-pending/audio.mp3").getDownloadURL());
 });
-=======
 
 test("profile covers require owner writes and mirror avatar privacy on reads", async (t) => {
   if (!crossServiceWorks) return t.skip(CROSS_SERVICE_UNSUPPORTED);
@@ -549,4 +541,3 @@ test("event option images are owned by the creator and readable by users", async
   await assertFails(bob.storage().ref("events/alice/evt-1/option-1.jpg").delete());
   await assertSucceeds(alice.storage().ref("events/alice/evt-1/option-1.jpg").delete());
 });
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)

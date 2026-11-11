@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
@@ -42,13 +40,6 @@ enum ChatMessageType {
 enum ChatSendState { pending, sent, failed }
 
 enum ChatDeliveryState { notDelivered, delivered, read }
-
-/// Narrow media-preview contract consumed by chat bubbles. The owning
-/// conversation provides this so widgets never depend on a concrete provider.
-abstract interface class ChatMediaUploadHost {
-  Uint8List? localPreviewBytes(String messageId);
-  ValueListenable<MediaUploadUiState>? uploadUiListenable(String messageId);
-}
 
 /// In-bubble media send stages (progress UI must not rebuild the whole page).
 enum MediaUploadPhase { uploading, processing }
@@ -119,12 +110,7 @@ final class ChatMessage {
     this.senderTitle,
     this.disappearing = false,
     this.cardMeta,
-<<<<<<< HEAD
-    this.mediaWidth,
-    this.mediaHeight,
-=======
     this.reactionUsers = const <String, Set<String>>{},
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
   });
 
   factory ChatMessage.optimistic({
@@ -240,8 +226,6 @@ final class ChatMessage {
       cardMeta: map['cardMeta'] is Map
           ? Map<String, dynamic>.from(map['cardMeta'] as Map)
           : null,
-      mediaWidth: (map['mediaWidth'] as num?)?.toInt(),
-      mediaHeight: (map['mediaHeight'] as num?)?.toInt(),
     );
   }
 
@@ -289,18 +273,6 @@ final class ChatMessage {
   final String? senderTitle;
   final bool disappearing;
   final Map<String, dynamic>? cardMeta;
-  final int? mediaWidth;
-  final int? mediaHeight;
-
-  bool get hasDisplayMedia =>
-      (thumbnailUrl?.trim().isNotEmpty ?? false) ||
-      (mediaUrl?.trim().isNotEmpty ?? false);
-  bool get hasMediaSize =>
-      mediaWidth != null && mediaHeight != null &&
-      mediaWidth! > 0 && mediaHeight! > 0;
-  double get mediaAspectRatio => hasMediaSize
-      ? mediaWidth! / mediaHeight!
-      : 4 / 3;
 
   bool get isDeleted => deletedAt != null;
 
@@ -436,8 +408,6 @@ final class ChatMessage {
       senderTitle: senderTitle,
       disappearing: disappearing,
       cardMeta: cardMeta,
-      mediaWidth: mediaWidth,
-      mediaHeight: mediaHeight,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
 import '../media/media_reference.dart';
@@ -77,67 +78,6 @@ class _AppImageLoaderState extends State<AppImageLoader> {
     return (logical * dpr).ceil();
   }
 
-<<<<<<< Updated upstream
-  @override
-  Widget build(BuildContext context) {
-    final url = _resolveUrl(imageUrl);
-    final fallback =
-        errorWidget ??
-        placeholder ??
-        const ColoredBox(color: Color(0xFF140C22));
-    Widget image;
-    if (url.isEmpty) {
-      image = fallback;
-    } else {
-      image = Image.network(
-        url,
-        width: width,
-        height: height,
-        fit: fit,
-        cacheWidth: memCacheWidth,
-        cacheHeight: memCacheHeight,
-        errorBuilder: (_, _, _) => fallback,
-        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-          if (wasSynchronouslyLoaded || frame != null) return child;
-          return placeholder ??
-              SizedBox(width: width, height: height, child: null);
-        },
-      );
-    }
-    if (borderRadius != null) {
-      image = ClipRRect(borderRadius: borderRadius!, child: image);
-    }
-    return image;
-  }
-}
-
-/// Bytes-backed variant for avatars captured locally before upload.
-class AppMemoryImageLoader extends StatelessWidget {
-  const AppMemoryImageLoader({
-    required this.bytes,
-    this.width,
-    this.height,
-    this.fit = BoxFit.cover,
-    this.borderRadius,
-    super.key,
-  });
-
-  final Uint8List? bytes;
-  final double? width;
-  final double? height;
-  final BoxFit fit;
-  final BorderRadius? borderRadius;
-
-  @override
-  Widget build(BuildContext context) {
-    final data = bytes;
-    if (data == null || data.isEmpty) {
-      return SizedBox(width: width, height: height);
-    }
-    Widget image = Image.memory(data, width: width, height: height, fit: fit);
-    if (borderRadius != null) {
-      image = ClipRRect(borderRadius: borderRadius!, child: image);
-=======
   /// Physical-pixel decode target for the height, or null when unknown.
   int? _targetHeight(BuildContext context, double? logicalHeight) {
     final requested = widget.memCacheHeight;
@@ -155,7 +95,6 @@ class AppMemoryImageLoader extends StatelessWidget {
     // object: resolve to the fallback instead of issuing a doomed download.
     if (url.trim().isEmpty || isOpaqueMediaReference(url)) {
       return _storageBytes = Future<Uint8List?>.value();
->>>>>>> Stashed changes
     }
     return _storageBytes = FirebaseStorage.instance
         .ref(url)

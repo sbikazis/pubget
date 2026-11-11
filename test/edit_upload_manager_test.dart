@@ -133,6 +133,9 @@ final class _SlowUploadRepository implements EditsRepository {
     required String contentType,
     required String caption,
     required String animeTag,
+    String? hashtags,
+    String? characterTags,
+    String? audioId,
     String? fileName,
     int? sizeBytes,
     String? idempotencyKey,
@@ -167,8 +170,16 @@ final class _SlowUploadRepository implements EditsRepository {
       Success(testEdit(id: editId, status: 'processing'));
 
   @override
-  Future<Result<EditPage>> getFeed({Edit? after, int limit = 5}) async =>
-      const Success(EditPage(<Edit>[], hasMore: false));
+  Future<Result<EditPage>> getFeed({
+    Edit? after,
+    int limit = 5,
+    String? audioId,
+    String? animeId,
+    String? characterId,
+    String? hashtag,
+    String? creatorId,
+    FeedType feedType = FeedType.forYou,
+  }) async => const Success(EditPage(<Edit>[], hasMore: false));
 
   @override
   Future<Result<List<Edit>>> getCreatorEdits(
@@ -242,4 +253,25 @@ final class _SlowUploadRepository implements EditsRepository {
     required String editId,
     required String type,
   }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> reportEdit({
+    required String editId,
+    required String category,
+    String? detail,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> muteReelCreator({
+    required String creatorId,
+    required bool mute,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<SavedReelsPage>> listSavedReels({
+    String? afterId,
+    int limit = 30,
+  }) async => const Success<SavedReelsPage>(
+    SavedReelsPage(<Edit>[], hasMore: false),
+  );
 }

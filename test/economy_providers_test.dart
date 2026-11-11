@@ -226,5 +226,9 @@ final class _FakeEconomyRepository implements EconomyRepository {
       const Success<void>(null);
 
   @override
+  Future<Result<PremiumEntitlement>> redeemPremiumCode(String code) async =>
+      Success(snapshot?.premium ?? _snapshot().premium);
+
+  @override
   Future<Result<void>> claimReferral() async => const Success<void>(null);
 }

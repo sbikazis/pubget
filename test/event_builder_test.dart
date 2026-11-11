@@ -6,12 +6,12 @@ import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/events/models/event_models.dart';
-import 'package:pubget/features/events/models/event_type_registry.dart';
 import 'package:pubget/features/events/providers/event_providers.dart';
 import 'package:pubget/features/events/repositories/event_repository.dart';
 import 'package:pubget/features/events/screens/event_builder_page.dart';
 
 import 'authentication_test_support.dart';
+import 'event_strings_test_support.dart';
 
 void main() {
   testWidgets('quiz builder can add, edit, and remove questions', (

@@ -369,7 +369,6 @@ exports.reportAnimeReview = onCall(
   { region: "us-central1" },
   animeHubDomain.reportAnimeReview,
 );
-<<<<<<< HEAD
 exports.startKirariUpload = onCall(
   { region: "us-central1" },
   kirariDomain.startUpload,
@@ -459,7 +458,6 @@ exports.processKirariVideo = onObjectFinalized(
   processKirariVideo,
 );
 
-=======
 exports.reportAnime = onCall(
   { region: "us-central1" },
   animeHubDomain.reportAnime,
@@ -476,7 +474,6 @@ exports.deleteCharacterDiscussion = onCall(
   { region: "us-central1" },
   animeHubDomain.deleteCharacterDiscussion,
 );
->>>>>>> 83afc71 (chore: fix build by removing broken deps and restoring app)
 exports.startEditUpload = onCall(
   { region: "us-central1" },
   editsDomain.startUpload,

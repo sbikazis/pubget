@@ -152,5 +152,9 @@ final class _ScreenRepo implements EconomyRepository {
       const Success<void>(null);
 
   @override
+  Future<Result<PremiumEntitlement>> redeemPremiumCode(String code) async =>
+      getPremium();
+
+  @override
   Future<Result<void>> claimReferral() async => const Success<void>(null);
 }

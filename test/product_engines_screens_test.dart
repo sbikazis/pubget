@@ -35,6 +35,7 @@ import 'package:pubget/features/mafia/repositories/mafia_repository.dart';
 import 'package:pubget/features/mafia/screens/mafia_game_screen.dart';
 
 import 'authentication_test_support.dart';
+import 'event_strings_test_support.dart';
 
 void main() {
   test('mafia leave copy matches server-supported statuses only', () {

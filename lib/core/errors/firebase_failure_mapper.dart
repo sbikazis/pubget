@@ -27,6 +27,12 @@ Failure mapFirebaseFailure(Object error, {String? message}) {
   if (error is TimeoutException) {
     return TimeoutError(message ?? 'The request timed out. Please try again.');
   }
+  // dart:io cannot be imported here (this mapper also compiles for web), so a
+  // raw socket failure is recognised by type name. It is the only non-Firebase
+  // error that genuinely proves lost connectivity.
+  if (error.runtimeType.toString() == 'SocketException') {
+    return NetworkError(message ?? 'Check your connection and try again.');
+  }
   if (error is StateError) {
     return NotFoundError(message ?? 'The requested resource was not found.');
   }
@@ -35,19 +41,23 @@ Failure mapFirebaseFailure(Object error, {String? message}) {
 
 Failure _mapFirebaseCode(String code, String? message) {
   switch (code) {
-    case 'unavailable':
-    case 'deadline-exceeded':
     case 'network-request-failed':
     case 'network-error':
+      // The SDK itself reports a broken transport: this is a real connectivity
+      // failure and the only case that may show an offline state.
       return NetworkError(message ?? 'Check your connection and try again.');
-    // Backend hiccups and write-stream conflicts. These are transient, so they
-    // map to a retryable failure instead of a dead end.
+    // Firestore/Storage use `unavailable` and `deadline-exceeded` for backend
+    // pressure, cold starts and write-stream conflicts. They are NOT evidence
+    // that the device lost internet. Mapping them to NetworkError used to make
+    // the whole app claim "no connection" while Firebase was still reachable.
+    case 'unavailable':
+    case 'deadline-exceeded':
     case 'internal':
     case 'unknown':
     case 'aborted':
     case 'data-loss':
       return UnavailableError(
-        message ?? 'Something went wrong on our side. Please try again.',
+        message ?? 'The service is temporarily unavailable. Please try again.',
       );
     case 'cancelled':
     case 'canceled':

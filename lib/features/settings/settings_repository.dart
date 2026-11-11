@@ -22,6 +22,17 @@ final class SettingsRepository {
     }
   }
 
+  /// True once the user has explicitly picked a language on this device.
+  /// A server-side language seed must never overwrite that choice (spec §1.4).
+  Future<bool> hasExplicitLocaleChoice() async {
+    try {
+      final stored = await _store.read();
+      return stored.containsKey('locale');
+    } on Object {
+      return false;
+    }
+  }
+
   Future<Result<SettingsSnapshot>> save(SettingsSnapshot snapshot) async {
     final previous = current;
     _cached = snapshot;

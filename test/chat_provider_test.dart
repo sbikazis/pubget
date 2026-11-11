@@ -643,6 +643,18 @@ final class _FakeChatRepository implements ChatRepository {
   }) => stream.stream;
 
   @override
+  Future<Result<List<ChatMessage>>> getRecentMessages({
+    required String groupId,
+    int limit = 40,
+  }) async => const Success(<ChatMessage>[]);
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
+  }) async => const Success<ChatMediaUpload?>(null);
+
+  @override
   Future<Result<List<ChatMessage>>> getOlderMessages({
     required String groupId,
     required ChatMessage before,
