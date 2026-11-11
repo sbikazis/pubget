@@ -510,6 +510,18 @@ test("event option images are owned by the creator and readable by users", async
   await assertSucceeds(alice.storage().ref("events/alice/evt-1/option-1.jpg").delete());
 });
 
+test("Kirari custom covers are JPEG-only, owner-scoped, and size-bounded", async () => {
+  const owner = env.authenticatedContext("alice");
+  const outsider = env.authenticatedContext("mallory");
+  const cover = "kirari/alice/reel-cover/cover-source.jpg";
+  await assertSucceeds(upload(owner, cover, "image/jpeg", 32, { uploadedBy: "kirari-client" }));
+  await assertFails(upload(owner, "kirari/alice/reel-cover/bad.jpg", "image/jpeg", 32, { uploadedBy: "other-client" }));
+  await assertFails(upload(owner, "kirari/alice/reel-cover/large.jpg", "image/jpeg", 5 * 1024 * 1024 + 1, { uploadedBy: "kirari-client" }));
+  await assertFails(upload(owner, "kirari/alice/reel-cover/not-image.jpg", "text/plain", 32, { uploadedBy: "kirari-client" }));
+  await assertFails(upload(outsider, cover, "image/jpeg", 32, { uploadedBy: "kirari-client" }));
+  await assertSucceeds(owner.storage().ref(cover).delete());
+});
+
 test("Kirari source uploads are owner-only and processed renditions are server-write-only", async () => {
   const owner = env.authenticatedContext("alice");
   const outsider = env.authenticatedContext("mallory");
@@ -541,4 +553,19 @@ test("licensed Kirari audio is readable only after approval and writable only by
       .put(bytes(128), { contentType: "audio/mpeg" });
   });
   await assertFails(alice.storage().ref("kirari-audio/track-pending/audio.mp3").getDownloadURL());
+});
+
+
+test("edits and reels resumable updates retain MIME and 100 MB limits", async () => {
+  const alice = env.authenticatedContext("alice");
+  const editPath = "edits/alice/v_update-guard.mp4";
+  const reelPath = "reels/alice/v_update-guard.mp4";
+
+  await assertSucceeds(upload(alice, editPath, "video/mp4", 32));
+  await assertFails(upload(alice, editPath, "application/pdf", 32));
+  await assertFails(upload(alice, editPath, "video/mp4", 100 * 1024 * 1024 + 1));
+
+  await assertSucceeds(upload(alice, reelPath, "video/mp4", 32));
+  await assertFails(upload(alice, reelPath, "application/pdf", 32));
+  await assertFails(upload(alice, reelPath, "video/mp4", 100 * 1024 * 1024 + 1));
 });

@@ -1,11 +1,13 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'firebase_resumable_uploader.dart';
 
 class KirariReel {
   const KirariReel({
@@ -20,6 +22,17 @@ class KirariReel {
     this.audioId,
     this.audioAttribution = const <String, dynamic>{},
     this.renditionPaths = const <String, String>{},
+    this.creatorUsername = "",
+    this.creatorAvatarUrl = "",
+    this.viewerLiked = false,
+    this.viewerSaved = false,
+    this.contentCategory = 'anime_edit',
+    this.animeIds = const <String>[],
+    this.characterIds = const <String>[],
+    this.hashtags = const <String>[],
+    this.animeTitles = const <String>[],
+    this.characterNames = const <String>[],
+    this.mentionMetadata = const <Map<String, dynamic>>[],
   });
 
   final String id;
@@ -33,6 +46,46 @@ class KirariReel {
   final String? audioId;
   final Map<String, dynamic> audioAttribution;
   final Map<String, String> renditionPaths;
+  final String creatorUsername;
+  final String creatorAvatarUrl;
+  final bool viewerLiked;
+  final bool viewerSaved;
+  final String contentCategory;
+  final List<String> animeIds;
+  final List<String> characterIds;
+  final List<String> hashtags;
+  final List<String> animeTitles;
+  final List<String> characterNames;
+  final List<Map<String, dynamic>> mentionMetadata;
+
+  KirariReel copyWith({
+    int? likesCount,
+    bool? viewerLiked,
+    bool? viewerSaved,
+  }) => KirariReel(
+    id: id,
+    creatorId: creatorId,
+    caption: caption,
+    videoUrl: videoUrl,
+    coverUrl: coverUrl,
+    durationSeconds: durationSeconds,
+    likesCount: likesCount ?? this.likesCount,
+    commentsCount: commentsCount,
+    audioId: audioId,
+    audioAttribution: audioAttribution,
+    renditionPaths: renditionPaths,
+    creatorUsername: creatorUsername,
+    creatorAvatarUrl: creatorAvatarUrl,
+    viewerLiked: viewerLiked ?? this.viewerLiked,
+    viewerSaved: viewerSaved ?? this.viewerSaved,
+    contentCategory: contentCategory,
+    animeIds: animeIds,
+    characterIds: characterIds,
+    hashtags: hashtags,
+    animeTitles: animeTitles,
+    characterNames: characterNames,
+    mentionMetadata: mentionMetadata,
+  );
 
   factory KirariReel.fromMap(Map<dynamic, dynamic> map) {
     return KirariReel(
@@ -55,6 +108,20 @@ class KirariReel {
                   key.toString(), value is Map ? (value['path'] as String? ?? '') : '',
                 ))
               : const <String, String>{}),
+      creatorUsername: map['creatorUsername'] as String? ?? '',
+      creatorAvatarUrl: map['creatorAvatarUrl'] as String? ?? '',
+      viewerLiked: map['viewerLiked'] == true,
+      viewerSaved: map['viewerSaved'] == true,
+      contentCategory: map['contentCategory'] as String? ?? 'anime_edit',
+      animeIds: (map['animeIds'] as List? ?? const <dynamic>[]).whereType<String>().toList(),
+      characterIds: (map['characterIds'] as List? ?? const <dynamic>[]).whereType<String>().toList(),
+      hashtags: (map['hashtags'] as List? ?? const <dynamic>[]).whereType<String>().toList(),
+      animeTitles: (map['animeMetadata'] as List? ?? const <dynamic>[])
+          .whereType<Map>().map((item) => item['title']).whereType<String>().toList(),
+      characterNames: (map['characterMetadata'] as List? ?? const <dynamic>[])
+          .whereType<Map>().map((item) => item['name']).whereType<String>().toList(),
+      mentionMetadata: (map['mentionMetadata'] as List? ?? const <dynamic>[])
+          .whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
     );
   }
 }
@@ -63,6 +130,7 @@ class KirariAudioTrack {
   const KirariAudioTrack({
     required this.id, required this.title, required this.artist,
     required this.license, required this.attribution, required this.audioUrl,
+    this.creatorId, this.sourceReelId, this.usageCount = 0,
   });
   final String id;
   final String title;
@@ -70,6 +138,9 @@ class KirariAudioTrack {
   final String license;
   final String attribution;
   final String audioUrl;
+  final String? creatorId;
+  final String? sourceReelId;
+  final int usageCount;
 
   factory KirariAudioTrack.fromMap(Map<dynamic, dynamic> map, String url) =>
       KirariAudioTrack(
@@ -79,6 +150,9 @@ class KirariAudioTrack {
         license: map['license'] as String? ?? 'unknown',
         attribution: map['attribution'] as String? ?? '',
         audioUrl: url,
+        creatorId: map['creatorId'] as String?,
+        sourceReelId: map['sourceReelId'] as String?,
+        usageCount: (map['usageCount'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -102,6 +176,7 @@ abstract interface class KirariRepository {
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24});
   Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20});
   Future<KirariReel> getReel(String reelId);
+  Future<KirariFeedPageResult> getSavedReels({int limit = 30, Map<String, dynamic>? cursor});
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality});
   Future<void> giveCreatorRespect({required String creatorId, required int value});
   Future<List<Map<String, dynamic>>> getComments(String reelId, {String? before, int limit = 30});
@@ -110,7 +185,7 @@ abstract interface class KirariRepository {
   Future<void> setCreatorMute({required String creatorId, required bool muted});
   Future<List<Map<String, dynamic>>> getModerationQueue({int limit = 50});
   Future<void> reviewContent({required String reelId, String? commentId, required String decision});
-  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId});
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], List<Map<String, String>> animeMetadata = const <Map<String, String>>[], List<Map<String, String>> characterMetadata = const <Map<String, String>>[], List<Map<String, String>> mentionMetadata = const <Map<String, String>>[], String contentCategory = 'anime_edit', String? groupId, String? eventId});
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress});
   Future<void> finalizeUpload(String reelId);
   Future<void> retryProcessing(String reelId);
@@ -120,50 +195,94 @@ abstract interface class KirariRepository {
   Future<void> recordPlayback({required String reelId, required String sessionId, required String eventId, required double watchSeconds, required double percent});
   Future<void> deleteReel(String reelId);
   Future<XFile?> pickGalleryVideo();
+  Future<XFile?> pickGalleryImage();
+  Future<void> uploadCover({required String storagePath, required XFile image});
 }
 
 class FirebaseKirariRepository implements KirariRepository {
   FirebaseKirariRepository({
     FirebaseFunctions? functions,
-    FirebaseAuth? auth,
-    http.Client? httpClient,
+    FirebaseStorage? storage,
     ImagePicker? picker,
-    String workerUrl = 'https://pubget-media.pubget.workers.dev',
   }) : _functions = functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _auth = auth ?? FirebaseAuth.instance,
-       _http = httpClient ?? http.Client(),
-       _workerUrl = workerUrl.substring(0, workerUrl.length - (workerUrl.endsWith('/') ? 1 : 0)),
+       _storage = storage ?? FirebaseStorage.instance,
        _picker = picker ?? ImagePicker();
 
   final FirebaseFunctions _functions;
-  final FirebaseAuth _auth;
-  final http.Client _http;
-  final String _workerUrl;
+  final FirebaseStorage _storage;
   final ImagePicker _picker;
+  late final FirebaseResumableUploader _iosResumableUploader = FirebaseResumableUploader(
+    bucket: _storage.bucket,
+    uidProvider: () => FirebaseAuth.instance.currentUser?.uid ?? '',
+    getIdToken: () async {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw StateError('Sign in before uploading a Kirari reel.');
+      final token = await user.getIdToken();
+      if (token == null || token.isEmpty) throw StateError('Unable to refresh the Firebase sign-in token.');
+      return token;
+    },
+    getAppCheckToken: () async {
+      try {
+        return await FirebaseAppCheck.instance.getToken();
+      } catch (_) {
+        return null;
+      }
+    },
+  );
+  static const MethodChannel _androidUploadChannel = MethodChannel('pubget/kirari_upload');
+  final Map<String, Future<String>> _downloadUrlCache = <String, Future<String>>{};
 
-  Future<String> _resolveMediaPath(String key) async {
-    final token = await _auth.currentUser?.getIdToken();
-    if (token == null || token.isEmpty) {
-      throw StateError('Sign in again to play this Kirari media.');
+  Future<String> _downloadUrl(String storagePath) async {
+    final cached = _downloadUrlCache.remove(storagePath);
+    if (cached != null) {
+      _downloadUrlCache[storagePath] = cached;
+      return cached;
     }
-    final uri = Uri.parse('$_workerUrl/kirari/resolve')
-        .replace(queryParameters: {'key': key});
-    final response = await _http.get(uri, headers: {'Authorization': 'Bearer $token'})
-        .timeout(const Duration(seconds: 30));
-    if (response.statusCode != 200) {
-      throw StateError('Kirari playback URL could not be resolved (HTTP ' + response.statusCode.toString() + ').');
+    final pending = _storage.ref(storagePath).getDownloadURL();
+    _downloadUrlCache[storagePath] = pending;
+    while (_downloadUrlCache.length > 128) {
+      _downloadUrlCache.remove(_downloadUrlCache.keys.first);
     }
-    final payload = jsonDecode(response.body) as Map<String, dynamic>;
-    final url = payload['url'] as String?;
-    if (url == null || !url.startsWith('https://')) {
-      throw StateError('The media service returned an invalid playback URL.');
+    try {
+      return await pending;
+    } catch (_) {
+      _downloadUrlCache.remove(storagePath);
+      rethrow;
     }
-    return url;
   }
 
   Future<Map<dynamic, dynamic>> _call(String name, Map<String, dynamic> data) async {
     final result = await _functions.httpsCallable(name).call<Map<dynamic, dynamic>>(data);
     return result.data;
+  }
+
+  Future<List<KirariReel>> _resolveReels(dynamic raw) async {
+    if (raw is! List) return const <KirariReel>[];
+    final resolved = await Future.wait(raw.whereType<Map>().map((value) async {
+      try {
+        final map = Map<dynamic, dynamic>.from(value);
+        final variants = map['renditions'];
+        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
+        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
+        final videoPath = preferred is Map ? preferred['path'] as String? : null;
+        final coverPath = map['coverPath'] as String?;
+        if (videoPath == null || videoPath.isEmpty) return null;
+        final videoUrl = _downloadUrl(videoPath);
+        final coverUrl = coverPath == null || coverPath.isEmpty
+            ? Future<String>.value('')
+            : _downloadUrl(coverPath).catchError((_) => '');
+        final urls = await Future.wait<String>([videoUrl, coverUrl]);
+        return KirariReel.fromMap({
+          ...map,
+          'playbackUrl': urls.first,
+          'coverUrl': urls[1],
+        });
+      } catch (_) {
+        // A single unavailable media object must not discard the whole feed.
+        return null;
+      }
+    }));
+    return resolved.whereType<KirariReel>().toList(growable: false);
   }
 
   @override
@@ -173,28 +292,7 @@ class FirebaseKirariRepository implements KirariRepository {
       'limit': limit,
       if (cursor != null) ...cursor,
     });
-    final raw = result['items'];
-    final reels = <KirariReel>[];
-    if (raw is List) {
-      for (final item in raw.whereType<Map>()) {
-        final map = Map<dynamic, dynamic>.from(item);
-        final variants = map['renditions'];
-        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
-        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
-        final videoPath = preferred is Map ? preferred['path'] as String? : null;
-        final coverPath = map['coverPath'] as String?;
-        if (videoPath == null || videoPath.isEmpty) continue;
-        final videoUrl = await _resolveMediaPath(videoPath);
-        final coverUrl = coverPath == null || coverPath.isEmpty
-            ? ''
-            : await _resolveMediaPath(coverPath);
-        reels.add(KirariReel.fromMap({
-          ...map,
-          'playbackUrl': videoUrl,
-          'coverUrl': coverUrl,
-        }));
-      }
-    }
+    final reels = await _resolveReels(result['items']);
     final nextCursor = result['nextCursor'];
     return KirariFeedPageResult(
       reels,
@@ -206,74 +304,22 @@ class FirebaseKirariRepository implements KirariRepository {
   @override
   Future<KirariFeedPageResult> getHashtagFeed({required String hashtag, int limit = 8}) async {
     final result = await _call('getKirariHashtagFeed', {'hashtag': hashtag, 'limit': limit});
-    final raw = result['items'];
-    final items = <KirariReel>[];
-    if (raw is List) {
-      for (final value in raw.whereType<Map>()) {
-        final map = Map<dynamic, dynamic>.from(value);
-        final variants = map['renditions'];
-        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
-        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
-        final videoPath = preferred is Map ? preferred['path'] as String? : null;
-        final coverPath = map['coverPath'] as String?;
-        if (videoPath == null || videoPath.isEmpty) continue;
-        final videoUrl = await _resolveMediaPath(videoPath);
-        final coverUrl = coverPath == null || coverPath.isEmpty
-            ? '' : await _resolveMediaPath(coverPath);
-        items.add(KirariReel.fromMap({...map, 'playbackUrl': videoUrl, 'coverUrl': coverUrl}));
-      }
-    }
-    return KirariFeedPageResult(items, hasMore: result['hasMore'] == true);
+    return KirariFeedPageResult(
+      await _resolveReels(result['items']),
+      hasMore: result['hasMore'] == true,
+    );
   }
 
   @override
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24}) async {
     final result = await _call('getKirariReelsByAudio', {'audioId': audioId, 'limit': limit});
-    final raw = result['items'];
-    final items = <KirariReel>[];
-    if (raw is List) {
-      for (final value in raw.whereType<Map>()) {
-        final map = Map<dynamic, dynamic>.from(value);
-        final variants = map['renditions'];
-        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
-        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
-        final videoPath = preferred is Map ? preferred['path'] as String? : null;
-        final coverPath = map['coverPath'] as String?;
-        if (videoPath == null || videoPath.isEmpty) continue;
-        items.add(KirariReel.fromMap({
-          ...map,
-          'playbackUrl': await _resolveMediaPath(videoPath),
-          'coverUrl': coverPath == null || coverPath.isEmpty
-              ? '' : await _resolveMediaPath(coverPath),
-        }));
-      }
-    }
-    return items;
+    return _resolveReels(result['items']);
   }
 
   @override
   Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20}) async {
     final result = await _call('getKirariCreatorReels', {'creatorId': creatorId, 'limit': limit});
-    final raw = result['items'];
-    final items = <KirariReel>[];
-    if (raw is List) {
-      for (final value in raw.whereType<Map>()) {
-        final map = Map<dynamic, dynamic>.from(value);
-        final variants = map['renditions'];
-        final paths = variants is Map ? variants : const <dynamic, dynamic>{};
-        final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
-        final videoPath = preferred is Map ? preferred['path'] as String? : null;
-        final coverPath = map['coverPath'] as String?;
-        if (videoPath == null || videoPath.isEmpty) continue;
-        items.add(KirariReel.fromMap({
-          ...map,
-          'playbackUrl': await _resolveMediaPath(videoPath),
-          'coverUrl': coverPath == null || coverPath.isEmpty
-              ? '' : await _resolveMediaPath(coverPath),
-        }));
-      }
-    }
-    return items;
+    return _resolveReels(result['items']);
   }
 
   @override
@@ -287,17 +333,33 @@ class FirebaseKirariRepository implements KirariRepository {
     final coverPath = map['coverPath'] as String?;
     return KirariReel.fromMap({
       ...map,
-      'playbackUrl': await _resolveMediaPath(videoPath),
+      'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
       'coverUrl': coverPath == null || coverPath.isEmpty
-          ? '' : await _resolveMediaPath(coverPath),
+          ? '' : await _storage.ref(coverPath).getDownloadURL(),
     });
+  }
+
+  @override
+  Future<KirariFeedPageResult> getSavedReels({int limit = 30, Map<String, dynamic>? cursor}) async {
+    final result = await _call('getSavedKirariReels', {
+      'limit': limit,
+      if (cursor != null && cursor['cursor'] != null) 'cursor': cursor['cursor'],
+    });
+    final nextCursor = result['nextCursor'];
+    return KirariFeedPageResult(
+      await _resolveReels(result['items']),
+      hasMore: result['hasMore'] == true,
+      nextCursor: nextCursor is String && nextCursor.isNotEmpty
+          ? <String, dynamic>{'cursor': nextCursor}
+          : null,
+    );
   }
 
   @override
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality}) async {
     final path = reel.renditionPaths['$quality'];
     if (path == null || path.isEmpty) return reel.videoUrl;
-    return _resolveMediaPath(path);
+    return _downloadUrl(path);
   }
 
   @override
@@ -332,7 +394,7 @@ class FirebaseKirariRepository implements KirariRepository {
         final map = Map<dynamic, dynamic>.from(value);
         final path = map['audioPath'] as String?;
         if (path == null || path.isEmpty) continue;
-        final url = await _resolveMediaPath(path);
+        final url = await _storage.ref(path).getDownloadURL();
         tracks.add(KirariAudioTrack.fromMap(map, url));
       }
     }
@@ -378,6 +440,16 @@ class FirebaseKirariRepository implements KirariRepository {
     required String idempotencyKey,
     Map<String, dynamic> editSettings = const <String, dynamic>{},
     String? audioId,
+    bool allowOriginalAudioReuse = false,
+    List<String> animeIds = const <String>[],
+    List<String> characterIds = const <String>[],
+    List<String> mentions = const <String>[],
+    List<Map<String, String>> animeMetadata = const <Map<String, String>>[],
+    List<Map<String, String>> characterMetadata = const <Map<String, String>>[],
+    List<Map<String, String>> mentionMetadata = const <Map<String, String>>[],
+    String contentCategory = 'anime_edit',
+    String? groupId,
+    String? eventId,
   }) async {
     final result = await _call('startKirariUpload', {
       'caption': caption,
@@ -385,6 +457,16 @@ class FirebaseKirariRepository implements KirariRepository {
       'idempotencyKey': idempotencyKey,
       'editSettings': editSettings,
       if (audioId != null) 'audioId': audioId,
+      'allowOriginalAudioReuse': allowOriginalAudioReuse,
+      'animeIds': animeIds,
+      'characterIds': characterIds,
+      'mentions': mentions,
+      'animeMetadata': animeMetadata,
+      'characterMetadata': characterMetadata,
+      'mentionMetadata': mentionMetadata,
+      'contentCategory': contentCategory,
+      if (groupId != null) 'groupId': groupId,
+      if (eventId != null) 'eventId': eventId,
     });
     final path = result['storagePath'] as String?;
     final reelId = result['reelId'] as String?;
@@ -401,98 +483,71 @@ class FirebaseKirariRepository implements KirariRepository {
     required void Function(double progress) onProgress,
   }) async {
     final file = File(video.path);
-    final length = await file.length();
-    if (length <= 0 || length > 500 * 1024 * 1024) {
-      throw StateError('Choose a video no larger than 500 MB.');
-    }
-    final token = await _auth.currentUser?.getIdToken();
-    if (token == null || token.isEmpty) {
-      throw StateError('Sign in again before uploading a Kirari video.');
-    }
-    final segments = storagePath.split('/');
-    if (segments.length != 4 || segments[0] != 'kirari' ||
-        segments[1].isEmpty || segments[2].isEmpty ||
-        segments[3] != 'source.mp4') {
-      throw StateError('The server returned an invalid Kirari upload path.');
-    }
-    final reelId = segments[2];
-    final initUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId');
-    final initResponse = await _http.post(
-      initUri,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-        'x-kirari-size': length.toString(),
-      },
-      body: '{}',
-    ).timeout(const Duration(seconds: 30));
-    if (initResponse.statusCode != 201) {
-      throw StateError('Could not start Kirari upload (HTTP ' +
-          initResponse.statusCode.toString() + ').');
-    }
-    final initPayload = jsonDecode(initResponse.body) as Map<String, dynamic>;
-    final uploadId = initPayload['uploadId'] as String?;
-    if (uploadId == null || uploadId.isEmpty) {
-      throw StateError('The media service returned an invalid multipart session.');
-    }
+    final reference = _storage.ref(storagePath);
 
-    const chunkSize = 8 * 1024 * 1024;
-    final parts = <Map<String, dynamic>>[];
-    var sent = 0;
+    // If the previous attempt completed the object but the app stopped before
+    // finalization, do not upload the same durable local file a second time.
     try {
-      var partNumber = 1;
-      while (sent < length) {
-        final chunkLength = (length - sent).clamp(0, chunkSize).toInt();
-        final partUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId/' +
-            Uri.encodeComponent(uploadId) + '/$partNumber');
-        final request = http.StreamedRequest('PUT', partUri)
-          ..headers['Authorization'] = 'Bearer $token'
-          ..contentLength = chunkLength;
-        final responseFuture = _http.send(request).timeout(const Duration(minutes: 3));
-        final chunkStream = file.openRead(sent, sent + chunkLength).map((chunk) {
-          sent += chunk.length;
-          if (length > 0) onProgress((sent / length).clamp(0, 1).toDouble());
-          return chunk;
-        });
-        await request.sink.addStream(chunkStream);
-        await request.sink.close();
-        final response = await responseFuture;
-        final responseBody = await response.stream.bytesToString();
-        if (response.statusCode != 201) {
-          throw StateError('Kirari upload part failed (HTTP ' +
-              response.statusCode.toString() + '): ' + responseBody);
-        }
-        final payload = jsonDecode(responseBody) as Map<String, dynamic>;
-        final etag = payload['etag'] as String?;
-        final returnedPart = payload['partNumber'] as int?;
-        if (etag == null || returnedPart != partNumber) {
-          throw StateError('The media service returned an invalid upload part.');
-        }
-        parts.add({'partNumber': partNumber, 'etag': etag});
-        partNumber++;
+      final metadata = await reference.getMetadata();
+      if (metadata.size == await file.length()) {
+        if (Platform.isIOS) await _iosResumableUploader.clearSession(storagePath);
+        onProgress(1);
+        return;
       }
+    } on FirebaseException catch (error) {
+      if (error.code != 'object-not-found') {
+        rethrow;
+      }
+    }
 
-      final completeUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId/' +
-          Uri.encodeComponent(uploadId) + '/complete');
-      final completeResponse = await _http.post(
-        completeUri,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({'parts': parts}),
-      ).timeout(const Duration(minutes: 3));
-      if (completeResponse.statusCode != 201) {
-        throw StateError('Kirari upload could not be completed (HTTP ' +
-            completeResponse.statusCode.toString() + ').');
+    if (Platform.isAndroid) {
+      _androidUploadChannel.setMethodCallHandler((call) async {
+        final arguments = call.arguments;
+        if (call.method == 'progress' && arguments is Map) {
+          final progress = (arguments['progress'] as num?)?.toDouble();
+          if (progress != null) onProgress(progress.clamp(0, 1).toDouble());
+        }
+      });
+      try {
+        await _androidUploadChannel.invokeMethod<void>('uploadSource', {
+          'storagePath': storagePath,
+          'localPath': file.absolute.path,
+        });
+        onProgress(1);
+      } finally {
+        _androidUploadChannel.setMethodCallHandler(null);
       }
+      return;
+    }
+
+    if (Platform.isIOS) {
+      await _iosResumableUploader.upload(
+        file: file,
+        storagePath: storagePath,
+        contentType: 'video/mp4',
+        onProgress: onProgress,
+      );
+      return;
+    }
+
+    // Other supported platforms use Firebase Storage's SDK upload task.
+    final task = reference.putFile(
+      file,
+      SettableMetadata(contentType: 'video/mp4', customMetadata: {
+        'uploadedBy': 'kirari-client',
+      }),
+    );
+    // Firebase Storage performs resumable transfers internally. Scope the
+    // progress listener to this task so retries do not retain stale listeners.
+    final subscription = task.snapshotEvents.listen((snapshot) {
+      final total = snapshot.totalBytes;
+      if (total > 0) onProgress(snapshot.bytesTransferred / total);
+    });
+    try {
+      await task;
       onProgress(1);
-    } catch (_) {
-      final abortUri = Uri.parse('$_workerUrl/kirari/multipart/$reelId/' +
-          Uri.encodeComponent(uploadId) + '/abort');
-      await _http.delete(abortUri, headers: {'Authorization': 'Bearer $token'})
-          .timeout(const Duration(seconds: 30)).catchError((_) => http.Response('', 500));
-      rethrow;
+    } finally {
+      await subscription.cancel();
     }
   }
 
@@ -509,6 +564,10 @@ class FirebaseKirariRepository implements KirariRepository {
   @override
   Future<void> cancelUpload(String reelId) async {
     await _call('cancelKirariUpload', {'reelId': reelId});
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      await _iosResumableUploader.clearSession('kirari/$uid/$reelId/source.mp4');
+    }
   }
 
   @override
@@ -551,6 +610,24 @@ class FirebaseKirariRepository implements KirariRepository {
     source: ImageSource.gallery,
     maxDuration: const Duration(seconds: 60),
   );
+
+  @override
+  Future<XFile?> pickGalleryImage() => _picker.pickImage(source: ImageSource.gallery);
+
+  @override
+  Future<void> uploadCover({required String storagePath, required XFile image}) async {
+    final file = File(image.path);
+    final size = await file.length();
+    if (size <= 0 || size > 5 * 1024 * 1024) {
+      throw StateError('The cover image must be smaller than 5 MB.');
+    }
+    await _storage.ref(storagePath).putFile(
+      file,
+      SettableMetadata(contentType: 'image/jpeg', customMetadata: {
+        'uploadedBy': 'kirari-client',
+      }),
+    );
+  }
 }
 
 class KirariPlaybackReporter {
@@ -571,7 +648,8 @@ class KirariPlaybackReporter {
 
   Future<void> report(VideoPlayerController controller) async {
     final session = _sessionId;
-    if (session == null || _busy || !controller.value.isInitialized) return;
+    if (session == null || _busy || !controller.value.isInitialized ||
+        !controller.value.isPlaying) return;
     final duration = controller.value.duration.inMilliseconds / 1000;
     final position = controller.value.position.inMilliseconds / 1000;
     if (duration <= 0) return;
@@ -582,7 +660,6 @@ class KirariPlaybackReporter {
     if (position <= _lastPosition) return;
     final watched = (position - _lastPosition).clamp(0, 5).toDouble();
     if (watched <= 0) return;
-    _lastPosition = position;
     _busy = true;
     try {
       await repository.recordPlayback(
@@ -592,6 +669,10 @@ class KirariPlaybackReporter {
         watchSeconds: watched,
         percent: (position / duration * 100).clamp(0, 100).toDouble(),
       );
+      _lastPosition = position;
+    } catch (_) {
+      // Keep the last acknowledged position so the next heartbeat retries
+      // without turning a temporary network failure into lost watch progress.
     } finally {
       _busy = false;
     }
@@ -617,6 +698,8 @@ class UnavailableKirariRepository implements KirariRepository {
   @override
   Future<KirariReel> getReel(String reelId) async => throw _unavailable();
   @override
+  Future<KirariFeedPageResult> getSavedReels({int limit = 30, Map<String, dynamic>? cursor}) async => throw _unavailable();
+  @override
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24}) async => throw _unavailable();
   @override
   Future<List<Map<String, dynamic>>> getModerationQueue({int limit = 50}) async => throw _unavailable();
@@ -633,7 +716,7 @@ class UnavailableKirariRepository implements KirariRepository {
   @override
   Future<void> setCreatorMute({required String creatorId, required bool muted}) async => throw _unavailable();
   @override
-  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId}) async => throw _unavailable();
+  Future<KirariUploadSession> startUpload({required String caption, required List<String> hashtags, required String idempotencyKey, Map<String, dynamic> editSettings = const <String, dynamic>{}, String? audioId, bool allowOriginalAudioReuse = false, List<String> animeIds = const <String>[], List<String> characterIds = const <String>[], List<String> mentions = const <String>[], List<Map<String, String>> animeMetadata = const <Map<String, String>>[], List<Map<String, String>> characterMetadata = const <Map<String, String>>[], List<Map<String, String>> mentionMetadata = const <Map<String, String>>[], String contentCategory = 'anime_edit', String? groupId, String? eventId}) async => throw _unavailable();
   @override
   Future<void> uploadSource({required String storagePath, required XFile video, required void Function(double progress) onProgress}) async => throw _unavailable();
   @override
@@ -652,4 +735,8 @@ class UnavailableKirariRepository implements KirariRepository {
   Future<void> deleteReel(String reelId) async => throw _unavailable();
   @override
   Future<XFile?> pickGalleryVideo() async => null;
+  @override
+  Future<XFile?> pickGalleryImage() async => null;
+  @override
+  Future<void> uploadCover({required String storagePath, required XFile image}) async => throw _unavailable();
 }

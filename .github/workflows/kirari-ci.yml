@@ -2,7 +2,7 @@ name: Kirari CI
 
 on:
   push:
-    branches: [feat/kirari-system-rebuild]
+    branches: [feat/kirari-system-rebuild, feature/15-kirari-production-rebuild, feature/16-security-moderation-hardening, feature/17-community-interactions, feature/18-security-moderation-infrastructure, integration/pubget-1.0-final]
     paths:
       - 'test/**'
       - 'lib/features/kirari/**'
@@ -15,6 +15,7 @@ on:
       - 'lib/core/links/**'
       - 'lib/app/**'
       - 'functions/**'
+      - 'android/**'
       - 'firestore.rules'
       - 'firestore.indexes.json'
       - 'storage.rules'
@@ -36,6 +37,7 @@ on:
       - 'lib/core/links/**'
       - 'lib/app/**'
       - 'functions/**'
+      - 'android/**'
       - 'firestore.rules'
       - 'firestore.indexes.json'
       - 'storage.rules'
@@ -59,6 +61,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
+          # Match the repository lockfile: pdfrx_engine 0.1.13 requires the Dart 3.8 toolchain.
+          flutter-version: '3.32.8'
           channel: stable
           cache: true
       - name: Resolve packages
@@ -66,7 +70,6 @@ jobs:
       - name: Full repository analyze (baseline)
         id: full_analyze
         run: flutter analyze --no-fatal-infos
-        continue-on-error: true
       - name: Analyze Kirari and touched integration surfaces
         run: >-
           flutter analyze --no-fatal-infos
@@ -75,15 +78,26 @@ jobs:
           lib/features/home/screens/home_page.dart
           lib/features/social/screens/profile_page.dart
           lib/app/pubget_app.dart
+          lib/app/firebase_bootstrap.dart
+          test/firebase_bootstrap_test.dart
           lib/app/entity_routes.dart
           lib/core/links/pubget_deep_link.dart
           test/reel_entity_surfaces_test.dart
+      - name: Firebase App Check bootstrap tests
+        run: flutter test test/firebase_bootstrap_test.dart
       - name: Kirari integration tests
         run: flutter test test/reel_entity_surfaces_test.dart
+      - name: Kirari social state and metadata tests
+        run: flutter test test/kirari_social_state_test.dart
+      - name: Kirari persistent video cache tests
+        run: flutter test test/kirari_video_cache_test.dart
+      - name: Kirari resumable upload recovery tests
+        run: flutter test test/features/kirari/firebase_resumable_uploader_test.dart
+      - name: Android debug build
+        run: flutter build apk --debug
       - name: Full Flutter test suite (repository baseline; bounded)
-        run: flutter test
-        timeout-minutes: 10
-        continue-on-error: true
+        run: flutter test --exclude-tags golden --reporter expanded
+        timeout-minutes: 20
 
   functions:
     name: Functions checks and unit tests
@@ -129,7 +143,7 @@ jobs:
       - name: Full Firestore rules suite (repository baseline)
         working-directory: functions
         run: npx firebase --config ../firebase.json emulators:exec --only firestore --project demo-pubget-security "npm run test:rules"
-        continue-on-error: true
+
       - name: Storage rules tests
         if: always()
         timeout-minutes: 5

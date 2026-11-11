@@ -711,6 +711,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Appeals are submitted and decided only through authenticated callables.
+    // Appellants can read their own records; moderators can review all.
+    match /moderation_appeals/{appealId} {
+      allow get, list: if isModerator() ||
+        (signedIn() && resource.data.appellantId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
     match /usernames/{username} {
       // Reserved-namespace registry (spec §3.2 uniqueness). Writes are only
       // performed by server functions (reserveUsername callable + the
@@ -882,34 +890,7 @@ service cloud.firestore {
       }
       match /media/{mediaId} {
         allow read: if groupMember(groupId);
-        // Media bytes are uploaded to Cloudflare R2. A member may register
-        // only an object key scoped to this group and their own UID; the
-        // sendGroupMessage callable independently checks uploader/type/status.
-        allow create: if groupMember(groupId) &&
-          request.resource.data.keys().hasOnly([
-            'mediaId','uploaderId','mediaType','originalPath','thumbnailPath',
-            'mediumPath','status','contentType','sizeBytes','createdAt'
-          ]) &&
-          request.resource.data.mediaId == mediaId &&
-          request.resource.data.uploaderId == request.auth.uid &&
-          request.resource.data.mediaType in ['image','video','audio'] &&
-          request.resource.data.status == 'ready' &&
-          request.resource.data.originalPath is string &&
-          request.resource.data.originalPath.matches(
-            '^groups/' + groupId + '/' + request.auth.uid +
-            '/[A-Za-z0-9_-]+[.][a-z0-9]+$') &&
-          request.resource.data.sizeBytes is int &&
-          request.resource.data.sizeBytes > 0 &&
-          request.resource.data.sizeBytes <= 100 * 1024 * 1024 &&
-          request.resource.data.contentType is string &&
-          request.resource.data.createdAt == request.time &&
-          ((request.resource.data.mediaType == 'image' &&
-            request.resource.data.thumbnailPath == request.resource.data.originalPath &&
-            request.resource.data.mediumPath == request.resource.data.originalPath) ||
-           (request.resource.data.mediaType in ['video','audio'] &&
-            request.resource.data.thumbnailPath == null &&
-            request.resource.data.mediumPath == null));
-        allow update, delete: if false;
+        allow create, update, delete: if false;
       }
       match /games/{gameId} {
         allow read: if groupMember(groupId);
@@ -960,34 +941,7 @@ service cloud.firestore {
       }
       match /media/{mediaId} {
         allow read: if chatParticipant(chatId);
-        // Chat participants can register their own scoped R2 upload. Sending
-        // the message remains server-authoritative and rechecks membership,
-        // blocks, messaging policy, uploader identity and media type.
-        allow create: if chatParticipant(chatId) &&
-          request.resource.data.keys().hasOnly([
-            'mediaId','uploaderId','mediaType','originalPath','thumbnailPath',
-            'mediumPath','status','contentType','sizeBytes','createdAt'
-          ]) &&
-          request.resource.data.mediaId == mediaId &&
-          request.resource.data.uploaderId == request.auth.uid &&
-          request.resource.data.mediaType in ['image','video','audio'] &&
-          request.resource.data.status == 'ready' &&
-          request.resource.data.originalPath is string &&
-          request.resource.data.originalPath.matches(
-            '^privateChats/' + chatId + '/' + request.auth.uid +
-            '/[A-Za-z0-9_-]+[.][a-z0-9]+$') &&
-          request.resource.data.sizeBytes is int &&
-          request.resource.data.sizeBytes > 0 &&
-          request.resource.data.sizeBytes <= 100 * 1024 * 1024 &&
-          request.resource.data.contentType is string &&
-          request.resource.data.createdAt == request.time &&
-          ((request.resource.data.mediaType == 'image' &&
-            request.resource.data.thumbnailPath == request.resource.data.originalPath &&
-            request.resource.data.mediumPath == request.resource.data.originalPath) ||
-           (request.resource.data.mediaType in ['video','audio'] &&
-            request.resource.data.thumbnailPath == null &&
-            request.resource.data.mediumPath == null));
-        allow update, delete: if false;
+        allow create, update, delete: if false;
       }
     }
 
@@ -1425,8 +1379,8 @@ service cloud.firestore {
     }
     match /users/{uid}/kirariSeen/{reelId} {
       allow read: if self(uid);
-      allow create, update, delete: if self(uid) &&
-        request.resource.data.keys().hasOnly(['seenAt']);
+      // Seen-ring writes are server-owned and occur only after qualified playback.
+      allow create, update, delete: if false;
     }
     match /users/{uid}/kirariInterests/{interestId} {
       allow read: if self(uid);

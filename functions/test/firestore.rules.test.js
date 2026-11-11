@@ -199,53 +199,6 @@ test.beforeEach(async () => {
 test.after(() => env.cleanup());
 test.afterEach(() => env.clearFirestore());
 
-test("group members can register only their own scoped R2 media keys", async () => {
-  const image = {
-    mediaId: "g-media-1",
-    uploaderId: "alice",
-    mediaType: "image",
-    originalPath: "groups/g1/alice/photo.jpg",
-    thumbnailPath: "groups/g1/alice/photo.jpg",
-    mediumPath: "groups/g1/alice/photo.jpg",
-    status: "ready",
-    contentType: "image/jpeg",
-    sizeBytes: 128,
-    createdAt: serverTimestamp(),
-  };
-  await assertSucceeds(db("alice").doc("groups/g1/media/g-media-1").set(image));
-  await assertSucceeds(db("bob").doc("groups/g1/media/g-media-1").get());
-  await assertFails(db("bob").doc("groups/g1/media/forged").set({
-    ...image,
-    mediaId: "forged",
-    originalPath: "groups/g1/alice/other.jpg",
-    thumbnailPath: "groups/g1/alice/other.jpg",
-    mediumPath: "groups/g1/alice/other.jpg",
-  }));
-});
-
-test("private chat participants can register their own scoped R2 media keys", async () => {
-  const video = {
-    mediaId: "p-media-1",
-    uploaderId: "alice",
-    mediaType: "video",
-    originalPath: "privateChats/c1/alice/clip.mp4",
-    thumbnailPath: null,
-    mediumPath: null,
-    status: "ready",
-    contentType: "video/mp4",
-    sizeBytes: 1024,
-    createdAt: serverTimestamp(),
-  };
-  await assertSucceeds(db("alice").doc("privateChats/c1/media/p-media-1").set(video));
-  await assertSucceeds(db("bob").doc("privateChats/c1/media/p-media-1").get());
-  await assertFails(db("charlie").doc("privateChats/c1/media/outsider").set({
-    ...video,
-    mediaId: "outsider",
-    uploaderId: "charlie",
-    originalPath: "privateChats/c1/charlie/clip.mp4",
-  }));
-});
-
 test("profile owner can change display data but not coins", async () => {
   await assertSucceeds(db("alice").doc("users/alice").update({ bio: "hello" }));
   await assertFails(db("alice").doc("users/alice").update({ coinsBalance: 999999 }));
@@ -1685,15 +1638,15 @@ test("Kirari documents and interactions are read-only to clients with publicatio
   await assertFails(db("alice").doc("kirariUploadLocks/alice").set({ reelId: "r3" }));
 });
 
-test("Kirari seen markers are owner-scoped and field-limited", async () => {
-  await assertSucceeds(db("alice").doc("users/alice/kirariSeen/r1").set({
+test("Kirari seen markers are server-only", async () => {
+  await assertFails(db("alice").doc("users/alice/kirariSeen/r1").set({
     seenAt: serverTimestamp(),
   }));
   await assertFails(db("bob").doc("users/alice/kirariSeen/r2").set({
     seenAt: serverTimestamp(),
   }));
   await assertFails(db("alice").doc("users/alice/kirariSeen/r3").set({
-    seenAt: serverTimestamp(), forgedScore: 100000,
+    seenAt: serverTimestamp(),
   }));
 });
 
@@ -1793,4 +1746,27 @@ test("the mute list is self-scoped and server-owned", async () => {
   await assertFails(alice.doc("reelMutes/alice").set({ uid: "alice" }));
 
   await assertFails(bob.collection("reelMutes/alice/creators").get());
+});
+
+
+test("account moderation flags and block relationships are never client writable", async () => {
+  await assertFails(db("alice").doc("users/alice").update({
+    isBanned: true,
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    moderationState: "restricted",
+    moderationReason: "forged",
+    restrictedUntil: new Date(Date.now() + 60 * 60 * 1000),
+  }));
+  await assertFails(db("alice").doc("friendships/alice_bob").set({
+    userA: "alice",
+    userB: "bob",
+    userIds: ["alice", "bob"],
+    status: "blocked",
+    blockedBy: "alice",
+  }));
+  await assertFails(db("bob").doc("friendships/alice_bob").update({
+    status: "blocked",
+    blockedBy: "bob",
+  }));
 });

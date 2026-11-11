@@ -12,9 +12,6 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart' as provider;
 
 import '../core/network/network_service.dart';
-import '../core/media/media_repository.dart';
-import '../core/media/media_repository_factory.dart';
-import '../core/media/unavailable_media_repository.dart';
 import '../core/theme/app_theme.dart';
 import '../features/authentication/auth_route_guard.dart';
 import '../features/authentication/providers/auth_draft_store.dart';
@@ -184,14 +181,6 @@ class PubgetApp extends StatelessWidget {
         provider.ChangeNotifierProvider<NetworkService>(
           create: (_) => NetworkService()..start(),
         ),
-        provider.Provider<MediaRepository>(
-          create: (_) => firebaseState.isReady
-              ? createMediaRepository()
-              : UnavailableMediaRepository(
-                  firebaseState.message ??
-                      'Cloudflare media is unavailable in this build.',
-                ),
-        ),
         provider.Provider<AuthRepository>.value(value: repositories.$1),
         provider.Provider<UserRepository>.value(value: repositories.$2),
         provider.Provider<ProfileRepository>.value(value: repositories.$3),
@@ -227,7 +216,7 @@ class PubgetApp extends StatelessWidget {
               inner: JikanAnimeRepository(
                 http: ResilientAnimeHttpClient(inner: PackageAnimeHttpClient()),
               ),
-              isOnline: () => network.canAttemptNetworkRequest,
+              isOnline: () => network.isOnline,
             );
           },
         ),
@@ -861,7 +850,6 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/notifications': const NotificationInboxPage(),
         '/edits': const AppShell(),
         '/reels': const AppShell(),
-        '/reels/upload': const KirariUploadPage(),
         '/edits/upload': const EditFeedPage(),
         '/groups': const AppShell(),
         '/joined': const AppShell(),
@@ -877,6 +865,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/economy/history': const EconomyHistoryPage(),
       },
       parameterizedPages: <String, ParameterizedPageBuilder>{
+        '/reels/upload': (parameters) => KirariUploadPage(initialAudioId: parameters['audioId']),
         ...EntityRoutes.pages(),
         '/profile': (parameters) => ProfilePage(userId: parameters['uid']),
         '/groups/create': (parameters) {

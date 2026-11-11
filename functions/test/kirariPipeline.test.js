@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { renditionArgs, editorVideoFilter, outputDurationSeconds, buildAudioAttribution } = require("../src/kirariPipeline");
+const { renditionArgs, editorVideoFilter, outputDurationSeconds, isPortraitVideo, buildAudioAttribution } = require("../src/kirariPipeline");
 
 test("Kirari rendition ladder always outputs vertical 9:16 dimensions", () => {
   const expected = new Map([[360, 202], [540, 302], [720, 404]]);
@@ -13,6 +13,12 @@ test("Kirari rendition ladder always outputs vertical 9:16 dimensions", () => {
     assert.ok(args.includes("0:a?"), "optional source audio should be preserved");
     assert.ok(args.includes("+faststart"), "MP4 should be optimized for progressive playback");
   }
+});
+
+test("Kirari accepts portrait sources and rejects landscape or unknown dimensions", () => {
+  assert.equal(isPortraitVideo({ width: 720, height: 1280 }), true);
+  assert.equal(isPortraitVideo({ width: 1280, height: 720 }), false);
+  assert.equal(isPortraitVideo({ width: 0, height: 0 }), false);
 });
 
 test("Kirari editor export applies trim-safe text, color and playback speed filters", () => {
@@ -26,6 +32,19 @@ test("Kirari editor export applies trim-safe text, color and playback speed filt
   assert.match(filter, /drawtext=text=/);
   assert.match(filter, /setpts=PTS\/1.5/);
   assert.ok(filter.includes("Anime"));
+});
+
+test("Kirari text overlay is constrained to its selected source interval", () => {
+  const filter = editorVideoFilter(404, 720, {
+    trimStartSeconds: 8,
+    trimEndSeconds: 24,
+    overlayStartSeconds: 12,
+    overlayEndSeconds: 18,
+    speed: 1,
+    filter: "none",
+    overlayText: "Pubget",
+  });
+  assert.match(filter, /enable='between\(t,4,10\)'/);
 });
 
 test("Kirari speed changes preserve the selected source interval", () => {
@@ -52,4 +71,13 @@ test("Kirari reel attribution preserves the license and required credit text", (
     sourceCreatorId: "creator-1",
   });
   assert.equal(buildAudioAttribution(null, { title: "unused" }), null);
+});
+
+test("Kirari attribution falls back to the catalog display name", () => {
+  assert.equal(buildAudioAttribution("track-2", {
+    displayName: "Community Remix",
+    artist: "Fan Creator",
+    license: "CC BY 4.0",
+    attribution: "Credit required",
+  }).title, "Community Remix");
 });
