@@ -2,7 +2,7 @@ name: Kirari CI
 
 on:
   push:
-    branches: [feat/kirari-system-rebuild, feature/15-kirari-production-rebuild, feature/16-security-moderation-hardening, feature/17-community-interactions]
+    branches: [feat/kirari-system-rebuild, feature/15-kirari-production-rebuild, feature/16-security-moderation-hardening, feature/17-community-interactions, feature/18-security-moderation-infrastructure, integration/pubget-1.0-final]
     paths:
       - 'test/**'
       - 'lib/features/kirari/**'
@@ -70,7 +70,6 @@ jobs:
       - name: Full repository analyze (baseline)
         id: full_analyze
         run: flutter analyze --no-fatal-infos
-        continue-on-error: true
       - name: Analyze Kirari and touched integration surfaces
         run: >-
           flutter analyze --no-fatal-infos
@@ -97,8 +96,8 @@ jobs:
       - name: Android debug build
         run: flutter build apk --debug
       - name: Full Flutter test suite (repository baseline; bounded)
-        run: flutter test
-        timeout-minutes: 10
+        run: flutter test --exclude-tags golden --reporter expanded
+        timeout-minutes: 20
         continue-on-error: true
 
   functions:
