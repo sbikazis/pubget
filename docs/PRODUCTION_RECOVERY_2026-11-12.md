@@ -63,3 +63,30 @@ No production redeployment or retry was performed during this audit.
 - [x] Create an isolated recovery branch.
 - [ ] Add targeted Hosting diagnostics/fix after inspecting full deploy workflow and Firebase CLI behavior.
 - [ ] Establish a reproducible device-smoke-test checklist with the user.
+
+
+## Additional investigation — 2026-11-12
+
+### Hosting failure: evidence and limits
+
+- Re-read the full failed Hosting job log (run 43066687410 / job 130683403382).
+- Flutter Web compilation completed. The failure occurred during Firebase Hosting's file population/upload phase, after repeated progress at 0/91.
+- The CLI ultimately reported an HTML document where it expected JSON. The job log does not contain the Firebase API request URL, HTTP status, or response body, so it is not sufficient to distinguish an upstream timeout, gateway response, auth redirect, or service-side error.
+- The workflow does not currently print Node.js or Firebase CLI versions, and it does not preserve a sanitized Firebase debug log. This is an observability gap, not proof that a specific CLI version caused the failure.
+- Do not pin Node/Firebase CLI or change Hosting configuration based only on this symptom. Next safe step is to add version reporting and a carefully redacted diagnostic artifact, then reproduce through an approved non-production validation path before altering live deployment behavior.
+
+### Open PR triage (current API state checked 2026-11-12)
+
+- PR #183: this recovery baseline document; open draft, documentation-only.
+- PR #181: still open; its base is feature/17-community-interactions, not main. It is not a direct candidate for merging into main without reviewing the full branch chain and diff.
+- PR #179: still open; compares as 238 commits ahead / 4 behind main, reports mergeable_state=dirty, and touches many production surfaces. Do not merge as-is; first determine which changes are already present in main, then split genuinely missing changes into focused PRs.
+- PR #169: still open; compares as 4 commits ahead / 12 behind main, reports mergeable_state=dirty, and has mixed scope across routing, media, edits, chat/groups, notifications, and profile surfaces. Do not merge as-is; selectively extract only independently justified changes with tests.
+- PR #173: open at the time of the PR search. A comparison request did not return a usable response during this pass, so no claim is made about its unique changes or mergeability.
+
+### Updated day-one status
+
+- [x] Re-read full Hosting deployment logs and isolate the exact failing phase.
+- [x] Review the current base/head relationships and mergeability of the major open PRs listed above.
+- [x] Confirm no existing open PR is a safe one-click merge candidate based on the evidence gathered.
+- [ ] Add safe Hosting deployment diagnostics (version reporting and redacted logs) in a separate reviewable change.
+- [ ] Inspect user-reported visual defects using screenshots and reproduce on a real Android device.
