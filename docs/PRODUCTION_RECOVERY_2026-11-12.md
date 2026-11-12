@@ -90,3 +90,12 @@ No production redeployment or retry was performed during this audit.
 - [x] Confirm no existing open PR is a safe one-click merge candidate based on the evidence gathered.
 - [ ] Add safe Hosting deployment diagnostics (version reporting and redacted logs) in a separate reviewable change.
 - [ ] Inspect user-reported visual defects using screenshots and reproduce on a real Android device.
+
+### Application entry-point inspection
+
+- `PubgetApp` wires `SplashPage` as the router fallback and `/splash` destination, then registers `/home` and other feature routes. The production router does not instantiate `FoundationHomePage`.
+- `FoundationHomePage` contains explicit placeholder copy stating that feature domains will be added later, but repository search found it referenced only by its own declaration and its dedicated test. Do not treat that placeholder screen as proof that the production app launches into it.
+- The initial route is derived from `Uri.base` and then passed through `AuthRouteGuard`; this makes deep-link and authentication-state tests important. It does not by itself explain the user's reported visual defects.
+- The provider graph creates many repositories and providers at the app root. No provider-wide rewrite is justified from static inspection alone; capture the exact failing route and runtime exception before changing this graph.
+
+- [x] Trace the production router entry point and verify whether the legacy foundation placeholder is used.
