@@ -73,6 +73,7 @@ final class _FakeLibraryRepository implements AnimeLibraryRepository {
     required AnimeListStatus status,
     String title = '',
     int? rating,
+    bool? favorite,
   }) async {
     writes += 1;
     final entry = AnimeListEntry(
@@ -80,6 +81,7 @@ final class _FakeLibraryRepository implements AnimeLibraryRepository {
       status: status,
       title: title,
       rating: rating,
+      favorite: favorite ?? false,
     );
     entries[animeId] = entry;
     return Success(entry);
@@ -116,4 +118,67 @@ final class _FakeLibraryRepository implements AnimeLibraryRepository {
       CharacterFavorite(characterId: characterId, name: name, rating: rating),
     );
   }
+
+  @override
+  Future<Result<List<AnimeCustomList>>> getCustomLists({
+    String? userId,
+  }) async =>
+      Success<List<AnimeCustomList>>(const <AnimeCustomList>[]);
+
+  @override
+  Future<Result<AnimeCustomListDetail>> getCustomList({
+    required String listId,
+    String? userId,
+  }) async => Success<AnimeCustomListDetail>(
+    AnimeCustomListDetail(
+      list: AnimeCustomList(id: listId, name: ''),
+    ),
+  );
+
+  @override
+  Future<Result<AnimeCustomList>> createCustomList({
+    required String name,
+    String description = '',
+    bool private = false,
+    List<String> animeIds = const <String>[],
+  }) async => Success<AnimeCustomList>(
+    AnimeCustomList(
+      id: 'list-1',
+      name: name,
+      description: description,
+      private: private,
+      itemsCount: animeIds.length,
+    ),
+  );
+
+  @override
+  Future<Result<void>> updateCustomList({
+    required String listId,
+    String? name,
+    String? description,
+    bool? private,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> deleteCustomList(String listId) async =>
+      const Success<void>(null);
+
+  @override
+  Future<Result<void>> addToCustomList({
+    required String listId,
+    required String animeId,
+    String title = '',
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> removeFromCustomList({
+    required String listId,
+    required String animeId,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<List<CustomListMembership>>> getCustomListMembership(
+    String animeId,
+  ) async =>
+      Success<List<CustomListMembership>>(const <CustomListMembership>[]);
 }

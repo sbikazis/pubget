@@ -1,4 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import '../../../core/media/media_reference.dart';
 
 /// Official default group-chat wallpaper shipped with Pubget (WhatsApp-style).
 const kPubgetDefaultChatWallpaperAsset =
@@ -72,7 +75,9 @@ final class ChatContrastTheme {
 
     if (raw.startsWith('http://') || raw.startsWith('https://')) {
       return ChatContrastTheme._image(
-        image: NetworkImage(raw),
+        // Disk-cached + TLS-upgraded: a legacy `http://` wallpaper would be
+        // rejected outright by the hardened release manifest.
+        image: CachedNetworkImageProvider(secureMediaUrl(raw)),
         // Unknown remote wallpapers: assume busy/dark and lean on a stronger scrim.
         backgroundIsDark: true,
       );

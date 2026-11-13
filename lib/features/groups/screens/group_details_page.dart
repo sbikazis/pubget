@@ -143,61 +143,10 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
   }
 }
 
-
-/// Compact management entry surface for trusted group ranks. This widget is
-/// intentionally kept beside the details page so its route contract cannot
-/// drift from the group screen.
-class _GroupEntryHub extends StatelessWidget {
-  const _GroupEntryHub({required this.group});
-
-  final Group group;
-
-  @override
-  Widget build(BuildContext context) {
-    final copy = AppStrings.of(context);
-    final provider = context.watch<GroupProvider>();
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _IdentityHeader(group: group),
-          const SizedBox(height: AppSpacing.lg),
-          Text('Entry Hub', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: AppSpacing.sm),
-          Text(copy.membersCount(group.membersCount)),
-          const SizedBox(height: AppSpacing.lg),
-          PubgetCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Text(copy.groupInformation,
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: AppSpacing.sm),
-                Text(group.description.isEmpty
-                    ? copy.communityFallback
-                    : group.description),
-                const SizedBox(height: AppSpacing.md),
-                FilledButton(
-                  onPressed: () => AppNavigation.go(
-                    context, '/group-chat?groupId=${group.id}'),
-                  child: Text(copy.openChat),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                if (provider.canManageMembers)
-                  OutlinedButton(
-                    onPressed: () => AppNavigation.go(
-                      context, '/group-members?groupId=${group.id}'),
-                    child: Text(copy.manageMembers),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// Axis Zero: removed the unused private `_GroupEntryHub` widget. It was a
+// duplicate management surface that nothing routed to, and its presence made
+// `flutter analyze` fail the mandatory CI gate on an `unused_element` warning.
+// The shared `_IdentityHeader` below is still used by `_VisitorDetails`.
 
 class _IdentityHeader extends StatelessWidget {
   const _IdentityHeader({required this.group});

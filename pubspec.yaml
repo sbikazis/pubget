@@ -43,6 +43,13 @@ dependencies:
   file_selector: ^1.0.4
   youtube_player_flutter: ^9.1.3
   google_mobile_ads: ^6.0.0
+  # Axis Zero: event-driven link-state detection replaces the old DNS poll
+  # loop. A DNS probe remains as a one-shot *verification* of real internet
+  # access, because "connected to Wi-Fi" is not "the internet is reachable".
+  connectivity_plus: ^7.3.2
+  # Disk-backed image cache for the shared media widget. Without this every
+  # avatar, group cover and reel thumbnail re-downloads on each cold start.
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:

@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
+import '../../../core/widgets/app_image_loader.dart';
 import '../data/kirari_repository.dart';
 import '../l10n/kirari_copy.dart';
 import 'kirari_feed_page.dart';
@@ -110,7 +111,7 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
                           color: Colors.black,
                           child: Stack(fit: StackFit.expand, children: [
                             if (reel.coverUrl.isNotEmpty)
-                              Image.network(reel.coverUrl, fit: BoxFit.cover),
+                              AppImageLoader(imageUrl: reel.coverUrl, fit: BoxFit.cover),
                             if (controller?.value.isInitialized == true)
                               FittedBox(
                                 fit: BoxFit.cover,

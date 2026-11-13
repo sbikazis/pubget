@@ -27,14 +27,30 @@ bool isOpaqueMediaReference(String reference) {
   return !isRemoteMediaUrl(value) && value.contains('://');
 }
 
+/// Upgrades a legacy cleartext media URL to TLS.
+///
+/// The release manifest sets `android:usesCleartextTraffic="false"`, so old
+/// records written before that hardening (including CDN/R2-era `http://`
+/// links) would fail with a cleartext error instead of rendering an image.
+/// Every media host in use serves TLS. If a particular host does not, the
+/// caller's error widget renders — exactly what would have happened anyway.
+/// Web CORS behaviour is unchanged: the scheme upgrade only removes the
+/// mixed-content/cleartext rejection on the platforms that enforce it.
+String secureMediaUrl(String url) {
+  final value = url.trim();
+  if (value.startsWith('http://')) return 'https://${value.substring(7)}';
+  return value;
+}
+
 /// Resolves [reference] to a fetchable URL, or null when it is empty, an opaque
 /// identifier, or a Storage lookup that fails. Never throws.
 Future<String?> resolveMediaDownloadUrl(String reference) async {
   final value = reference.trim();
   if (value.isEmpty || isOpaqueMediaReference(value)) return null;
-  if (isRemoteMediaUrl(value)) return value;
+  if (isRemoteMediaUrl(value)) return secureMediaUrl(value);
   try {
-    return await FirebaseStorage.instance.ref(value).getDownloadURL();
+    final url = await FirebaseStorage.instance.ref(value).getDownloadURL();
+    return secureMediaUrl(url);
   } on Object {
     return null;
   }

@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
+import '../../../core/widgets/app_image_loader.dart';
 
 import '../data/kirari_repository.dart';
 import '../l10n/kirari_copy.dart';
@@ -403,7 +404,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
           fit: StackFit.expand,
           children: [
             if (reel.coverUrl.isNotEmpty)
-              Image.network(reel.coverUrl, fit: BoxFit.cover)
+              AppImageLoader(imageUrl: reel.coverUrl, fit: BoxFit.cover)
             else
               const ColoredBox(color: Color(0xFF17131F)),
             if (controller?.value.isInitialized == true)

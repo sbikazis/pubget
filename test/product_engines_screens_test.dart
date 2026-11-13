@@ -14,7 +14,6 @@ import 'package:pubget/features/achievements/screens/achievements_page.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/events/models/event_models.dart';
-import 'package:pubget/features/events/models/event_type_registry.dart';
 import 'package:pubget/features/events/providers/event_providers.dart';
 import 'package:pubget/features/events/repositories/event_repository.dart';
 import 'package:pubget/features/events/screens/event_details_screen.dart';
@@ -306,7 +305,7 @@ PubgetGame _guessGame({bool completed = false}) {
     title: 'Guess',
     description: '',
     version: 1,
-    status: completed ? GameStatus.completed : GameStatus.active,
+    status: completed ? GameStatus.completed : GameStatus.inProgress,
     creatorId: 'alice',
     groupId: 'group-1',
     configuration: const GameConfiguration(
@@ -566,10 +565,11 @@ final class _LiveGameRepository implements GameRepository {
   @override
   Future<Result<void>> leave(String gameId) async => const Success<void>(null);
 
-  @override
+  // The production repository has no suspension/resume API (Master Spec 12.2
+  // removed the paused state). These stubs stay for the test fixture but must
+  // not claim to override an interface member that no longer exists.
   Future<Result<void>> pause(String gameId) async => const Success<void>(null);
 
-  @override
   Future<Result<void>> resume(String gameId) async => const Success<void>(null);
 
   @override
@@ -613,6 +613,25 @@ final class _LiveGameRepository implements GameRepository {
   }) => Stream<Result<Map<String, dynamic>>>.value(
     const Success(<String, dynamic>{}),
   );
+
+  @override
+  Future<Result<List<AnimeSearchItem>>> searchAnime(
+    String query, {
+    int limit = 20,
+  }) async => const Success(<AnimeSearchItem>[]);
+
+  @override
+  Future<Result<List<CharacterSearchItem>>> searchCharacters(
+    String query, {
+    String? animeId,
+    int limit = 20,
+  }) async => const Success(<CharacterSearchItem>[]);
+
+  @override
+  Future<Result<List<GameHistoryEntry>>> getHistory({
+    required String userId,
+    int limit = 20,
+  }) async => const Success(<GameHistoryEntry>[]);
 }
 
 final class _ExpiredEventRepository implements EventRepository {
@@ -661,8 +680,10 @@ final class _ExpiredEventRepository implements EventRepository {
   Future<Result<void>> end(String eventId) async => const Success<void>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({int limit = 20}) async =>
-      const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getActiveEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => const Success(<PubgetEvent>[]);
 
   @override
   Future<Result<List<PubgetEvent>>> getGroupEvents({
@@ -688,8 +709,10 @@ final class _ExpiredEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({int limit = 20}) async =>
-      const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getRecentEvents({
+    int limit = 20,
+    PubgetEvent? after,
+  }) async => const Success(<PubgetEvent>[]);
 
   @override
   Future<Result<List<PubgetEvent>>> getUpcomingEvents({int limit = 20}) async =>
@@ -721,6 +744,67 @@ final class _ExpiredEventRepository implements EventRepository {
     required String eventId,
     required Map<String, dynamic> responseData,
   }) async => const Success<void>(null);
+
+  @override
+  Future<Result<String>> addComment({
+    required String eventId,
+    required String text,
+  }) async => const Success('comment-1');
+
+  @override
+  Future<Result<void>> crosspost({
+    required String eventId,
+    List<String> groupIds = const <String>[],
+    bool toGlobal = false,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<EventAnalytics>> getAnalytics(String eventId) async =>
+      Success(EventAnalytics(eventId: eventId, status: ''));
+
+  @override
+  Future<Result<EventCreationQuota>> getCreationQuota() async =>
+      const Success(EventCreationQuota(count: 0, limit: 2, remaining: 2));
+
+  @override
+  Future<Result<List<PubgetEvent>>> getEventsByAnime({
+    required String animeId,
+    int limit = 20,
+  }) async => const Success(<PubgetEvent>[]);
+
+  @override
+  Future<Result<String?>> getMyReaction({
+    required String eventId,
+    required String userId,
+  }) async => const Success<String?>(null);
+
+  @override
+  Future<Result<EventPreview>> preview({required String eventId}) async =>
+      Success(EventPreview(eventId: eventId));
+
+  @override
+  Future<Result<void>> react({
+    required String eventId,
+    required String reaction,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> reportEvent({
+    required String eventId,
+    required String category,
+    String detail = '',
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<EventResult>> resolve({
+    required String eventId,
+    String? winnerOptionId,
+    List<String>? winnerIds,
+  }) async => const Success(EventResult(kind: '', submissions: 0));
+
+  @override
+  Stream<Result<List<EventComment>>> watchComments(String eventId) =>
+      const Stream<Result<List<EventComment>>>.empty();
 
   @override
   Stream<Result<PubgetEvent>> watchEvent(String eventId) =>

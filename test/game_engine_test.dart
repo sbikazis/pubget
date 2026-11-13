@@ -10,23 +10,31 @@ void main() {
   group('Game status machine', () {
     test('allows the documented transitions', () {
       expect(
-        GameLifecycle.canTransition(GameStatus.draft, GameStatus.waiting),
+        GameLifecycle.canTransition(GameStatus.created, GameStatus.waiting),
+        isTrue,
+      );
+      // Master Spec 12.2 — CREATED → WAITING → STARTING → IN_PROGRESS →
+      // COMPLETED / CANCELLED. There is no "paused" state, so a game can
+      // never go backwards from IN_PROGRESS. These assertions used to encode
+      // a three-state draft/active/paused machine that the server never wrote.
+      expect(
+        GameLifecycle.canTransition(GameStatus.waiting, GameStatus.starting),
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.waiting, GameStatus.active),
+        GameLifecycle.canTransition(GameStatus.starting, GameStatus.inProgress),
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.active, GameStatus.paused),
+        GameLifecycle.canTransition(GameStatus.created, GameStatus.cancelled),
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.paused, GameStatus.active),
+        GameLifecycle.canTransition(GameStatus.starting, GameStatus.cancelled),
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.active, GameStatus.completed),
+        GameLifecycle.canTransition(GameStatus.inProgress, GameStatus.completed),
         isTrue,
       );
       expect(
@@ -34,18 +42,27 @@ void main() {
         isTrue,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.active, GameStatus.cancelled),
+        GameLifecycle.canTransition(GameStatus.inProgress, GameStatus.cancelled),
         isTrue,
       );
     });
 
     test('rejects invalid and terminal-state transitions', () {
       expect(
-        GameLifecycle.canTransition(GameStatus.draft, GameStatus.active),
+        GameLifecycle.canTransition(GameStatus.created, GameStatus.inProgress),
+        isFalse,
+      );
+      // No suspension/resume: IN_PROGRESS → STARTING is explicitly rejected.
+      expect(
+        GameLifecycle.canTransition(GameStatus.inProgress, GameStatus.starting),
         isFalse,
       );
       expect(
-        GameLifecycle.canTransition(GameStatus.completed, GameStatus.active),
+        GameLifecycle.canTransition(GameStatus.waiting, GameStatus.inProgress),
+        isFalse,
+      );
+      expect(
+        GameLifecycle.canTransition(GameStatus.completed, GameStatus.inProgress),
         isFalse,
       );
       expect(
@@ -54,11 +71,11 @@ void main() {
       );
       expect(GameLifecycle.isTerminal(GameStatus.completed), isTrue);
       expect(GameLifecycle.isTerminal(GameStatus.cancelled), isTrue);
-      expect(GameLifecycle.isTerminal(GameStatus.active), isFalse);
+      expect(GameLifecycle.isTerminal(GameStatus.inProgress), isFalse);
       expect(
         () => GameLifecycle.assertTransition(
           GameStatus.completed,
-          GameStatus.active,
+          GameStatus.inProgress,
         ),
         throwsA(
           isA<GameException>().having(
@@ -88,8 +105,10 @@ void main() {
         2,
       );
       expect(
+        // Master Spec 13.2 — Mafia needs 7-15 players; the registry now reads
+        // MafiaLimits instead of the old mirrored 4 that the server rejected.
         GameTypeRegistry.configurationFor(GameType.mafia).minPlayers,
-        4,
+        7,
       );
     });
 
@@ -123,7 +142,7 @@ void main() {
     test('rejects join after start and leave of a missing player', () {
       final roster = ParticipantRoster(gameId: 'g1');
       expect(
-        () => roster.join(userId: 'bob', gameStatus: GameStatus.active),
+        () => roster.join(userId: 'bob', gameStatus: GameStatus.inProgress),
         throwsA(
           isA<GameException>().having(
             (error) => error.code,
@@ -201,7 +220,7 @@ void main() {
       expect(
         log.submit(
           action: first,
-          gameStatus: GameStatus.active,
+          gameStatus: GameStatus.inProgress,
           roster: roster,
         ).id,
         'a1',
@@ -209,7 +228,7 @@ void main() {
       expect(
         log.submit(
           action: second,
-          gameStatus: GameStatus.active,
+          gameStatus: GameStatus.inProgress,
           roster: roster,
         ).id,
         'a1',
@@ -245,7 +264,7 @@ void main() {
         title: 'Guess',
         description: '',
         version: 1,
-        status: GameStatus.active,
+        status: GameStatus.inProgress,
         creatorId: 'alice',
         configuration: const GameConfiguration(),
         participantsCount: 1,

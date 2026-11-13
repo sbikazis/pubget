@@ -14,6 +14,7 @@ import 'package:pubget/features/settings/settings_repository.dart';
 import 'package:pubget/features/settings/settings_store.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/models/pubget_user.dart';
+import 'package:pubget/features/authentication/models/username_status.dart';
 import 'package:pubget/features/authentication/providers/auth_draft_store.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/authentication/providers/onboarding_provider.dart';
@@ -132,6 +133,21 @@ final class FakeUserRepository implements UserRepository {
     user = next;
     return Success<PubgetUser>(next);
   }
+
+  @override
+  Future<Result<UsernameStatus>> checkUsernameAvailable(
+    String username,
+  ) async => Success<UsernameStatus>(
+    UsernameStatus.available(username.toLowerCase()),
+  );
+
+  @override
+  Future<Result<String>> reserveUsername(String username) async =>
+      Success<String>(username.toLowerCase());
+
+  @override
+  Future<Result<void>> updateLanguage(String language) async =>
+      const Success<void>(null);
 }
 
 Future<SettingsProvider> englishSettingsProvider() async {

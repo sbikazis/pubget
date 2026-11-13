@@ -220,4 +220,55 @@ final class _FakeHubSocialRepository implements AnimeHubSocialRepository {
       const Success(<CharacterFavorite>[
         CharacterFavorite(characterId: 'erwin', name: 'Erwin Smith'),
       ]);
+
+  @override
+  Future<Result<void>> reportAnime({
+    required String animeId,
+    required String reason,
+    String details = '',
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<List<AnimeCommunityStats>>> listMostListed({
+    int limit = 40,
+  }) async =>
+      Success<List<AnimeCommunityStats>>(const <AnimeCommunityStats>[]);
+
+  @override
+  Future<Result<List<AnimeCommunityStats>>> getAnimeCommunityStats(
+    List<String> animeIds,
+  ) async =>
+      Success<List<AnimeCommunityStats>>(const <AnimeCommunityStats>[]);
+
+  @override
+  Future<Result<List<AnimeCustomList>>> listUserCustomAnimeLists(
+    String userId,
+  ) async =>
+      Success<List<AnimeCustomList>>(const <AnimeCustomList>[]);
+
+  @override
+  Future<Result<List<CharacterDiscussion>>> listCharacterDiscussions(
+    String characterId, {
+    int limit = 30,
+  }) async =>
+      Success<List<CharacterDiscussion>>(const <CharacterDiscussion>[]);
+
+  @override
+  Future<Result<CharacterDiscussion>> postCharacterDiscussion({
+    required String characterId,
+    required String text,
+  }) async => Success<CharacterDiscussion>(
+    CharacterDiscussion(
+      id: 'post-1',
+      characterId: characterId,
+      userId: 'alice',
+      text: text,
+    ),
+  );
+
+  @override
+  Future<Result<void>> deleteCharacterDiscussion({
+    required String characterId,
+    required String postId,
+  }) async => const Success<void>(null);
 }

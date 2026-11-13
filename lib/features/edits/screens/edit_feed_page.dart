@@ -340,13 +340,31 @@ class _EditFeedPageState extends State<EditFeedPage>
       );
     }
     if (feedState == LoadingState.error && feedItems.isEmpty) {
-      return PubgetErrorState(
-        message: provider.failure?.message ?? copy.failedLoad,
-        onRetry: provider.load,
+      final failure = provider.failure;
+      // Axis Zero: a backend hiccup is NOT "no connection". Route transport
+      // and service failures through the honest three-state surface, whose
+      // retry re-verifies the link *and* re-runs the load. Genuine app-level
+      // errors keep their specific message.
+      if (failure != null &&
+          failure is! NetworkError &&
+          failure is! UnavailableError &&
+          failure is! TimeoutError &&
+          failure is! RateLimitedError) {
+        return PubgetErrorState(
+          message: failure.message,
+          onRetry: provider.load,
+        );
+      }
+      return PubgetConnectionStateView(
+        isServiceFailure:
+            failure is UnavailableError || failure is TimeoutError,
+        onRetry: () async => provider.load(refresh: true),
       );
     }
     if (offline && feedItems.isEmpty) {
-      return PubgetOfflineState(onRetry: () => provider.load(refresh: true));
+      return PubgetConnectionStateView(
+        onRetry: () async => provider.load(refresh: true),
+      );
     }
     return RefreshIndicator(
       color: AppColors.gold,

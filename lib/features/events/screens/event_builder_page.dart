@@ -469,11 +469,10 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                     )
                   : form.imageUrl.isEmpty
                       ? const Icon(Icons.add_photo_alternate_outlined)
-                      : Image.network(
-                          form.imageUrl,
+                      : AppImageLoader(
+                          imageUrl: form.imageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) =>
-                              const Icon(Icons.broken_image_outlined),
+                          errorWidget: const Icon(Icons.broken_image_outlined),
                         ),
             ),
           ),
@@ -538,11 +537,10 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                           .surfaceContainerHighest,
                       child: const Icon(Icons.movie_outlined),
                     )
-                  : Image.network(
-                      anime.imageUrl,
+                  : AppImageLoader(
+                      imageUrl: anime.imageUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          const Icon(Icons.broken_image_outlined),
+                      errorWidget: const Icon(Icons.broken_image_outlined),
                     ),
             ),
           ),
@@ -784,11 +782,10 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                                   size: 16,
                                 ),
                               )
-                            : Image.network(
-                                option.imageUrl,
+                            : AppImageLoader(
+                                imageUrl: option.imageUrl,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) =>
-                                    const Icon(Icons.broken_image_outlined, size: 16),
+                                errorWidget: const Icon(Icons.broken_image_outlined, size: 16),
                               ),
                       ),
                     ),

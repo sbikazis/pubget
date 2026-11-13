@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/app_image_loader.dart';
 import '../../../core/widgets/pubget_states.dart';
 import '../../edits/l10n/edit_copy.dart';
 import '../../edits/models/edit_models.dart';
@@ -103,7 +104,7 @@ class _HashtagPageState extends State<HashtagPage> {
                   const SizedBox(height: AppSpacing.sm),
                   for (final reel in _kirariReels)
                     ListTile(
-                      leading: reel.coverUrl.isEmpty ? const Icon(Icons.movie) : Image.network(reel.coverUrl, width: 56, height: 76, fit: BoxFit.cover),
+                      leading: reel.coverUrl.isEmpty ? const Icon(Icons.movie) : AppImageLoader(imageUrl: reel.coverUrl, width: 56, height: 76, fit: BoxFit.cover),
                       title: Text(reel.caption.isEmpty ? 'Kirari video' : reel.caption, maxLines: 2, overflow: TextOverflow.ellipsis),
                       subtitle: Text('@${reel.creatorId}'),
                       onTap: () => AppNavigation.go(context, PubgetLinks.reelPath(reel.id)),

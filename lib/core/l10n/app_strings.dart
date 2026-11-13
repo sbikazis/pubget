@@ -434,6 +434,36 @@ final class AppStrings {
   String get couldNotLoad => pick("Couldn't load this", 'تعذّر التحميل');
   String get tryAgain => pick('Try again', 'حاول مرة أخرى');
 
+  /// Axis Zero — the three connectivity verdicts must never share a sentence.
+  /// A backend hiccup used to be reported as "no connection", which is the
+  /// single most damaging lie in the app: the user has internet, the app says
+  /// otherwise, and the retry button cannot fix a server-side outage.
+  String get connectionOfflineTitle => pick(
+    'No internet connection',
+    'لا يوجد اتصال بالإنترنت',
+  );
+  String get connectionOfflineMessage => pick(
+    'This device is not connected to a network. Reconnect, then try again.',
+    'هذا الجهاز غير متصل بأي شبكة. أعد الاتصال ثم حاول مجدداً.',
+  );
+  String get connectionCheckingTitle =>
+      pick('Checking the connection…', 'جارٍ التحقق من الاتصال…');
+  String get connectionCheckingMessage => pick(
+    'The connection could not be verified, but requests are still allowed.',
+    'لم نتأكد من الاتصال، لكن الطلبات ما زالت مسموحة.',
+  );
+  String get serviceUnavailableTitle => pick(
+    'The service is temporarily unavailable',
+    'الخدمة غير متاحة مؤقتاً',
+  );
+  String get serviceUnavailableMessage => pick(
+    'Your internet connection is working. Pubget could not reach its servers '
+        'this time, so this is not a connection problem.',
+    'اتصالك بالإنترنت يعمل. تعذّر على Pubget الوصول إلى خوادمه هذه المرة، '
+        'لذا المشكلة ليست في اتصالك.',
+  );
+  String get retryConnection => pick('Retry now', 'أعد المحاولة الآن');
+
   /// Discovery failures. Kept beside the Home section titles because Home is
   /// the only surface that renders a bare `Failure` with no screen-specific
   /// copy of its own.

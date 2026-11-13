@@ -7,6 +7,7 @@ import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/app_image_loader.dart';
 import '../../../core/widgets/pubget_avatar.dart';
 import '../../../core/widgets/pubget_states.dart';
 import '../../edits/l10n/edit_copy.dart';
@@ -148,11 +149,10 @@ class _AudioPageState extends State<AudioPage> {
                                             color: Colors.black12,
                                             child: Icon(Icons.movie_outlined),
                                           )
-                                        : Image.network(
-                                            reel.coverUrl,
+                                        : AppImageLoader(
+                                            imageUrl: reel.coverUrl,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) =>
-                                                const ColoredBox(
+                                            errorWidget: const ColoredBox(
                                               color: Colors.black12,
                                               child: Icon(Icons.movie_outlined),
                                             ),

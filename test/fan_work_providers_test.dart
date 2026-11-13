@@ -380,13 +380,19 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
   @override
   Future<Result<FanWorkUploadTicket>> startMediaUpload({
     required String workId,
+    required FanWorkMediaRole role,
     required String contentType,
+    String characterId = '',
   }) async => Success(
     FanWorkUploadTicket(
       workId: workId,
       mediaId: 'm1',
       path: 'fan_works/alice/$workId/m1.jpg',
       contentType: contentType,
+      role: role,
+      uploadUrl: 'https://upload.example.test/m1',
+      maxBytes: 5 * 1024 * 1024,
+      expiresAt: DateTime.utc(2026, 9, 1, 12),
     ),
   );
 
@@ -395,6 +401,7 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     required FanWorkUploadTicket ticket,
     required List<int> bytes,
     required String contentType,
+    FanWorkUploadProgress? onProgress,
   }) async => const Success<void>(null);
 
   @override
@@ -402,5 +409,56 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
       Stream<Result<FanWork>>.value(
         watchWorkResult ??
             const FailureResult(NotFoundError('This Fan Work is unavailable.')),
+      );
+
+  @override
+  Future<Result<void>> cancelMediaUpload() async => const Success<void>(null);
+
+  @override
+  Future<Result<FanWorkDocumentAccess>> getDocumentAccess({
+    required String workId,
+  }) async => Success(
+    FanWorkDocumentAccess(
+      url: '',
+      expiresAt: DateTime.utc(2026, 9, 1, 12),
+    ),
+  );
+
+  @override
+  Future<Result<FanWorkReadingProgress>> getReadingProgress({
+    required String workId,
+    required String userId,
+  }) async => const Success(FanWorkReadingProgress());
+
+  @override
+  Future<Result<void>> saveReadingProgress({
+    required String workId,
+    required FanWorkReadingProgress progress,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<void>> markAsRead({
+    required String workId,
+  }) async => const Success<void>(null);
+
+  @override
+  Future<Result<List<FanWorkRevision>>> getRevisions(String workId) async =>
+      const Success(<FanWorkRevision>[]);
+
+  @override
+  Future<Result<FanWorkAnalytics>> getAnalytics(String creatorId) async =>
+      Success(
+        FanWorkAnalytics(
+          totalWorks: 0,
+          publishedWorks: 0,
+          draftWorks: 0,
+          totalLikes: 0,
+          totalBookmarks: 0,
+          totalComments: 0,
+          totalRatings: 0,
+          averageRating: 0.0,
+          worksByType: const <String, int>{},
+          topWorks: const <FanWorkPreview>[],
+        ),
       );
 }

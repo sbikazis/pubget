@@ -1,33 +1,36 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
 import '../media/media_reference.dart';
 
-/// Network/stored image with decode-time downscaling.
+/// The one shared image surface for every avatar, group cover, chat photo and
+/// reel thumbnail in the product.
 ///
-/// The two defects this fixes are the reason a media chat felt heavy and blurry:
+/// Axis Zero — "revive images from the roots". Four things used to be missing:
 ///
-/// 1. **No decode sizing.** A `cacheWidth`/`cacheHeight` decode of a 4000x3000
-///    photo into a 250px bubble costs ~48 MB of raster (32bpp). Without it every
-///    bubble decoded the full sensor image, which thrashed the [ImageCache]
-///    (100 MiB default — two such images evict everything) and stalled the
-///    raster thread on the way. The values are *physical* pixels, so they are
-///    computed from the on-screen logical size times the device pixel ratio.
-/// 2. **A `FutureBuilder` in `build`.** For Storage references the old code
-///    called `getData(12 MB)` from inside `build`, issuing a fresh 12 MB
-///    download on *every rebuild* of every bubble — the "sudden reload" the chat
-///    showed whenever a message arrived. The future is now created once per
-///    provider (inside the state, keyed by the url) and the bytes are handed to
-///    [MemoryImage], which participates in the normal [ImageCache].
+/// 1. **One resolver.** Firestore holds two shapes: a full `https://…` URL
+///    (legacy records, events, CDN/R2-era links) and a bare Firebase Storage
+///    object path (chat media, reels). Screens that called `Image.network`
+///    directly fed object paths to a URL parser and got "No host specified in
+///    URI". Every reference now goes through the same normalization helpers.
+/// 2. **A real fallback path.** Minting a download URL can fail (deleted
+///    object, IAM/signing trouble, stale deployed rules). In that case we
+///    still try an authenticated byte read before giving up on the image.
+///    Legacy `http://` links are upgraded to TLS because release Android
+///    blocks cleartext traffic.
+/// 3. **Disk cache.** [CachedNetworkImage] keeps the file between cold starts;
+///    the old `Image.network` refetched on every rebuild.
+/// 4. **Decode sizing + honest states.** A 4000x3000 photo decoded into a
+///    250px bubble costs ~48 MB of raster. Physical-pixel `memCacheWidth`
+///    bounds it, and every state has a real placeholder / error widget.
 ///
-/// Only one of `memCacheWidth`/`memCacheHeight` is passed when both are supplied
-/// with a known aspect ratio: specifying both makes `ResizeImage` decode to an
-/// exact W x H box, which *changes* the aspect ratio. `ResizeImage` also defaults
-/// to `allowUpscaling: false`, so an over-generous value is clamped to the
-/// intrinsic size and can never inflate memory.
+/// Only one of `memCacheWidth`/`memCacheHeight` is passed when both could be
+/// derived: specifying both makes `ResizeImage` decode to an exact W x H box
+/// and silently changes the aspect ratio.
 class AppImageLoader extends StatefulWidget {
   const AppImageLoader({
     required this.imageUrl,
@@ -56,65 +59,91 @@ class AppImageLoader extends StatefulWidget {
   State<AppImageLoader> createState() => _AppImageLoaderState();
 }
 
+/// A resolved image is either a fetchable URL (disk-cacheable) or raw bytes
+/// (the Storage fallback when a download URL could not be minted).
+sealed class _ImageSource {
+  const _ImageSource();
+}
+
+final class _UrlSource extends _ImageSource {
+  const _UrlSource(this.url);
+  final String url;
+}
+
+final class _BytesSource extends _ImageSource {
+  const _BytesSource(this.bytes);
+  final Uint8List bytes;
+}
+
 class _AppImageLoaderState extends State<AppImageLoader> {
-  /// Held on the state so a rebuild never re-issues the Storage download.
-  Future<Uint8List?>? _storageBytes;
+  static const int _maxStorageBytes = 12 * 1024 * 1024;
 
-  bool get _isRemoteUrl =>
-      widget.imageUrl.startsWith('http://') ||
-      widget.imageUrl.startsWith('https://');
+  /// Held on the state so a rebuild never re-issues the Storage lookup.
+  Future<_ImageSource?>? _source;
 
-  /// Physical-pixel decode target for the width, or null when unknown.
-  ///
-  /// [logicalWidth] is the painted width: the one the caller asked for, or the
-  /// one the parent laid this image out at when the caller named no size.
   int? _targetWidth(BuildContext context, double? logicalWidth) {
     final requested = widget.memCacheWidth;
     if (requested != null) return requested;
-    final logical = logicalWidth;
-    if (logical == null || !logical.isFinite || logical <= 0) return null;
+    if (logicalWidth == null || !logicalWidth.isFinite || logicalWidth <= 0) {
+      return null;
+    }
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
     // Ceil, then leave headroom: an off-by-one here shows up as a soft image.
-    return (logical * dpr).ceil();
+    return (logicalWidth * dpr).ceil();
   }
 
-  /// Physical-pixel decode target for the height, or null when unknown.
   int? _targetHeight(BuildContext context, double? logicalHeight) {
     final requested = widget.memCacheHeight;
     if (requested != null) return requested;
-    final logical = logicalHeight;
-    if (logical == null || !logical.isFinite || logical <= 0) return null;
+    if (logicalHeight == null ||
+        !logicalHeight.isFinite ||
+        logicalHeight <= 0) {
+      return null;
+    }
     final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
-    return (logical * dpr).ceil();
+    return (logicalHeight * dpr).ceil();
   }
 
-  Future<Uint8List?>? _bytesForStorageUrl() {
-    final url = widget.imageUrl;
-    if (_storageBytes != null) return _storageBytes;
-    // Empty or an opaque scheme (e.g. a `pubget://` preset) is not a Storage
-    // object: resolve to the fallback instead of issuing a doomed download.
-    if (url.trim().isEmpty || isOpaqueMediaReference(url)) {
-      return _storageBytes = Future<Uint8List?>.value();
+  Future<_ImageSource?> _resolve() {
+    final reference = widget.imageUrl.trim();
+    if (reference.isEmpty || isOpaqueMediaReference(reference)) {
+      return Future<_ImageSource?>.value();
     }
-    return _storageBytes = FirebaseStorage.instance
-        .ref(url)
-        .getData(12 * 1024 * 1024)
-        .then<Uint8List?>((value) => value)
-        // A failed read must not leave the bubble permanently spinning: the
-        // builder renders the error widget once the future completes with an
-        // error, and a transient failure is worth one cheap retry.
-        .catchError((Object _) => null);
+    if (isRemoteMediaUrl(reference)) {
+      return Future<_ImageSource?>.value(
+        _UrlSource(secureMediaUrl(reference)),
+      );
+    }
+    return _resolveStorage(reference);
+  }
+
+  Future<_ImageSource?> _resolveStorage(String path) async {
+    final ref = FirebaseStorage.instance.ref(path);
+    try {
+      final url = await ref.getDownloadURL();
+      return _UrlSource(secureMediaUrl(url));
+    } on Object {
+      // Fallback path: an authenticated byte read still works when URL minting
+      // fails (IAM signing, stale rules, revoked token). Keep the image alive.
+      try {
+        final bytes = await ref.getData(_maxStorageBytes);
+        if (bytes == null || bytes.isEmpty) return null;
+        return _BytesSource(bytes);
+      } on Object {
+        return null;
+      }
+    }
   }
 
   @override
   void didUpdateWidget(covariant AppImageLoader oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl) _storageBytes = null;
+    if (oldWidget.imageUrl != widget.imageUrl) _source = null;
   }
 
   @override
   void dispose() {
-    _storageBytes = null;
+    _source = null;
     super.dispose();
   }
 
@@ -132,10 +161,9 @@ class _AppImageLoaderState extends State<AppImageLoader> {
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: const Center(child: CircularProgressIndicator()),
         );
+
     // A grid tile or a stack names no size and hands the image whatever box it
-    // is given, so the painted constraints are the only place a decode budget
-    // can come from. Without this the shared-media tile decoded a full sensor
-    // photo into a 120px square, which is what made it heavy and soft.
+    // is given, so the painted constraints are the only decode budget we have.
     return LayoutBuilder(
       builder: (context, constraints) {
         final logicalWidth =
@@ -144,52 +172,55 @@ class _AppImageLoaderState extends State<AppImageLoader> {
         final logicalHeight =
             widget.height ??
             (constraints.hasBoundedHeight ? constraints.maxHeight : null);
-        // Passing both forces an exact-size decode; keep only the known axis.
         final cacheWidth = _targetWidth(context, logicalWidth);
         final cacheHeight = cacheWidth == null
             ? _targetHeight(context, logicalHeight)
             : null;
 
-        final image = _isRemoteUrl
-            ? Image.network(
-                widget.imageUrl,
+        final image = FutureBuilder<_ImageSource?>(
+          future: _source ??= _resolve(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done ||
+                snapshot.hasError) {
+              return snapshot.hasError ? fallback : loading;
+            }
+            final source = snapshot.data;
+            if (source == null) return fallback;
+
+            if (source is _BytesSource) {
+              return Image.memory(
+                source.bytes,
                 width: widget.width,
                 height: widget.height,
                 fit: widget.fit,
                 cacheWidth: cacheWidth,
                 cacheHeight: cacheHeight,
                 filterQuality: FilterQuality.medium,
-                // Rows are recycled as the list scrolls; without this every
-                // recycle blinks to blank while the new frame decodes.
                 gaplessPlayback: true,
-                frameBuilder: (context, child, frame, synchronouslyLoaded) {
-                  if (synchronouslyLoaded || frame != null) return child;
-                  return loading;
-                },
                 errorBuilder: (_, _, _) => fallback,
-              )
-            : FutureBuilder<Uint8List?>(
-                future: _bytesForStorageUrl(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return loading;
-                  }
-                  if (snapshot.hasError) return fallback;
-                  final bytes = snapshot.data;
-                  if (bytes == null || bytes.isEmpty) return fallback;
-                  return Image.memory(
-                    bytes,
-                    width: widget.width,
-                    height: widget.height,
-                    fit: widget.fit,
-                    cacheWidth: cacheWidth,
-                    cacheHeight: cacheHeight,
-                    filterQuality: FilterQuality.medium,
-                    gaplessPlayback: true,
-                    errorBuilder: (_, _, _) => fallback,
-                  );
-                },
               );
+            }
+
+            final url = (source as _UrlSource).url;
+            return CachedNetworkImage(
+              imageUrl: url,
+              width: widget.width,
+              height: widget.height,
+              fit: widget.fit,
+              memCacheWidth: cacheWidth,
+              memCacheHeight: cacheHeight,
+              filterQuality: FilterQuality.medium,
+              // Rows are recycled as a list scrolls; keep the old frame until
+              // the new one is decoded instead of blinking to blank.
+              useOldImageOnUrlChange: true,
+              fadeInDuration: Duration.zero,
+              fadeOutDuration: Duration.zero,
+              placeholder: (_, _) => loading,
+              errorWidget: (_, _, _) => fallback,
+            );
+          },
+        );
+
         if (widget.borderRadius != null) {
           return ClipRRect(borderRadius: widget.borderRadius!, child: image);
         }

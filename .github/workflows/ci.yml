@@ -53,6 +53,37 @@ jobs:
       - name: Tests
         run: flutter test --exclude-tags golden
 
+  # Axis Zero: a green analyzer is not a green app. `analyze` cannot catch a
+  # missing plugin registrant, a Gradle/plugin incompatibility, or a native
+  # build failure — only a real APK compile can. Debug keeps this gate free of
+  # signing secrets while still compiling every Dart/native dependency.
+  android-build:
+    name: Android APK compile gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          # Keep in sync with flutter-gate and build.yml (pdfrx pins Dart < 3.9).
+          flutter-version: '3.32.8'
+          channel: 'stable'
+          cache: true
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --debug
+
   functions-gate:
     name: Functions syntax and unit tests
     runs-on: ubuntu-latest

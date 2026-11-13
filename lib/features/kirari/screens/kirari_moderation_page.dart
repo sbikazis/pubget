@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/widgets/app_image_loader.dart';
 import '../data/kirari_repository.dart';
 
 class KirariModerationPage extends StatefulWidget {
@@ -106,8 +107,8 @@ class _KirariModerationPageState extends State<KirariModerationPage> {
                           if (item['videoPreviewUrl'] is String)
                             _ModerationVideoPreview(url: item['videoPreviewUrl'] as String)
                           else if (item['coverPreviewUrl'] is String)
-                            Image.network(item['coverPreviewUrl'] as String,
-                              fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                            AppImageLoader(imageUrl: item['coverPreviewUrl'] as String,
+                              fit: BoxFit.cover, errorWidget: const SizedBox.shrink()),
                           const SizedBox(height: 10),
                           Text(item['content'] as String? ?? ''),
                           Text('Creator: ' + (item['creatorId'] as String? ?? 'unknown')),

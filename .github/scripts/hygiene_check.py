@@ -34,10 +34,14 @@ DEAD_IMPORT_FRAGMENTS = (
     "core/storage/r2_storage_service.dart",
 )
 
-PRIVATE_KEY_MARKERS = (
-    "-----BEGIN PRIVATE KEY-----",
-    "-----BEGIN RSA PRIVATE KEY-----",
-    "-----BEGIN EC PRIVATE KEY-----",
+# Built at runtime so this file does not contain the very literal it scans
+# for — otherwise the gate flags its own source as a leaked private key.
+# A service-account JSON holds the PEM inline in a quoted string, so a
+# substring match (not line-start) is required to catch it.
+_PEM_PREFIX = "-----BEGIN "
+PRIVATE_KEY_MARKERS = tuple(
+    _PEM_PREFIX + kind + "-----"
+    for kind in ("PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY")
 )
 
 SKIP_SUFFIXES = (
@@ -109,7 +113,9 @@ def main() -> int:
             problems.append(f"{relative}: invalid JSON ({error})")
 
     # A service-account key may sit on a developer machine, but it must stay
-    # ignored so it can never be committed by accident.
+    # ignored AND must never be tracked. The PEM marker scan above catches the
+    # content; this name check catches an empty/renamed/encrypted variant and
+    # also rejects a key that was force-added despite .gitignore.
     ignored = subprocess.run(
         ["git", "-C", str(ROOT), "check-ignore", "-q",
          "functions/serviceAccount.json"],
@@ -120,6 +126,15 @@ def main() -> int:
             "functions/serviceAccount.json is not git-ignored; add it to "
             "functions/.gitignore before committing"
         )
+    for relative in files:
+        if "serviceaccount" in relative.lower() and relative.lower().endswith(
+            ".json"
+        ):
+            problems.append(
+                f"{relative}: a service-account key is tracked in git; remove "
+                f"it, rotate the key in the Firebase console, and use "
+                f"Application Default Credentials instead"
+            )
 
     if problems:
         print("Repository hygiene FAILED:", file=sys.stderr)
