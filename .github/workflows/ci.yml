@@ -2,6 +2,9 @@ name: CI
 
 on:
   pull_request:
+  # Axis Zero: allow re-running the whole mandatory gate on demand (e.g. after
+  # a flaky runner) without pushing an empty commit.
+  workflow_dispatch:
   push:
     branches:
       - main
