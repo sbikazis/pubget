@@ -726,13 +726,15 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
   Future<void> _load() async {
     try {
       final comments = await widget.repository.getComments(widget.reel.id);
-      if (mounted) setState(() {
-        _comments = comments;
-        _nextCursor = comments.isEmpty ? null : comments.last['id'] as String?;
-        _hasMore = comments.length >= 30;
-        _loading = false;
-        _error = null;
-      });
+      if (mounted) {
+        setState(() {
+          _comments = comments;
+          _nextCursor = comments.isEmpty ? null : comments.last['id'] as String?;
+          _hasMore = comments.length >= 30;
+          _loading = false;
+          _error = null;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() { _loading = false; _error = 'Could not load comments.'; });
     }
