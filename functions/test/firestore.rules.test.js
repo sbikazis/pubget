@@ -18,6 +18,15 @@ let env;
 const rules = fs.readFileSync(path.join(__dirname, "..", "..", "firestore.rules"), "utf8");
 const db = (uid, claims) => env.authenticatedContext(uid, claims).firestore();
 
+async function seedUsername(uid, username) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc(`usernames/${username}`).set({
+      uid,
+      normalized: username,
+    });
+  });
+}
+
 test.before(async () => {
   env = await initializeTestEnvironment({
     projectId: "demo-pubget-security",
@@ -204,32 +213,49 @@ test("profile owner can change display data but not coins", async () => {
   await assertFails(db("alice").doc("users/alice").update({ coinsBalance: 999999 }));
   await assertFails(db("mallory").doc("users/alice").update({ bio: "pwned" }));
 });
-test("users language is constrained to ar/en and username is bounded on update", async () => {
+test("users language is constrained to ar/en and username changes are server-only", async () => {
   await assertSucceeds(db("alice").doc("users/alice").update({ language: "en" }));
   await assertSucceeds(db("alice").doc("users/alice").update({ language: "ar" }));
   await assertFails(db("alice").doc("users/alice").update({ language: "fr" }));
   await assertFails(db("mallory").doc("users/alice").update({ language: "en" }));
-  await assertSucceeds(db("alice").doc("users/alice").update({
-    username: "Alice_2024",
+  await assertFails(db("alice").doc("users/alice").update({
+    username: "alice_2024",
   }));
   await assertFails(db("alice").doc("users/alice").update({
     username: "x".repeat(40),
   }));
 });
-test("users create carries the same language and username guards", async () => {
-  const base = { email: "n@example.com", createdAt: new Date(), isProfileCompleted: false };
-  await assertSucceeds(db("newbie").doc("users/newbie").set(base));
+test("users create requires a complete identity and an owned username reservation", async () => {
+  const baseFor = (uid) => ({
+    email: uid + "@example.com",
+    createdAt: new Date(),
+    isProfileCompleted: true,
+    username: uid,
+    displayName: uid,
+    avatarUrl: `images/${uid}/avatar.jpg`,
+  });
+  await seedUsername("newbie", "newbie");
+  await assertSucceeds(db("newbie").doc("users/newbie").set(baseFor("newbie")));
+  await seedUsername("newbie2", "newbie2");
   await assertSucceeds(db("newbie2").doc("users/newbie2").set({
-    ...base, language: "ar",
+    ...baseFor("newbie2"), language: "ar",
   }));
+  await seedUsername("newbie3", "newbie3");
   await assertFails(db("newbie3").doc("users/newbie3").set({
-    ...base, language: "fr",
+    ...baseFor("newbie3"), language: "fr",
   }));
   await assertFails(db("newbie4").doc("users/newbie4").set({
-    ...base, username: "x".repeat(40),
+    ...baseFor("newbie4"), username: "x".repeat(40),
   }));
-  await assertFails(db("newbie").doc("users/newbie").set({
-    ...base, language: "en", username: "okname", coinsBalance: 1,
+  await assertFails(db("newbie5").doc("users/newbie5").set({
+    ...baseFor("newbie5"), coinsBalance: 1,
+  }));
+  await assertFails(db("unreserved").doc("users/unreserved").set(baseFor("unreserved")));
+  await assertFails(db("mallory").doc("users/mallory").set(baseFor("newbie")));
+  await assertFails(db("incomplete").doc("users/incomplete").set({
+    email: "incomplete@example.com",
+    createdAt: new Date(),
+    isProfileCompleted: false,
   }));
 });
 test("self-owned presentation fields are writable on update and validated", async () => {
@@ -279,13 +305,18 @@ test("users create accepts the full self-owned presentation payload", async () =
     favorites: true, activity: true, friends: true, fans: true,
     works: true, groups: true, ratings: true, achievements: true, lists: true,
   };
-  const base = { email: "n@example.com", createdAt: new Date(), isProfileCompleted: false };
+  const base = {
+    email: "n@example.com",
+    createdAt: new Date(),
+    isProfileCompleted: true,
+    username: "newbie",
+    displayName: "Newbie",
+    avatarUrl: "images/newbie/avatar.jpg",
+  };
+  await seedUsername("newbie", "newbie");
   // Mirrors PubgetUser.toMap() as written by createUserProfile.
   await assertSucceeds(db("newbie").doc("users/newbie").set({
     ...base,
-    username: "newbie",
-    displayName: "Newbie",
-    avatarUrl: null,
     coverUrl: "https://firebasestorage.googleapis.com/o/cover.jpg",
     bio: null,
     age: null,
@@ -302,18 +333,26 @@ test("users create accepts the full self-owned presentation payload", async () =
     language: "ar",
     hasSkippedOnboarding: false,
   }));
+  await seedUsername("newbie2", "newbie2");
   await assertFails(db("newbie2").doc("users/newbie2").set({
-    ...base, favoriteQuote: "x".repeat(201),
+    ...base, username: "newbie2", displayName: "Newbie 2",
+    avatarUrl: "images/newbie2/avatar.jpg", favoriteQuote: "x".repeat(201),
   }));
+  await seedUsername("newbie3", "newbie3");
   await assertFails(db("newbie3").doc("users/newbie3").set({
-    ...base, sectionPrivacy: { favorites: true },
+    ...base, username: "newbie3", displayName: "Newbie 3",
+    avatarUrl: "images/newbie3/avatar.jpg", sectionPrivacy: { favorites: true },
   }));
+  await seedUsername("newbie4", "newbie4");
   await assertFails(db("newbie4").doc("users/newbie4").set({
-    ...base, coverUrl: "javascript:alert(1)",
+    ...base, username: "newbie4", displayName: "Newbie 4",
+    avatarUrl: "images/newbie4/avatar.jpg", coverUrl: "javascript:alert(1)",
   }));
+  await seedUsername("newbie5", "newbie5");
   // Server-owned fields are still rejected at create time.
   await assertFails(db("newbie5").doc("users/newbie5").set({
-    ...base, totalRespect: 5,
+    ...base, username: "newbie5", displayName: "Newbie 5",
+    avatarUrl: "images/newbie5/avatar.jpg", totalRespect: 5,
   }));
 });
 
