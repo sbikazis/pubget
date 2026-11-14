@@ -557,7 +557,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     );
     controller.dispose();
     if (!mounted || selected == null ||
-        _selectedAnime.any((item) => item.id == selected.id)) return;
+        _selectedAnime.any((item) => item.id == selected.id)) {
+      return;
+    }
     setState(() => _selectedAnime = [..._selectedAnime, selected]);
     await _savePendingUpload();
   }
