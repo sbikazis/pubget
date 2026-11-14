@@ -197,7 +197,11 @@ class _SplashPageState extends State<SplashPage> {
         barrierDismissible: true,
         builder: (dialogContext) => AlertDialog(
           title: Text(copy.softUpdateTitle),
-          content: Text(copy.softUpdateMessage),
+          content: Text(
+            status.updateUrl.isEmpty
+                ? copy.updateLinkUnavailable
+                : copy.softUpdateMessage,
+          ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
