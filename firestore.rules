@@ -502,6 +502,15 @@ service cloud.firestore {
         request.resource.data.avatarUrl is string &&
         request.resource.data.avatarUrl.size() > 0 &&
         request.resource.data.avatarUrl.size() <= 2048 &&
+        (!request.resource.data.keys().hasAny(['age']) ||
+         request.resource.data.age == null ||
+         (request.resource.data.age is int &&
+          request.resource.data.age >= 13 &&
+          request.resource.data.age <= 120)) &&
+        (!request.resource.data.keys().hasAny(['country']) ||
+         request.resource.data.country == null ||
+         (request.resource.data.country is string &&
+          request.resource.data.country.size() <= 64)) &&
         request.resource.data.get('subscriptionType', 'free') == 'free' &&
         request.resource.data.get('totalRespect', 0) == 0 &&
         request.resource.data.get('fansCount', 0) == 0 &&
@@ -532,6 +541,33 @@ service cloud.firestore {
           'whoCanMessageMe',
           'isProfileCompleted','hasSkippedOnboarding','updatedAt','language'
         ]) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName']) ||
+           (request.resource.data.displayName is string &&
+            request.resource.data.displayName.size() > 0 &&
+            request.resource.data.displayName.size() <= 80)) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['avatarUrl']) ||
+           (request.resource.data.avatarUrl is string &&
+            request.resource.data.avatarUrl.size() > 0 &&
+            request.resource.data.avatarUrl.size() <= 2048)) &&
+          (!request.resource.data.keys().hasAny(['age']) ||
+           request.resource.data.age == null ||
+           (request.resource.data.age is int &&
+            request.resource.data.age >= 13 &&
+            request.resource.data.age <= 120)) &&
+          (!request.resource.data.keys().hasAny(['country']) ||
+           request.resource.data.country == null ||
+           (request.resource.data.country is string &&
+            request.resource.data.country.size() <= 64)) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isProfileCompleted']) ||
+           request.resource.data.isProfileCompleted == false ||
+           (request.resource.data.isProfileCompleted == true &&
+            usernameReservedBy(uid, request.resource.data.username) &&
+            request.resource.data.displayName is string &&
+            request.resource.data.displayName.size() > 0 &&
+            request.resource.data.avatarUrl is string &&
+            request.resource.data.avatarUrl.size() > 0)) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hasSkippedOnboarding']) ||
+           request.resource.data.hasSkippedOnboarding == false) &&
           (!request.resource.data.keys().hasAny(['language']) ||
            request.resource.data.language in ['ar','en']) &&
           (!request.resource.data.keys().hasAny(['bio']) ||
@@ -542,8 +578,8 @@ service cloud.firestore {
            (request.resource.data.favoriteAnimeIds is list &&
             request.resource.data.favoriteAnimeIds.size() <= 50)) &&
           (!request.resource.data.keys().hasAny(['displayName']) ||
-           request.resource.data.displayName == null ||
            (request.resource.data.displayName is string &&
+            request.resource.data.displayName.size() > 0 &&
             request.resource.data.displayName.size() <= 80)) &&
           request.resource.data.get('profileVisibility', 'public')
             in ['public','private'] &&
