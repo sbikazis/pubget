@@ -760,11 +760,6 @@ final class _FakeChatRepository implements ChatRepository {
     void Function()? onBytesUploaded,
   }) async => const FailureResult(NetworkError());
 
-  @override
-  Future<Result<ChatMediaUpload?>> findReadyMedia({
-    required String groupId,
-    required String mediaId,
-  }) async => const Success<ChatMediaUpload?>(null);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
