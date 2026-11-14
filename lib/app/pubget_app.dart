@@ -29,6 +29,7 @@ import '../features/authentication/screens/onboarding_page.dart';
 import '../features/authentication/screens/register_page.dart';
 import '../features/authentication/screens/splash_page.dart';
 import '../features/authentication/screens/terms_page.dart';
+import '../features/authentication/screens/verify_email_page.dart';
 import '../features/groups/models/group_models.dart';
 import '../features/groups/data/group_image_uploader.dart';
 import '../features/groups/providers/group_members_provider.dart';
@@ -842,6 +843,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/login': const LoginPage(),
         '/register': const RegisterPage(),
         '/forgot-password': const ForgotPasswordPage(),
+        '/verify-email': const VerifyEmailPage(),
         '/terms': const TermsPage(),
         '/onboarding': const OnboardingPage(),
         '/home': const AppShell(),
@@ -993,6 +995,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         isInitialized: auth.isInitialized,
         authState: auth.state,
         isAuthenticated: auth.isAuthenticated,
+        isEmailVerified: auth.currentUser?.emailVerified ?? false,
         onboardingState: onboarding.state,
         canEnterHome: onboarding.canEnterHome,
       ),
