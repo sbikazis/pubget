@@ -193,7 +193,9 @@ class KirariVideoCache {
       for (final item in files) {
         if (total <= maxBytes) break;
         if (item.file.path == excluding ||
-            _inFlight.containsKey(item.file.absolute.path)) continue;
+            _inFlight.containsKey(item.file.absolute.path)) {
+          continue;
+        }
         try {
           await item.file.delete();
           total -= item.size;
