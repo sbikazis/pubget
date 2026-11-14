@@ -63,7 +63,17 @@ final class FirebaseAuthRepository implements AuthRepository {
         email: email.trim(),
         password: password,
       );
-      final user = _mapUser(credential.user);
+      final createdUser = credential.user;
+      if (createdUser != null && !createdUser.emailVerified) {
+        // Verification is required before profile creation and app access.
+        // A transient send failure is recoverable from the verification screen.
+        try {
+          await createdUser.sendEmailVerification();
+        } on Object {
+          // Keep the authenticated session so the user can retry delivery.
+        }
+      }
+      final user = _mapUser(createdUser);
       return user == null
           ? const FailureResult<AuthUser>(
               UnknownError('Account creation returned no user.'),
@@ -118,6 +128,37 @@ final class FirebaseAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<Result<void>> sendEmailVerification() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return const FailureResult<void>(
+          PermissionError('Sign in before verifying your email.'),
+        );
+      }
+      if (user.emailVerified) return const Success<void>(null);
+      await user.sendEmailVerification();
+      return const Success<void>(null);
+    } on Object catch (error, stackTrace) {
+      return FailureResult<void>(mapFailure(error, stackTrace: stackTrace));
+    }
+  }
+
+  @override
+  Future<Result<AuthUser?>> reloadCurrentUser() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return const Success<AuthUser?>(null);
+      await user.reload();
+      return Success<AuthUser?>(_mapUser(_auth.currentUser));
+    } on Object catch (error, stackTrace) {
+      return FailureResult<AuthUser?>(
+        mapFailure(error, stackTrace: stackTrace),
+      );
+    }
+  }
+
+  @override
   Future<Result<void>> signOut() async {
     try {
       await _auth.signOut();
@@ -135,6 +176,7 @@ final class FirebaseAuthRepository implements AuthRepository {
       email: user.email ?? '',
       displayName: user.displayName,
       avatarUrl: user.photoURL,
+      emailVerified: user.emailVerified,
     );
   }
 
