@@ -310,7 +310,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         _overlayVisible = true;
         _allowOriginalAudioReuse = false;
         _session = null;
-        _idempotencyKey = 'kirari-' + DateTime.now().microsecondsSinceEpoch.toString();
+        _idempotencyKey = 'kirari-${DateTime.now().microsecondsSinceEpoch}';
         _progress = 0;
         _error = null;
         _status = null;
