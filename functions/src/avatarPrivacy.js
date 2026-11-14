@@ -340,11 +340,15 @@ function createUpdateSocialProfile({
       await file.setMetadata({
         metadata: { firebaseStorageDownloadTokens: randomUUID() },
       });
-      if (input.avatarUrl === undefined) update.avatarUrl = null;
+      if (input.avatarUrl === undefined ||
+          input.avatarUrl === null ||
+          input.avatarUrl === current.avatarUrl) {
+        update.avatarUrl = null;
+      }
     } else if (profileVisibility === "public" &&
                current.profileVisibility === "private" &&
                !current.avatarUrl &&
-               input.avatarUrl === undefined) {
+               (input.avatarUrl === undefined || input.avatarUrl === null)) {
       const [exists] = await file.exists();
       if (exists) {
         const token = randomUUID();
