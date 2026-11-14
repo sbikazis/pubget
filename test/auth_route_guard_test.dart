@@ -14,7 +14,7 @@ void main() {
         onboardingState: LoadingState.loaded,
         canEnterHome: true,
       ),
-      '/verify-email',
+      '/splash',
     );
     expect(
       AuthRouteGuard.resolve(
