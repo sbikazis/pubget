@@ -121,6 +121,7 @@ final class OnboardingProvider extends ChangeNotifier {
     String? gender,
     String? country,
     List<String> favoriteAnimes = const <String>[],
+    List<String> favoriteAnimeIds = const <String>[],
     required bool isProfileCompleted,
   }) async {
     _failure = null;
