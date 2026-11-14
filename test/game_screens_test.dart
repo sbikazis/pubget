@@ -154,11 +154,6 @@ final class _FakeGameRepository implements GameRepository {
     int limit = 20,
   }) async => const Success(<CharacterSearchItem>[]);
 
-  @override
-  Future<Result<List<GameHistoryEntry>>> getHistory({
-    required String userId,
-    int limit = 20,
-  }) async => const Success(<GameHistoryEntry>[]);
 
   @override
   Future<Result<void>> submitAction({
