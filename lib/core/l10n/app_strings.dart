@@ -113,6 +113,30 @@ final class AppStrings {
   String get acceptTermsToContinue =>
       pick('Accept the terms to continue.', 'وافق على الشروط للمتابعة.');
 
+  String get verifyEmailTitle =>
+      pick('Verify your email', 'تحقق من بريدك الإلكتروني');
+  String verifyEmailSubtitle(String email) => pick(
+    'We sent a verification link to $email. Verify your address before creating your Pubget profile.',
+    'أرسلنا رابط التحقق إلى $email. تحقق من بريدك قبل إنشاء ملفك في Pubget.',
+  );
+  String get verificationSent => pick(
+    'A new verification email has been sent.',
+    'تم إرسال رسالة تحقق جديدة.',
+  );
+  String get verificationNotConfirmed => pick(
+    'Your email is not verified yet. Open the link in your inbox, then try again.',
+    'لم يتم التحقق من بريدك بعد. افتح الرابط في صندوق الوارد ثم حاول مجدداً.',
+  );
+  String get resendVerification => pick(
+    'Resend verification email',
+    'إعادة إرسال رسالة التحقق',
+  );
+  String get checkVerification => pick(
+    'I have verified my email',
+    'لقد تحققت من بريدي الإلكتروني',
+  );
+  String get signOut => pick('Sign out', 'تسجيل الخروج');
+
   String get resetPassword =>
       pick('Reset your password', 'إعادة تعيين كلمة المرور');
   String get resetPasswordSubtitle => pick(
@@ -1604,7 +1628,13 @@ String get onboardingSkipCountry => pick('Skip country', 'تخطي البلد');
 String get onboardingSkipCountrySemantic =>
       pick('Skip country', 'تخطي البلد');
 
-String get onboardingAge => pick('Age', 'العمر');
+String get onboardingAge => pick('Age (optional)', 'العمر (اختياري)');
+String get onboardingGender => pick('Gender (optional)', 'الجنس (اختياري)');
+String get genderFemale => pick('Female', 'أنثى');
+String get genderMale => pick('Male', 'ذكر');
+String get genderOther => pick('Other', 'آخر');
+String get genderPreferNotToSay =>
+    pick('Prefer not to say', 'أفضل عدم الإفصاح');
 
 String get onboardingSkipAge => pick('Skip age', 'تخطي العمر');
 

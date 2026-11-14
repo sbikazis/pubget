@@ -41,6 +41,14 @@ final class UnavailableAuthRepository implements AuthRepository {
       FailureResult<void>(UnknownError(message));
 
   @override
+  Future<Result<void>> sendEmailVerification() async =>
+      FailureResult<void>(UnknownError(message));
+
+  @override
+  Future<Result<AuthUser?>> reloadCurrentUser() async =>
+      FailureResult<AuthUser?>(UnknownError(message));
+
+  @override
   Future<Result<void>> signOut() async => const Success<void>(null);
 }
 

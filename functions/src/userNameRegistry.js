@@ -27,14 +27,19 @@ function validateUsername(username, normalize = false) {
 }
 
 function createUserNameRegistry({ db }) {
-  async function status(username) {
+  async function status(username, uid = null) {
     const normalized = normalizeUsername(username);
     const validation = validateUsername(normalized);
     if (!validation.valid) {
       return { valid: false, reason: validation.reason, normalized };
     }
     const snapshot = await db.collection("usernames").doc(normalized).get();
-    return { valid: true, reason: snapshot.exists ? "taken" : null, normalized };
+    const ownerUid = snapshot.exists ? (snapshot.data() || {}).uid : null;
+    return {
+      valid: true,
+      reason: snapshot.exists && ownerUid !== uid ? "taken" : null,
+      normalized,
+    };
   }
 
   // Race-safe claim. Idempotent when the same uid already owns the name.
@@ -100,7 +105,7 @@ function createUserNameCallables({ db, HttpsError }) {
       throw new HttpsError("unauthenticated", "Authentication is required.");
     }
     const username = (request.data && request.data.username) || "";
-    const result = await registry.status(username);
+    const result = await registry.status(username, request.auth.uid);
     return {
       available: result.reason === null,
       normalized: result.normalized,

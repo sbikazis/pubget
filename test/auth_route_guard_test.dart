@@ -3,6 +3,45 @@ import 'package:pubget/core/loading/loading_state.dart';
 import 'package:pubget/features/authentication/auth_route_guard.dart';
 
 void main() {
+  test('unverified email accounts can only reach verification', () {
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/home',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: true,
+        isEmailVerified: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/verify-email',
+    );
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/verify-email',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: true,
+        isEmailVerified: false,
+        onboardingState: LoadingState.initial,
+        canEnterHome: false,
+      ),
+      isNull,
+    );
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/verify-email',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: false,
+        isEmailVerified: true,
+        onboardingState: LoadingState.initial,
+        canEnterHome: false,
+      ),
+      '/login',
+    );
+  });
+
   test('unauthenticated protected routes go to login', () {
     expect(
       AuthRouteGuard.resolve(
@@ -10,6 +49,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: false,
+        isEmailVerified: true,
         onboardingState: LoadingState.initial,
         canEnterHome: false,
       ),
@@ -24,6 +64,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: true,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: true,
       ),
@@ -35,6 +76,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: true,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: false,
       ),
@@ -49,6 +91,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: true,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: false,
       ),
@@ -63,6 +106,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: false,
+        isEmailVerified: true,
         onboardingState: LoadingState.initial,
         canEnterHome: false,
       ),
@@ -77,6 +121,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: false,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: true,
       ),
@@ -91,6 +136,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: false,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: true,
       ),
@@ -102,6 +148,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: false,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: true,
       ),
@@ -116,6 +163,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: false,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: true,
       ),
@@ -127,6 +175,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: false,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: true,
       ),
@@ -138,6 +187,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: false,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: true,
       ),
@@ -149,6 +199,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: false,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: true,
       ),
@@ -160,6 +211,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: true,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: true,
       ),
@@ -171,6 +223,7 @@ void main() {
         isInitialized: true,
         authState: LoadingState.loaded,
         isAuthenticated: false,
+        isEmailVerified: true,
         onboardingState: LoadingState.loaded,
         canEnterHome: true,
       ),

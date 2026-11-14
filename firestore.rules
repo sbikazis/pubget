@@ -463,6 +463,14 @@ service cloud.firestore {
         optionalSectionPrivacy(data);
     }
 
+    function usernameReservedBy(uid, username) {
+      return username is string &&
+        username.size() >= 3 &&
+        username.size() <= 20 &&
+        exists(/databases/$(database)/documents/usernames/$(username)) &&
+        get(/databases/$(database)/documents/usernames/$(username)).data.uid == uid;
+    }
+
     match /users/{uid} {
       // The root user document contains credentials-adjacent and account
       // state. Display data for other users lives in public_profiles.
@@ -471,7 +479,7 @@ service cloud.firestore {
       allow create: if self(uid) &&
         request.resource.data.keys().hasOnly([
           'email','username','nickname','displayName','avatarUrl','bio','favoriteAnimes','age',
-          'country','isProfileCompleted','createdAt','updatedAt','invitedBy',
+          'gender','country','isProfileCompleted','createdAt','updatedAt','invitedBy',
           'subscriptionType','premiumSince','premiumExpiresAt','autoRenewPremium',
           'nameColor','totalRespect','fansCount','isBanned','coinsBalance',
           'customMaxMembersLimit','customMaxJoinedGroupsLimit',
@@ -481,11 +489,31 @@ service cloud.firestore {
           'coverUrl','favoriteQuote','animeTwin','socialLinks','sectionPrivacy'
         ]) &&
         request.resource.data.keys().hasAll([
-          'email','createdAt','isProfileCompleted'
+          'email','createdAt','isProfileCompleted','username','displayName','avatarUrl'
         ]) &&
         request.resource.data.email is string &&
         request.resource.data.createdAt is timestamp &&
-        request.resource.data.isProfileCompleted is bool &&
+        request.resource.data.isProfileCompleted == true &&
+        request.resource.data.get('hasSkippedOnboarding', false) == false &&
+        usernameReservedBy(uid, request.resource.data.username) &&
+        request.resource.data.displayName is string &&
+        request.resource.data.displayName.size() > 0 &&
+        request.resource.data.displayName.size() <= 80 &&
+        request.resource.data.avatarUrl is string &&
+        request.resource.data.avatarUrl.size() > 0 &&
+        request.resource.data.avatarUrl.size() <= 2048 &&
+        (!request.resource.data.keys().hasAny(['age']) ||
+         request.resource.data.age == null ||
+         (request.resource.data.age is int &&
+          request.resource.data.age >= 13 &&
+          request.resource.data.age <= 120)) &&
+        (!request.resource.data.keys().hasAny(['gender']) ||
+         request.resource.data.gender == null ||
+         request.resource.data.gender in ['female','male','other','prefer_not_to_say']) &&
+        (!request.resource.data.keys().hasAny(['country']) ||
+         request.resource.data.country == null ||
+         (request.resource.data.country is string &&
+          request.resource.data.country.size() <= 64)) &&
         request.resource.data.get('subscriptionType', 'free') == 'free' &&
         request.resource.data.get('totalRespect', 0) == 0 &&
         request.resource.data.get('fansCount', 0) == 0 &&
@@ -500,9 +528,6 @@ service cloud.firestore {
         request.resource.data.get('whoCanMessageMe', 'related') in ['related','friends'] &&
         (!request.resource.data.keys().hasAny(['language']) ||
          request.resource.data.language in ['ar','en']) &&
-        (!request.resource.data.keys().hasAny(['username']) ||
-         (request.resource.data.username is string &&
-          request.resource.data.username.size() <= 32)) &&
         (!request.resource.data.keys().hasAny(['displayName']) ||
          request.resource.data.displayName == null ||
          (request.resource.data.displayName is string &&
@@ -512,16 +537,43 @@ service cloud.firestore {
       // are service-owned.  Clients can change only presentation/profile data.
       allow update: if self(uid) &&
         ((changedOnly([
-          'username','nickname','displayName','avatarUrl','coverUrl','bio',
-          'favoriteAnimes','age','country',
+          'nickname','displayName','avatarUrl','coverUrl','bio',
+          'favoriteAnimes','age','gender','country',
           'favoriteAnimeIds','favoriteQuote','animeTwin','socialLinks',
           'sectionPrivacy','activityVisibility',
           'whoCanMessageMe',
           'isProfileCompleted','hasSkippedOnboarding','updatedAt','language'
         ]) &&
-          (!request.resource.data.keys().hasAny(['username']) ||
-           (request.resource.data.username is string &&
-            request.resource.data.username.size() <= 32)) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName']) ||
+           (request.resource.data.displayName is string &&
+            request.resource.data.displayName.size() > 0 &&
+            request.resource.data.displayName.size() <= 80)) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['avatarUrl']) ||
+           (request.resource.data.avatarUrl is string &&
+            request.resource.data.avatarUrl.size() > 0 &&
+            request.resource.data.avatarUrl.size() <= 2048)) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['age']) ||
+           request.resource.data.age == null ||
+           (request.resource.data.age is int &&
+            request.resource.data.age >= 13 &&
+            request.resource.data.age <= 120)) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['gender']) ||
+           request.resource.data.gender == null ||
+           request.resource.data.gender in ['female','male','other','prefer_not_to_say']) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['country']) ||
+           request.resource.data.country == null ||
+           (request.resource.data.country is string &&
+            request.resource.data.country.size() <= 64)) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isProfileCompleted']) ||
+           request.resource.data.isProfileCompleted == false ||
+           (request.resource.data.isProfileCompleted == true &&
+            usernameReservedBy(uid, request.resource.data.username) &&
+            request.resource.data.displayName is string &&
+            request.resource.data.displayName.size() > 0 &&
+            request.resource.data.avatarUrl is string &&
+            request.resource.data.avatarUrl.size() > 0)) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hasSkippedOnboarding']) ||
+           request.resource.data.hasSkippedOnboarding == false) &&
           (!request.resource.data.keys().hasAny(['language']) ||
            request.resource.data.language in ['ar','en']) &&
           (!request.resource.data.keys().hasAny(['bio']) ||
@@ -531,10 +583,6 @@ service cloud.firestore {
           (!request.resource.data.keys().hasAny(['favoriteAnimeIds']) ||
            (request.resource.data.favoriteAnimeIds is list &&
             request.resource.data.favoriteAnimeIds.size() <= 50)) &&
-          (!request.resource.data.keys().hasAny(['displayName']) ||
-           request.resource.data.displayName == null ||
-           (request.resource.data.displayName is string &&
-            request.resource.data.displayName.size() <= 80)) &&
           request.resource.data.get('profileVisibility', 'public')
             in ['public','private'] &&
           request.resource.data.get('activityVisibility', 'public')

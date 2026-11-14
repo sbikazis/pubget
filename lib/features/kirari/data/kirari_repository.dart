@@ -130,7 +130,13 @@ class KirariAudioTrack {
   const KirariAudioTrack({
     required this.id, required this.title, required this.artist,
     required this.license, required this.attribution, required this.audioUrl,
-    this.creatorId, this.sourceReelId, this.usageCount = 0,
+    this.creatorId,
+    this.sourceReelId,
+    this.licenseUrl,
+    this.sourceUrl,
+    this.rightsHolder,
+    this.sourceCreatorId,
+    this.usageCount = 0,
   });
   final String id;
   final String title;
@@ -140,6 +146,10 @@ class KirariAudioTrack {
   final String audioUrl;
   final String? creatorId;
   final String? sourceReelId;
+  final String? licenseUrl;
+  final String? sourceUrl;
+  final String? rightsHolder;
+  final String? sourceCreatorId;
   final int usageCount;
 
   factory KirariAudioTrack.fromMap(Map<dynamic, dynamic> map, String url) =>
@@ -152,6 +162,10 @@ class KirariAudioTrack {
         audioUrl: url,
         creatorId: map['creatorId'] as String?,
         sourceReelId: map['sourceReelId'] as String?,
+        licenseUrl: map['licenseUrl'] as String?,
+        sourceUrl: map['sourceUrl'] as String?,
+        rightsHolder: map['rightsHolder'] as String?,
+        sourceCreatorId: map['sourceCreatorId'] as String?,
         usageCount: (map['usageCount'] as num?)?.toInt() ?? 0,
       );
 }

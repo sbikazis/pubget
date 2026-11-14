@@ -7,6 +7,30 @@ import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'authentication_test_support.dart';
 
 void main() {
+  test('email verification refresh updates the active session', () async {
+    final repository = FakeAuthRepository(
+      user: const AuthUser(
+        id: 'user-1',
+        email: 'fan@example.com',
+        emailVerified: false,
+      ),
+    );
+    addTearDown(repository.close);
+    final provider = AuthProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    await provider.initialize();
+    expect(provider.currentUser?.emailVerified, isFalse);
+
+    final sent = await provider.sendEmailVerification();
+    expect(sent.isSuccess, isTrue);
+    expect(repository.verificationEmailCalls, 1);
+
+    final refreshed = await provider.reloadCurrentUser();
+    expect(refreshed.isSuccess, isTrue);
+    expect(provider.currentUser?.emailVerified, isTrue);
+  });
+
   test('auth provider exposes session state after email sign-in', () async {
     final repository = FakeAuthRepository();
     addTearDown(repository.close);

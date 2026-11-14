@@ -11,6 +11,7 @@ final class PubgetUser {
     this.coverUrl,
     this.bio,
     this.age,
+    this.gender,
     this.country,
     this.favoriteQuote,
     this.animeTwin,
@@ -37,6 +38,7 @@ final class PubgetUser {
   final String? coverUrl;
   final String? bio;
   final int? age;
+  final String? gender;
   final String? country;
   final String? favoriteQuote;
   final String? animeTwin;
@@ -72,6 +74,7 @@ final class PubgetUser {
       coverUrl: map['coverUrl'] as String?,
       bio: map['bio'] as String?,
       age: _optionalInt(map['age']),
+      gender: map['gender'] as String?,
       country: map['country'] as String?,
       favoriteQuote: map['favoriteQuote'] as String?,
       animeTwin: map['animeTwin'] as String?,
@@ -113,6 +116,7 @@ final class PubgetUser {
       'coverUrl': coverUrl,
       'bio': bio,
       'age': age,
+      'gender': gender,
       'country': country,
       'favoriteQuote': favoriteQuote,
       'animeTwin': animeTwin,
@@ -138,6 +142,7 @@ final class PubgetUser {
     String? bio,
     int? age,
     bool clearAge = false,
+    String? gender,
     String? country,
     String? favoriteQuote,
     String? animeTwin,
@@ -164,6 +169,7 @@ final class PubgetUser {
       coverUrl: coverUrl ?? this.coverUrl,
       bio: bio ?? this.bio,
       age: clearAge ? null : (age ?? this.age),
+      gender: gender ?? this.gender,
       country: country ?? this.country,
       favoriteQuote: favoriteQuote ?? this.favoriteQuote,
       animeTwin: animeTwin ?? this.animeTwin,
