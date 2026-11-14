@@ -486,7 +486,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
             displayName: _displayName.text,
             bio: _bio.text,
             age: age,
+            clearAge: ageText.isEmpty,
             gender: _gender,
+            clearGender: _gender == null,
             country: country,
             favoriteAnimes: _favoriteAnimeIds
                 .map((id) => _favoriteAnimeTitles[id] ?? id)
