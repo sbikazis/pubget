@@ -35,11 +35,11 @@ test("making a public avatar private revokes its bearer token and clears URL", a
     data: {
       before: snapshot({
         profileVisibility: "public",
-        avatarUrl: "https://example.test/old?token=old-token",
+        avatarUrl: "https://firebasestorage.googleapis.com/v0/b/demo.appspot.com/o/users%2Falice%2Favatar.jpg?alt=media&token=old-token",
       }),
       after: snapshot({
         profileVisibility: "private",
-        avatarUrl: "https://example.test/old?token=old-token",
+        avatarUrl: "https://firebasestorage.googleapis.com/v0/b/demo.appspot.com/o/users%2Falice%2Favatar.jpg?alt=media&token=old-token",
       }),
     },
   });
@@ -54,6 +54,37 @@ test("making a public avatar private revokes its bearer token and clears URL", a
   );
 });
 
+test("private R2 avatars keep their object key while the public projection is removed", async () => {
+  const metadataWrites = [];
+  const userUpdates = [];
+  const key = "images/alice/avatar-123.jpg";
+  const handler = createAvatarPrivacySync({
+    db: {
+      collection: () => ({
+        doc: () => ({ update: async (value) => userUpdates.push(value) }),
+      }),
+    },
+    bucket: {
+      name: "demo.appspot.com",
+      file: () => ({
+        setMetadata: async (value) => metadataWrites.push(value),
+      }),
+    },
+    randomUUID: () => "replacement-token",
+  });
+
+  await handler({
+    params: { uid: "alice" },
+    data: {
+      before: snapshot({ profileVisibility: "public", avatarUrl: key }),
+      after: snapshot({ profileVisibility: "private", avatarUrl: key }),
+    },
+  });
+
+  assert.deepEqual(metadataWrites, []);
+  assert.deepEqual(userUpdates, []);
+});
+
 test("profile callable rotates the old token before making profile private", async () => {
   const order = [];
   const handler = createUpdateSocialProfile({
@@ -62,7 +93,7 @@ test("profile callable rotates the old token before making profile private", asy
         doc: () => ({
           get: async () => snapshot({
             profileVisibility: "public",
-            avatarUrl: "https://example.test/avatar?token=old",
+            avatarUrl: "https://firebasestorage.googleapis.com/v0/b/demo.appspot.com/o/users%2Falice%2Favatar.jpg?alt=media&token=old",
           }),
           update: async (value) => order.push(["update", value]),
         }),
