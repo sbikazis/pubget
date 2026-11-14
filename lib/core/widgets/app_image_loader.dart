@@ -155,11 +155,21 @@ class _AppImageLoaderState extends State<AppImageLoader> {
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: const Center(child: Icon(Icons.broken_image_outlined)),
         );
+    // Keep the default placeholder *static*. An indeterminate progress
+    // indicator schedules a frame forever: `pumpAndSettle` in widget tests
+    // never converges, and on a real device a 200 ms image fetch spins a
+    // whole animation tree for nothing. A quiet tinted placeholder is cheaper
+    // and lets the tree reach a stable frame.
     final loading =
         widget.placeholder ??
         ColoredBox(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: const Center(child: CircularProgressIndicator()),
+          child: Center(
+            child: Icon(
+              Icons.image_outlined,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         );
 
     // A grid tile or a stack names no size and hands the image whatever box it
