@@ -6,6 +6,18 @@ function avatarDownloadUrl(bucketName, filePath, token) {
     `?alt=media&token=${token}`;
 }
 
+function isLegacyFirebaseAvatar(value, uid) {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    if (url.hostname !== "firebasestorage.googleapis.com") return false;
+    const objectPath = decodeURIComponent(url.pathname);
+    return objectPath.includes("/users/" + uid + "/avatar.jpg");
+  } catch (error) {
+    return false;
+  }
+}
+
 function createAvatarPrivacySync({ db, bucket, randomUUID }) {
   return async function syncAvatarPrivacy(event) {
     const after = event.data && event.data.after;
@@ -21,7 +33,8 @@ function createAvatarPrivacySync({ db, bucket, randomUUID }) {
     const filePath = `users/${uid}/avatar.jpg`;
     const file = bucket.file(filePath);
 
-    if (isPrivate && data.avatarUrl && (visibilityChanged || avatarChanged)) {
+    if (isPrivate && isLegacyFirebaseAvatar(data.avatarUrl, uid) &&
+        (visibilityChanged || avatarChanged)) {
       await file.setMetadata({
         metadata: { firebaseStorageDownloadTokens: randomUUID() },
       });
@@ -219,7 +232,9 @@ function createUpdateSocialProfile({
     if (input.whoCanMessageMe !== undefined) {
       update.whoCanMessageMe = input.whoCanMessageMe;
     }
-    if (input.username !== undefined) update.username = input.username.trim();
+    if (input.username !== undefined) {
+      update.username = userNameRegistry.normalizeUsername(input.username);
+    }
     if (input.displayName !== undefined) {
       update.displayName = input.displayName.trim();
     }
@@ -260,7 +275,7 @@ function createUpdateSocialProfile({
 
     if (profileVisibility === "private" &&
         current.profileVisibility !== "private" &&
-        current.avatarUrl) {
+        isLegacyFirebaseAvatar(current.avatarUrl, uid)) {
       await file.setMetadata({
         metadata: { firebaseStorageDownloadTokens: randomUUID() },
       });
@@ -310,6 +325,7 @@ function createUpdateSocialProfile({
 
 module.exports = {
   avatarDownloadUrl,
+  isLegacyFirebaseAvatar,
   createAvatarPrivacySync,
   createUpdateSocialProfile,
 };
