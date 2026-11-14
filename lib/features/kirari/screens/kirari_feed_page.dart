@@ -830,7 +830,7 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                                   spacing: 8,
                                   crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
-                                    Text('@' + authorId),
+                                    Text('@$authorId'),
                                     if (item['creatorComment'] == true)
                                       const Chip(
                                         visualDensity: VisualDensity.compact,
