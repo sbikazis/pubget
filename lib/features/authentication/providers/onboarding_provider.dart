@@ -50,6 +50,7 @@ final class OnboardingProvider extends ChangeNotifier {
     String? gender,
     String? country,
     List<String> favoriteAnimes = const <String>[],
+    List<String> favoriteAnimeIds = const <String>[],
     required bool isProfileCompleted,
   }) async {
     _failure = null;
@@ -84,7 +85,7 @@ final class OnboardingProvider extends ChangeNotifier {
       animeTwin: _profile?.animeTwin,
       socialLinks: _profile?.socialLinks ?? const [],
       favoriteAnimes: List<String>.unmodifiable(favoriteAnimes),
-      favoriteAnimeIds: _profile?.favoriteAnimeIds ?? const <String>[],
+      favoriteAnimeIds: List<String>.unmodifiable(favoriteAnimeIds),
       profileVisibility: _profile?.profileVisibility ?? 'public',
       activityVisibility: _profile?.activityVisibility ?? 'public',
       whoCanMessageMe: _profile?.whoCanMessageMe ?? 'related',
@@ -140,6 +141,7 @@ final class OnboardingProvider extends ChangeNotifier {
         gender: gender,
         country: country,
         favoriteAnimes: favoriteAnimes,
+        favoriteAnimeIds: favoriteAnimeIds,
         isProfileCompleted: isProfileCompleted,
       ),
       onFailure: (failure) {
