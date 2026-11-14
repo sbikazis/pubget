@@ -77,7 +77,9 @@ final class FirebaseUserRepository implements UserRepository {
       if (user.username == null || user.username!.trim().isEmpty) {
         data.remove('username');
       }
-      if (user.language == null) data.remove('language');
+      if (user.language == null) {
+        data.remove('language');
+      }
       await _functions.httpsCallable('updateSocialProfile').call<void>(data);
       return Success<PubgetUser>(user);
     } on Object catch (error) {
