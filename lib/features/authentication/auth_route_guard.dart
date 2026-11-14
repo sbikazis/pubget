@@ -81,6 +81,7 @@ abstract final class AuthRouteGuard {
     required LoadingState authState,
     required bool isAuthenticated,
     required bool isEmailVerified,
+    required bool isVersionGatePassed,
     required LoadingState onboardingState,
     required bool canEnterHome,
   }) {
@@ -90,7 +91,9 @@ abstract final class AuthRouteGuard {
         authState == LoadingState.loading;
 
     if (path == '/verify-email') {
-      if (authBusy) return '/splash';
+      if (authBusy || (isAuthenticated && !isVersionGatePassed)) {
+        return '/splash';
+      }
       return isAuthenticated ? null : '/login';
     }
     if (isAuthenticated && !isEmailVerified && path != '/splash') {
