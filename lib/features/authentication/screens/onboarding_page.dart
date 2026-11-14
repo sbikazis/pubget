@@ -434,6 +434,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
       PubgetSnackbars.showError(context, copy.onboardingOfflineMessage);
       return;
     }
+    final ageText = _age.text.trim();
+    final age = int.tryParse(ageText);
+    if (ageText.isNotEmpty && (age == null || age < 13 || age > 120)) {
+      PubgetSnackbars.showError(context, copy.onboardingAgeInvalid);
+      return;
+    }
     var canonicalUsername = username;
     if (completed && username.isNotEmpty) {
       // Claim the username server-side before the profile write. Persist only
@@ -454,7 +460,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
       }
       canonicalUsername = reserve.valueOrNull ?? username.toLowerCase();
     }
-    final age = int.tryParse(_age.text.trim());
     final country = _country.text.trim();
     final Result<Object> result = _avatarBytes == null
         ? await provider.saveProfile(
@@ -463,7 +468,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
             displayName: _displayName.text,
             bio: _bio.text,
             age: age,
+            clearAge: ageText.isEmpty,
             gender: _gender,
+            clearGender: _gender == null,
             country: country,
             favoriteAnimes: _favoriteAnimeIds
                 .map((id) => _favoriteAnimeTitles[id] ?? id)
