@@ -64,6 +64,7 @@ void main() {
         coverUrl: 'https://example.com/cover.jpg',
         bio: 'Original bio',
         age: 24,
+        gender: 'female',
         country: 'Morocco',
         profileVisibility: 'private',
         activityVisibility: 'private',
@@ -81,12 +82,14 @@ void main() {
       displayName: 'Anime Fan Updated',
       bio: 'Updated bio',
       age: 25,
+      gender: 'female',
       country: 'Morocco',
       isProfileCompleted: true,
     );
 
     expect(result.isSuccess, isTrue);
     expect(provider.profile?.age, 25);
+    expect(provider.profile?.gender, 'female');
     expect(provider.profile?.country, 'Morocco');
     expect(provider.profile?.coverUrl, 'https://example.com/cover.jpg');
     expect(provider.profile?.profileVisibility, 'private');
@@ -124,6 +127,7 @@ void main() {
       username: 'anime_fan',
       displayName: 'Anime Fan',
       age: 22,
+      gender: 'male',
       country: 'Morocco',
       isProfileCompleted: true,
     );
@@ -132,6 +136,7 @@ void main() {
     expect(repository.avatarUploads, 1);
     expect(provider.profile?.avatarUrl, 'https://example.com/avatar.jpg');
     expect(provider.profile?.age, 22);
+    expect(provider.profile?.gender, 'male');
     expect(provider.profile?.country, 'Morocco');
   });
 }
