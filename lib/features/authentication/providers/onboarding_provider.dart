@@ -117,6 +117,7 @@ final class OnboardingProvider extends ChangeNotifier {
     String? displayName,
     String? bio,
     int? age,
+    String? gender,
     String? country,
     List<String> favoriteAnimes = const <String>[],
     required bool isProfileCompleted,
