@@ -245,7 +245,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   Future<void> _searchFavoriteAnime() async {
     final query = _animeQuery.text.trim();
-    if (query.isEmpty || _searchingAnime) return;
+    if (query.isEmpty || _searchingAnime) {
+      return;
+    }
     setState(() {
       _searchingAnime = true;
       _animeSearchError = null;
