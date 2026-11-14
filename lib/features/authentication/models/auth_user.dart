@@ -4,10 +4,12 @@ final class AuthUser {
     required this.email,
     this.displayName,
     this.avatarUrl,
+    this.emailVerified = true,
   });
 
   final String id;
   final String email;
   final String? displayName;
   final String? avatarUrl;
+  final bool emailVerified;
 }
