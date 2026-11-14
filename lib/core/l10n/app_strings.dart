@@ -1628,7 +1628,13 @@ String get onboardingSkipCountry => pick('Skip country', 'تخطي البلد');
 String get onboardingSkipCountrySemantic =>
       pick('Skip country', 'تخطي البلد');
 
-String get onboardingAge => pick('Age', 'العمر');
+String get onboardingAge => pick('Age (optional)', 'العمر (اختياري)');
+String get onboardingGender => pick('Gender (optional)', 'الجنس (اختياري)');
+String get genderFemale => pick('Female', 'أنثى');
+String get genderMale => pick('Male', 'ذكر');
+String get genderOther => pick('Other', 'آخر');
+String get genderPreferNotToSay =>
+    pick('Prefer not to say', 'أفضل عدم الإفصاح');
 
 String get onboardingSkipAge => pick('Skip age', 'تخطي العمر');
 
