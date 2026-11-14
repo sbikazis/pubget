@@ -150,7 +150,9 @@ final class FirebaseAuthRepository implements AuthRepository {
   Future<Result<AuthUser?>> reloadCurrentUser() async {
     try {
       final user = _auth.currentUser;
-      if (user == null) return const Success<AuthUser?>(null);
+      if (user == null) {
+        return const Success<AuthUser?>(null);
+      }
       await user.reload();
       return Success<AuthUser?>(_mapUser(_auth.currentUser));
     } on Object catch (error, stackTrace) {
