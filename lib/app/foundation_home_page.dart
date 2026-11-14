@@ -55,11 +55,11 @@ class FoundationHomePage extends StatelessWidget {
                 ),
                 _StatusRow(
                   label: 'Network',
-                  value: switch (network.status) {
-                    NetworkStatus.online => 'Online',
-                    NetworkStatus.offline => 'Offline',
-                    NetworkStatus.unknown => 'Checking…',
-                  },
+                  value: network.isChecking
+                      ? 'Checking…'
+                      : network.isOnline
+                      ? 'Online'
+                      : 'Offline',
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 PubgetSecondaryButton(

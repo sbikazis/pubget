@@ -124,7 +124,7 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             empty: PubgetEmptyState(title: copy.groupUnavailable),
             child: group == null
                 ? const SizedBox.shrink()
-                : provider.hasEntryHub
+                : provider.isFounder || provider.hasEntryHub
                 ? _GroupControlPanel(group: group)
                 : _VisitorDetails(group: group),
           ),
@@ -142,11 +142,6 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
     );
   }
 }
-
-// Axis Zero: removed the unused private `_GroupEntryHub` widget. It was a
-// duplicate management surface that nothing routed to, and its presence made
-// `flutter analyze` fail the mandatory CI gate on an `unused_element` warning.
-// The shared `_IdentityHeader` below is still used by `_VisitorDetails`.
 
 class _IdentityHeader extends StatelessWidget {
   const _IdentityHeader({required this.group});

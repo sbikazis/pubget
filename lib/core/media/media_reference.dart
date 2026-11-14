@@ -1,70 +1,81 @@
-/// Media references in Firestore come in two shapes and a renderer must never
-/// assume either one:
-///
-/// * a full `https://…` download URL (legacy records, events, avatars), and
-/// * a bare Firebase Storage object path (chat media, edits/reels), which the
-///   server-side pipelines write directly.
-///
-/// Feeding a bare path to `Image.network`/`Uri.parse` throws
-/// `No host specified in URI`, and handing an `https://…` value to
-/// `FirebaseStorage.ref` throws because it is not an object path. These helpers
-/// normalize both shapes so every caller resolves the same way.
+/// Normalizes media references stored by Pubget. New bare object keys are
+/// Cloudflare R2 keys and are resolved through the authenticated media Worker.
+/// Existing full HTTPS URLs remain directly fetchable.
 library;
 
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-/// True when [reference] is a directly fetchable network URL.
+import 'media_storage_provider.dart';
+import 'r2_media_storage_provider.dart';
+
 bool isRemoteMediaUrl(String reference) {
   final value = reference.trim();
-  return value.startsWith('http://') || value.startsWith('https://');
+  final uri = Uri.tryParse(value);
+  return uri != null &&
+      (uri.scheme == 'https' || uri.scheme == 'http') &&
+      uri.host.isNotEmpty;
 }
 
-/// True for values that carry a scheme we cannot fetch, e.g. the `pubget://`
-/// preset avatar/background identifiers. These are identifiers, not media, so a
-/// caller should render its fallback instead of attempting a Storage download.
 bool isOpaqueMediaReference(String reference) {
   final value = reference.trim();
   return !isRemoteMediaUrl(value) && value.contains('://');
 }
 
-/// Upgrades a legacy cleartext media URL to TLS.
-///
-/// The release manifest sets `android:usesCleartextTraffic="false"`, so old
-/// records written before that hardening (including CDN/R2-era `http://`
-/// links) would fail with a cleartext error instead of rendering an image.
-/// Every media host in use serves TLS. If a particular host does not, the
-/// caller's error widget renders — exactly what would have happened anyway.
-/// Web CORS behaviour is unchanged: the scheme upgrade only removes the
-/// mixed-content/cleartext rejection on the platforms that enforce it.
-String secureMediaUrl(String url) {
-  final value = url.trim();
-  if (value.startsWith('http://')) return 'https://${value.substring(7)}';
-  return value;
+/// Matches only the stable object-key formats accepted by the R2 Worker.
+/// This is client-side input hygiene; the Worker remains the security boundary.
+bool isR2MediaKey(String reference) {
+  final parts = reference.trim().split('/');
+  final imageExt = RegExp(r'^[A-Za-z0-9_-]{1,80}\.(jpg|jpeg|png|webp|gif)$');
+  final videoExt = RegExp(r'^[A-Za-z0-9_-]{1,80}\.(mp4|webm|mov)$');
+  final audioExt = RegExp(r'^[A-Za-z0-9_-]{1,80}\.(mp3|aac|ogg|m4a)$');
+  final uid = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
+  if (parts.length == 3) {
+    if (!uid.hasMatch(parts[1])) return false;
+    return switch (parts[0]) {
+      'images' => imageExt.hasMatch(parts[2]),
+      'reels' => videoExt.hasMatch(parts[2]),
+      'audio' => audioExt.hasMatch(parts[2]),
+      _ => false,
+    };
+  }
+  if (parts.length != 4 ||
+      !['groups', 'privateChats'].contains(parts[0]) ||
+      !RegExp(r'^[A-Za-z0-9_:-]{1,320}$').hasMatch(parts[1]) ||
+      !uid.hasMatch(parts[2])) {
+    return false;
+  }
+  return imageExt.hasMatch(parts[3]) ||
+      videoExt.hasMatch(parts[3]) ||
+      audioExt.hasMatch(parts[3]);
 }
 
-/// Resolves [reference] to a fetchable URL, or null when it is empty, an opaque
-/// identifier, or a Storage lookup that fails. Never throws.
+/// Resolves an R2 object key to a short-lived, access-controlled URL.
+/// Full URLs are returned unchanged; unsupported/legacy bare paths fail closed.
 Future<String?> resolveMediaDownloadUrl(String reference) async {
   final value = reference.trim();
   if (value.isEmpty || isOpaqueMediaReference(value)) return null;
-  if (isRemoteMediaUrl(value)) return secureMediaUrl(value);
+  if (isRemoteMediaUrl(value)) return value;
+  if (!isR2MediaKey(value)) return null;
+
+  final config = resolveMediaBackendConfig();
+  if (!config.isConfigured) return null;
+  final provider = R2MediaStorageProvider(
+    workerUrl: config.workerUrl,
+    idTokenProvider: () async =>
+        await FirebaseAuth.instance.currentUser?.getIdToken(),
+  );
   try {
-    final url = await FirebaseStorage.instance.ref(value).getDownloadURL();
-    return secureMediaUrl(url);
+    return await provider.resolveUrl(value);
   } on Object {
     return null;
+  } finally {
+    // AppImageLoader resolves every R2 image through this one-shot provider.
+    // Close its HTTP client so a long feed does not accumulate idle pools.
+    provider.close();
   }
 }
 
-/// The Storage metadata content type for a picked video.
-///
-/// The gallery picker hands back the raw file name (e.g. an iOS `.MOV`), and
-/// `'video/${extension}'` produced types such as `video/mov` that the Storage
-/// rules reject (`isVideo()` accepts only `video/mp4`, `video/webm` and
-/// `video/quicktime`), so the upload failed with permission-denied. Map known
-/// containers to a rule-accepted type; the player and the ffmpeg pipeline both
-/// read the container from the bytes, so an mp4 fallback for the long tail
-/// (m4v/3gp/avi/mkv) is safe.
+/// Maps a picked video extension to a Worker-accepted MIME type.
 String videoContentTypeFor(String fileName) {
   final dot = fileName.lastIndexOf('.');
   final ext = dot >= 0 && dot < fileName.length - 1

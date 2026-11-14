@@ -1,5 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Server-enforced Mafia lobby bounds (Master Spec 13.2).
+abstract final class MafiaLimits {
+  static const int minPlayers = 7;
+  static const int maxPlayers = 15;
+}
+
 enum MafiaPhase {
   waiting,
   starting,

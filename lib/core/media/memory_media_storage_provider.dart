@@ -28,6 +28,8 @@ final class MemoryMediaStorageProvider implements MediaStorageProvider {
     required Uint8List bytes,
     required String contentType,
     required String extension,
+    String? scopeType,
+    String? scopeId,
     void Function(double progress)? onProgress,
   }) async {
     final key = buildMediaKey(

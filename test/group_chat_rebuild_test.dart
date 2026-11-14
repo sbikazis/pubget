@@ -342,7 +342,7 @@ void main() {
       );
       await tester.pump();
       expect(find.text('Mafia Night'), findsOneWidget);
-      expect(find.text('انضمام للعبة'), findsOneWidget);
+      expect(find.text(AppStrings.arabic.chatGameJoin), findsOneWidget);
       expect(find.text('3/5'), findsOneWidget);
     });
 
@@ -385,7 +385,7 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.textContaining('رحّبوا بالعضو الجديد'), findsOneWidget);
+      expect(find.text(AppStrings.arabic.chatWelcomeNewMember), findsOneWidget);
       expect(find.text('سارة'), findsOneWidget);
     });
 

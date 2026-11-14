@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/features/fan_works/models/fan_work_lifecycle.dart';
 import 'package:pubget/features/fan_works/models/fan_work_models.dart';
+import 'package:pubget/features/fan_works/models/fan_work_taxonomy.dart';
 
 void main() {
   test('FanWork round-trips through toMap and fromMap', () {
@@ -61,13 +62,14 @@ void main() {
     expect(work.content.pages, isEmpty);
   });
 
-  test('retired aiCharacter folds into a character with an AI origin', () {
+  test('aiCharacter is a distinct typed value', () {
     final work = FanWork.fromMap(const <String, dynamic>{
       'type': 'aiCharacter',
       'title': 'Kiro',
     }, id: 'ai-1');
-    expect(work.type, FanWorkType.character);
+    expect(work.type, FanWorkType.aiCharacter);
     expect(work.isAiAssisted, isTrue);
+    expect(work.origin, FanWorkOrigin.aiGenerated);
     expect(FanWorkTypeCatalog.label(work.type), 'Character');
   });
 
@@ -91,6 +93,7 @@ void main() {
           creatorId: 'alice',
           type: FanWorkType.drawing,
           title: 'Sketch',
+          categoryId: 'portrait',
           description: '',
           content: const FanWorkContent(),
           status: FanWorkStatus.draft,

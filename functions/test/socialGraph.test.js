@@ -264,3 +264,58 @@ test("cancelFriendRequest rejects requests that are not pending", async () => {
   );
   assert.equal(db.store.has("friendships/" + pairId("alice", "bob")), true);
 });
+
+test("blockUser creates a server-owned block and only the blocker can undo it", async () => {
+  const db = createFakeDb({
+    "users/alice": { username: "Alice" },
+    "users/bob": { username: "Bob" },
+  });
+  const handlers = createSocialGraph({
+    db,
+    FieldValue: { serverTimestamp: () => ({ server: true }) },
+    HttpsError: TestHttpsError,
+  });
+
+  const blocked = await handlers.blockUser({
+    auth: { uid: "alice" },
+    data: { otherUserId: "bob" },
+  });
+  assert.equal(blocked.ok, true);
+  const relationPath = "friendships/" + pairId("alice", "bob");
+  assert.equal(db.store.get(relationPath).status, "blocked");
+  assert.equal(db.store.get(relationPath).blockedBy, "alice");
+  assert.deepEqual(db.store.get(relationPath).userIds, ["alice", "bob"]);
+
+  await assert.rejects(
+    handlers.unblockUser({
+      auth: { uid: "bob" },
+      data: { otherUserId: "alice" },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+  assert.equal(db.store.get(relationPath).status, "blocked");
+
+  const unblocked = await handlers.unblockUser({
+    auth: { uid: "alice" },
+    data: { otherUserId: "bob" },
+  });
+  assert.equal(unblocked.ok, true);
+  assert.equal(db.store.has(relationPath), false);
+});
+
+test("blockUser rejects self-blocking and nonexistent accounts", async () => {
+  const db = createFakeDb({ "users/alice": { username: "Alice" } });
+  const handlers = createSocialGraph({
+    db,
+    FieldValue: { serverTimestamp: () => ({ server: true }) },
+    HttpsError: TestHttpsError,
+  });
+  await assert.rejects(
+    handlers.blockUser({ auth: { uid: "alice" }, data: { otherUserId: "alice" } }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    handlers.blockUser({ auth: { uid: "alice" }, data: { otherUserId: "missing" } }),
+    (error) => error.code === "not-found",
+  );
+});

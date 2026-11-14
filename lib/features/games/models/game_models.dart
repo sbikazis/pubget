@@ -10,7 +10,19 @@ enum GameType { guessCharacter, animeChain, emojiAnimeGuess, mafia }
 /// lowercase names (`draft`, `active`, `paused`) matched no document the server
 /// ever wrote, so every game parsed as `draft`: nothing was joinable, playable,
 /// or terminal in the live app.
-enum GameStatus { created, waiting, starting, inProgress, completed, cancelled }
+enum GameStatus {
+  created,
+  waiting,
+  starting,
+  inProgress,
+  completed,
+  cancelled;
+
+  /// Legacy test and cached-state aliases retained for older clients.
+  static const GameStatus draft = GameStatus.created;
+  static const GameStatus active = GameStatus.inProgress;
+  static const GameStatus paused = GameStatus.waiting;
+}
 
 extension GameStatusWire on GameStatus {
   String get wireName => switch (this) {

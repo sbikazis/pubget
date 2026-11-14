@@ -1,19 +1,20 @@
 import 'dart:typed_data';
 
-import 'package:firebase_storage/firebase_storage.dart';
+import '../../../core/media/media_kind.dart';
+import '../../../core/media/media_repository_factory.dart';
+import '../../../core/media/r2_media_storage_provider.dart';
 
 /// Uploads poll-option images for events.
 ///
-/// Staging lives under `events/{uid}/drafts/…`, which matches the Storage rule
-/// `events/{userId}/{eventId}/{fileName}` (the draft bucket is just an
-/// eventId-shaped prefix), so option images can be written before the draft
-/// document exists and stay valid after publishing.
+/// Draft images are stored as owner-scoped R2 objects. The stable object key
+/// is persisted with the event and resolved through the media Worker.
 final class FirebaseEventImageUploader {
-  FirebaseEventImageUploader({FirebaseStorage? storage}) : _storage = storage;
+  FirebaseEventImageUploader({R2MediaStorageProvider? mediaStorage})
+    : _providedMediaStorage = mediaStorage;
 
-  final FirebaseStorage? _storage;
-
-  FirebaseStorage get storage => _storage ?? FirebaseStorage.instance;
+  final R2MediaStorageProvider? _providedMediaStorage;
+  late final R2MediaStorageProvider _mediaStorage =
+      _providedMediaStorage ?? createR2MediaStorageProvider();
 
   static const maxBytes = 5 * 1024 * 1024;
 
@@ -50,15 +51,6 @@ final class FirebaseEventImageUploader {
     };
   }
 
-  static String _bytesSeed(Uint8List bytes) {
-    var seed = 0;
-    final step = bytes.length > 64 ? bytes.length ~/ 8 : 1;
-    for (var i = 0; i < bytes.length; i += step) {
-      seed = (seed * 31 + bytes[i]) & 0x7fffffff;
-    }
-    return seed.toRadixString(16);
-  }
-
   void validate({required String uid, required Uint8List bytes}) {
     if (uid.trim().isEmpty) {
       throw const FormatException('Sign in to upload an event image.');
@@ -71,18 +63,26 @@ final class FirebaseEventImageUploader {
     }
   }
 
-  /// Uploads one cropped option image and returns its download URL.
+  /// Uploads one cropped option image and returns its stable R2 object key.
   Future<String> uploadOptionImage({
     required String uid,
     required Uint8List bytes,
+    String? groupId,
   }) async {
     validate(uid: uid, bytes: bytes);
     final mime = contentType(bytes);
-    final name =
-        'opt_${DateTime.now().millisecondsSinceEpoch}_${_bytesSeed(bytes)}'
-        '.${extensionFor(mime)}';
-    final ref = storage.ref('events/$uid/drafts/$name');
-    await ref.putData(bytes, SettableMetadata(contentType: mime));
-    return ref.getDownloadURL();
+    final scopedGroupId = groupId?.trim();
+    final uploadGroupId = scopedGroupId == null || scopedGroupId.isEmpty
+        ? null
+        : scopedGroupId;
+    return _mediaStorage.upload(
+      ownerUid: uid,
+      kind: MediaKind.image,
+      bytes: bytes,
+      contentType: mime,
+      extension: extensionFor(mime),
+      scopeType: uploadGroupId == null ? null : 'groups',
+      scopeId: uploadGroupId,
+    );
   }
 }

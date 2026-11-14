@@ -31,6 +31,8 @@ const REMOVABLE_KINDS = Object.freeze([
   "groupMessage",
   "privateMessage",
   "event",
+  "editComment",
+  "fanWorkComment",
 ]);
 
 const REMOVABLE_KIND_SET = new Set(REMOVABLE_KINDS);
@@ -129,6 +131,7 @@ function createModerationDomain({
     targetId = null,
     note = null,
     previous = null,
+    targetPath = null,
   }) {
     await auditRef().add({
       actorId,
@@ -136,6 +139,7 @@ function createModerationDomain({
       caseId,
       kind,
       targetId,
+      targetPath,
       note,
       previous,
       at: FieldValue.serverTimestamp(),
@@ -255,6 +259,19 @@ function createModerationDomain({
     if (kind === "edit") return db.collection("edits").doc(targetId);
     if (kind === "fanWork") return db.collection("fanWorks").doc(targetId);
     if (kind === "event") return db.collection("events").doc(targetId);
+    if (kind === "editComment" || kind === "fanWorkComment") {
+      if (!validId(targetParentId)) {
+        throw new HttpsError(
+          "invalid-argument",
+          "A comment takedown needs its parent content id (targetParentId).",
+        );
+      }
+      const parentCollection = kind === "editComment" ? "edits" : "fanWorks";
+      return db.collection(parentCollection)
+        .doc(targetParentId)
+        .collection("comments")
+        .doc(targetId);
+    }
     if (kind === "animeReview") {
       if (!validId(targetParentId)) {
         throw new HttpsError(
@@ -305,6 +322,8 @@ function createModerationDomain({
       text: data.text == null ? null : data.text,
       caption: data.caption == null ? null : data.caption,
       deletedAt: data.deletedAt == null ? null : data.deletedAt,
+      mediaUrl: data.mediaUrl == null ? null : data.mediaUrl,
+      thumbnailUrl: data.thumbnailUrl == null ? null : data.thumbnailUrl,
     };
   }
 
@@ -320,10 +339,14 @@ function createModerationDomain({
     // A removed message must stop rendering its payload immediately; keeping
     // the text "hidden" only by a status flag means every client that already
     // holds the document keeps showing it.
-    if (kind === "groupMessage" || kind === "privateMessage") {
+    if (kind === "groupMessage" || kind === "privateMessage" ||
+        kind === "editComment" || kind === "fanWorkComment") {
       patch.text = null;
       patch.mediaUrl = null;
       patch.thumbnailUrl = null;
+      if (kind === "editComment" || kind === "fanWorkComment") {
+        patch.deletedAt = FieldValue.serverTimestamp();
+      }
     }
     if (kind === "fanWork") {
       patch.visibility = "unpublished";
@@ -367,6 +390,7 @@ function createModerationDomain({
       action: "content_removed",
       kind,
       targetId: ref.id,
+      targetPath: ref.path,
       note: reason,
       previous,
     });
@@ -409,8 +433,14 @@ function createModerationDomain({
       moderatedBy: staff.uid,
       updatedAt: FieldValue.serverTimestamp(),
     };
-    if (kind === "groupMessage" || kind === "privateMessage") {
+    if (kind === "groupMessage" || kind === "privateMessage" ||
+        kind === "editComment" || kind === "fanWorkComment") {
       if (previous && typeof previous.text === "string") patch.text = previous.text;
+      if (previous && typeof previous.mediaUrl === "string") patch.mediaUrl = previous.mediaUrl;
+      if (previous && typeof previous.thumbnailUrl === "string") patch.thumbnailUrl = previous.thumbnailUrl;
+      if (kind === "editComment" || kind === "fanWorkComment") {
+        patch.deletedAt = previous ? previous.deletedAt ?? null : null;
+      }
     }
     if (kind === "fanWork" && previous && typeof previous.visibility === "string") {
       patch.visibility = previous.visibility;
@@ -422,6 +452,7 @@ function createModerationDomain({
       action: "content_restored",
       kind,
       targetId: ref.id,
+      targetPath: ref.path,
       note,
       previous: previousStateOf(kind, current),
     });
@@ -620,6 +651,169 @@ function createModerationDomain({
     return { openCases: total };
   }
 
+
+  // -------------------------------------------------------------- appeals ---
+
+  /**
+   * A user may appeal only a restriction on their own account or a removal
+   * applied to content they own. Appeals are server-created and immutable to
+   * clients; staff decide them through the callable below.
+   */
+  async function submitAppeal(request) {
+    const auth = requireAuth(request);
+    const data = request.data || {};
+    const kind = data.kind;
+    const targetId = data.targetId;
+    const targetParentId = data.targetParentId || null;
+    const reason = typeof data.reason === "string" ? data.reason.trim().slice(0, MAX_NOTE) : "";
+    if (!reason) throw new HttpsError("invalid-argument", "An appeal reason is required.");
+
+    let targetPath;
+    if (kind === "user") {
+      if (targetId !== auth.uid) {
+        throw new HttpsError("permission-denied", "You may appeal only your own account restriction.");
+      }
+      const user = await db.collection("users").doc(auth.uid).get();
+      if (!user.exists || (user.data() || {}).moderationState !== "restricted") {
+        throw new HttpsError("failed-precondition", "Your account has no active restriction to appeal.");
+      }
+      targetPath = "users/" + auth.uid;
+    } else {
+      if (!REMOVABLE_KIND_SET.has(kind) || !validId(targetId)) {
+        throw new HttpsError("invalid-argument", "A supported content kind and targetId are required.");
+      }
+      const ref = targetRefFor(kind, targetId, targetParentId);
+      const target = await ref.get();
+      if (!target.exists) throw new HttpsError("not-found", "Content not found.");
+      const content = target.data() || {};
+      const ownerId = content.creatorId || content.authorId || content.userId || content.senderId;
+      if (ownerId !== auth.uid) {
+        throw new HttpsError("permission-denied", "You may appeal only removal of your own content.");
+      }
+      if (content.moderationStatus !== "removed") {
+        throw new HttpsError("failed-precondition", "This content is not currently removed by moderation.");
+      }
+      targetPath = ref.path;
+    }
+
+    const duplicate = await db.collection("moderation_appeals")
+      .where("appellantId", "==", auth.uid)
+      .where("targetPath", "==", targetPath)
+      .where("status", "==", "pending")
+      .limit(1).get();
+    if (duplicate.docs && duplicate.docs.length) {
+      return { ok: true, alreadyPending: true, appealId: duplicate.docs[0].id };
+    }
+
+    const appeal = {
+      appellantId: auth.uid,
+      kind,
+      targetId,
+      targetParentId,
+      targetPath,
+      reason,
+      status: "pending",
+      decision: null,
+      reviewedBy: null,
+      reviewNote: null,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    const created = await db.collection("moderation_appeals").add(appeal);
+    return { ok: true, appealId: created.id, status: "pending" };
+  }
+
+  async function listAppeals(request) {
+    requireStaff(request);
+    const data = request.data || {};
+    const status = data.status === "reviewed" ? "reviewed" : "pending";
+    const limit = clampLimit(data.limit);
+    const snapshot = await db.collection("moderation_appeals")
+      .where("status", "==", status)
+      .orderBy("createdAt", "desc")
+      .limit(limit)
+      .get();
+    const appeals = (snapshot.docs || []).map((doc) => ({
+      appealId: doc.id,
+      ...(doc.data() || {}),
+    }));
+    return { status, appeals };
+  }
+
+  async function reviewAppeal(request) {
+    const staff = requireStaff(request);
+    const data = request.data || {};
+    const appealId = data.appealId;
+    const decision = data.decision;
+    if (!validId(appealId)) throw new HttpsError("invalid-argument", "appealId is required.");
+    if (decision !== "approved" && decision !== "rejected") {
+      throw new HttpsError("invalid-argument", "decision must be approved or rejected.");
+    }
+    const note = typeof data.note === "string" ? data.note.trim().slice(0, MAX_NOTE) : null;
+    const ref = db.collection("moderation_appeals").doc(appealId);
+    const snapshot = await ref.get();
+    if (!snapshot.exists) throw new HttpsError("not-found", "Appeal not found.");
+    const appeal = snapshot.data() || {};
+    if (appeal.status !== "pending") {
+      return { ok: true, alreadyReviewed: true, status: appeal.status, decision: appeal.decision };
+    }
+
+    // An approved appeal reverses the appealed action. Content restoration uses
+    // the exact pre-takedown snapshot from the immutable audit entry; it never
+    // guesses media/text fields or restores an unrelated item with the same ID.
+    const staffRequest = {
+      auth: { uid: staff.uid, token: { moderator: true } },
+      data: {},
+    };
+    if (decision === "approved" && appeal.kind === "user") {
+      await unrestrictUser({
+        ...staffRequest,
+        data: { userId: appeal.appellantId, note: "Appeal approved" },
+      });
+    } else if (decision === "approved") {
+      const audit = await db.collection("moderation_audit")
+        .where("targetPath", "==", appeal.targetPath)
+        .where("action", "==", "content_removed")
+        .orderBy("at", "desc")
+        .limit(1)
+        .get();
+      const removal = audit.docs && audit.docs[0] ? audit.docs[0].data() : null;
+      if (!removal || !removal.previous) {
+        throw new HttpsError(
+          "failed-precondition",
+          "The original moderation snapshot is unavailable; the appeal cannot safely restore this content.",
+        );
+      }
+      await restoreContent({
+        ...staffRequest,
+        data: {
+          kind: appeal.kind,
+          targetId: appeal.targetId,
+          targetParentId: appeal.targetParentId,
+          previous: removal.previous,
+          note: "Appeal approved",
+        },
+      });
+    }
+
+    await ref.update({
+      status: "reviewed",
+      decision,
+      reviewedBy: staff.uid,
+      reviewNote: note,
+      reviewedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    await writeAudit({
+      actorId: staff.uid,
+      action: "appeal_reviewed",
+      kind: appeal.kind,
+      targetId: appeal.targetId,
+      note: decision + (note ? ": " + note : ""),
+    });
+    return { ok: true, status: "reviewed", decision };
+  }
+
   return {
     listCases,
     getCase,
@@ -631,6 +825,9 @@ function createModerationDomain({
     unrestrictUser,
     setModeratorRole,
     getModerationSummary,
+    submitAppeal,
+    listAppeals,
+    reviewAppeal,
   };
 }
 

@@ -11,11 +11,12 @@ library;
 /// Swapping the backend must never touch feature code: features depend on
 /// [MediaRepository]/[MediaUploadService], never on a concrete provider.
 enum MediaBackend {
-  /// Firebase Cloud Storage (the default; its rules already gate every path).
+  /// Legacy Firebase Storage backend. New uploads must use Cloudflare R2.
+  /// Kept only to deserialize old metadata during migration.
   firebase,
 
-  /// Cloudflare R2 behind the `worker/` service. Only selected when a worker
-  /// URL is configured — see `resolveMediaBackendConfig`.
+  /// Cloudflare R2 behind the deployed media Worker. This is the production
+  /// destination for all new media uploads.
   r2,
 
   /// In-memory store used by tests and previews. Never for production bytes.

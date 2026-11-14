@@ -1,3 +1,4 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
@@ -43,6 +44,17 @@ final class FirebaseInitializationState {
 abstract final class FirebaseBootstrap {
   static const unexpectedInitializationMessage =
       'Pubget could not start Firebase on this device.';
+  static const webAppCheckSiteKey = String.fromEnvironment(
+    'FIREBASE_APP_CHECK_WEB_RECAPTCHA_SITE_KEY',
+  );
+
+  /// A release web build must provide its registered reCAPTCHA site key.
+  /// Debug web builds use the App Check debug provider instead.
+  @visibleForTesting
+  static bool canActivateWebAppCheck({
+    required bool isDebug,
+    required String siteKey,
+  }) => isDebug || siteKey.trim().isNotEmpty;
 
   static Future<FirebaseInitializationState> initialize() async {
     if (kIsWeb) {
@@ -68,6 +80,9 @@ abstract final class FirebaseBootstrap {
       final app = Firebase.apps.isNotEmpty
           ? Firebase.app()
           : await Firebase.initializeApp(options: options);
+      // App Check is defense-in-depth. A provider/configuration outage must
+      // not turn a healthy Firebase initialization into an app-wide outage.
+      await _activateAppCheck();
       return FirebaseInitializationState.initialized(app);
     } on FirebaseException catch (error, stackTrace) {
       _logInitializationFailure(error, stackTrace);
@@ -81,6 +96,41 @@ abstract final class FirebaseBootstrap {
         userFacingInitializationMessage(error),
         diagnosticMessage: error.toString(),
       );
+    }
+  }
+
+  static Future<void> _activateAppCheck() async {
+    if (kIsWeb &&
+        !canActivateWebAppCheck(
+          isDebug: kDebugMode,
+          siteKey: webAppCheckSiteKey,
+        )) {
+      debugPrint(
+        'Firebase App Check is not activated: '
+        'FIREBASE_APP_CHECK_WEB_RECAPTCHA_SITE_KEY is missing.',
+      );
+      return;
+    }
+
+    try {
+      await FirebaseAppCheck.instance.activate(
+        providerAndroid: kDebugMode
+            ? const AndroidDebugProvider()
+            : const AndroidPlayIntegrityProvider(),
+        providerApple: kDebugMode
+            ? const AppleDebugProvider()
+            : const AppleAppAttestWithDeviceCheckFallbackProvider(),
+        providerWeb: kIsWeb
+            ? (kDebugMode
+                ? WebDebugProvider()
+                : ReCaptchaV3Provider(webAppCheckSiteKey))
+            : null,
+      );
+    } catch (error, stackTrace) {
+      // Do not log tokens or secrets. Keep Firebase available while the
+      // staged rollout is being observed and the provider setup is completed.
+      debugPrint('Firebase App Check activation failed: $error');
+      debugPrint('$stackTrace');
     }
   }
 

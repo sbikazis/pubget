@@ -119,15 +119,9 @@ final class _SequenceHttpClient implements AnimeHttpClient {
     }
     return const AnimeHttpResponse(statusCode: 200, body: '{"ok":true}');
   }
-
   @override
-  Future<AnimeHttpResponse> post(
-    Uri uri, {
-    Object? body,
-    Duration? timeout,
-    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
-  }) async =>
-      const AnimeHttpResponse(statusCode: 200, body: '{"ok":true}');
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
 }
 
 final class _HoldHttpClient implements AnimeHttpClient {
@@ -145,16 +139,10 @@ final class _HoldHttpClient implements AnimeHttpClient {
     return const AnimeHttpResponse(statusCode: 200, body: '{}');
   }
 
-  @override
-  Future<AnimeHttpResponse> post(
-    Uri uri, {
-    Object? body,
-    Duration? timeout,
-    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
-  }) async =>
-      const AnimeHttpResponse(statusCode: 200, body: '{}');
-
   void releaseAll() {
     if (!_ready.isCompleted) _ready.complete();
   }
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
 }

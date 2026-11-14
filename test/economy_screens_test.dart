@@ -157,4 +157,7 @@ final class _ScreenRepo implements EconomyRepository {
 
   @override
   Future<Result<void>> claimReferral() async => const Success<void>(null);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

@@ -26,13 +26,18 @@ JSON_TARGETS = (
     "package.json",
 )
 
-# The Cloudflare R2 migration was reverted. Nothing in the client may import
-# the deleted storage package again without deliberately reviving it.
-DEAD_IMPORT_FRAGMENTS = (
+# Axis Zero adopted the Cloudflare R2 media backend (see
+# docs/CLOUDFLARE_MEDIA_MIGRATION.md). The *current* R2 implementation lives in
+# lib/core/media/ and is expected. These fragments belong to an older, deleted
+# R2 prototype under lib/core/storage/: importing them would silently wire a
+# screen to a package that no longer exists. That is the only thing blocked
+# here — R2 itself is not a dead import.
+LEGACY_STORAGE_IMPORT_FRAGMENTS = (
     "core/storage/r2_",
     "core/storage/media_upload_service.dart",
     "core/storage/r2_storage_service.dart",
 )
+DEAD_IMPORT_FRAGMENTS = LEGACY_STORAGE_IMPORT_FRAGMENTS
 
 # Built at runtime so this file does not contain the very literal it scans
 # for — otherwise the gate flags its own source as a leaked private key.

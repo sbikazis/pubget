@@ -1,7 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:firebase_storage/firebase_storage.dart';
-
 import '../errors/failure.dart';
 import '../errors/result.dart';
 import 'media_asset.dart';
@@ -147,13 +145,6 @@ final class DefaultMediaRepository implements MediaRepository {
     try {
       if (asset.backend == _provider.backend) {
         return Success(await _provider.resolveUrl(asset.storageKey));
-      }
-      if (asset.backend == MediaBackend.firebase) {
-        // Record was written when Firebase was the active backend; resolving
-        // it directly keeps old media readable across a backend change.
-        return Success(
-          await FirebaseStorage.instance.ref(asset.storageKey).getDownloadURL(),
-        );
       }
       return FailureResult(
         NotFoundError(

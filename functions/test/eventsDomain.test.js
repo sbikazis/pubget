@@ -237,6 +237,19 @@ test("poll configuration requires two to seven options, each with an image", () 
   assert.equal(ok.options[0].imageUrl, "https://img.example/1.png");
 });
 
+test("poll options accept stable Cloudflare R2 image keys", () => {
+  const config = validateConfiguration("poll", {
+    question: "Choose one",
+    options: [
+      { label: "A", imageUrl: "images/alice/option-a.jpg" },
+      { label: "B", imageUrl: "groups/g1/alice/option-b.webp" },
+    ],
+  });
+  assert.ok(config);
+  assert.equal(config.options[0].imageUrl, "images/alice/option-a.jpg");
+  assert.equal(config.options[1].imageUrl, "groups/g1/alice/option-b.webp");
+});
+
 test("quiz responses accept partial answers (missing counts as wrong) and validate chosen options", () => {
   const config = validateConfiguration("quiz", {
     questions: [{
@@ -359,6 +372,29 @@ test("unauthenticated event mutations are rejected", async () => {
     chat.saveEventDraft({ data: { type: "poll", title: "Q", options: [{ label: "A", imageUrl: "https://img.example/1.png" }, { label: "B", imageUrl: "https://img.example/2.png" }], groupId: "g1" } }),
     (error) => error.code === "unauthenticated",
   );
+});
+
+test("global event drafts index nested R2 image keys for access-controlled playback", async () => {
+  const db = createFakeDb();
+  const events = handlers(db);
+  const draft = await events.saveEventDraft({
+    auth: { uid: "alice" },
+    data: {
+      type: "poll",
+      scope: "global",
+      title: "Global vote",
+      question: "Choose",
+      options: [
+        { label: "A", imageUrl: "images/alice/option-a.jpg" },
+        { label: "B", imageUrl: "images/alice/option-b.jpg" },
+      ],
+    },
+  });
+  const stored = db.store.get("events/" + draft.eventId);
+  assert.deepEqual(stored.mediaKeys, [
+    "images/alice/option-a.jpg",
+    "images/alice/option-b.jpg",
+  ]);
 });
 
 test("plain members can create and publish their own event", async () => {

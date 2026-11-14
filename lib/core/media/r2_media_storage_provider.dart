@@ -36,6 +36,12 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
   /// use a presigned PUT straight to R2.
   final int directUploadMaxBytes;
 
+  /// Releases this provider's HTTP connection pool.
+  ///
+  /// Repositories that share a provider should close it when their owning
+  /// scope is disposed. One-shot URL resolvers must close it after resolving.
+  void close() => _client.close();
+
   @override
   MediaBackend get backend => MediaBackend.r2;
 
@@ -46,6 +52,8 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
     required Uint8List bytes,
     required String contentType,
     required String extension,
+    String? scopeType,
+    String? scopeId,
     void Function(double progress)? onProgress,
   }) async {
     onProgress?.call(0);
@@ -55,12 +63,16 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
             bytes: bytes,
             contentType: contentType,
             extension: extension,
+            scopeType: scopeType,
+            scopeId: scopeId,
           )
         : await _uploadPresigned(
             kind: kind,
             bytes: bytes,
             contentType: contentType,
             extension: extension,
+            scopeType: scopeType,
+            scopeId: scopeId,
           );
     onProgress?.call(1);
     return key;
@@ -71,6 +83,8 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
     required Uint8List bytes,
     required String contentType,
     required String extension,
+    String? scopeType,
+    String? scopeId,
   }) async {
     final token = await _requireToken();
     final request = http.MultipartRequest('POST', _uri('/upload'))
@@ -78,6 +92,10 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
       ..fields['kind'] = kind.name
       ..fields['contentType'] = contentType
       ..fields['ext'] = extension
+      ..fields.addAll({
+        if (scopeType != null) 'scopeType': scopeType,
+        if (scopeId != null) 'scopeId': scopeId,
+      })
       ..files.add(
         http.MultipartFile.fromBytes('file', bytes,
             filename: 'upload.$extension', contentType: null),
@@ -94,6 +112,8 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
     required Uint8List bytes,
     required String contentType,
     required String extension,
+    String? scopeType,
+    String? scopeId,
   }) async {
     final token = await _requireToken();
     final query = <String, String>{
@@ -101,6 +121,8 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
       'contentType': contentType,
       'sizeBytes': '${bytes.length}',
       'ext': extension,
+      if (scopeType != null) 'scopeType': scopeType,
+      if (scopeId != null) 'scopeId': scopeId,
     };
     final presignResponse = await _client
         .get(
@@ -123,7 +145,8 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
 
     final putRequest = http.Request('PUT', Uri.parse(uploadUrl))
       ..bodyBytes = bytes
-      ..headers['Content-Type'] = contentType;
+      ..headers['Content-Type'] = contentType
+      ..headers['Authorization'] = 'Bearer $token';
     headers?.forEach((name, value) {
       // The signature covers these exact values, so the worker tells the app
       // which ones to send back. `content-length` and `host` are set by the
@@ -165,8 +188,23 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
 
   @override
   Future<String> resolveUrl(String storageKey) async {
-    // The worker serves objects publicly; no permanent R2 URL is stored.
-    return '$_baseUrl/media/${Uri.encodeComponent(storageKey)}';
+    final token = await _requireToken();
+    final response = await _client
+        .get(
+          _uri('/resolve', {'key': storageKey}),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw _mapWorkerError(response);
+    }
+    final decoded =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final url = decoded['url'] as String?;
+    if (url == null || !url.startsWith('https://')) {
+      throw const UnknownError('The media service returned an invalid media URL.');
+    }
+    return url;
   }
 
   Future<String> _requireToken() async {

@@ -106,13 +106,13 @@ final class FirebaseFanWorkRepository
     required String contentType,
     FanWorkUploadProgress? onProgress,
   }) => _guard(() async {
-    // The server already refused an oversized or wrong-role payload when it
-    // minted the ticket; re-checking here keeps a stale ticket from silently
-    // uploading more than the rules would allow.
+    // Enforce the ticket's server-issued limit again before sending bytes.
     final limit = ticket.maxBytes > 0
         ? ticket.maxBytes
-        : FanWorkLifecycle.maxImageBytes;
-    if (bytes.length > limit) {
+        : ticket.role == FanWorkMediaRole.document
+            ? FanWorkLifecycle.maxDocumentBytes
+            : FanWorkLifecycle.maxImageBytes;
+    if (bytes.isEmpty || bytes.length > limit) {
       throw FirebaseFunctionsException(
         code: 'failed-precondition',
         message: ticket.role == FanWorkMediaRole.document
@@ -120,20 +120,7 @@ final class FirebaseFanWorkRepository
             : 'Images must be 12 MB or smaller.',
       );
     }
-    // The bytes go through the signed session the server opened, not through
-    // the storage SDK. That is the point of the grant: it cannot mint a
-    // permanent `downloadToken`, so the object stays private and readable only
-    // via a short-lived signed grant. A `putData` call would write the object
-    // without ever using the ticket the server validated.
-    //
-    // Two URL shapes share this path. A document gets a resumable session URI
-    // and has to be cut into `Content-Range` slices; an image gets a one-shot
-    // signed `PUT` whose signature covers its headers, so it must be sent as
-    // one ranged-free request. Sending the wrong shape to the wrong URL is
-    // refused every time.
-    final mime = ticket.contentType.isNotEmpty
-        ? ticket.contentType
-        : contentType;
+    final mime = ticket.contentType.isNotEmpty ? ticket.contentType : contentType;
     _activeUploadClient?.cancel();
     final client = FanWorkUploadClient();
     _activeUploadClient = client;

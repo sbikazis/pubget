@@ -224,7 +224,7 @@ class _GameCreatePageState extends State<GameCreatePage> {
               value: creator.draft.configuration.minPlayers.clamp(
                 MafiaLimits.minPlayers,
                 MafiaLimits.maxPlayers,
-              ),
+              ).toInt(),
               decoration: InputDecoration(labelText: copy.minPlayersLabel),
               items: [
                 for (
@@ -246,7 +246,7 @@ class _GameCreatePageState extends State<GameCreatePage> {
                       maxPlayers: max.clamp(
                         MafiaLimits.minPlayers,
                         MafiaLimits.maxPlayers,
-                      ),
+                      ).toInt(),
                       usesRounds: true,
                     ),
                   ),
@@ -258,7 +258,7 @@ class _GameCreatePageState extends State<GameCreatePage> {
               value: creator.draft.configuration.maxPlayers.clamp(
                 MafiaLimits.minPlayers,
                 MafiaLimits.maxPlayers,
-              ),
+              ).toInt(),
               decoration: InputDecoration(labelText: copy.maxPlayersLabel),
               items: [
                 for (
@@ -279,7 +279,7 @@ class _GameCreatePageState extends State<GameCreatePage> {
                       minPlayers: min.clamp(
                         MafiaLimits.minPlayers,
                         MafiaLimits.maxPlayers,
-                      ),
+                      ).toInt(),
                       maxPlayers: value,
                       usesRounds: true,
                     ),

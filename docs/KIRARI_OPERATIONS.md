@@ -43,9 +43,11 @@ The callable verifies the object exists and its MIME/size. The public catalog re
 
 - Feed playback measures a small HTTP byte-range sample, chooses 360p/540p/720p using measured throughput, and caches the estimate for five minutes.
 - At most one next-video controller is prefetched; it is disposed when the active item changes.
-- Upload source files are copied into application support storage. The app persists the local path, idempotency key, session ID, storage path and editor settings. Reopening the upload screen restores the draft and lets the user retry against the same server session.
-
-**Recovery limitation:** after process death, the app restarts the upload from the persisted local file to the same object path. This is idempotent recovery, not byte-offset continuation or background upload while the app remains closed.
+- Upload source files are copied into application support storage. The app persists the local path, idempotency key, reel/storage session and editor settings before and during upload.
+- Android stores Firebase Storage's resumable session URI and a source-file fingerprint in private app preferences. On retry after process death, the Firebase Storage SDK receives the saved session URI and resumes the server-managed transfer.
+- iOS persists the resumable session URL and source fingerprint in SharedPreferences. On every retry it queries Firebase Storage's committed byte range and sends only the remaining chunks.
+- Both paths retain the same reel ID, idempotency key and object path. A completed object is detected before uploading again, so a crash between transfer completion and callable finalization does not duplicate the media transfer.
+- A changed/missing source file or an expired server session cannot safely continue the old transfer; the client starts a new resumable session. This is foreground-resumable recovery, not an OS-managed background transfer while the app is terminated.
 
 ## Server-managed moderation and audio operations
 

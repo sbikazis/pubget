@@ -1,29 +1,27 @@
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
-/// Plays a chat voice note. Storage paths are resolved to download URLs.
+import '../../../core/media/media_reference.dart';
+
+/// Plays a chat voice note from a short-lived Cloudflare R2 URL or bytes.
 abstract interface class ChatAudioPlayer {
   Future<void> play(String storagePathOrUrl);
   Future<void> playBytes(Uint8List bytes);
 }
 
 final class StorageChatAudioPlayer implements ChatAudioPlayer {
-  StorageChatAudioPlayer({AudioPlayer? player, FirebaseStorage? storage})
-    : _player = player ?? AudioPlayer(),
-      _storage = storage ?? FirebaseStorage.instance;
+  StorageChatAudioPlayer({AudioPlayer? player})
+    : _player = player ?? AudioPlayer();
 
   final AudioPlayer _player;
-  final FirebaseStorage _storage;
 
   @override
   Future<void> play(String storagePathOrUrl) async {
-    final url =
-        storagePathOrUrl.startsWith('http://') ||
-            storagePathOrUrl.startsWith('https://')
-        ? storagePathOrUrl
-        : await _storage.ref(storagePathOrUrl).getDownloadURL();
+    final url = await resolveMediaDownloadUrl(storagePathOrUrl);
+    if (url == null) {
+      throw StateError('This audio file is unavailable or you do not have access.');
+    }
     await _player.stop();
     await _player.play(UrlSource(url));
   }

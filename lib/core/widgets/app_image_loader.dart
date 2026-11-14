@@ -1,36 +1,11 @@
-import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
 import '../media/media_reference.dart';
 
-/// The one shared image surface for every avatar, group cover, chat photo and
-/// reel thumbnail in the product.
-///
-/// Axis Zero — "revive images from the roots". Four things used to be missing:
-///
-/// 1. **One resolver.** Firestore holds two shapes: a full `https://…` URL
-///    (legacy records, events, CDN/R2-era links) and a bare Firebase Storage
-///    object path (chat media, reels). Screens that called `Image.network`
-///    directly fed object paths to a URL parser and got "No host specified in
-///    URI". Every reference now goes through the same normalization helpers.
-/// 2. **A real fallback path.** Minting a download URL can fail (deleted
-///    object, IAM/signing trouble, stale deployed rules). In that case we
-///    still try an authenticated byte read before giving up on the image.
-///    Legacy `http://` links are upgraded to TLS because release Android
-///    blocks cleartext traffic.
-/// 3. **Disk cache.** [CachedNetworkImage] keeps the file between cold starts;
-///    the old `Image.network` refetched on every rebuild.
-/// 4. **Decode sizing + honest states.** A 4000x3000 photo decoded into a
-///    250px bubble costs ~48 MB of raster. Physical-pixel `memCacheWidth`
-///    bounds it, and every state has a real placeholder / error widget.
-///
-/// Only one of `memCacheWidth`/`memCacheHeight` is passed when both could be
-/// derived: specifying both makes `ResizeImage` decode to an exact W x H box
-/// and silently changes the aspect ratio.
+/// Network image renderer for signed Cloudflare R2 URLs and existing HTTPS
+/// media URLs. Bare R2 keys are resolved through the authenticated Worker.
 class AppImageLoader extends StatefulWidget {
   const AppImageLoader({
     required this.imageUrl,
@@ -59,109 +34,50 @@ class AppImageLoader extends StatefulWidget {
   State<AppImageLoader> createState() => _AppImageLoaderState();
 }
 
-/// A resolved image is either a fetchable URL (disk-cacheable) or raw bytes
-/// (the Storage fallback when a download URL could not be minted).
-sealed class _ImageSource {
-  const _ImageSource();
-}
-
-final class _UrlSource extends _ImageSource {
-  const _UrlSource(this.url);
-  final String url;
-}
-
-final class _BytesSource extends _ImageSource {
-  const _BytesSource(this.bytes);
-  final Uint8List bytes;
-}
-
 class _AppImageLoaderState extends State<AppImageLoader> {
-  static const int _maxStorageBytes = 12 * 1024 * 1024;
+  late Future<String?> _resolvedUrl;
+  bool _refreshAttempted = false;
 
-  /// Held on the state so a rebuild never re-issues the Storage lookup.
-  Future<_ImageSource?>? _source;
-
-  int? _targetWidth(BuildContext context, double? logicalWidth) {
-    final requested = widget.memCacheWidth;
-    if (requested != null) return requested;
-    if (logicalWidth == null || !logicalWidth.isFinite || logicalWidth <= 0) {
-      return null;
-    }
-    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
-    // Ceil, then leave headroom: an off-by-one here shows up as a soft image.
-    return (logicalWidth * dpr).ceil();
-  }
-
-  int? _targetHeight(BuildContext context, double? logicalHeight) {
-    final requested = widget.memCacheHeight;
-    if (requested != null) return requested;
-    if (logicalHeight == null ||
-        !logicalHeight.isFinite ||
-        logicalHeight <= 0) {
-      return null;
-    }
-    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
-    return (logicalHeight * dpr).ceil();
-  }
-
-  Future<_ImageSource?> _resolve() {
-    final reference = widget.imageUrl.trim();
-    if (reference.isEmpty || isOpaqueMediaReference(reference)) {
-      return Future<_ImageSource?>.value();
-    }
-    if (isRemoteMediaUrl(reference)) {
-      return Future<_ImageSource?>.value(
-        _UrlSource(secureMediaUrl(reference)),
-      );
-    }
-    return _resolveStorage(reference);
-  }
-
-  Future<_ImageSource?> _resolveStorage(String path) async {
-    final ref = FirebaseStorage.instance.ref(path);
-    try {
-      final url = await ref.getDownloadURL();
-      return _UrlSource(secureMediaUrl(url));
-    } on Object {
-      // Fallback path: an authenticated byte read still works when URL minting
-      // fails (IAM signing, stale rules, revoked token). Keep the image alive.
-      try {
-        final bytes = await ref.getData(_maxStorageBytes);
-        if (bytes == null || bytes.isEmpty) return null;
-        return _BytesSource(bytes);
-      } on Object {
-        return null;
-      }
-    }
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
   }
 
   @override
-  void didUpdateWidget(covariant AppImageLoader oldWidget) {
+  void didUpdateWidget(AppImageLoader oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl) _source = null;
+    if (oldWidget.imageUrl != widget.imageUrl) _resolve();
   }
 
-  @override
-  void dispose() {
-    _source = null;
-    super.dispose();
+  void _resolve() {
+    _refreshAttempted = false;
+    _resolvedUrl = resolveMediaDownloadUrl(widget.imageUrl);
+  }
+
+  void _refreshExpiredUrl() {
+    if (_refreshAttempted || !mounted) return;
+    _refreshAttempted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _resolvedUrl = resolveMediaDownloadUrl(widget.imageUrl);
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final fallback =
-        widget.errorWidget ??
+    final fallback = widget.errorWidget ??
         ColoredBox(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: const Center(child: Icon(Icons.broken_image_outlined)),
         );
-    // Keep the default placeholder *static*. An indeterminate progress
-    // indicator schedules a frame forever: `pumpAndSettle` in widget tests
-    // never converges, and on a real device a 200 ms image fetch spins a
-    // whole animation tree for nothing. A quiet tinted placeholder is cheaper
-    // and lets the tree reach a stable frame.
-    final loading =
-        widget.placeholder ??
+    // Axis Zero: a *static* placeholder. An indeterminate progress indicator
+    // schedules a frame forever, so `pumpAndSettle` in widget tests never
+    // converges (it once produced a 140 MB CI log), and a short signed-URL
+    // fetch spins a whole animation tree for nothing on real devices.
+    final loading = widget.placeholder ??
         ColoredBox(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Center(
@@ -172,70 +88,96 @@ class _AppImageLoaderState extends State<AppImageLoader> {
           ),
         );
 
-    // A grid tile or a stack names no size and hands the image whatever box it
-    // is given, so the painted constraints are the only decode budget we have.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final logicalWidth =
-            widget.width ??
-            (constraints.hasBoundedWidth ? constraints.maxWidth : null);
-        final logicalHeight =
-            widget.height ??
-            (constraints.hasBoundedHeight ? constraints.maxHeight : null);
-        final cacheWidth = _targetWidth(context, logicalWidth);
-        final cacheHeight = cacheWidth == null
-            ? _targetHeight(context, logicalHeight)
-            : null;
+    return FutureBuilder<String?>(
+      future: _resolvedUrl,
+      builder: (context, snapshot) {
+        final url = snapshot.data;
+        if (snapshot.connectionState != ConnectionState.done) return _clip(loading);
+        if (url == null) return _clip(fallback);
 
-        final image = FutureBuilder<_ImageSource?>(
-          future: _source ??= _resolve(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done ||
-                snapshot.hasError) {
-              return snapshot.hasError ? fallback : loading;
-            }
-            final source = snapshot.data;
-            if (source == null) return fallback;
-
-            if (source is _BytesSource) {
-              return Image.memory(
-                source.bytes,
-                width: widget.width,
-                height: widget.height,
-                fit: widget.fit,
-                cacheWidth: cacheWidth,
-                cacheHeight: cacheHeight,
-                filterQuality: FilterQuality.medium,
-                gaplessPlayback: true,
-                errorBuilder: (_, _, _) => fallback,
-              );
-            }
-
-            final url = (source as _UrlSource).url;
-            return CachedNetworkImage(
-              imageUrl: url,
+        final child = LayoutBuilder(
+          builder: (context, constraints) {
+            final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+            final logicalWidth = widget.width ??
+                (constraints.hasBoundedWidth ? constraints.maxWidth : null);
+            final logicalHeight = widget.height ??
+                (constraints.hasBoundedHeight ? constraints.maxHeight : null);
+            final cacheWidth = widget.memCacheWidth ??
+                (logicalWidth != null && logicalWidth.isFinite && logicalWidth > 0
+                    ? (logicalWidth * dpr).ceil()
+                    : null);
+            final cacheHeight = cacheWidth == null
+                ? widget.memCacheHeight ??
+                    (logicalHeight != null &&
+                            logicalHeight.isFinite &&
+                            logicalHeight > 0
+                        ? (logicalHeight * dpr).ceil()
+                        : null)
+                : null;
+            return Image.network(
+              url,
               width: widget.width,
               height: widget.height,
               fit: widget.fit,
-              memCacheWidth: cacheWidth,
-              memCacheHeight: cacheHeight,
+              cacheWidth: cacheWidth,
+              cacheHeight: cacheHeight,
               filterQuality: FilterQuality.medium,
-              // Rows are recycled as a list scrolls; keep the old frame until
-              // the new one is decoded instead of blinking to blank.
-              useOldImageOnUrlChange: true,
-              fadeInDuration: Duration.zero,
-              fadeOutDuration: Duration.zero,
-              placeholder: (_, _) => loading,
-              errorWidget: (_, _, _) => fallback,
+              gaplessPlayback: true,
+              frameBuilder: (context, image, frame, synchronouslyLoaded) {
+                if (synchronouslyLoaded || frame != null) return image;
+                return loading;
+              },
+              errorBuilder: (_, _, _) {
+                _refreshExpiredUrl();
+                return fallback;
+              },
             );
           },
         );
-
-        if (widget.borderRadius != null) {
-          return ClipRRect(borderRadius: widget.borderRadius!, child: image);
-        }
-        return image;
+        return _clip(child);
       },
     );
+  }
+
+  Widget _clip(Widget child) {
+    final radius = widget.borderRadius;
+    return radius == null ? child : ClipRRect(borderRadius: radius, child: child);
+  }
+}
+
+/// Bytes-backed variant for avatars captured locally before upload.
+class AppMemoryImageLoader extends StatelessWidget {
+  const AppMemoryImageLoader({
+    required this.bytes,
+    this.width,
+    this.height,
+    this.fit = BoxFit.cover,
+    this.borderRadius,
+    super.key,
+  });
+
+  final Uint8List? bytes;
+  final double? width;
+  final double? height;
+  final BoxFit fit;
+  final BorderRadius? borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = bytes;
+    if (data == null || data.isEmpty) {
+      return SizedBox(width: width, height: height);
+    }
+    Widget image = Image.memory(
+      data,
+      width: width,
+      height: height,
+      fit: fit,
+      gaplessPlayback: true,
+    );
+    if (borderRadius != null) {
+      image = ClipRRect(borderRadius: borderRadius!, child: image);
+    }
+    return image;
   }
 }

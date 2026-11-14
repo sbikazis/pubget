@@ -11,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart' as provider;
 
+import '../core/network/connectivity_events.dart';
 import '../core/network/network_service.dart';
 import '../core/theme/app_theme.dart';
 import '../features/authentication/auth_route_guard.dart';
@@ -43,7 +44,7 @@ import '../features/groups/repositories/group_catalog_repository.dart';
 import '../features/groups/repositories/roleplay_repository.dart';
 import '../features/groups/repositories/unavailable_group_repositories.dart';
 import '../features/groups/repositories/unavailable_chat_repository.dart';
-import '../features/groups/screens/create_group_wizard_page.dart';
+import '../features/groups/presentation/pages/create_group_wizard/create_group_wizard_page.dart';
 import '../features/groups/screens/group_chat_page.dart';
 import '../features/groups/screens/group_details_page.dart';
 import '../features/groups/screens/group_invite_page.dart';
@@ -58,7 +59,7 @@ import '../features/edits/providers/edit_upload_manager.dart';
 import '../features/edits/repositories/edits_repository.dart';
 import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
-import '../features/edits/screens/edit_upload_page.dart';
+import '../features/edits/screens/edit_feed_page.dart';
 import '../features/kirari/data/kirari_repository.dart';
 import '../features/kirari/screens/kirari_upload_page.dart';
 import '../features/notifications/widgets/notification_deep_link_binder.dart';
@@ -114,8 +115,8 @@ import '../features/fan_works/providers/fan_work_providers.dart';
 import '../features/fan_works/repositories/fan_work_repository.dart';
 import '../features/fan_works/repositories/firebase_fan_work_repository.dart';
 import '../features/fan_works/repositories/unavailable_fan_work_repository.dart';
-import '../features/fan_works/screens/fan_work_reader_page.dart';
 import '../features/fan_works/screens/fan_work_screens.dart';
+import '../features/fan_works/screens/fan_work_reader_page.dart';
 import '../features/economy/providers/economy_provider.dart';
 import '../features/economy/repositories/economy_repository.dart';
 import '../features/economy/repositories/firebase_economy_repository.dart';
@@ -179,7 +180,10 @@ class PubgetApp extends StatelessWidget {
     return provider.MultiProvider(
       providers: [
         provider.ChangeNotifierProvider<NetworkService>(
-          create: (_) => NetworkService()..start(),
+          create: (_) => NetworkService(
+            linkChanges: linkStateChanges(),
+            initialLinkState: currentLinkState,
+          )..start(),
         ),
         provider.Provider<AuthRepository>.value(value: repositories.$1),
         provider.Provider<UserRepository>.value(value: repositories.$2),
@@ -195,15 +199,6 @@ class PubgetApp extends StatelessWidget {
                 ),
         ),
         provider.Provider<GroupMembersRepository>.value(value: repositories.$6),
-        provider.Provider<GroupCatalogRepository>(
-          create: (_) => firebaseState.isReady
-              ? FirebaseGroupCatalogRepository(
-                  functions: FirebaseFunctions.instanceFor(
-                    region: 'us-central1',
-                  ),
-                )
-              : const UnavailableGroupCatalogRepository(),
-        ),
         provider.Provider<RoleplayRepository>.value(value: repositories.$7),
         provider.Provider<ChatRepository>.value(value: repositories.$8),
         provider.Provider<NotificationRepository>.value(value: repositories.$9),
@@ -225,9 +220,7 @@ class PubgetApp extends StatelessWidget {
               inner: JikanAnimeRepository(
                 http: ResilientAnimeHttpClient(inner: PackageAnimeHttpClient()),
               ),
-              // Only a *confirmed* offline verdict may force the cache. A
-              // single failed DNS probe must not stop a live request.
-              isOnline: () => network.canAttemptRequest,
+              isOnline: () => network.isOnline,
             );
           },
         ),
@@ -311,11 +304,15 @@ class PubgetApp extends StatelessWidget {
             repository: context.read<GroupMembersRepository>(),
           ),
         ),
+        provider.Provider<GroupCatalogRepository>(
+          create: (_) => FirebaseGroupCatalogRepository(),
+        ),
         provider.ChangeNotifierProvider<RoleplayProvider>(
-          create: (context) => RoleplayProvider(
-            repository: context.read<RoleplayRepository>(),
-            catalogRepository: context.read<GroupCatalogRepository>(),
-          ),
+          create: (context) =>
+              RoleplayProvider(
+                repository: context.read<RoleplayRepository>(),
+                catalogRepository: context.read<GroupCatalogRepository>(),
+              ),
         ),
         provider.ChangeNotifierProvider<ChatProvider>(
           create: (context) => ChatProvider(
@@ -623,11 +620,9 @@ class PubgetApp extends StatelessWidget {
       ),
       FirebaseUserRepository(
         firestore: FirebaseFirestore.instance,
-        storage: FirebaseStorage.instance,
       ),
       FirebaseProfileRepository(
         firestore: FirebaseFirestore.instance,
-        storage: FirebaseStorage.instance,
       ),
       FirebaseSocialRepository(
         firestore: FirebaseFirestore.instance,
@@ -648,7 +643,6 @@ class PubgetApp extends StatelessWidget {
       FirebaseChatRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
-        storage: FirebaseStorage.instance,
       ),
       FirebaseNotificationRepository(
         firestore: FirebaseFirestore.instance,
@@ -667,7 +661,6 @@ class PubgetApp extends StatelessWidget {
       FirebasePrivateChatRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
-        storage: FirebaseStorage.instance,
       ),
       FirebaseEventRepository(
         firestore: FirebaseFirestore.instance,
@@ -677,9 +670,6 @@ class PubgetApp extends StatelessWidget {
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),
-      // Signed upload sessions / short-lived read grants own every byte here;
-      // there is deliberately no client-side Storage handle (no permanent
-      // downloadToken can be minted from the device).
       FirebaseFanWorkRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
@@ -864,8 +854,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/notifications': const NotificationInboxPage(),
         '/edits': const AppShell(),
         '/reels': const AppShell(),
-        '/reels/upload': const KirariUploadPage(),
-        '/edits/upload': const EditUploadPage(),
+        '/edits/upload': const EditFeedPage(),
         '/groups': const AppShell(),
         '/joined': const AppShell(),
         '/private': const AppShell(),
@@ -880,6 +869,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/economy/history': const EconomyHistoryPage(),
       },
       parameterizedPages: <String, ParameterizedPageBuilder>{
+        '/reels/upload': (parameters) => KirariUploadPage(initialAudioId: parameters['audioId']),
         ...EntityRoutes.pages(),
         '/profile': (parameters) => ProfilePage(userId: parameters['uid']),
         '/groups/create': (parameters) {
@@ -986,11 +976,6 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/fan-work': (parameters) {
           final workId = parameters['workId'] ?? '';
           final view = parameters['view'];
-          // Reader shapes (manga pages, prose chapters and PDF documents) are
-          // dispatched inside FanWorkReaderPage, so old and new works share a
-          // single route. The legacy MangaViewerPage/StoryReaderPage classes
-          // were removed with the reader rebuild; referencing them here left
-          // every deep link to a fan work uncompilable.
           if (view == 'manga' || view == 'story') {
             return FanWorkReaderPage(workId: workId);
           }

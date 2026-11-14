@@ -1,6 +1,10 @@
 package com.sbikazis.pubget
 
+import android.net.Uri
+import android.util.Base64
 import android.view.WindowManager
+import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageMetadata
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -16,6 +20,8 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private companion object {
         const val READER_CHANNEL = "pubget/fan_work_reader"
+        const val KIRARI_UPLOAD_CHANNEL = "pubget/kirari_upload"
+        const val KIRARI_UPLOAD_PREFS = "kirari_resumable_uploads"
     }
 
     /**
@@ -27,6 +33,7 @@ class MainActivity : FlutterActivity() {
      * reader widget is not rebuilt when the app comes back.
      */
     private var protectRequested = false
+    private lateinit var kirariUploadChannel: MethodChannel
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -41,6 +48,123 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        kirariUploadChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            KIRARI_UPLOAD_CHANNEL
+        )
+        kirariUploadChannel.setMethodCallHandler { call, result ->
+            if (call.method != "uploadSource") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+
+            val arguments = call.arguments as? Map<*, *>
+            val storagePath = arguments?.get("storagePath") as? String
+            val localPath = arguments?.get("localPath") as? String
+            if (storagePath.isNullOrBlank() || localPath.isNullOrBlank()) {
+                result.error("INVALID_UPLOAD", "Missing upload path.", null)
+                return@setMethodCallHandler
+            }
+
+            val source = java.io.File(localPath)
+            if (!source.isFile || source.length() <= 0L) {
+                result.error("MISSING_SOURCE", "The local video file is unavailable.", null)
+                return@setMethodCallHandler
+            }
+
+            try {
+                val preferences = getSharedPreferences(KIRARI_UPLOAD_PREFS, MODE_PRIVATE)
+                val key = Base64.encodeToString(
+                    storagePath.toByteArray(Charsets.UTF_8),
+                    Base64.NO_WRAP or Base64.URL_SAFE
+                )
+                val sessionKey = "session_$key"
+                val pathKey = "path_$key"
+                val sizeKey = "size_$key"
+                val modifiedKey = "modified_$key"
+                val sessionTimeKey = "session_time_$key"
+
+                // Never attach a previous session to a different or stale file.
+                val sessionAge = System.currentTimeMillis() -
+                    preferences.getLong(sessionTimeKey, 0L)
+                if (preferences.getString(pathKey, null) != source.absolutePath ||
+                    preferences.getLong(sizeKey, -1L) != source.length() ||
+                    preferences.getLong(modifiedKey, -1L) != source.lastModified() ||
+                    sessionAge > 6L * 24L * 60L * 60L * 1000L) {
+                    preferences.edit()
+                        .remove(sessionKey)
+                        .remove(pathKey)
+                        .remove(sizeKey)
+                        .remove(modifiedKey)
+                        .remove(sessionTimeKey)
+                        .apply()
+                }
+
+                val sessionUri = preferences.getString(sessionKey, null)?.let {
+                    runCatching { Uri.parse(it) }.getOrNull()
+                }
+                val metadata = StorageMetadata.Builder()
+                    .setContentType("video/mp4")
+                    .setCustomMetadata("uploadedBy", "kirari-client")
+                    .build()
+                val task = FirebaseStorage.getInstance()
+                    .reference
+                    .child(storagePath)
+                    .putFile(Uri.fromFile(source), metadata, sessionUri)
+
+                task.addOnProgressListener { snapshot ->
+                    snapshot.uploadSessionUri?.let { uri ->
+                        val uriValue = uri.toString()
+                        if (preferences.getString(sessionKey, null) != uriValue) {
+                            // The session URI is the recovery token required to
+                            // continue at Firebase's server-side byte offset after
+                            // Android kills this process. Flush its first write
+                            // synchronously instead of relying on apply()'s
+                            // deferred disk write.
+                            preferences.edit()
+                                .putString(sessionKey, uriValue)
+                                .putString(pathKey, source.absolutePath)
+                                .putLong(sizeKey, source.length())
+                                .putLong(modifiedKey, source.lastModified())
+                                .putLong(sessionTimeKey, System.currentTimeMillis())
+                                .commit()
+                        } else {
+                            preferences.edit()
+                                .putLong(sessionTimeKey, System.currentTimeMillis())
+                                .apply()
+                        }
+                    }
+                    val total = snapshot.totalByteCount
+                    val progress = if (total > 0L) {
+                        snapshot.bytesTransferred.toDouble() / total.toDouble()
+                    } else {
+                        0.0
+                    }
+                    kirariUploadChannel.invokeMethod(
+                        "progress",
+                        mapOf("progress" to progress)
+                    )
+                }
+                task.addOnSuccessListener {
+                    preferences.edit()
+                        .remove(sessionKey)
+                        .remove(pathKey)
+                        .remove(sizeKey)
+                        .remove(modifiedKey)
+                        .remove(sessionTimeKey)
+                        .apply()
+                    result.success(null)
+                }
+                task.addOnFailureListener { error ->
+                    // Keep the session URI: the next process can pass it back
+                    // to putFile and Firebase Storage resumes from its server offset.
+                    result.error("UPLOAD_FAILED", error.message, error.javaClass.simpleName)
+                }
+            } catch (error: Exception) {
+                result.error("UPLOAD_SETUP_FAILED", error.message, error.javaClass.simpleName)
+            }
+        }
     }
 
     /**

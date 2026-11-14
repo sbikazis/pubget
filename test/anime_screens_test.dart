@@ -115,13 +115,31 @@ void main() {
     expect(find.byKey(const Key('filter-season-fall')), findsNothing);
     await tester.tap(find.byKey(const Key('hub-open-search')));
     await tester.pumpAndSettle();
+
+    // Non-text constraints live in the filter sheet and only commit on Apply.
+    await tester.tap(find.byKey(const Key('anime-search-filter')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('filter-type-tv')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('filter-type-tv')));
     await tester.pumpAndSettle();
-    expect(repository.searchCalls, greaterThan(0));
+    await tester.ensureVisible(find.byKey(const Key('filter-apply')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('filter-apply')));
+    await tester.pumpAndSettle();
     expect(repository.lastFilter?.type, AnimeTypeFilter.tv);
+    expect(repository.searchCalls, greaterThan(0));
     expect(find.text('Frieren'), findsWidgets);
 
+    await tester.tap(find.byKey(const Key('anime-search-filter')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('filter-season-fall')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('filter-season-fall')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('filter-apply')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('filter-apply')));
     await tester.pumpAndSettle();
     expect(repository.lastFilter?.season, AnimeSeason.fall);
     expect(repository.lastFilter?.year, isNotNull);
@@ -158,7 +176,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('favorite-anime')));
     await tester.pump();
-    expect(find.text(AnimeStrings.favorited), findsWidgets);
+    // The heart is icon-only; its state is the accessible tooltip.
+    expect(find.byTooltip(AnimeStrings.favorited), findsWidgets);
     await tester.pumpAndSettle();
     expect(profiles.lastUpdate?.favoriteAnimeIds, contains('52991'));
   });
@@ -183,6 +202,9 @@ void main() {
         child: const AnimeDetailsPage(animeId: '52991'),
       ),
     );
+    await tester.pumpAndSettle();
+    // Characters live on the dedicated second tab, not the details tab.
+    await tester.tap(find.byType(Tab).at(1));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('character-10')));
     await tester.pumpAndSettle();
@@ -279,6 +301,7 @@ Widget _harness({
 }) {
   final network = NetworkService(probe: () async => true);
   final hub = AnimeHubProvider(repository: repository);
+  final hubCatalogs = AnimeHubCatalogProvider(repository: repository);
   final list = AnimeListProvider(
     repository: repository,
     debounce: Duration.zero,
@@ -297,6 +320,9 @@ Widget _harness({
     providers: [
       ChangeNotifierProvider<NetworkService>.value(value: network),
       ChangeNotifierProvider<AnimeHubProvider>.value(value: hub),
+      ChangeNotifierProvider<AnimeHubCatalogProvider>.value(
+        value: hubCatalogs,
+      ),
       ChangeNotifierProvider<AnimeListProvider>.value(value: list),
       ChangeNotifierProvider<AnimeDetailsProvider>.value(value: details),
       ChangeNotifierProvider<AuthProvider>.value(value: auth),

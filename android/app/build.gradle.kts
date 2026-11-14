@@ -49,9 +49,24 @@ android {
         }
     }
 
+    // CI must be able to compile a release variant without access to the
+    // private upload keystore. Real release builds use the configured
+    // production keystore whenever it is present and valid.
+    val configuredReleaseStore =
+        keystoreProperties.getProperty("storeFile")?.let { file(it) }
+    val hasReleaseSigning =
+        !keystoreProperties.getProperty("keyAlias").isNullOrBlank() &&
+        !keystoreProperties.getProperty("keyPassword").isNullOrBlank() &&
+        !keystoreProperties.getProperty("storePassword").isNullOrBlank() &&
+        configuredReleaseStore?.isFile == true
+
     buildTypes {
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -70,6 +85,8 @@ dependencies {
     // 🔥 Firebase BOM
     implementation(platform("com.google.firebase:firebase-bom:34.11.0"))
     implementation("com.google.firebase:firebase-analytics")
+    // MainActivity uses the native resumable upload API and session URI.
+    implementation("com.google.firebase:firebase-storage")
 
     // حل مشكلة flutter_local_notifications
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4") // <-- أضفت هذا

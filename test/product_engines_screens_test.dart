@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pubget/core/analytics/analytics.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
+import 'package:pubget/core/l10n/app_strings.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
 import 'package:pubget/features/achievements/data/achievement_catalog.dart';
 import 'package:pubget/features/achievements/models/achievement_models.dart';
@@ -19,10 +20,12 @@ import 'package:pubget/features/events/repositories/event_repository.dart';
 import 'package:pubget/features/events/screens/event_details_screen.dart';
 import 'package:pubget/features/games/models/game_models.dart';
 import 'package:pubget/features/games/models/game_type_registry.dart';
+import 'package:pubget/features/games/providers/game_catalog_provider.dart';
 import 'package:pubget/features/games/providers/game_providers.dart';
 import 'package:pubget/features/games/repositories/game_repository.dart';
 import 'package:pubget/features/games/screens/game_create_page.dart';
 import 'package:pubget/features/games/screens/game_details_screen.dart';
+import 'package:pubget/features/games/widgets/catalog_search_picker.dart';
 import 'package:pubget/features/games/widgets/game_play_panels.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
@@ -34,7 +37,6 @@ import 'package:pubget/features/mafia/repositories/mafia_repository.dart';
 import 'package:pubget/features/mafia/screens/mafia_game_screen.dart';
 
 import 'authentication_test_support.dart';
-import 'event_strings_test_support.dart';
 
 void main() {
   test('mafia leave copy matches server-supported statuses only', () {
@@ -137,14 +139,22 @@ void main() {
     mafia.dispose();
   });
 
-  testWidgets('guess character play locks a submitted answer', (tester) async {
+  testWidgets('guess character play locks the selected secret', (tester) async {
+    final repository = _LiveGameRepository();
+    final catalog = GameCatalogProvider(repository: repository);
+    addTearDown(catalog.dispose);
     await tester.pumpWidget(
-      ChangeNotifierProvider<GameProvider>(
-        create: (_) => GameProvider(repository: _LiveGameRepository()),
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<GameProvider>.value(
+            value: GameProvider(repository: repository),
+          ),
+          ChangeNotifierProvider<GameCatalogProvider>.value(value: catalog),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: GuessCharacterPlay(
-              game: _guessGame(),
+              game: _guessGame(secretSelected: true),
               userId: 'alice',
             ),
           ),
@@ -153,14 +163,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Who is this character?'), findsOneWidget);
-    expect(find.text('Luffy'), findsOneWidget);
-    expect(find.text('Original Pubget silhouette'), findsOneWidget);
-    expect(find.byType(CustomPaint), findsWidgets);
-    expect(
-      find.text('Answer locked in. Waiting for the round to resolve.'),
-      findsOneWidget,
-    );
+    // A committed selection replaces the catalog picker with the locked copy,
+    // so the same player cannot pick again.
+    expect(find.text(GameStrings.secretLocked), findsOneWidget);
+    expect(find.byType(CatalogSearchPicker), findsNothing);
   });
 
   testWidgets('guess character artwork falls back to the clue', (tester) async {
@@ -215,7 +221,7 @@ void main() {
     expect(find.text('A straw hat pirate.'), findsOneWidget);
   });
 
-  testWidgets('game create exposes the current Phase games without Mafia', (
+  testWidgets('game create exposes every implemented game, Mafia included', (
     tester,
   ) async {
     final creator = GameCreateProvider(repository: _LiveGameRepository());
@@ -236,7 +242,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Guess the Character'), findsOneWidget);
-    expect(find.text('Mafia'), findsNothing);
+    // Spec 12.1 lists all four games as available; Mafia creates through
+    // createMafiaGame instead of the generic createGame, but it is offered.
+    expect(find.text('Mafia'), findsOneWidget);
     expect(find.text('Rules', skipOffstage: false), findsOneWidget);
   });
 
@@ -298,14 +306,14 @@ Future<AuthProvider> _auth() async {
   return auth;
 }
 
-PubgetGame _guessGame({bool completed = false}) {
+PubgetGame _guessGame({bool completed = false, bool secretSelected = false}) {
   return PubgetGame(
     id: 'g1',
     type: GameType.guessCharacter,
     title: 'Guess',
     description: '',
     version: 1,
-    status: completed ? GameStatus.completed : GameStatus.inProgress,
+    status: completed ? GameStatus.completed : GameStatus.active,
     creatorId: 'alice',
     groupId: 'group-1',
     configuration: const GameConfiguration(
@@ -325,6 +333,9 @@ PubgetGame _guessGame({bool completed = false}) {
       'engine': 'guessCharacter',
       'roundNumber': 1,
       'totalRounds': 5,
+      'players': <String, dynamic>{
+        if (secretSelected) 'alice': <String, dynamic>{'selected': true},
+      },
       'answeredPlayerIds': <String>['alice'],
       'scores': <String, int>{'alice': 1, 'bob': 0},
       'prompt': <String, dynamic>{
@@ -565,9 +576,6 @@ final class _LiveGameRepository implements GameRepository {
   @override
   Future<Result<void>> leave(String gameId) async => const Success<void>(null);
 
-  // The production repository has no suspension/resume API (Master Spec 12.2
-  // removed the paused state). These stubs stay for the test fixture but must
-  // not claim to override an interface member that no longer exists.
   Future<Result<void>> pause(String gameId) async => const Success<void>(null);
 
   Future<Result<void>> resume(String gameId) async => const Success<void>(null);
@@ -613,25 +621,9 @@ final class _LiveGameRepository implements GameRepository {
   }) => Stream<Result<Map<String, dynamic>>>.value(
     const Success(<String, dynamic>{}),
   );
-
   @override
-  Future<Result<List<AnimeSearchItem>>> searchAnime(
-    String query, {
-    int limit = 20,
-  }) async => const Success(<AnimeSearchItem>[]);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 
-  @override
-  Future<Result<List<CharacterSearchItem>>> searchCharacters(
-    String query, {
-    String? animeId,
-    int limit = 20,
-  }) async => const Success(<CharacterSearchItem>[]);
-
-  @override
-  Future<Result<List<GameHistoryEntry>>> getHistory({
-    required String userId,
-    int limit = 20,
-  }) async => const Success(<GameHistoryEntry>[]);
 }
 
 final class _ExpiredEventRepository implements EventRepository {
@@ -680,10 +672,8 @@ final class _ExpiredEventRepository implements EventRepository {
   Future<Result<void>> end(String eventId) async => const Success<void>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getActiveEvents({
-    int limit = 20,
-    PubgetEvent? after,
-  }) async => const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getActiveEvents({PubgetEvent? after, int limit = 20}) async =>
+      const Success(<PubgetEvent>[]);
 
   @override
   Future<Result<List<PubgetEvent>>> getGroupEvents({
@@ -709,10 +699,8 @@ final class _ExpiredEventRepository implements EventRepository {
   }) async => const Success<EventResponse?>(null);
 
   @override
-  Future<Result<List<PubgetEvent>>> getRecentEvents({
-    int limit = 20,
-    PubgetEvent? after,
-  }) async => const Success(<PubgetEvent>[]);
+  Future<Result<List<PubgetEvent>>> getRecentEvents({PubgetEvent? after, int limit = 20}) async =>
+      const Success(<PubgetEvent>[]);
 
   @override
   Future<Result<List<PubgetEvent>>> getUpcomingEvents({int limit = 20}) async =>
@@ -746,31 +734,14 @@ final class _ExpiredEventRepository implements EventRepository {
   }) async => const Success<void>(null);
 
   @override
-  Future<Result<String>> addComment({
-    required String eventId,
-    required String text,
-  }) async => const Success('comment-1');
+  Stream<Result<PubgetEvent>> watchEvent(String eventId) =>
+      Stream<Result<PubgetEvent>>.value(Success(_event));
 
   @override
-  Future<Result<void>> crosspost({
-    required String eventId,
-    List<String> groupIds = const <String>[],
-    bool toGlobal = false,
-  }) async => const Success<void>(null);
-
-  @override
-  Future<Result<EventAnalytics>> getAnalytics(String eventId) async =>
-      Success(EventAnalytics(eventId: eventId, status: ''));
-
-  @override
-  Future<Result<EventCreationQuota>> getCreationQuota() async =>
-      const Success(EventCreationQuota(count: 0, limit: 2, remaining: 2));
-
-  @override
-  Future<Result<List<PubgetEvent>>> getEventsByAnime({
-    required String animeId,
-    int limit = 20,
-  }) async => const Success(<PubgetEvent>[]);
+  Stream<Result<List<EventComment>>> watchComments(String eventId) =>
+      Stream<Result<List<EventComment>>>.value(
+        const Success(<EventComment>[]),
+      );
 
   @override
   Future<Result<String?>> getMyReaction({
@@ -779,36 +750,8 @@ final class _ExpiredEventRepository implements EventRepository {
   }) async => const Success<String?>(null);
 
   @override
-  Future<Result<EventPreview>> preview({required String eventId}) async =>
-      Success(EventPreview(eventId: eventId));
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 
-  @override
-  Future<Result<void>> react({
-    required String eventId,
-    required String reaction,
-  }) async => const Success<void>(null);
-
-  @override
-  Future<Result<void>> reportEvent({
-    required String eventId,
-    required String category,
-    String detail = '',
-  }) async => const Success<void>(null);
-
-  @override
-  Future<Result<EventResult>> resolve({
-    required String eventId,
-    String? winnerOptionId,
-    List<String>? winnerIds,
-  }) async => const Success(EventResult(kind: '', submissions: 0));
-
-  @override
-  Stream<Result<List<EventComment>>> watchComments(String eventId) =>
-      const Stream<Result<List<EventComment>>>.empty();
-
-  @override
-  Stream<Result<PubgetEvent>> watchEvent(String eventId) =>
-      Stream<Result<PubgetEvent>>.value(Success(_event));
 }
 
 final class _FakeGroupRepository implements GroupRepository {

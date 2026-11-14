@@ -5,13 +5,13 @@ import 'package:pubget/app/app_shell_create_sheet.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/core/l10n/app_strings.dart';
 import 'package:pubget/core/widgets/pubget_design_system.dart';
-import 'package:pubget/features/anime/models/anime_models.dart';
-import 'package:pubget/features/anime/providers/anime_providers.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
 import 'package:pubget/features/authentication/providers/auth_provider.dart';
 import 'package:pubget/features/groups/data/group_fuzzy.dart';
 import 'package:pubget/features/groups/data/group_image_uploader.dart';
+import 'package:pubget/features/groups/models/group_catalog_models.dart';
 import 'package:pubget/features/groups/models/group_models.dart';
+import 'package:pubget/features/groups/repositories/group_catalog_repository.dart';
 import 'package:pubget/features/groups/providers/group_provider.dart';
 import 'package:pubget/features/groups/repositories/group_repository.dart';
 import 'package:pubget/features/groups/screens/create_group_wizard_page.dart';
@@ -19,7 +19,6 @@ import 'package:pubget/features/groups/screens/group_anime_picker_page.dart';
 import 'package:pubget/features/groups/screens/group_character_picker_page.dart';
 import 'package:pubget/features/groups/screens/group_details_page.dart';
 
-import 'anime_test_support.dart';
 import 'authentication_test_support.dart';
 
 void main() {
@@ -37,11 +36,14 @@ void main() {
     expect(GroupFuzzy.matches('lufy', 'Monkey D. Luffy'), isTrue);
   });
 
-  test('group image URLs must be remote http(s), never local paths', () {
+  test('group media references accept R2 keys and legacy URLs only', () {
     expect(isRemoteHttpUrl('https://example.test/a.png'), isTrue);
     expect(isRemoteHttpUrl('http://cdn.test/a.png'), isTrue);
+    expect(isRemoteHttpUrl('images/alice/abc123.jpg'), isTrue);
+    expect(isRemoteHttpUrl('groups/g1/alice/abc123.png'), isTrue);
     expect(isRemoteHttpUrl('/data/user/0/cache/x.jpg'), isFalse);
     expect(isRemoteHttpUrl('file:///tmp/x.jpg'), isFalse);
+    expect(isRemoteHttpUrl('arbitrary/path.jpg'), isFalse);
     expect(isRemoteHttpUrl(''), isFalse);
   });
 
@@ -75,7 +77,7 @@ void main() {
     );
   });
 
-  testWidgets('public create confirm stays disabled until avatar and name', (
+  testWidgets('identity step stays blocked until avatar and name', (
     tester,
   ) async {
     await tester.pumpWidget(await _wizardHarness(GroupType.public));
@@ -83,9 +85,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.byKey(const Key('group-create-name')), findsOneWidget);
-    expect(tester.widget<PubgetPrimaryButton>(
-      find.byKey(const Key('group-create-confirm')),
-    ).onPressed, isNull);
+    expect(
+      tester
+          .widget<PubgetPrimaryButton>(
+            find.byKey(const Key('group-create-next')),
+          )
+          .onPressed,
+      isNull,
+    );
 
     await tester.ensureVisible(find.byKey(const Key('group-create-image-url')));
     await tester.enterText(
@@ -96,16 +103,17 @@ void main() {
     await tester.enterText(find.byKey(const Key('group-create-name')), 'Crew');
     await tester.pump();
 
-    final enabled = tester.widget<ElevatedButton>(
-      find.descendant(
-        of: find.byKey(const Key('group-create-confirm')),
-        matching: find.byType(ElevatedButton),
-      ),
+    expect(
+      tester
+          .widget<PubgetPrimaryButton>(
+            find.byKey(const Key('group-create-next')),
+          )
+          .onPressed,
+      isNotNull,
     );
-    expect(enabled.onPressed, isNotNull);
   });
 
-  testWidgets('anime roleplay confirm stays disabled without character', (
+  testWidgets('anime roleplay type step stays blocked without a character', (
     tester,
   ) async {
     await tester.pumpWidget(await _wizardHarness(GroupType.animeRoleplay));
@@ -120,38 +128,38 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('group-create-name')));
     await tester.enterText(find.byKey(const Key('group-create-name')), 'Crew');
     await tester.pump();
+
+    // The anime/character pickers live on the wizard's type step.
+    await tester.tap(find.byKey(const Key('group-create-next')));
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('group-create-pick-anime')), findsOneWidget);
     expect(find.byKey(const Key('group-create-pick-character')), findsNothing);
-    final confirm = tester.widget<ElevatedButton>(
-      find.descendant(
-        of: find.byKey(const Key('group-create-confirm')),
-        matching: find.byType(ElevatedButton),
-      ),
+    final next = tester.widget<PubgetPrimaryButton>(
+      find.byKey(const Key('group-create-next')),
     );
-    expect(confirm.onPressed, isNull);
+    expect(next.onPressed, isNull);
   });
 
-  testWidgets('anime picker shows popular titles and a no-results state', (
+  testWidgets('anime picker shows catalog titles and a no-results state', (
     tester,
   ) async {
-    final repository = FakeAnimeRepository(
-      filterSearchByQuery: true,
-      page: AnimePage(items: <Anime>[sampleAnime()], page: 1),
+    final catalog = _FakeGroupCatalogRepository(
+      items: const <CatalogAnime>[CatalogAnime(id: '52991', title: 'Frieren')],
     );
-    final list = AnimeListProvider(repository: repository);
     await tester.pumpWidget(
-      ChangeNotifierProvider<AnimeListProvider>.value(
-        value: list,
+      Provider<GroupCatalogRepository>.value(
+        value: catalog,
         child: const MaterialApp(home: GroupAnimePickerPage()),
       ),
     );
     await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('Frieren'), findsOneWidget);
 
     await tester.enterText(find.byKey(const Key('group-anime-search')), 'zzzzz');
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
     expect(find.text('Frieren'), findsNothing);
     expect(find.byKey(const Key('group-anime-empty')), findsOneWidget);
   });
@@ -231,6 +239,36 @@ Future<Widget> _detailsHarness({bool banned = false, bool full = false}) async {
     ],
     child: const MaterialApp(home: GroupDetailsPage(groupId: 'g1')),
   );
+}
+
+/// The picker reads the canonical server catalog, never a local list, so the
+/// test supplies the catalog the picker is supposed to ask.
+final class _FakeGroupCatalogRepository implements GroupCatalogRepository {
+  _FakeGroupCatalogRepository({this.items = const <CatalogAnime>[]});
+
+  final List<CatalogAnime> items;
+
+  @override
+  Future<Result<GroupCatalogPage>> browseAnime(
+    GroupCatalogRequest request, {
+    int page = 1,
+  }) async {
+    final query = request.query.trim().toLowerCase();
+    final matches = query.isEmpty
+        ? items
+        : items
+              .where((item) => item.title.toLowerCase().contains(query))
+              .toList(growable: false);
+    return Success(
+      GroupCatalogPage(items: matches, page: page, hasNextPage: false),
+    );
+  }
+
+  @override
+  Future<Result<GroupCharacterPage>> browseCharacters(
+    GroupCharacterRequest request, {
+    int page = 1,
+  }) async => const Success(GroupCharacterPage.empty());
 }
 
 final class _JourneyGroupRepository implements GroupRepository {

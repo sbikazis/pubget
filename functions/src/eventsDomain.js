@@ -273,6 +273,29 @@ function validHttpsImageUrl(url) {
   }
 }
 
+function validEventImageReference(value) {
+  if (validHttpsImageUrl(value)) return true;
+  if (typeof value !== "string") return false;
+  return /^(images\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5}|groups\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,80}\.[a-z0-9]{2,5})$/.test(value);
+}
+
+function extractMediaKeys(value, keys = new Set()) {
+  if (!value || typeof value !== "object") return [...keys];
+  if (Array.isArray(value)) {
+    for (const item of value) extractMediaKeys(item, keys);
+    return [...keys];
+  }
+  for (const [field, item] of Object.entries(value)) {
+    if (field === "imageUrl" && typeof item === "string" &&
+        /^(images|groups)\//.test(item) && validEventImageReference(item)) {
+      keys.add(item);
+    } else if (item && typeof item === "object") {
+      extractMediaKeys(item, keys);
+    }
+  }
+  return [...keys];
+}
+
 function candidateList(input) {
   return input.candidates || input.options || input.items;
 }
@@ -510,7 +533,7 @@ function validateConfiguration(type, raw) {
   const options = normalizeOptions(source, { min, max });
   if (!question || !options) return null;
   if (type === "poll" && !options.every(
-    (item) => validHttpsImageUrl(item.imageUrl),
+    (item) => validEventImageReference(item.imageUrl),
   )) {
     return null;
   }
@@ -1087,6 +1110,7 @@ function createEventsDomain({
           title: input.title.trim(),
           description: typeof input.description === "string" ? input.description.trim() : "",
           configuration,
+          mediaKeys: extractMediaKeys(configuration),
           templateId: TEMPLATES[input.templateId] ? input.templateId : null,
           coverUrl: typeof input.coverUrl === "string" ? input.coverUrl.trim().slice(0, 1024) : "",
           searchName: searchNameOf(input.title),
@@ -1109,6 +1133,7 @@ function createEventsDomain({
         title: input.title.trim(),
         description: typeof input.description === "string" ? input.description.trim() : "",
         configuration,
+        mediaKeys: extractMediaKeys(configuration),
         status: "DRAFT",
         startAt: null,
         endAt: null,

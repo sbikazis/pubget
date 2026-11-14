@@ -255,23 +255,5 @@ final class _SlowUploadRepository implements EditsRepository {
   }) async => const Success<void>(null);
 
   @override
-  Future<Result<void>> reportEdit({
-    required String editId,
-    required String category,
-    String? detail,
-  }) async => const Success<void>(null);
-
-  @override
-  Future<Result<void>> muteReelCreator({
-    required String creatorId,
-    required bool mute,
-  }) async => const Success<void>(null);
-
-  @override
-  Future<Result<SavedReelsPage>> listSavedReels({
-    String? afterId,
-    int limit = 30,
-  }) async => const Success<SavedReelsPage>(
-    SavedReelsPage(<Edit>[], hasMore: false),
-  );
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

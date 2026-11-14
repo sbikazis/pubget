@@ -93,7 +93,7 @@ test("Kirari publication never notifies before moderation approval", async () =>
 test("Kirari comments notify the video creator but not the commenter", async () => {
   const calls = [];
   const triggers = createNotificationTriggers({
-    db: makeDb({ reel: { creatorId: "creator" } }),
+    db: makeDb({ reel: { creatorId: "creator", status: "published", moderationStatus: "approved" } }),
     builder: { async build(payload) { calls.push(payload); } },
   });
   await triggers.kirariComment({
@@ -103,4 +103,28 @@ test("Kirari comments notify the video creator but not the commenter", async () 
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].recipientIds, ["creator"]);
   assert.equal(calls[0].destination, "/reel/reel-1");
+});
+
+
+test("Kirari moderation approval notifies followers when the reel becomes visible", async () => {
+  const calls = [];
+  const triggers = createNotificationTriggers({
+    db: makeDb({ followers: ["fan-1"] }),
+    builder: { async build(payload) { calls.push(payload); } },
+  });
+  await triggers.kirariPublished({
+    params: { reelId: "reel-approved" },
+    data: {
+      before: { data: () => ({
+        creatorId: "creator", status: "published",
+        moderationStatus: "review_pending",
+      }) },
+      after: { data: () => ({
+        creatorId: "creator", status: "published",
+        moderationStatus: "approved", caption: "Approved edit",
+      }) },
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].recipientIds, ["fan-1"]);
 });

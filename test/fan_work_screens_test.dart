@@ -73,29 +73,28 @@ void main() {
     expect(find.text(FanWorkTypeCatalog.label(FanWorkType.character)), findsOneWidget);
     await tester.tap(find.text(FanWorkTypeCatalog.label(FanWorkType.character)));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('fan-work-character-name')), findsWidgets);
+    expect(find.byKey(const Key('fan-work-character-personality')), findsWidgets);
   });
 
   testWidgets('manga viewer keeps page order and an indicator', (tester) async {
     final auth = await _auth();
     final repository = _FakeFanWorkRepository()
       ..watchWorkResult = Success(_manga());
-    final details = FanWorkDetailsProvider(repository: repository);
-    addTearDown(details.dispose);
+    final reader = FanWorkReaderProvider(repository: repository);
+    addTearDown(reader.dispose);
     addTearDown(auth.dispose);
-    await details.open(workId: 'manga-1', userId: 'alice');
 
     await tester.pumpWidget(
       MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
-          ChangeNotifierProvider<FanWorkDetailsProvider>.value(value: details),
+          ChangeNotifierProvider<FanWorkReaderProvider>.value(value: reader),
         ],
         child: const MaterialApp(home: FanWorkReaderPage(workId: 'manga-1')),
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('1 / 2'), findsOneWidget);
+    expect(find.text('Page 1 of 2'), findsOneWidget);
     expect(find.text('Splash'), findsOneWidget);
   });
 
@@ -103,16 +102,15 @@ void main() {
     final auth = await _auth();
     final repository = _FakeFanWorkRepository()
       ..watchWorkResult = Success(_story());
-    final details = FanWorkDetailsProvider(repository: repository);
-    addTearDown(details.dispose);
+    final reader = FanWorkReaderProvider(repository: repository);
+    addTearDown(reader.dispose);
     addTearDown(auth.dispose);
-    await details.open(workId: 'story-1', userId: 'alice');
 
     await tester.pumpWidget(
       MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthProvider>.value(value: auth),
-          ChangeNotifierProvider<FanWorkDetailsProvider>.value(value: details),
+          ChangeNotifierProvider<FanWorkReaderProvider>.value(value: reader),
         ],
         child: const MaterialApp(home: FanWorkReaderPage(workId: 'story-1')),
       ),
@@ -211,6 +209,18 @@ FanWork _story() => FanWork(
 
 final class _FakeFanWorkRepository implements FanWorkRepository {
   Result<FanWork>? watchWorkResult;
+
+  @override
+  Future<Result<FanWorkReadingProgress>> getReadingProgress({
+    required String workId,
+    required String userId,
+  }) async => const Success(FanWorkReadingProgress());
+
+  @override
+  Future<Result<void>> saveReadingProgress({
+    required String workId,
+    required FanWorkReadingProgress progress,
+  }) async => const Success<void>(null);
 
   @override
   Future<Result<void>> archive(String workId) async => const Success<void>(null);
@@ -442,4 +452,7 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
         watchWorkResult ??
             const FailureResult(NotFoundError('This Fan Work is unavailable.')),
       );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

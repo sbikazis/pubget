@@ -1,0 +1,17 @@
+name = "pubget-media"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[vars]
+FIREBASE_PROJECT_ID = "pubget-aaf27"
+KIRARI_R2_SERVICE_ACCOUNT_EMAIL = "452313838148-compute@developer.gserviceaccount.com"
+KIRARI_R2_SERVICE_AUDIENCE = "https://pubget-media.pubget.workers.dev"
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "pubget-media"

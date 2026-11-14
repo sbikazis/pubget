@@ -303,7 +303,7 @@ class _InfoTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: AppSpacing.huge),
       children: <Widget>[
-        if (details.fromCache) AnimeCachedBanner(offline: !network.isOnline),
+        if (details.fromCache) AnimeCachedBanner(offline: network.isOffline),
         AnimeDetailsHero(
           anime: anime,
           stats: social?.stats,

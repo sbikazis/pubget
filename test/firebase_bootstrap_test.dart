@@ -32,6 +32,24 @@ void main() {
     );
   });
 
+  test('release web App Check requires a registered reCAPTCHA site key', () {
+    expect(
+      FirebaseBootstrap.canActivateWebAppCheck(isDebug: false, siteKey: ''),
+      isFalse,
+    );
+    expect(
+      FirebaseBootstrap.canActivateWebAppCheck(
+        isDebug: false,
+        siteKey: ' registered-site-key ',
+      ),
+      isTrue,
+    );
+    expect(
+      FirebaseBootstrap.canActivateWebAppCheck(isDebug: true, siteKey: ''),
+      isTrue,
+    );
+  });
+
   test(
     'CoreFirebaseOptions RangeError is mapped away from raw exception text',
     () {

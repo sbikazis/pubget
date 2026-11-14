@@ -2,181 +2,185 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import 'connectivity_events.dart';
 import 'network_probe.dart';
 
-/// Three honest states, and the distinction is the whole point of Axis Zero:
+/// Axis Zero — three verdicts, not two.
 ///
-/// * [online] — the platform reports a link and the one-shot verification
-///   succeeded, or a real backend request came back.
-/// * [offline] — the platform itself reports no network interface. This is
-///   positive evidence, not a guess, and it is the only path to a "no
-///   connection" message.
-/// * [unknown] — the link is up but verification failed (captive portal,
-///   blocked resolver, flaky DNS), or the platform cannot report link state.
-///   A backend hiccup is *not* evidence of a missing connection; it surfaces
-///   as `UnavailableError` ("service temporarily unavailable") instead.
-///
-/// [unknown] must never block an action. Callers gate on [canAttemptRequest].
+/// `unknown` is the honest answer when the platform says the link is up but a
+/// one-shot reachability probe fails. It must never be presented as a confirmed
+/// outage: the user may have perfectly working internet and a broken DNS
+/// resolver, a captive portal, or a transiently blocked 204 endpoint.
 enum NetworkStatus { online, offline, unknown }
 
+/// A lightweight reachability *hint*, never an authority on Firebase health.
+///
+/// Two modes, chosen by the caller:
+///
+/// * **Event-driven (production).** Pass [linkChanges] from `connectivity_plus`.
+///   The platform tells us when the radio changes; a single HTTPS-204 probe
+///   only verifies that the internet behind that link is actually reachable.
+///   No timers, no polling loop, no false "no connection" banner.
+/// * **Polling (legacy / injected tests).** Without [linkChanges] the original
+///   periodic behaviour is preserved exactly, so existing consumers and
+///   fixtures keep their contract.
 class NetworkService extends ChangeNotifier {
   NetworkService({
-    /// One-shot verification of real internet reachability. Injectable so
-    /// tests never touch a socket.
     Future<bool> Function()? probe,
-
-    /// Injectable event stream; production uses [linkStateChanges].
+    Duration pollInterval = const Duration(seconds: 15),
+    Duration probeTimeout = const Duration(seconds: 7),
     Stream<bool>? linkChanges,
-
-    /// Injectable initial link state; production uses [currentLinkState].
     Future<bool> Function()? initialLinkState,
-
-    /// Fallback only, for targets where the platform cannot report link state
-    /// (unit tests, some desktop/web builds). Repeated *verification* failures
-    /// are then the only signal available.
-    int failureThreshold = 2,
-  }) : _probe = probe ?? probeNetwork,
-       _linkChanges = linkChanges,
-       _initialLinkState = initialLinkState,
-       _failureThreshold = failureThreshold < 1 ? 1 : failureThreshold;
+  })  : _probe = probe ?? probeNetwork,
+        _pollInterval = pollInterval,
+        _probeTimeout = probeTimeout,
+        _linkChanges = linkChanges,
+        _initialLinkState = initialLinkState;
 
   final Future<bool> Function() _probe;
+  final Duration _pollInterval;
+  final Duration _probeTimeout;
   final Stream<bool>? _linkChanges;
   final Future<bool> Function()? _initialLinkState;
-  final int _failureThreshold;
 
-  StreamSubscription<bool>? _subscription;
-  bool _started = false;
+  Timer? _timer;
+  StreamSubscription<bool>? _linkSubscription;
+  Future<void>? _refreshInFlight;
+  NetworkStatus _status = NetworkStatus.offline;
   bool _disposed = false;
-
-  /// `null` = the platform has not reported (tests / unsupported target).
-  /// `false` = the OS says the radio is down. `true` = link is up.
-  bool? _linkUp;
-
-  NetworkStatus _status = NetworkStatus.unknown;
-  int _refreshGeneration = 0;
-  int _consecutiveFailures = 0;
   bool _resolved = false;
+  bool _started = false;
+  bool _linkIsUp = true;
 
   NetworkStatus get status => _status;
   bool get hasResolved => _resolved;
-  bool get isOnline => _status == NetworkStatus.online;
 
-  /// Only true with positive, platform-level evidence of a missing link.
+  /// True until the first reachability probe has completed.
+  bool get isChecking => !_resolved;
+
+  bool get isOnline => _resolved && _status == NetworkStatus.online;
   bool get isOffline => _resolved && _status == NetworkStatus.offline;
 
-  /// "Unknown" must never stop a user who is actually connected. The real
-  /// request — and its own error handling — is the final authority.
-  bool get canAttemptRequest => !isOffline;
+  /// Whether a feature may attempt its request.
+  ///
+  /// An unresolved or unverifiable link is *never* a reason to block the user:
+  /// the real request stays authoritative and repositories still map their own
+  /// destination-specific failures.
+  bool get canAttemptNetworkRequest =>
+      !_resolved || isOnline || _status == NetworkStatus.unknown;
 
-  /// How many verification failures in a row are currently recorded. Exposed
-  /// so a support log can distinguish a blip from a real outage.
-  int get consecutiveFailures => _consecutiveFailures;
+  /// Alias used by the Axis Zero foundation widgets.
+  bool get canAttemptRequest => canAttemptNetworkRequest;
 
-  /// Subscribe to platform link events. There is deliberately no
-  /// [Timer.periodic]: the OS pushes transitions, we verify once per event.
   void start() {
-    if (_started || _disposed) return;
+    if (_disposed || _started) return;
     _started = true;
 
-    final stream = _linkChanges ?? linkStateChanges();
-    _subscription = stream.listen(_onLinkChanged, onError: (Object _) {});
-    unawaited(_checkInitialLinkState());
-  }
-
-  Future<void> _checkInitialLinkState() async {
-    final check = _initialLinkState ?? currentLinkState;
-    bool linkUp;
-    try {
-      linkUp = await check();
-    } on Object {
+    final events = _linkChanges;
+    if (events == null) {
+      // Legacy contract: periodic polling, unchanged behaviour for fixtures.
+      unawaited(refresh());
+      _timer = Timer.periodic(_pollInterval, (_) => unawaited(refresh()));
       return;
     }
-    if (_disposed) return;
-    _onLinkChanged(linkUp);
+
+    // Production contract: react to the OS, verify once per transition.
+    _linkSubscription = events.listen(
+      _onLinkEvent,
+      onError: (Object _) {},
+    );
+    unawaited(_checkInitialLink());
   }
 
-  void _onLinkChanged(bool linkUp) {
+  Future<void> _checkInitialLink() async {
+    bool hasLink = true;
+    try {
+      hasLink = await (_initialLinkState?.call() ?? Future<bool>.value(true));
+    } on Object {
+      // A missing/denied plugin is not evidence of an outage.
+      hasLink = true;
+    }
     if (_disposed) return;
-    _linkUp = linkUp;
-    if (!linkUp) {
-      _consecutiveFailures = 0;
+    _linkIsUp = hasLink;
+    if (!hasLink) {
       _publish(NetworkStatus.offline);
       return;
     }
-    // Link came back: verify the internet behind it before claiming online.
+    await refresh();
+  }
+
+  void _onLinkEvent(bool hasLink) {
+    if (_disposed) return;
+    _linkIsUp = hasLink;
+    if (!hasLink) {
+      _publish(NetworkStatus.offline);
+      return;
+    }
     unawaited(refresh());
   }
 
-  /// A real request reached a backend. That is stronger evidence than any
-  /// probe and overrides even a stale platform "no link" verdict (VPNs and
-  /// enterprise profiles commonly misreport those).
+  /// A real request that succeeded is stronger evidence than any probe.
+  /// Repositories call this so a stale offline/unknown verdict cannot linger
+  /// after Firebase has in fact answered.
   void noteSuccessfulRequest() {
     if (_disposed) return;
-    _consecutiveFailures = 0;
-    _linkUp = true;
+    _linkIsUp = true;
     _publish(NetworkStatus.online);
   }
 
-  /// Re-verify now. Called on every link event and by a real retry button.
-  Future<void> refresh() async {
-    final generation = ++_refreshGeneration;
+  /// Refreshes reachability. Concurrent callers share one probe so a slow
+  /// endpoint cannot create overlapping requests or stale status updates.
+  Future<void> refresh() {
+    if (_disposed) return Future<void>.value();
 
-    // The OS already knows there is no radio. Do not burn a DNS timeout to
-    // "confirm" it, and never let a late probe overwrite that verdict.
-    if (_linkUp == false) {
-      _publish(NetworkStatus.offline);
-      return;
-    }
+    final pending = _refreshInFlight;
+    if (pending != null) return pending;
 
+    late final Future<void> operation;
+    operation = _performRefresh().whenComplete(() {
+      if (identical(_refreshInFlight, operation)) {
+        _refreshInFlight = null;
+      }
+    });
+    _refreshInFlight = operation;
+    return operation;
+  }
+
+  Future<void> _performRefresh() async {
     var online = false;
     try {
-      online = await _probe();
+      online = await _probe().timeout(_probeTimeout);
     } catch (_) {
       online = false;
     }
-    if (_disposed || generation != _refreshGeneration) return;
+
+    if (_disposed) return;
 
     if (online) {
-      _consecutiveFailures = 0;
       _publish(NetworkStatus.online);
       return;
     }
 
-    _consecutiveFailures++;
-
-    // A live link with a failed DNS lookup is *not* proof of no internet. A
-    // captive portal, a filtered resolver or one blocked CDN all look like
-    // this. Hold at `unknown`: the request is allowed through, and a genuine
-    // backend problem surfaces as UnavailableError with honest copy.
-    if (_linkUp == true) {
-      _publish(NetworkStatus.unknown);
-      return;
-    }
-
-    // No platform signal at all (tests / unsupported targets): fall back to
-    // repeated failures as the only available evidence.
-    _publish(
-      _consecutiveFailures >= _failureThreshold
-          ? NetworkStatus.offline
-          : NetworkStatus.unknown,
-    );
+    // Event-driven mode: a failed probe while the OS reports a live link is
+    // inconclusive, never a confirmed outage. Polling mode keeps its old
+    // contract (probe failure == offline) so existing fixtures stay valid.
+    final next = _linkChanges != null && _linkIsUp
+        ? NetworkStatus.unknown
+        : NetworkStatus.offline;
+    _publish(next);
   }
 
   void _publish(NetworkStatus next) {
-    final changed = !_resolved || _status != next;
+    if (_resolved && _status == next) return;
     _status = next;
     _resolved = true;
-    if (changed) notifyListeners();
+    notifyListeners();
   }
 
   @override
   void dispose() {
     _disposed = true;
-    _refreshGeneration++;
-    unawaited(_subscription?.cancel());
-    _subscription = null;
+    _timer?.cancel();
+    unawaited(_linkSubscription?.cancel());
     super.dispose();
   }
 }

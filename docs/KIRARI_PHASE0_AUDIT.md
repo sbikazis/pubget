@@ -184,3 +184,126 @@ The follow-up pass now adds:
 - Ranking remains a deterministic heuristic, not a trained personalization model.
 - Adaptive quality uses a bounded range request estimate and selects one rendition; it is not HLS/segment-level adaptive streaming.
 - The audio catalog is curated by an admin using the documented callable; no self-service creator audio publishing flow exists.
+
+
+## Requirement matrix 15.1–15.20 (consolidated source pass; NOT runtime acceptance)
+
+The locked source of truth was located at `docs/PUBGET_MASTER_SPEC.md` and read for the complete Axis 15 section (15.1–15.20). Operating rules were read from `docs/PUBGET_OPERATING_PROMPT.md` (items 0–6). The following is an evidence-based triage matrix, not a claim that every behavior has been exercised. “Partial / not proven” means source evidence is insufficient for production acceptance; missing runtime/Emulator evidence remains an explicit gate.
+
+| Spec | Status | Evidence / gap and root cause | Phase 1 direction |
+|---|---|---|---|
+| 15.1 Identity/content | Partial | KIR-012: branding literals split between Reels and Kirari; central product-name contract not enforced. | Centralize name and audit surfaces; verify content constraints server-side. |
+| 15.2 Create/editor | Partial | Operations doc describes trim/speed/look/text/cover, but no device/widget test evidence in this audit; editor lifecycle and output contract need verification. | Test editor settings, validation, cover crop and real preview end-to-end. |
+| 15.3 Metadata | Partial | Upload screen/repository exist; full metadata persistence and server validation matrix not yet proven. | Trace every field client→callable→reel schema and validate required/optional cases. |
+| 15.4 Audio | Partial | Operations describes curated audio and mixing; provider/license and reuse/access lifecycle require code-path and Rules tests. | Verify attribution, source ownership, removed/restricted reel behavior, audio feed/reuse. |
+| 15.5 Unified viewer | Partial | KIR-011: canonical reel route appears Edits-only despite independent Kirari detail screen. | Domain-aware route dispatch and integration tests across every entry point. |
+| 15.6 Pubget UI | Partial | Existing feed/detail screens and copy inspected; central design-system parity, guest flow, RTL and gestures not demonstrated by tests. | UI/state/accessibility audit plus Arabic/English widget coverage. |
+| 15.7 Comments | Partial / high risk | Domain and tests exist, but complete pagination, replies, reactions, creator pin, moderation and rate-limit behavior not yet established. | Trace callable/rules/schema; multi-user and abuse tests. |
+| 15.8 Three feeds | Not proven | Main tree contains feed screen; source evidence does not establish distinct Following/For You/Trending ranking semantics. | Verify each query/ranker and prove non-placeholder differentiated ordering. |
+| 15.9 Recommendations | Not proven | No end-to-end proof of behavior signals, negatives, exploration/exploitation, diversity caps or reset. | Inspect ranking implementation and server data; add deterministic unit tests and instrumentation. |
+| 15.10 Trending | Not proven | Velocity/quality/negative-signal computation and minimum thresholds not verified. | Audit server aggregation and add time-window/abuse/diversity tests. |
+| 15.11 Hashtags | Partial | Repository supports hashtag feed (KIR-001); related tags, anime/character links and usage/velocity not proven. | Trace hashtag schema, indexes, ranking and all entry points. |
+| 15.12 Views/analytics | Partial / security critical | Existing server domain and rules prohibit client writes (KIR-005), but qualified-view/replay dedupe and client event batching not fully proven. | Test unique event IDs, ≥3s qualification, replay threshold, farming and server-only counters. |
+| 15.13 Upload/publish | Partial / high risk | KIR-002/003/006/013: listener/task lifecycle, source/output limits, lifecycle ambiguity, and whole-file recovery. | Explicit state machine, upload-job ownership, resumability/idempotency, server transition and quota tests. |
+| 15.14 Performance | Partial / high risk | KIR-001/007/008: serial URL hydration and fixed rendition preference; lifecycle cleanup exists but exclusivity/background not proven. | Bounded concurrent hydration, adaptive quality policy, controller lifecycle and profiling tests. |
+| 15.15 Integrations | Partial / high risk | KIR-011; independent Kirari screens exist. All Anime Hub/profile/group/DM and deletion/restriction surfaces not verified. | Integration contract and surface-by-surface visibility tests. |
+| 15.16 Notifications | Partial | Notification test file exists; aggregation, unread engine ownership, deep-context routing and duplicate suppression not proven. | Trace event→notification→unread→route; test batching/idempotency. |
+| 15.17 Creator analytics | Not proven | No evidence in current inspected surface set that dashboard is backed by server aggregates and hides unavailable metrics. | Inspect stats pipeline/UI and prohibit fabricated metrics. |
+| 15.18 State/moderation/rights | Partial / high risk | KIR-006/014: processing vs moderation lifecycle ambiguity; text-only automated moderation and no appeal noted in operations doc. | Server transition table, takedown/appeal audit and consistent visibility across surfaces. |
+| 15.19 Data model | Partial | KIR-005 confirms server authority direction; complete schemaVersion, subcollections, query indexes, event aggregation and migration coverage not yet established. | Inventory collections/queries/indexes; verify independent comments/likes and rules with Emulator. |
+| 15.20 Acceptance | **Fail / not yet accepted** | Spec explicitly rejects viewer-only, chronological-as-recommendation, primitive comments, missing audio/hashtags/anime/social graph, fake analytics, blocking upload, weak-network stalls, leaks, duplicate actions, conflicting legacy and clone UI. The audit has not proven all gates pass; several high-risk gaps remain. | Do not label production-ready. Close each requirement with tests and evidence before PR approval. |
+
+### Phase 0 evidence status and execution gate
+
+- **Documents:** Located and read: `docs/PUBGET_MASTER_SPEC.md` (Axis 15 full section), `docs/PUBGET_OPERATING_PROMPT.md` (items 0–6), and `docs/PUBGET_GAP_ANALYSIS_AND_ROADMAP.md`. The user-named root paths do not exist; canonical files are under `docs/`.
+- **Source inventory:** Flutter Kirari screens/repository/copy; Functions domain/pipeline/media access/visibility; Kirari tests; Firestore and Storage rules were fetched from `main`. Full line-by-line callable/query/index/collection cross-reference is still open.
+- **CI verification (2026-11-04):** Flutter analyze, Flutter tests, Android debug build, Functions syntax/unit tests, Firestore Rules Emulator tests, and Storage Rules tests all passed in GitHub Actions run `41928966116` for commit `38d97d2f3534334007df25a1f490fe3a27f50b7c`.
+- **Still not verified:** device UI/network/memory profiling, deployed Firebase/Cloudflare configuration, deployed indexes/rules, and production runtime capacity.
+- **Decision:** Phase 0 remains **open** because the complete callable/query mapping, scalability, moderation and production/device acceptance gates remain. CI green is not equivalent to production acceptance.
+
+
+## Implementation pass — feed correctness (2026-11-04)
+
+### KIR-015 — Feed cursor was not a real keyset cursor (fixed in source; runtime not yet verified)
+- **Evidence:** `functions/src/kirariDomain.js:getFeed` read the supplied `afterScore` but searched for `afterId` inside a newly fetched top-100 candidate list. If the prior item moved out of that window, the cursor was ignored and page 1 could repeat. The score was also not used to define the next-page boundary.
+- **Root cause:** cursor implementation depended on a volatile in-memory rank window instead of a deterministic score/id tuple.
+- **Change:** sort by rank descending then document id ascending; apply a score/id keyset comparator; return that tuple as nextCursor. Exported the comparator and added a unit test for score ties, before/after boundaries, and absent cursor.
+- **Files:** `functions/src/kirariDomain.js`; `functions/test/kirariDomain.test.js`.
+- **Risk/limitation:** feed candidates are still capped at 100 fetched documents. This patch fixes cursor comparison within the candidate window but does not implement a complete server-side cursor across arbitrarily large feeds. Candidate selection/ranking needs a separate scalable design.
+
+### KIR-016 — Feed fetch incorrectly marked prefetched items as seen (fixed in source; runtime not yet verified)
+- **Evidence:** `getFeed` wrote every returned item to `users/{uid}/kirariSeen` before the viewer had played it. A fetch/prefetch could therefore suppress a reel from For You.
+- **Root cause:** seen-ring mutation was coupled to feed delivery instead of server-credited playback.
+- **Change:** removed seen writes from `getFeed`; `recordPlayback` now reads the viewer's seen document in its transaction and records it only when a qualified view is credited.
+- **Files:** `functions/src/kirariDomain.js`.
+- **Risk/limitation:** playback qualification itself still relies on heartbeat elapsed time and client event values bounded by server elapsed time; additional adversarial tests are required before treating anti-farming as complete.
+
+### Verification status for this pass
+- Source updates committed to `feature/15-kirari-production-rebuild`: feed cursor comparator and cursor test.
+- GitHub combined status and PR-triggered workflow lookup for the latest commit returned no checks/runs. This branch does not match the workflow's configured push branch (`feat/kirari-system-rebuild`), and no PR was opened because the full acceptance gate remains incomplete.
+- Local Node/Flutter/Emulator execution is unavailable in this environment (GitHub clone DNS resolution failed). Therefore these source changes are **not test-passing claims**.
+- Remaining Phase 0 blockers: full callable/query/index cross-reference; Rules/Storage emulator execution; Functions test execution; Flutter analyze/widget/integration/build; device weak-network and memory profiling; complete integration verification and CI.
+
+
+### KIR-017 — Client could forge seen-ring state (security fix committed; Emulator not run)
+- **Evidence:** `firestore.rules` previously allowed the owner to create/update/delete `users/{uid}/kirariSeen/{reelId}` as long as the document only contained `seenAt`. This made it possible to suppress recommendations without qualified playback, defeating the server-owned seen-ring contract.
+- **Root cause:** owner-scoped preferences rule was applied to an anti-abuse/recommendation state that must be server-authoritative.
+- **Change:** deny all client writes to Kirari seen markers. The Admin SDK playback transaction writes them after a server-qualified view. Updated the Firestore Rules test to expect client create to fail.
+- **Files:** `firestore.rules`; `functions/test/firestore.rules.test.js`.
+- **Risk:** until Emulator rules tests pass, this is a source-level correction, not verified security evidence. Confirm the playback transaction is the only writer and that existing clients do not rely on writing seen markers.
+
+
+## Functions / Rules / query audit — additional pass (2026-11-04)
+
+### KIR-018 — Privacy filtering failed open on Firestore lookup errors (source fix + regression test committed; runtime pending)
+- **Evidence:** `functions/src/kirariDomain.js:isBlockedPair`, `excludedCreatorIds`, and `getFeed` converted friendship/mute/interest/respect lookup failures into `null` or empty snapshots. The feed could therefore continue without applying block/mute filters during a backend failure.
+- **Root cause:** security/privacy predicates were treated as optional enrichment and swallowed infrastructure errors.
+- **Change:** removed fail-open catches from direct block checks and feed privacy/personalization reads. A failed privacy dependency now fails the callable instead of returning a potentially unsafe feed. Added a regression test that makes a friendship lookup fail and asserts the feed rejects.
+- **Files:** `functions/src/kirariDomain.js`; `functions/test/kirariDomain.test.js`.
+- **Risk:** this is intentionally fail-closed but may make feed unavailable during a Firestore incident. Add bounded retries/observability only if they preserve fail-closed semantics.
+
+### Query/index findings (open)
+- **KIR-Q01 — Feed candidate cap / pagination:** `getFeed` queries the top 100 published/approved reels by stored ranking or velocity, then performs block/mute/not-interested filtering, Following filtering, For You ranking, diversity/exploration selection and cursor filtering in memory. This can starve eligible items beyond the first 100 and cannot provide a stable exhaustive cursor as the candidate set changes. The previous cursor correction only makes the tuple comparison deterministic within this capped candidate set. **Root cause:** ranking and filtering happen after a bounded Firestore query, rather than on a server-ranked candidate pipeline with cursor-stable materialized pages.
+- **KIR-Q02 — Unbounded per-user reads:** feed loads all matching friendship documents, all respects from the viewer, all Kirari interests, muted creators and not-interested records. These reads grow with account activity and have no explicit limits/pagination. **Root cause:** per-request profile reconstruction from unbounded collections rather than compact server-maintained profile/graph snapshots.
+- **KIR-Q03 — Incomplete relevance dimensions:** `rankKirari` currently considers hashtags, singular `animeId`, `audioId`, creator, freshness, engagement and a negative counter. It does not use the spec's characterIds/animeIds arrays, watch-duration/skip/replay/search/profile-visit signals, diversity caps, or calibrated 70–90/10–30 exploration controls. **Root cause:** lightweight static scoring is used instead of the specified behavioral recommendation service.
+- **KIR-Q04 — Following semantics:** Following is derived from `respects` documents with value >= 5, which is the intended fan threshold, but candidate reels still originate from a global top-100 rankingScore query. A creator's reels can be omitted merely because they are outside the global top 100. **Root cause:** creator filtering occurs after global truncation rather than querying the followed-creator set or a server-built following feed.
+- **KIR-Q05 — Indexes:** the current index file includes composite indexes for the inspected reel feed, hashtag, creator, audio and moderation queue queries. No missing index was proven in this static pass. Deployment state was not inspected; source JSON presence is not proof that indexes are deployed.
+
+### Rules and pipeline findings (open)
+- Firestore Kirari root, comments, actions, playback sessions, audio and upload lock/quota/key documents are server-write-only; public reads are gated on published/approved state. Seen Ring client writes were explicitly denied in KIR-017. Existing Rules tests cover several owner/public/server-write boundaries, but Emulator execution is still required.
+- Storage source upload is owner-scoped, MP4-only, and bounded at 500 MiB; processed renditions are server-write-only and reads require a published/approved parent reel. Confirm deployed Storage Rules and test resumable upload metadata/content-type behavior in Emulator/device flows.
+- Pipeline implementation uses ffmpeg processing and emits processed renditions/cover; this source review does not establish that the deployed runtime has ffmpeg, sufficient memory/time, or required billing/Cloud Run capabilities. Deployment/operational verification remains blocked.
+- Callable exports are wired through `functions/index.js` for upload/finalize/retry/cancel/delete, actions/comments, playback/feed/hashtag/audio/creator/reel, moderation and mute. A complete client-callable parity and auth/App Check/rate-limit matrix remains open.
+
+### Test execution findings
+- `functions/package.json` defines `npm test` as an explicit allowlist of Node tests including `kirariDomain.test.js`, `kirariPipeline.test.js`, and `kirariNotifications.test.js`. Its separate `test:rules` script is Emulator-dependent and is not part of that ordinary test allowlist.
+- Source-level tests were added/updated, but neither the Node suite nor Emulator suite has been executed in this environment. Do not interpret the presence of tests as passing evidence.
+
+### Current implementation status
+- Source changes on `feature/15-kirari-production-rebuild`: KIR-015 stable score/id cursor comparator + test; KIR-016 seen marker only after qualified playback; KIR-017 server-only seen marker Rules + Rules test; KIR-018 fail-closed privacy filters + regression test.
+- **Phase 0 remains open.** No PR has been opened. No runtime tests, Emulator tests, Flutter checks, deployed Rules/index verification, or weak-network/device profiling have passed in this session.
+
+
+## Verification update — 2026-11-04
+
+### CI run 41928966116 — PASS
+Commit: `38d97d2f3534334007df25a1f490fe3a27f50b7c`
+
+All three required workflow jobs completed successfully:
+- Flutter analyze, tests and Android debug build — success.
+- Functions checks and unit tests — success.
+- Firestore and Storage Emulator rules tests — success.
+
+This closes the source/CI verification gate for the changes present in that commit only. It does **not** close Phase 0 or production acceptance.
+
+### Remaining release blockers (confirmed from current source)
+1. **KIR-Q01/Q04 — Feed completeness:** `getFeed` still truncates the global candidate query to 100 before Following, privacy and personalization filters. Eligible reels can be starved. Cursor ordering is deterministic only within this capped, mutable candidate window.
+2. **KIR-Q02 — Read amplification:** friendship, respect, interest, mute and not-interested collections are read without pagination or bounded materialized snapshots.
+3. **KIR-Q03 — Recommendation maturity:** current ranker remains heuristic. It does not consume the specified behavioral events (watch duration, skips, replays, searches/profile visits), character/anime arrays, calibrated exploration controls, or creator/topic diversity caps.
+4. **Upload recovery:** the client persists the local source and restarts upload to the same object path after app restart. This is not byte-offset resumable/background upload.
+5. **Moderation:** automated moderation is text-only; visual/audio moderation and creator appeal workflow are absent.
+6. **Operations:** source code and Emulator CI do not prove deployed FFmpeg runtime capacity, Cloud Functions limits, Storage bucket configuration, deployed indexes/rules, App Check enforcement, or production billing readiness.
+7. **Device acceptance:** weak-network playback, memory pressure, thermal behavior, long-session controller cleanup, and real-device upload recovery still require physical-device verification.
+
+### Release decision
+**NO-GO for production-ready PR approval.** CI is green, but the outstanding architecture, moderation, deployment and device acceptance blockers above are material. Do not describe the feature as production complete or merge it to `main` until these are closed or explicitly accepted by the repository owner with a staged rollout plan.

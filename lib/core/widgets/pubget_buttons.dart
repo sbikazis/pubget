@@ -23,6 +23,7 @@ class PubgetPrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final foreground = Theme.of(context).colorScheme.onPrimary;
     return Semantics(
+      excludeSemantics: true,
       button: true,
       enabled: !loading && onPressed != null,
       liveRegion: loading,
@@ -61,6 +62,7 @@ class PubgetSecondaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final foreground = Theme.of(context).colorScheme.primary;
     return Semantics(
+      excludeSemantics: true,
       button: true,
       enabled: !loading && onPressed != null,
       liveRegion: loading,
@@ -97,6 +99,7 @@ class PubgetTextButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final foreground = Theme.of(context).colorScheme.primary;
     return Semantics(
+      excludeSemantics: true,
       button: true,
       enabled: !loading && onPressed != null,
       liveRegion: loading,

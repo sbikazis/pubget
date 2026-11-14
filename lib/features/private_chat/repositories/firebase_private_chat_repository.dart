@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import '../../../core/media/media_kind.dart';
+import '../../../core/media/media_repository_factory.dart';
+import '../../../core/media/r2_media_storage_provider.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
@@ -16,15 +18,18 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
   FirebasePrivateChatRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
-    FirebaseStorage? storage,
+    R2MediaStorageProvider? mediaStorage,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _storage = storage ?? FirebaseStorage.instance;
+       _mediaStorage = mediaStorage;
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
-  final FirebaseStorage _storage;
+  R2MediaStorageProvider? _mediaStorage;
+
+  R2MediaStorageProvider get _mediaStorageProvider =>
+      _mediaStorage ??= createR2MediaStorageProvider();
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
@@ -203,63 +208,72 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
     required String contentType,
     required void Function(double progress) onProgress,
   }) => _guard(() async {
-    final extension = _extension(fileName, contentType);
+    final uid = _uid;
+    if (uid == null || bytes.isEmpty) {
+      throw const PermissionError('Sign in before sending media.');
+    }
     final type = contentType.startsWith('video/')
         ? ChatMessageType.video
-        : ChatMessageType.image;
-    final path = 'privateChats/$chatId/media/${mediaId}_original.$extension';
-    final reference = _storage.ref(path);
-    final task = reference.putData(
-      bytes,
-      SettableMetadata(
-        contentType: contentType,
-        customMetadata: <String, String>{
-          'uploadedBy': _uid ?? '',
-          'mediaId': mediaId,
-          'pipeline': 'pubget-chat-v1',
-        },
-      ),
+        : contentType.startsWith('audio/')
+            ? ChatMessageType.audio
+            : ChatMessageType.image;
+    final kind = type == ChatMessageType.video
+        ? MediaKind.reels
+        : type == ChatMessageType.audio
+            ? MediaKind.audio
+            : MediaKind.image;
+    final extension = _extension(fileName, contentType);
+    final path = await _mediaStorageProvider.upload(
+      ownerUid: uid,
+      kind: kind,
+      bytes: bytes,
+      contentType: contentType,
+      extension: extension,
+      scopeType: 'privateChats',
+      scopeId: chatId,
+      onProgress: onProgress,
     );
-    task.snapshotEvents.listen((snapshot) {
-      if (snapshot.totalBytes > 0) {
-        onProgress(snapshot.bytesTransferred / snapshot.totalBytes);
-      }
+
+    final mediaRef = _chats.doc(chatId).collection('media').doc(mediaId);
+    await mediaRef.set({
+      'mediaId': mediaId,
+      'uploaderId': uid,
+      'mediaType': type == ChatMessageType.video
+          ? 'video'
+          : type == ChatMessageType.audio
+              ? 'audio'
+              : 'image',
+      'originalPath': path,
+      'thumbnailPath': type == ChatMessageType.image ? path : null,
+      'mediumPath': type == ChatMessageType.image ? path : null,
+      'status': 'ready',
+      'contentType': contentType,
+      'sizeBytes': bytes.length,
+      'createdAt': FieldValue.serverTimestamp(),
     });
-    await task;
     onProgress(1);
-    // The server-side pipeline publishes processed renditions into the media
-    // document. Wait for it instead of inventing a URL the client cannot read.
-    final mediaSnapshot = await _chats
-        .doc(chatId)
-        .collection('media')
-        .doc(mediaId)
-        .snapshots()
-        .firstWhere(
-          (snapshot) =>
-              snapshot.data()?['status'] == 'ready' ||
-              snapshot.data()?['status'] == 'failed',
-        )
-        .timeout(const Duration(minutes: 3));
-    final data = mediaSnapshot.data() ?? const <String, dynamic>{};
-    if (data['status'] != 'ready') {
-      throw StateError('Media processing failed.');
-    }
+
     return ChatMediaUpload(
-      mediaUrl: (data['mediumPath'] ?? data['originalPath']) as String,
-      thumbnailUrl: data['thumbnailPath'] as String?,
+      mediaUrl: path,
+      thumbnailUrl: type == ChatMessageType.image ? path : null,
       mediaId: mediaId,
       type: type,
     );
   });
 
   String _extension(String fileName, String contentType) {
-    final candidate = fileName.split('.').last.toLowerCase();
-    if (candidate.length <= 5 && RegExp(r'^[a-z0-9]+$').hasMatch(candidate)) {
-      return candidate;
-    }
-    return contentType == 'image/png' ? 'png' : 'jpg';
+    if (contentType == 'video/quicktime') return 'mov';
+    if (contentType == 'video/webm') return 'webm';
+    if (contentType.startsWith('video/')) return 'mp4';
+    if (contentType == 'audio/mpeg') return 'mp3';
+    if (contentType == 'audio/aac') return 'aac';
+    if (contentType == 'audio/ogg') return 'ogg';
+    if (contentType == 'audio/mp4') return 'm4a';
+    if (contentType == 'image/png') return 'png';
+    if (contentType == 'image/webp') return 'webp';
+    if (contentType == 'image/gif') return 'gif';
+    return 'jpg';
   }
-
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
       _guard(() async {
         await _functions.httpsCallable(name).call(data);

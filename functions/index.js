@@ -441,6 +441,10 @@ exports.getKirariReel = onCall(
   { region: "us-central1" },
   kirariDomain.getReel,
 );
+exports.getSavedKirariReels = onCall(
+  { region: "us-central1" },
+  kirariDomain.getSavedReels,
+);
 exports.reviewKirariContent = onCall(
   { region: "us-central1" },
   kirariDomain.reviewContent,
@@ -457,6 +461,7 @@ exports.processKirariVideo = onObjectFinalized(
   { region: "europe-west3", memory: "2GiB", timeoutSeconds: 540 },
   processKirariVideo,
 );
+
 
 exports.reportAnime = onCall(
   { region: "us-central1" },
@@ -1023,6 +1028,18 @@ exports.getModerationSummary = onCall(
   { region: "us-central1" },
   moderationDomain.getModerationSummary,
 );
+exports.submitModerationAppeal = onCall(
+  { region: "us-central1" },
+  moderationDomain.submitAppeal,
+);
+exports.listModerationAppeals = onCall(
+  { region: "us-central1" },
+  moderationDomain.listAppeals,
+);
+exports.reviewModerationAppeal = onCall(
+  { region: "us-central1" },
+  moderationDomain.reviewAppeal,
+);
 
 exports.processEventLifecycle = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },
@@ -1107,7 +1124,11 @@ exports.onFriendRequest = onDocumentCreated(
   "friendships/{friendshipId}",
   notificationTriggers.friendRequest,
 );
-exports.onRespectReceived = onDocumentCreated(
+exports.onFriendRequestAccepted = onDocumentUpdated(
+  "friendships/{friendshipId}",
+  notificationTriggers.friendAccepted,
+);
+exports.onRespectReceived = onDocumentWritten(
   "respects/{respectId}",
   notificationTriggers.respectReceived,
 );
@@ -1118,6 +1139,14 @@ exports.onKirariPublished = onDocumentUpdated(
 exports.onKirariComment = onDocumentCreated(
   "kirari/{reelId}/comments/{commentId}",
   notificationTriggers.kirariComment,
+);
+exports.onKirariLike = onDocumentCreated(
+  "kirari/{reelId}/actions/{actionId}",
+  notificationTriggers.kirariLike,
+);
+exports.onKirariCommentLike = onDocumentCreated(
+  "kirari/{reelId}/comments/{commentId}/likes/{uid}",
+  notificationTriggers.kirariCommentLike,
 );
 exports.unblockUser = onCall(
   { region: "us-central1" },

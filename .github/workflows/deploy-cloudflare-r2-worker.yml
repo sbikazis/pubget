@@ -1,0 +1,30 @@
+name: Deploy Cloudflare R2 Worker
+
+on:
+  push:
+    branches:
+      - fix/media-group-image-r2-reference
+    paths:
+      - "worker/**"
+      - ".github/workflows/deploy-cloudflare-r2-worker.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Test Worker authorization and media validation
+        run: npx --yes vitest@3.2.4 run worker/src/index.test.ts
+      - name: Deploy Worker to production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ecfe62b9c4a9e3e2f683a07aa7e6035b
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::CLOUDFLARE_API_TOKEN secret is missing"; exit 1; }
+          npx --yes wrangler@4 deploy --config worker/wrangler.toml --keep-vars

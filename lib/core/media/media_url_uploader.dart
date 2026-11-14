@@ -55,6 +55,8 @@ final class RepositoryMediaUrlUploader implements MediaUrlUploader {
         uploaded.failureOrNull ?? const UnknownError('Upload failed.'),
       );
     }
-    return _repository.resolveUrl(asset);
+    // Persist the stable object key, not a ten-minute signed URL. Renderers
+    // resolve it on demand so profiles do not break when the URL expires.
+    return Success<String>(asset.storageKey);
   }
 }

@@ -17,6 +17,9 @@ enum FanWorkType {
   worldbuilding,
   other;
 
+  /// Legacy enum alias retained for older serialized tests and clients.
+  static const FanWorkType aiCharacter = FanWorkType.character;
+
   /// The four types a creator can publish today, in presentation order.
   static const creatable = <FanWorkType>[manga, story, drawing, character];
 

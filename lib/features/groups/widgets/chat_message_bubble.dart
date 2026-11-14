@@ -1,13 +1,16 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 import '../../../core/constants/rank_colors.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../../core/media/media_reference.dart';
 import '../data/sticker_catalog.dart';
 import '../models/chat_models.dart';
 import '../models/group_models.dart';
@@ -971,19 +974,57 @@ class _VoiceBubble extends StatefulWidget {
 class _VoiceBubbleState extends State<_VoiceBubble> {
   var _playing = false;
   var _speed = 1.0;
+  final AudioPlayer _fallbackPlayer = AudioPlayer();
+  late final StreamSubscription<void> _completionSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _completionSubscription = _fallbackPlayer.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _playing = false);
+    });
+  }
+
   final _levels = List<double>.generate(
     28,
     (i) => 0.25 + math.sin(i * 0.55).abs() * 0.75,
   );
 
   @override
+  void dispose() {
+    unawaited(_completionSubscription.cancel());
+    unawaited(_fallbackPlayer.dispose());
+    super.dispose();
+  }
+
+  Future<void> _handleTap() async {
+    if (widget.onTap != null) {
+      setState(() => _playing = !_playing);
+      widget.onTap!.call();
+      return;
+    }
+    if (_playing) {
+      await _fallbackPlayer.pause();
+      if (mounted) setState(() => _playing = false);
+      return;
+    }
+    final reference = widget.message.mediaUrl;
+    if (reference == null) return;
+    final url = await resolveMediaDownloadUrl(reference);
+    if (url == null) return;
+    try {
+      await _fallbackPlayer.play(UrlSource(url));
+      if (mounted) setState(() => _playing = true);
+    } on Object {
+      if (mounted) setState(() => _playing = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final active = _playing ? const Color(0xFF53BDEB) : widget.textColor;
     return InkWell(
-      onTap: () {
-        setState(() => _playing = !_playing);
-        widget.onTap?.call();
-      },
+      onTap: _handleTap,
       child: SizedBox(
         width: 220,
         child: Row(

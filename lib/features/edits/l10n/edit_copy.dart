@@ -18,11 +18,10 @@ final class EditCopy {
   String get recordVideoHint => _s.pick('Record video', 'تسجيل فيديو');
   String get replaceVideo => _s.pick('Replace video', 'استبدال الفيديو');
   String get caption => _s.pick('Caption', 'الوصف');
-  String get captionHint =>
-      _s.pick('Write a caption…', 'اكتب وصفًا…');
-  String get animeTag => _s.pick('Anime tag (optional)', 'وسم الأنمي (اختياري)');
-  String get animeTagHint =>
-      _s.pick('e.g. one_piece', 'مثال: one_piece');
+  String get captionHint => _s.pick('Write a caption…', 'اكتب وصفًا…');
+  String get animeTag =>
+      _s.pick('Anime tag (optional)', 'وسم الأنمي (اختياري)');
+  String get animeTagHint => _s.pick('e.g. one_piece', 'مثال: one_piece');
   String get publish => _s.pick('Publish Reel', 'نشر الريل');
   String get continueUpload => _s.pick('Continue', 'متابعة');
   String get retry => _s.pick('Retry upload', 'إعادة محاولة الرفع');
@@ -33,25 +32,22 @@ final class EditCopy {
   String get uploading => _s.pick('Uploading', 'جارٍ الرفع');
   String get queued => _s.pick('Queued', 'في الانتظار');
   String get dismiss => _s.pick('Dismiss', 'إخفاء');
-  String get paused =>
-      _s.pick('Paused — waiting for connection', 'متوقف مؤقتًا — بانتظار الاتصال');
+  String get paused => _s.pick(
+    'Paused — waiting for connection',
+    'متوقف مؤقتًا — بانتظار الاتصال',
+  );
   String get processing =>
       _s.pick('Processing on the server', 'جارٍ المعالجة على الخادم');
   String get published => _s.pick('Published', 'تم النشر');
-  String get needsReview => _s.pick(
-    'Held for review',
-    'قيد المراجعة الإشرافية',
-  );
+  String get needsReview =>
+      _s.pick('Held for review', 'قيد المراجعة الإشرافية');
   String get publishedMessage => _s.pick(
     'Your Reel is live. Open it in the feed.',
     'الريل متاح الآن. افتحه من الريلز.',
   );
-  String get publishingInBackground => _s.pick(
-    'Publishing in the background…',
-    'جارٍ النشر في الخلفية…',
-  );
-  String queueCount(int count) =>
-      _s.pick('$count uploads', '$count رفع');
+  String get publishingInBackground =>
+      _s.pick('Publishing in the background…', 'جارٍ النشر في الخلفية…');
+  String queueCount(int count) => _s.pick('$count uploads', '$count رفع');
   String get draftStatus => _s.pick('Draft', 'مسودة');
   String get readyStatus => _s.pick('Ready to publish', 'جاهز للنشر');
   String get failedStatus => _s.pick('Needs attention', 'يحتاج إجراءً');
@@ -70,8 +66,7 @@ final class EditCopy {
     'ريلك جاهز — شاهده الآن؟',
   );
   String get watchNow => _s.pick('Watch now', 'شاهده الآن');
-  String get openEdit =>
-      _s.pick('Open published Reel', 'فتح الريل المنشور');
+  String get openEdit => _s.pick('Open published Reel', 'فتح الريل المنشور');
   String get noVideoYet => _s.pick(
     'Add an MP4 to begin — any aspect ratio works',
     'أضف فيديو MP4 للبدء — أي نسبة عرض مدعومة',
@@ -110,8 +105,7 @@ final class EditCopy {
   String get respect => _s.pick('Respect', 'احترام');
   String get more => _s.pick('More', 'المزيد');
   String get repost => _s.pick('Repost', 'إعادة نشر');
-  String get originalCreator =>
-      _s.pick('Original creator', 'المبدع الأصلي');
+  String get originalCreator => _s.pick('Original creator', 'المبدع الأصلي');
   String get comments => _s.pick('Comments', 'التعليقات');
   String get newest => _s.pick('Newest', 'الأحدث');
   String get top => _s.pick('Top', 'الأكثر إعجابًا');
@@ -200,15 +194,10 @@ final class EditCopy {
       );
 
   // Entity surfaces (Reel / Audio / Hashtag).
-  //
-  // Two clean history lines contributed complementary copy: this file carries
-  // the upload/moderation vocabulary, while 936297f added the detail-page,
-  // audio-page and hashtag-page vocabulary. Axis Zero keeps both.
-  // `audio`, `hashtags` and `views` are deliberately NOT repeated here —
-  // the upload form's own labels above win.
   String get reelDetails => _s.pick('Reel', 'ريل');
   String get creatorFallback => _s.pick('Pubget creator', 'مبدع على Pubget');
   String get originalAudio => _s.pick('Original Audio', 'الصوت الأصلي');
+  String get useAudio => _s.pick('Use this audio', 'استخدم هذا الصوت');
   String get audioSource => _s.pick('Audio source', 'مصدر الصوت');
   String get openOriginalReel =>
       _s.pick('Open original Reel', 'فتح الريل الأصلي');
@@ -246,10 +235,7 @@ final class EditCopy {
     'قد يكون محذوفًا أو ما زال قيد المعالجة.',
   );
 
-  String primaryActionLabel({
-    required bool hasVideo,
-    required String phase,
-  }) {
+  String primaryActionLabel({required bool hasVideo, required String phase}) {
     return switch (phase) {
       'uploading' => uploading,
       'processing' => processing,
@@ -278,21 +264,21 @@ final class EditCopy {
     }
     return switch (edit.failureReason) {
       'invalid-video' => _s.pick(
-          'This video is not a supported MP4, or it is too large.',
-          'هذا الفيديو ليس MP4 مدعومًا، أو حجمه كبير جدًا.',
-        ),
+        'This video is not a supported MP4, or it is too large.',
+        'هذا الفيديو ليس MP4 مدعومًا، أو حجمه كبير جدًا.',
+      ),
       'duration' => _s.pick(
           'Reels can be up to 60 seconds long.',
           'يمكن أن يصل طول الريل إلى 60 ثانية.',
         ),
       'aspect-unrecoverable' => _s.pick(
-          'We could not prepare this video for full-screen display. Delete the draft or try another file.',
-          'تعذر تجهيز هذا الفيديو للعرض بملء الشاشة. احذف المسودة أو جرّب ملفًا آخر.',
-        ),
+        'We could not prepare this video for full-screen display. Delete the draft or try another file.',
+        'تعذر تجهيز هذا الفيديو للعرض بملء الشاشة. احذف المسودة أو جرّب ملفًا آخر.',
+      ),
       _ => _s.pick(
-          'Processing failed. You can retry or replace the video.',
-          'فشلت المعالجة. يمكنك إعادة المحاولة أو استبدال الفيديو.',
-        ),
+        'Processing failed. You can retry or replace the video.',
+        'فشلت المعالجة. يمكنك إعادة المحاولة أو استبدال الفيديو.',
+      ),
     };
   }
 
@@ -306,8 +292,8 @@ final class EditCopy {
         );
       }
       return _s.pick(
-        'Upload was blocked by storage security. Stay signed in and retry in a moment.',
-        'تم حظر الرفع بواسطة أمان التخزين. ابقَ مسجّل الدخول وأعد المحاولة بعد لحظات.',
+        'Could not upload this video securely. Please retry.',
+        'تعذر رفع الفيديو بشكل آمن. أعد المحاولة من فضلك.',
       );
     }
     if (failure is NetworkError) {

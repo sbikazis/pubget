@@ -265,7 +265,9 @@ final class FakeEditsRepository implements EditsRepository {
   Future<Result<SavedReelsPage>> listSavedReels({
     String? afterId,
     int limit = 30,
-  }) async => Success(SavedReelsPage(<Edit>[], hasMore: false));
+  }) async => const Success<SavedReelsPage>(
+    SavedReelsPage(<Edit>[], hasMore: false),
+  );
 
   Future<void> close() async => _editController.close();
 }

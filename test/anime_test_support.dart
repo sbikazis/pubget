@@ -134,31 +134,7 @@ final class FakeAnimeHttpClient implements AnimeHttpClient {
   }
 
   @override
-  Future<AnimeHttpResponse> post(
-    Uri uri, {
-    Object? body,
-    Duration? timeout,
-    AnimeRequestPriority priority = AnimeRequestPriority.catalog,
-  }) async {
-    calls.add(uri);
-    if (failuresBeforeSuccess > 0) {
-      failuresBeforeSuccess -= 1;
-      throw throwError ?? TimeoutException('timeout');
-    }
-    if (alwaysThrow && throwError != null) {
-      throw throwError!;
-    }
-    final keys = responses.keys.toList()
-      ..sort((a, b) => b.length.compareTo(a.length));
-    for (final key in keys) {
-      if (uri.path == key ||
-          uri.path.endsWith(key) ||
-          uri.path.endsWith('/$key')) {
-        return responses[key]!;
-      }
-    }
-    return const AnimeHttpResponse(statusCode: 404, body: '{}');
-  }
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 final class FakeAnimeRepository implements AnimeRepository {
@@ -388,6 +364,11 @@ final class FakeAnimeRepository implements AnimeRepository {
   }
 
   @override
+  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) async {
+    return _pageResult(page);
+  }
+
+  @override
   Future<Result<List<AnimeSeasonYear>>> getAvailableSeasons() async {
     seasonsCalls++;
     if (gate != null) await gate!.future;
@@ -423,27 +404,5 @@ final class FakeAnimeRepository implements AnimeRepository {
   }
 
   @override
-  Future<Result<AnimePage>> getLatest({int page = 1, int limit = 20}) async =>
-      _pageResult(page);
-
-  @override
-  Future<Result<List<AnimeStaff>>> getStaff(String animeId) async =>
-      Success<List<AnimeStaff>>(const <AnimeStaff>[]);
-
-  @override
-  Future<Result<List<Anime>>> getAnimeSummaries(
-    List<String> ids, {
-    int chunkSize = 100,
-  }) async => Success<List<Anime>>(const <Anime>[]);
-
-  @override
-  Future<Result<List<AnimeStudio>>> getStudios({int limit = 25}) async =>
-      Success<List<AnimeStudio>>(const <AnimeStudio>[]);
-
-  @override
-  Future<Result<AnimePage>> getByStudio(
-    String studioId, {
-    int page = 1,
-    int limit = 20,
-  }) async => _pageResult(page);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
