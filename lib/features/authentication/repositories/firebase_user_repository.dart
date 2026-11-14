@@ -65,18 +65,20 @@ final class FirebaseUserRepository implements UserRepository {
   @override
   Future<Result<PubgetUser>> updateUserProfile(PubgetUser user) async {
     try {
-      // Username changes must pass through the server reservation transaction;
-      // direct client writes are not an authority for global uniqueness.
-      if (user.username != null && user.username!.trim().isNotEmpty) {
-        await _functions
-            .httpsCallable('updateSocialProfile')
-            .call<void>({'username': user.username});
-      }
+      // Account/profile changes share the server-side validation path. This
+      // keeps username reservations, privacy projection and completion state
+      // atomic with the user document instead of mixing callable and client
+      // writes.
       final data = user.toMap()
         ..remove('id')
+        ..remove('email')
         ..remove('createdAt')
-        ..remove('username');
-      await _users.doc(user.id).set(data, SetOptions(merge: true));
+        ..remove('hasSkippedOnboarding');
+      if (user.username == null || user.username!.trim().isEmpty) {
+        data.remove('username');
+      }
+      if (user.language == null) data.remove('language');
+      await _functions.httpsCallable('updateSocialProfile').call<void>(data);
       return Success<PubgetUser>(user);
     } on Object catch (error) {
       return FailureResult<PubgetUser>(_mapFailure(error));
