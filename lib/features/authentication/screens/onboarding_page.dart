@@ -54,8 +54,29 @@ class _OnboardingPageState extends State<OnboardingPage> {
   Timer? _availabilityTimer;
   var _checking = false;
   var _step = 0;
+  var _seededIdentity = false;
 
   static const _totalSteps = 3;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final onboarding = context.watch<OnboardingProvider>();
+    final authUser = context.watch<AuthProvider>().currentUser;
+    if (_seededIdentity ||
+        onboarding.state != LoadingState.loaded ||
+        authUser == null) {
+      return;
+    }
+    final profile = onboarding.profile;
+    _username.text = profile?.username ?? '';
+    _displayName.text = profile?.displayName ?? authUser.displayName ?? '';
+    _bio.text = profile?.bio ?? '';
+    _country.text = profile?.country ?? '';
+    _age.text = profile?.age?.toString() ?? '';
+    _interests.addAll(profile?.favoriteAnimes ?? const <String>[]);
+    _seededIdentity = true;
+  }
 
   @override
   void dispose() {
