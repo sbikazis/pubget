@@ -30,6 +30,7 @@ final class FakeAuthRepository implements AuthRepository {
   var emailSignInCalls = 0;
   var signUpCalls = 0;
   var googleCalls = 0;
+  var verificationEmailCalls = 0;
   final _controller = StreamController<AuthUser?>.broadcast();
 
   @override
@@ -68,6 +69,27 @@ final class FakeAuthRepository implements AuthRepository {
     return failure == null
         ? const Success<void>(null)
         : FailureResult<void>(failure);
+  }
+
+  @override
+  Future<Result<void>> sendEmailVerification() async {
+    verificationEmailCalls++;
+    return const Success<void>(null);
+  }
+
+  @override
+  Future<Result<AuthUser?>> reloadCurrentUser() async {
+    final current = user;
+    if (current == null) return const Success<AuthUser?>(null);
+    user = AuthUser(
+      id: current.id,
+      email: current.email,
+      displayName: current.displayName,
+      avatarUrl: current.avatarUrl,
+      emailVerified: true,
+    );
+    _controller.add(user);
+    return Success<AuthUser?>(user);
   }
 
   @override
