@@ -11,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart' as provider;
 
+import '../core/app/app_version_gate.dart';
 import '../core/network/connectivity_events.dart';
 import '../core/network/network_service.dart';
 import '../core/theme/app_theme.dart';
@@ -996,6 +997,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         authState: auth.state,
         isAuthenticated: auth.isAuthenticated,
         isEmailVerified: auth.currentUser?.emailVerified ?? false,
+        isVersionGatePassed: AppVersionGate.hasPassed,
         onboardingState: onboarding.state,
         canEnterHome: onboarding.canEnterHome,
       ),
