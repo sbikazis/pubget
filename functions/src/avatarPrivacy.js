@@ -232,7 +232,9 @@ function createUpdateSocialProfile({
     const current = snapshot.data() || {};
     const update = {};
 
-    if (input.bio !== undefined) update.bio = input.bio.trim();
+    if (input.bio !== undefined) {
+      update.bio = input.bio === null ? null : input.bio.trim();
+    }
     if (input.favoriteAnimeIds !== undefined) {
       update.favoriteAnimeIds = input.favoriteAnimeIds;
     }
@@ -252,9 +254,13 @@ function createUpdateSocialProfile({
       update.username = userNameRegistry.normalizeUsername(input.username);
     }
     if (input.displayName !== undefined) {
-      update.displayName = input.displayName.trim();
+      update.displayName = input.displayName === null
+        ? null
+        : input.displayName.trim();
     }
-    if (input.country !== undefined) update.country = input.country.trim();
+    if (input.country !== undefined) {
+      update.country = input.country === null ? null : input.country.trim();
+    }
     if (input.gender !== undefined) update.gender = input.gender;
     if (input.avatarUrl !== undefined) update.avatarUrl = input.avatarUrl;
     if (input.isProfileCompleted !== undefined) {
@@ -262,9 +268,15 @@ function createUpdateSocialProfile({
       if (input.isProfileCompleted) update.hasSkippedOnboarding = false;
     }
     if (input.favoriteQuote !== undefined) {
-      update.favoriteQuote = input.favoriteQuote.trim();
+      update.favoriteQuote = input.favoriteQuote === null
+        ? null
+        : input.favoriteQuote.trim();
     }
-    if (input.animeTwin !== undefined) update.animeTwin = input.animeTwin.trim();
+    if (input.animeTwin !== undefined) {
+      update.animeTwin = input.animeTwin === null
+        ? null
+        : input.animeTwin.trim();
+    }
     if (input.age !== undefined) update.age = input.age;
     if (input.socialLinks !== undefined) {
       update.socialLinks = input.socialLinks.map((item) => ({
@@ -292,7 +304,12 @@ function createUpdateSocialProfile({
 
     if (update.isProfileCompleted === true) {
       const username = (update.username || current.username || "").trim();
-      const displayName = (update.displayName || current.displayName || "").trim();
+      const displayNameValue = update.displayName === undefined
+        ? current.displayName
+        : update.displayName;
+      const displayName = typeof displayNameValue === "string"
+        ? displayNameValue.trim()
+        : "";
       const avatarUrl = update.avatarUrl === undefined
         ? current.avatarUrl
         : update.avatarUrl;
