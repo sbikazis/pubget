@@ -1425,6 +1425,7 @@ function pubgetUserToMap(overrides = {}) {
 
 test("PubgetUser.toMap() create and update persist displayName and whoCanMessageMe", async () => {
   const created = pubgetUserToMap();
+  await seedUsername("carol", "anime_fan");
   await assertSucceeds(db("carol").doc("users/carol").set(created));
   const afterCreate = await db("carol").doc("users/carol").get();
   assert.equal(afterCreate.data().displayName, "Anime Fan");

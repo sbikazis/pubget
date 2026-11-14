@@ -106,6 +106,7 @@ test("registry status reports validation and taken states", async () => {
   const owned = await registry.status("Taken", "bob");
   assert.equal(owned.valid, true);
   assert.equal(owned.reason, null);
+  assert.equal(owned.reservedByUser, true);
   assert.equal(owned.normalized, "taken");
 
   const bad = await registry.status("9lives");

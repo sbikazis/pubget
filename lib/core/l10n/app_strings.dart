@@ -135,8 +135,6 @@ final class AppStrings {
     'I have verified my email',
     'لقد تحققت من بريدي الإلكتروني',
   );
-  String get signOut => pick('Sign out', 'تسجيل الخروج');
-
   String get resetPassword =>
       pick('Reset your password', 'إعادة تعيين كلمة المرور');
   String get resetPasswordSubtitle => pick(
@@ -238,6 +236,24 @@ final class AppStrings {
     'تم إرسال رسالة إعادة التعيين إن وُجد الحساب.',
   );
   String get signOut => pick('Sign out', 'تسجيل الخروج');
+  String get forceUpdateTitle =>
+      pick('Update required', 'التحديث مطلوب');
+  String get forceUpdateMessage => pick(
+    'This version of Pubget is no longer supported. Update the app to continue.',
+    'هذا الإصدار من Pubget لم يعد مدعوماً. حدّث التطبيق للمتابعة.',
+  );
+  String get softUpdateTitle =>
+      pick('Update available', 'يتوفر تحديث جديد');
+  String get softUpdateMessage => pick(
+    'A newer version of Pubget is available with improvements and fixes.',
+    'يتوفر إصدار أحدث من Pubget مع تحسينات وإصلاحات.',
+  );
+  String get updateNow => pick('Update now', 'حدّث الآن');
+  String get updateLater => pick('Later', 'لاحقاً');
+  String get updateLinkUnavailable => pick(
+    'The update link is not configured yet. Try again later.',
+    'رابط التحديث غير مُعدّ حالياً. حاول مرة أخرى لاحقاً.',
+  );
   String get appearance => pick('Appearance', 'المظهر');
   String get themeSystem => pick('System', 'تلقائي');
   String get themeLight => pick('Light', 'فاتح');
@@ -1630,6 +1646,10 @@ String get onboardingSkipCountrySemantic =>
 
 String get onboardingAge => pick('Age (optional)', 'العمر (اختياري)');
 String get onboardingGender => pick('Gender (optional)', 'الجنس (اختياري)');
+String get onboardingAgeInvalid => pick(
+  'Enter an age between 13 and 120, or leave it empty.',
+  'أدخل عمراً بين 13 و120 أو اترك الحقل فارغاً.',
+);
 String get genderFemale => pick('Female', 'أنثى');
 String get genderMale => pick('Male', 'ذكر');
 String get genderOther => pick('Other', 'آخر');
@@ -1641,7 +1661,16 @@ String get onboardingSkipAge => pick('Skip age', 'تخطي العمر');
 String get onboardingSkipAgeSemantic => pick('Skip age', 'تخطي العمر');
 
 String get onboardingInterestsTitle =>
-      pick('Anime interests', 'اهتماماتك الأنمي');
+      pick('Choose favorite anime (optional)', 'اختر أنمياتك المفضلة (اختياري)');
+String get onboardingFavoriteAnimeHint => pick(
+  'Search the Anime Hub catalog and select real anime titles.',
+  'ابحث في كتالوج مركز الأنمي واختر عناوين حقيقية.',
+);
+String get onboardingSearchAnime => pick('Search anime', 'ابحث عن أنمي');
+String get onboardingNoAnimeFound =>
+    pick('No anime found. Try another title.', 'لم يتم العثور على أنمي. جرّب عنواناً آخر.');
+String get onboardingSelectedAnime =>
+    pick('Selected anime', 'الأنميات المختارة');
 
 String get onboardingSkipInterests =>
       pick('Skip interests', 'تخطي الاهتمامات');

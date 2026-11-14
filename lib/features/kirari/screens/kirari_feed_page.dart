@@ -77,7 +77,9 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       _isAppForeground = false;
       _resumeAfterLifecycle =
           _resumeAfterLifecycle || controller?.value.isPlaying == true;
-      if (controller?.value.isPlaying == true) unawaited(controller!.pause());
+      if (controller?.value.isPlaying == true) {
+        unawaited(controller!.pause());
+      }
     } else if (state == AppLifecycleState.resumed) {
       _isAppForeground = true;
       final controller = _controller;

@@ -158,6 +158,19 @@ function createUpdateSocialProfile({
     if (input.country !== undefined && !optionalString(input.country, 64)) {
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
     }
+    if (input.gender !== undefined &&
+        input.gender !== null &&
+        !["female", "male", "other", "prefer_not_to_say"].includes(input.gender)) {
+      throw new HttpsError("invalid-argument", "Profile update is invalid.");
+    }
+    if (input.avatarUrl !== undefined &&
+        !optionalString(input.avatarUrl, 2048)) {
+      throw new HttpsError("invalid-argument", "Profile update is invalid.");
+    }
+    if (input.isProfileCompleted !== undefined &&
+        typeof input.isProfileCompleted !== "boolean") {
+      throw new HttpsError("invalid-argument", "Profile update is invalid.");
+    }
     if (input.favoriteQuote !== undefined &&
         !optionalString(input.favoriteQuote, 200)) {
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
@@ -198,6 +211,9 @@ function createUpdateSocialProfile({
         input.username === undefined &&
         input.displayName === undefined &&
         input.country === undefined &&
+        input.gender === undefined &&
+        input.avatarUrl === undefined &&
+        input.isProfileCompleted === undefined &&
         input.favoriteQuote === undefined &&
         input.animeTwin === undefined &&
         input.age === undefined &&
@@ -216,7 +232,9 @@ function createUpdateSocialProfile({
     const current = snapshot.data() || {};
     const update = {};
 
-    if (input.bio !== undefined) update.bio = input.bio.trim();
+    if (input.bio !== undefined) {
+      update.bio = input.bio === null ? null : input.bio.trim();
+    }
     if (input.favoriteAnimeIds !== undefined) {
       update.favoriteAnimeIds = input.favoriteAnimeIds;
     }
@@ -236,13 +254,29 @@ function createUpdateSocialProfile({
       update.username = userNameRegistry.normalizeUsername(input.username);
     }
     if (input.displayName !== undefined) {
-      update.displayName = input.displayName.trim();
+      update.displayName = input.displayName === null
+        ? null
+        : input.displayName.trim();
     }
-    if (input.country !== undefined) update.country = input.country.trim();
+    if (input.country !== undefined) {
+      update.country = input.country === null ? null : input.country.trim();
+    }
+    if (input.gender !== undefined) update.gender = input.gender;
+    if (input.avatarUrl !== undefined) update.avatarUrl = input.avatarUrl;
+    if (input.isProfileCompleted !== undefined) {
+      update.isProfileCompleted = input.isProfileCompleted;
+      if (input.isProfileCompleted) update.hasSkippedOnboarding = false;
+    }
     if (input.favoriteQuote !== undefined) {
-      update.favoriteQuote = input.favoriteQuote.trim();
+      update.favoriteQuote = input.favoriteQuote === null
+        ? null
+        : input.favoriteQuote.trim();
     }
-    if (input.animeTwin !== undefined) update.animeTwin = input.animeTwin.trim();
+    if (input.animeTwin !== undefined) {
+      update.animeTwin = input.animeTwin === null
+        ? null
+        : input.animeTwin.trim();
+    }
     if (input.age !== undefined) update.age = input.age;
     if (input.socialLinks !== undefined) {
       update.socialLinks = input.socialLinks.map((item) => ({
@@ -268,6 +302,33 @@ function createUpdateSocialProfile({
     }
     if (input.language !== undefined) update.language = input.language;
 
+    if (update.isProfileCompleted === true) {
+      const username = (update.username || current.username || "").trim();
+      const displayNameValue = update.displayName === undefined
+        ? current.displayName
+        : update.displayName;
+      const displayName = typeof displayNameValue === "string"
+        ? displayNameValue.trim()
+        : "";
+      const avatarUrl = update.avatarUrl === undefined
+        ? current.avatarUrl
+        : update.avatarUrl;
+      if (!username || !displayName || typeof avatarUrl !== "string" ||
+          !avatarUrl.trim()) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Username, display name, and profile photo are required.",
+        );
+      }
+      const status = await userNameRegistry.status(username, uid);
+      if (!status.valid || status.reason === "taken") {
+        throw new HttpsError("already-exists", "Username is already taken.");
+      }
+      if (!status.reservedByUser) {
+        await userNameRegistry.reserve(uid, username, HttpsError);
+      }
+    }
+
     const profileVisibility =
       update.profileVisibility || current.profileVisibility || "public";
     const filePath = `users/${uid}/avatar.jpg`;
@@ -279,10 +340,15 @@ function createUpdateSocialProfile({
       await file.setMetadata({
         metadata: { firebaseStorageDownloadTokens: randomUUID() },
       });
-      update.avatarUrl = null;
+      if (input.avatarUrl === undefined ||
+          input.avatarUrl === null ||
+          input.avatarUrl === current.avatarUrl) {
+        update.avatarUrl = null;
+      }
     } else if (profileVisibility === "public" &&
                current.profileVisibility === "private" &&
-               !current.avatarUrl) {
+               !current.avatarUrl &&
+               (input.avatarUrl === undefined || input.avatarUrl === null)) {
       const [exists] = await file.exists();
       if (exists) {
         const token = randomUUID();

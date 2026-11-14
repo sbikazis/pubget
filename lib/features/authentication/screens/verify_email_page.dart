@@ -95,7 +95,9 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
       _message = null;
     });
     final result = await context.read<AuthProvider>().sendEmailVerification();
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
     setState(() => _sending = false);
     if (result is Success) {
       setState(() => _message = AppStrings.of(context).verificationSent);

@@ -27,13 +27,15 @@ void main() {
     final result = await provider.saveProfile(
       authUser: authUser,
       username: 'anime_fan',
-      favoriteAnimes: const <String>['Fantasy'],
+      favoriteAnimes: const <String>['Naruto'],
+      favoriteAnimeIds: const <String>['20'],
       isProfileCompleted: true,
     );
 
     expect(result.isSuccess, isTrue);
     expect(provider.isProfileCompleted, isTrue);
-    expect(provider.profile?.favoriteAnimes, <String>['Fantasy']);
+    expect(provider.profile?.favoriteAnimes, <String>['Naruto']);
+    expect(provider.profile?.favoriteAnimeIds, <String>['20']);
     expect(provider.state, LoadingState.loaded);
   });
 

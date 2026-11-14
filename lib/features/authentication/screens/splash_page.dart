@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/app_router.dart';
 import '../../../app/firebase_bootstrap.dart';
+import '../../../core/app/app_version_gate.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
@@ -11,6 +13,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../providers/auth_provider.dart';
 import '../providers/onboarding_provider.dart';
+import 'force_update_page.dart';
 import '../../settings/settings_provider.dart';
 import '../widgets/auth_atmosphere.dart';
 import '../widgets/pubget_torii_mark.dart';
@@ -133,6 +136,10 @@ class _SplashPageState extends State<SplashPage> {
       setState(() {});
       return;
     }
+    final shouldContinue = await _applyVersionPolicy();
+    if (!mounted || !shouldContinue) {
+      return;
+    }
     final user = auth.currentUser;
     if (user == null) {
       if (!alreadyReady) await _holdBrandMoment();
@@ -167,6 +174,61 @@ class _SplashPageState extends State<SplashPage> {
       context,
       onboarding.canEnterHome ? '/home' : '/onboarding',
     );
+  }
+
+  Future<bool> _applyVersionPolicy() async {
+    final status = await AppVersionGate().check();
+    if (!mounted) {
+      return false;
+    }
+    if (status.isRequired) {
+      await Navigator.of(context).pushAndRemoveUntil<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => ForceUpdatePage(status: status),
+        ),
+        (_) => false,
+      );
+      return false;
+    }
+    if (status.isOptional) {
+      final copy = AppStrings.of(context);
+      final updateNow = await showDialog<bool>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(copy.softUpdateTitle),
+          content: Text(
+            status.updateUrl.isEmpty
+                ? copy.updateLinkUnavailable
+                : copy.softUpdateMessage,
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(copy.updateLater),
+            ),
+            TextButton(
+              onPressed: status.updateUrl.isEmpty
+                  ? null
+                  : () => Navigator.of(dialogContext).pop(true),
+              child: Text(copy.updateNow),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return false;
+      if (updateNow == true) {
+        final uri = Uri.tryParse(status.updateUrl);
+        if (uri == null ||
+            !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+          PubgetSnackbars.showError(
+            context,
+            AppStrings.of(context).updateLinkUnavailable,
+          );
+        }
+      }
+    }
+    return true;
   }
 
   Future<void> _holdBrandMoment() async {

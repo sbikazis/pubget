@@ -14,13 +14,15 @@ void main() {
       coverUrl: 'https://example.com/cover.jpg',
       bio: 'Mystery enthusiast',
       age: 21,
+      gender: 'prefer_not_to_say',
       country: 'Japan',
       favoriteQuote: 'Believe it',
       animeTwin: 'Naruto',
       socialLinks: const [
         ProfileSocialLink(url: 'https://x.com/fan', platform: 'x'),
       ],
-      favoriteAnimes: const <String>['Mystery', 'Fantasy'],
+      favoriteAnimes: const <String>['Naruto', 'One Piece'],
+      favoriteAnimeIds: const <String>['20', '21'],
       createdAt: createdAt,
       isProfileCompleted: true,
     );
@@ -30,7 +32,9 @@ void main() {
 
     expect(restored.id, user.id);
     expect(restored.createdAt, createdAt);
-    expect(restored.favoriteAnimes, <String>['Mystery', 'Fantasy']);
+    expect(restored.favoriteAnimes, <String>['Naruto', 'One Piece']);
+    expect(restored.favoriteAnimeIds, <String>['20', '21']);
+    expect(restored.gender, 'prefer_not_to_say');
     expect(restored.whoCanMessageMe, 'related');
     expect(restored.coverUrl, 'https://example.com/cover.jpg');
     expect(restored.age, 21);

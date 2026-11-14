@@ -58,7 +58,8 @@ class FirebaseResumableUploader {
     final total = await file.length();
     if (total <= 0) throw StateError('Cannot upload an empty file.');
     final modified = await file.lastModified();
-    final fingerprint = '${file.absolute.path}|$total|${modified.millisecondsSinceEpoch}';
+    final fingerprint =
+        '${file.absolute.path}|$total|${modified.millisecondsSinceEpoch}';
     final prefs = await _prefs();
     final sessionKey = _sessionKey(storagePath);
     final fingerprintKey = _fingerprintKey(storagePath);

@@ -14,6 +14,9 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../anime/models/anime_models.dart';
+import '../../anime/repositories/anime_repository.dart';
+import '../../anime/widgets/anime_widgets.dart';
 import '../auth_validators.dart';
 import '../models/username_status.dart';
 import '../providers/auth_provider.dart';
@@ -28,15 +31,6 @@ class OnboardingPage extends StatefulWidget {
 }
 
 class _OnboardingPageState extends State<OnboardingPage> {
-  static const _interestOptions = <String>[
-    'Action',
-    'Adventure',
-    'Comedy',
-    'Fantasy',
-    'Mystery',
-    'Romance',
-  ];
-
   static const _usernameDebounce = Duration(milliseconds: 250);
 
   final _username = TextEditingController();
@@ -44,8 +38,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final _bio = TextEditingController();
   final _country = TextEditingController();
   final _age = TextEditingController();
-  final _interests = <String>{};
+  final _animeQuery = TextEditingController();
+  final _favoriteAnimeIds = <String>{};
+  final _favoriteAnimeTitles = <String, String>{};
+  List<Anime> _animeResults = const <Anime>[];
+  String? _animeSearchError;
   String? _gender;
+  var _searchingAnime = false;
   Uint8List? _avatarBytes;
   String _avatarContentType = 'image/png';
   String? _usernameError;
@@ -76,7 +75,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
     _country.text = profile?.country ?? '';
     _age.text = profile?.age?.toString() ?? '';
     _gender = profile?.gender;
-    _interests.addAll(profile?.favoriteAnimes ?? const <String>[]);
+    final favoriteIds = profile?.favoriteAnimeIds ?? const <String>[];
+    final favoriteTitles = profile?.favoriteAnimes ?? const <String>[];
+    _favoriteAnimeIds.addAll(favoriteIds);
+    for (var index = 0; index < favoriteIds.length; index++) {
+      _favoriteAnimeTitles[favoriteIds[index]] =
+          index < favoriteTitles.length ? favoriteTitles[index] : favoriteIds[index];
+    }
     _seededIdentity = true;
   }
 
@@ -88,6 +93,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     _bio.dispose();
     _country.dispose();
     _age.dispose();
+    _animeQuery.dispose();
     super.dispose();
   }
 
@@ -214,27 +220,71 @@ class _OnboardingPageState extends State<OnboardingPage> {
               },
             )
           else
-            _InterestsStep(
+            _FavoriteAnimeStep(
               copy: copy,
-              interests: _interests,
-              options: _interestOptions,
+              query: _animeQuery,
+              results: _animeResults,
+              selectedIds: _favoriteAnimeIds,
+              selectedTitles: _favoriteAnimeTitles,
               loading: loading,
-              onToggle: (interest, selected) {
-                setState(() {
-                  if (selected) {
-                    _interests.add(interest);
-                  } else {
-                    _interests.remove(interest);
-                  }
-                });
-              },
+              searching: _searchingAnime,
+              error: _animeSearchError,
+              onSearch: _searchFavoriteAnime,
+              onToggle: _toggleFavoriteAnime,
               onSkipInterests: () {
-                setState(_interests.clear);
+                setState(() {
+                  _favoriteAnimeIds.clear();
+                  _favoriteAnimeTitles.clear();
+                });
               },
             ),
         ],
       ),
     );
+  }
+
+  Future<void> _searchFavoriteAnime() async {
+    final query = _animeQuery.text.trim();
+    if (query.isEmpty || _searchingAnime) {
+      return;
+    }
+    setState(() {
+      _searchingAnime = true;
+      _animeSearchError = null;
+      _animeResults = const <Anime>[];
+    });
+    final result = await context.read<AnimeRepository>().searchAnime(
+      query,
+      limit: 12,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _searchingAnime = false;
+      result.fold(
+        onSuccess: (page) {
+          _animeResults = page.items;
+          _animeSearchError = null;
+        },
+        onFailure: (failure) {
+          _animeSearchError = failure.message;
+          _animeResults = const <Anime>[];
+        },
+      );
+    });
+  }
+
+  void _toggleFavoriteAnime(Anime anime, bool selected) {
+    setState(() {
+      if (selected) {
+        _favoriteAnimeIds.add(anime.id);
+        _favoriteAnimeTitles[anime.id] = anime.title;
+      } else {
+        _favoriteAnimeIds.remove(anime.id);
+        _favoriteAnimeTitles.remove(anime.id);
+      }
+    });
   }
 
   bool get _isOnline => !context.read<NetworkService>().isOffline;
@@ -359,7 +409,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
       setState(() => _step += 1);
       return;
     }
-    setState(_interests.clear);
+    setState(() {
+      _favoriteAnimeIds.clear();
+      _favoriteAnimeTitles.clear();
+    });
   }
 
   Future<void> _finish({required bool completed}) async {
@@ -385,6 +438,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
       PubgetSnackbars.showError(context, copy.onboardingOfflineMessage);
       return;
     }
+    final ageText = _age.text.trim();
+    final age = int.tryParse(ageText);
+    if (ageText.isNotEmpty && (age == null || age < 13 || age > 120)) {
+      PubgetSnackbars.showError(context, copy.onboardingAgeInvalid);
+      return;
+    }
     var canonicalUsername = username;
     if (completed && username.isNotEmpty) {
       // Claim the username server-side before the profile write. Persist only
@@ -405,7 +464,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
       }
       canonicalUsername = reserve.valueOrNull ?? username.toLowerCase();
     }
-    final age = int.tryParse(_age.text.trim());
     final country = _country.text.trim();
     final Result<Object> result = _avatarBytes == null
         ? await provider.saveProfile(
@@ -414,9 +472,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
             displayName: _displayName.text,
             bio: _bio.text,
             age: age,
+            clearAge: ageText.isEmpty,
             gender: _gender,
+            clearGender: _gender == null,
             country: country,
-            favoriteAnimes: _interests.toList(growable: false),
+            favoriteAnimes: _favoriteAnimeIds
+                .map((id) => _favoriteAnimeTitles[id] ?? id)
+                .toList(growable: false),
+            favoriteAnimeIds: _favoriteAnimeIds.toList(growable: false),
             isProfileCompleted: completed,
           )
         : await provider.saveProfileWithAvatar(
@@ -427,9 +490,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
             displayName: _displayName.text,
             bio: _bio.text,
             age: age,
+            clearAge: ageText.isEmpty,
             gender: _gender,
+            clearGender: _gender == null,
             country: country,
-            favoriteAnimes: _interests.toList(growable: false),
+            favoriteAnimes: _favoriteAnimeIds
+                .map((id) => _favoriteAnimeTitles[id] ?? id)
+                .toList(growable: false),
+            favoriteAnimeIds: _favoriteAnimeIds.toList(growable: false),
             isProfileCompleted: completed,
           );
     if (!mounted) return;
@@ -733,25 +801,36 @@ class _AboutStep extends StatelessWidget {
   }
 }
 
-class _InterestsStep extends StatelessWidget {
-  const _InterestsStep({
+class _FavoriteAnimeStep extends StatelessWidget {
+  const _FavoriteAnimeStep({
     required this.copy,
-    required this.interests,
-    required this.options,
+    required this.query,
+    required this.results,
+    required this.selectedIds,
+    required this.selectedTitles,
     required this.loading,
+    required this.searching,
+    required this.error,
+    required this.onSearch,
     required this.onToggle,
     required this.onSkipInterests,
   });
 
   final AppStrings copy;
-  final Set<String> interests;
-  final List<String> options;
+  final TextEditingController query;
+  final List<Anime> results;
+  final Set<String> selectedIds;
+  final Map<String, String> selectedTitles;
   final bool loading;
-  final void Function(String interest, bool selected) onToggle;
+  final bool searching;
+  final String? error;
+  final VoidCallback onSearch;
+  final void Function(Anime anime, bool selected) onToggle;
   final VoidCallback onSkipInterests;
 
   @override
   Widget build(BuildContext context) {
+    final busy = loading || searching;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -759,39 +838,94 @@ class _InterestsStep extends StatelessWidget {
           copy.onboardingInterestsTitle,
           style: Theme.of(context).textTheme.titleMedium,
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.sm,
-          children: options
-              .map(
-                (interest) => PubgetSelectionChip(
-                  label: _interestLabel(copy, interest),
-                  selected: interests.contains(interest),
-                  onSelected: loading
-                      ? null
-                      : (selected) => onToggle(interest, selected),
-                ),
-              )
-              .toList(growable: false),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          copy.onboardingFavoriteAnimeHint,
+          style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: AppSpacing.md),
+        PubgetTextField(
+          controller: query,
+          label: copy.onboardingSearchAnime,
+          enabled: !busy,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (_) => onSearch(),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        PubgetPrimaryButton(
+          onPressed: busy ? null : onSearch,
+          loading: searching,
+          semanticLabel: copy.onboardingSearchAnime,
+          child: Text(copy.onboardingSearchAnime),
+        ),
+        if (selectedIds.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            copy.onboardingSelectedAnime,
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Wrap(
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
+            children: selectedIds
+                .map(
+                  (id) => InputChip(
+                    label: Text(selectedTitles[id] ?? id),
+                    onDeleted: busy ? null : () => onToggle(
+                      Anime(id: id, title: selectedTitles[id] ?? id),
+                      false,
+                    ),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ],
+        if (error != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          PubgetInlineBanner.error(
+            title: copy.pubgetCouldNotStart,
+            message: error!,
+          ),
+        ],
+        if (searching) ...[
+          const SizedBox(height: AppSpacing.md),
+          const Center(child: CircularProgressIndicator()),
+        ] else if (query.text.trim().isNotEmpty && results.isEmpty && error == null) ...[
+          const SizedBox(height: AppSpacing.md),
+          Text(copy.onboardingNoAnimeFound),
+        ] else if (results.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          ...results.map((anime) {
+            final selected = selectedIds.contains(anime.id);
+            return ListTile(
+              key: ValueKey<String>('onboarding-anime-${anime.id}'),
+              contentPadding: EdgeInsets.zero,
+              leading: SizedBox(
+                width: 44,
+                height: 60,
+                child: AnimePoster(images: anime.images, memCacheWidth: 88),
+              ),
+              title: Text(anime.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: anime.subtitle.isEmpty ? null : Text(anime.subtitle),
+              trailing: IconButton(
+                tooltip: selected ? copy.close : copy.onboardingSearchAnime,
+                onPressed: busy ? null : () => onToggle(anime, !selected),
+                icon: Icon(
+                  selected ? Icons.check_circle : Icons.add_circle_outline,
+                  color: selected ? Theme.of(context).colorScheme.primary : null,
+                ),
+              ),
+            );
+          }),
+        ],
+        const SizedBox(height: AppSpacing.md),
         PubgetTextButton(
-          onPressed: loading ? null : onSkipInterests,
+          onPressed: busy ? null : onSkipInterests,
           semanticLabel: copy.onboardingSkipInterestsSemantic,
           child: Text(copy.onboardingSkipInterests),
         ),
       ],
     );
   }
-
-  static String _interestLabel(AppStrings copy, String interest) =>
-      switch (interest) {
-        'Action' => copy.onboardingInterestAction,
-        'Adventure' => copy.onboardingInterestAdventure,
-        'Comedy' => copy.onboardingInterestComedy,
-        'Fantasy' => copy.onboardingInterestFantasy,
-        'Mystery' => copy.onboardingInterestMystery,
-        _ => copy.onboardingInterestRomance,
-      };
 }
