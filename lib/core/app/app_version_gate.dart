@@ -58,17 +58,38 @@ class AppVersionGate {
           : 'android';
       final minimum = _remoteConfig.getString('min_version_$platform').trim();
       final latest = _remoteConfig.getString('latest_version_$platform').trim();
-      final updateUrl = _remoteConfig.getString('update_url_$platform').trim();
+      final configuredUpdateUrl =
+          _remoteConfig.getString('update_url_$platform').trim();
+      final parsedUpdateUrl = Uri.tryParse(configuredUpdateUrl);
+      final updateUrl = parsedUpdateUrl != null &&
+              parsedUpdateUrl.hasScheme &&
+              <String>{'https', 'http', 'market'}.contains(
+                parsedUpdateUrl.scheme,
+              )
+          ? configuredUpdateUrl
+          : '';
 
       if (minimum.isNotEmpty &&
           compareVersions(package.version, minimum) < 0) {
-        _hasPassed = false;
+        if (updateUrl.isNotEmpty) {
+          _hasPassed = false;
+          return AppVersionStatus(
+            level: AppUpdateLevel.required,
+            currentVersion: package.version,
+            minimumVersion: minimum,
+            latestVersion: latest,
+            updateUrl: updateUrl,
+          );
+        }
+        // Never strand users on a non-dismissible screen if the store URL
+        // was omitted or malformed in Remote Config.
+        _hasPassed = true;
         return AppVersionStatus(
-          level: AppUpdateLevel.required,
+          level: AppUpdateLevel.optional,
           currentVersion: package.version,
           minimumVersion: minimum,
-          latestVersion: latest,
-          updateUrl: updateUrl,
+          latestVersion: latest.isEmpty ? minimum : latest,
+          updateUrl: '',
         );
       }
       if (latest.isNotEmpty && compareVersions(package.version, latest) < 0) {
