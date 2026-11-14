@@ -209,11 +209,6 @@ final class _RetryRepository implements ChatRepository {
     return _upload!.future;
   }
 
-  @override
-  Future<Result<ChatMediaUpload?>> findReadyMedia({
-    required String groupId,
-    required String mediaId,
-  }) async => const Success<ChatMediaUpload?>(null);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
