@@ -710,7 +710,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     );
     controller.dispose();
     if (!mounted || selected == null ||
-        _selectedMentions.any((item) => item.uid == selected.uid)) return;
+        _selectedMentions.any((item) => item.uid == selected.uid)) {
+      return;
+    }
     setState(() => _selectedMentions = [..._selectedMentions, selected]);
     await _savePendingUpload();
   }
