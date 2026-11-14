@@ -24,9 +24,7 @@ final class OnboardingProvider extends ChangeNotifier {
   LoadingState get state => _state;
   Failure? get failure => _failure;
   bool get isProfileCompleted => _profile?.isProfileCompleted == true;
-  bool get canEnterHome =>
-      _profile?.isProfileCompleted == true ||
-      _profile?.hasSkippedOnboarding == true;
+  bool get canEnterHome => _profile?.isProfileCompleted == true;
 
   Future<Result<PubgetUser?>> loadProfile(String userId) async {
     _failure = null;
