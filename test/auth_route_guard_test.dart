@@ -3,6 +3,35 @@ import 'package:pubget/core/loading/loading_state.dart';
 import 'package:pubget/features/authentication/auth_route_guard.dart';
 
 void main() {
+  test('every route passes through splash before version policy is checked', () {
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/home',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: true,
+        isEmailVerified: true,
+        isVersionGatePassed: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      '/splash',
+    );
+    expect(
+      AuthRouteGuard.resolve(
+        path: '/splash',
+        isInitialized: true,
+        authState: LoadingState.loaded,
+        isAuthenticated: true,
+        isEmailVerified: true,
+        isVersionGatePassed: false,
+        onboardingState: LoadingState.loaded,
+        canEnterHome: true,
+      ),
+      isNull,
+    );
+  });
+
   test('verification route cannot bypass a pending version gate', () {
     expect(
       AuthRouteGuard.resolve(
