@@ -479,7 +479,7 @@ service cloud.firestore {
       allow create: if self(uid) &&
         request.resource.data.keys().hasOnly([
           'email','username','nickname','displayName','avatarUrl','bio','favoriteAnimes','age',
-          'country','isProfileCompleted','createdAt','updatedAt','invitedBy',
+          'gender','country','isProfileCompleted','createdAt','updatedAt','invitedBy',
           'subscriptionType','premiumSince','premiumExpiresAt','autoRenewPremium',
           'nameColor','totalRespect','fansCount','isBanned','coinsBalance',
           'customMaxMembersLimit','customMaxJoinedGroupsLimit',
@@ -507,6 +507,9 @@ service cloud.firestore {
          (request.resource.data.age is int &&
           request.resource.data.age >= 13 &&
           request.resource.data.age <= 120)) &&
+        (!request.resource.data.keys().hasAny(['gender']) ||
+         request.resource.data.gender == null ||
+         request.resource.data.gender in ['female','male','other','prefer_not_to_say']) &&
         (!request.resource.data.keys().hasAny(['country']) ||
          request.resource.data.country == null ||
          (request.resource.data.country is string &&
@@ -535,7 +538,7 @@ service cloud.firestore {
       allow update: if self(uid) &&
         ((changedOnly([
           'nickname','displayName','avatarUrl','coverUrl','bio',
-          'favoriteAnimes','age','country',
+          'favoriteAnimes','age','gender','country',
           'favoriteAnimeIds','favoriteQuote','animeTwin','socialLinks',
           'sectionPrivacy','activityVisibility',
           'whoCanMessageMe',
@@ -554,6 +557,9 @@ service cloud.firestore {
            (request.resource.data.age is int &&
             request.resource.data.age >= 13 &&
             request.resource.data.age <= 120)) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['gender']) ||
+           request.resource.data.gender == null ||
+           request.resource.data.gender in ['female','male','other','prefer_not_to_say']) &&
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['country']) ||
            request.resource.data.country == null ||
            (request.resource.data.country is string &&
