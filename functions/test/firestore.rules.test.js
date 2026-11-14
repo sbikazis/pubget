@@ -273,6 +273,12 @@ test("self-owned presentation fields are writable on update and validated", asyn
     socialLinks: [{ url: "https://x.example", label: "site" }],
   }));
   await assertSucceeds(db("alice").doc("users/alice").update({ sectionPrivacy }));
+  await assertSucceeds(db("alice").doc("users/alice").update({
+    gender: "prefer_not_to_say",
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    gender: "unknown",
+  }));
   // profileVisibility stays callable-only: the direct path is not part of the
   // allow-list, so flipping privacy still goes through updateSocialProfile
   // (which also rotates the avatar download token).
@@ -332,6 +338,7 @@ test("users create accepts the full self-owned presentation payload", async () =
     username: "newbie",
     displayName: "Newbie",
     avatarUrl: "images/newbie/avatar.jpg",
+    gender: "female",
   };
   await seedUsername("newbie", "newbie");
   // Mirrors PubgetUser.toMap() as written by createUserProfile.
