@@ -549,12 +549,12 @@ service cloud.firestore {
            (request.resource.data.avatarUrl is string &&
             request.resource.data.avatarUrl.size() > 0 &&
             request.resource.data.avatarUrl.size() <= 2048)) &&
-          (!request.resource.data.keys().hasAny(['age']) ||
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['age']) ||
            request.resource.data.age == null ||
            (request.resource.data.age is int &&
             request.resource.data.age >= 13 &&
             request.resource.data.age <= 120)) &&
-          (!request.resource.data.keys().hasAny(['country']) ||
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['country']) ||
            request.resource.data.country == null ||
            (request.resource.data.country is string &&
             request.resource.data.country.size() <= 64)) &&
@@ -577,10 +577,6 @@ service cloud.firestore {
           (!request.resource.data.keys().hasAny(['favoriteAnimeIds']) ||
            (request.resource.data.favoriteAnimeIds is list &&
             request.resource.data.favoriteAnimeIds.size() <= 50)) &&
-          (!request.resource.data.keys().hasAny(['displayName']) ||
-           (request.resource.data.displayName is string &&
-            request.resource.data.displayName.size() > 0 &&
-            request.resource.data.displayName.size() <= 80)) &&
           request.resource.data.get('profileVisibility', 'public')
             in ['public','private'] &&
           request.resource.data.get('activityVisibility', 'public')
