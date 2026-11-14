@@ -93,7 +93,9 @@ abstract final class AuthRouteGuard {
       if (authBusy) return '/splash';
       return isAuthenticated ? null : '/login';
     }
-    if (isAuthenticated && !isEmailVerified) return '/verify-email';
+    if (isAuthenticated && !isEmailVerified && path != '/splash') {
+      return '/splash';
+    }
 
     if (guestOnlyPaths.contains(path) && isAuthenticated) {
       if (authBusy || onboardingState == LoadingState.initial) {
