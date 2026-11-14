@@ -508,9 +508,11 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     try {
       await _repository.giveCreatorRespect(creatorId: creatorId, value: selected);
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(KirariCopy.of(context).actionError)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(KirariCopy.of(context).actionError)),
+        );
+      }
     }
   }
 
