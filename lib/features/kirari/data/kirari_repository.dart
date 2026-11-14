@@ -282,11 +282,12 @@ class FirebaseKirariRepository implements KirariRepository {
 
   @override
   Future<void> reviewContent({required String reelId, String? commentId, required String decision}) async {
-    await _call('reviewKirariContent', {
+    final payload = <String, dynamic>{
       'reelId': reelId,
-      if (commentId != null) 'commentId': commentId,
       'decision': decision,
-    });
+    };
+    if (commentId != null) payload['commentId'] = commentId;
+    await _call('reviewKirariContent', payload);
   }
 
   @override
@@ -315,9 +316,11 @@ class FirebaseKirariRepository implements KirariRepository {
   Future<List<Map<String, dynamic>>> getComments(
     String reelId, {String? before, int limit = 30}
   ) async {
-    final result = await _call('getKirariComments', {
-      'reelId': reelId, 'limit': limit, if (before != null) 'before': before,
-    });
+    final payload = <String, dynamic>{
+      'reelId': reelId, 'limit': limit,
+    };
+    if (before != null) payload['before'] = before;
+    final result = await _call('getKirariComments', payload);
     final raw = result['items'];
     return raw is List
         ? raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
@@ -326,9 +329,11 @@ class FirebaseKirariRepository implements KirariRepository {
 
   @override
   Future<void> addComment(String reelId, String text, {String? parentId}) async {
-    await _call('addKirariComment', {
-      'reelId': reelId, 'text': text, if (parentId != null) 'parentId': parentId,
-    });
+    final payload = <String, dynamic>{
+      'reelId': reelId, 'text': text,
+    };
+    if (parentId != null) payload['parentId'] = parentId;
+    await _call('addKirariComment', payload);
   }
 
   @override
@@ -351,13 +356,14 @@ class FirebaseKirariRepository implements KirariRepository {
     Map<String, dynamic> editSettings = const <String, dynamic>{},
     String? audioId,
   }) async {
-    final result = await _call('startKirariUpload', {
+    final payload = <String, dynamic>{
       'caption': caption,
       'hashtags': hashtags,
       'idempotencyKey': idempotencyKey,
       'editSettings': editSettings,
-      if (audioId != null) 'audioId': audioId,
-    });
+    };
+    if (audioId != null) payload['audioId'] = audioId;
+    final result = await _call('startKirariUpload', payload);
     final path = result['storagePath'] as String?;
     final reelId = result['reelId'] as String?;
     if (path == null || reelId == null) {

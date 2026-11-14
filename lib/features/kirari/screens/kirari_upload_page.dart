@@ -183,7 +183,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         _trim = RangeValues(0, duration);
         _coverTime = 0;
         _session = null;
-        _idempotencyKey = 'kirari-' + DateTime.now().microsecondsSinceEpoch.toString();
+        _idempotencyKey = 'kirari-${DateTime.now().microsecondsSinceEpoch}';
         _progress = 0;
         _error = null;
         _status = null;
@@ -329,7 +329,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
                 ListTile(
                   leading: const Icon(Icons.music_note),
                   title: Text(track.title),
-                  subtitle: Text(track.artist + ' · ' + track.license),
+                  subtitle: Text('${track.artist} · ${track.license}'),
                   trailing: IconButton(
                     tooltip: 'Preview audio',
                     icon: Icon(_previewingAudioId == track.id ? Icons.stop : Icons.play_arrow),

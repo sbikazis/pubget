@@ -169,7 +169,9 @@ class _KirariFeedPageState extends State<KirariFeedPage>
 
   Future<void> _prefetchNext(int index) async {
     if (index < 0 || index >= _items.length ||
-        _prefetchController != null || index == _activeIndex) return;
+        _prefetchController != null || index == _activeIndex) {
+      return;
+    }
     final reel = _items[index];
     VideoPlayerController? controller;
     try {
@@ -354,9 +356,11 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     try {
       await _repository.giveCreatorRespect(creatorId: creatorId, value: selected);
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(KirariCopy.of(context).actionError)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(KirariCopy.of(context).actionError)),
+        );
+      }
     }
   }
 
@@ -591,7 +595,7 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                               final authorId = item['authorId'] as String? ?? '';
                               return ListTile(
                                 title: Text(deleted ? 'Comment removed' : item['text'] as String? ?? ''),
-                                subtitle: Text('@' + authorId),
+                                subtitle: Text('@$authorId'),
                                 onTap: deleted || authorId.isEmpty
                                     ? null
                                     : () => AppNavigation.go(
@@ -633,7 +637,7 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
               if (_replyToId != null)
                 ListTile(
                   dense: true,
-                  title: Text('Replying to @' + (_replyToAuthor ?? '')),
+                  title: Text('Replying to @${_replyToAuthor ?? ''}'),
                   trailing: IconButton(
                     onPressed: () => setState(() { _replyToId = null; _replyToAuthor = null; }),
                     icon: const Icon(Icons.close),

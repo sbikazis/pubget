@@ -8,6 +8,12 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return signedIn() &&
+          ('admin' in request.auth.token) &&
+          request.auth.token.admin == true;
+    }
+
     function isImage() {
       return request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
     }
@@ -135,6 +141,15 @@ service firebase.storage {
           (request.auth.uid == userId || publicProfileAvatar(userId));
       allow create, update: if signedIn() && request.auth.uid == userId &&
           imageUpload(5 * 1024 * 1024);
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    // Profile cover mirrors avatar visibility but remains a separate object.
+    match /users/{userId}/cover.jpg {
+      allow read: if signedIn() &&
+          (request.auth.uid == userId || publicProfileAvatar(userId));
+      allow create, update: if signedIn() && request.auth.uid == userId &&
+          imageUpload(10 * 1024 * 1024);
       allow delete: if signedIn() && request.auth.uid == userId;
     }
 
@@ -296,8 +311,8 @@ service firebase.storage {
           request.resource.size <= 100 * 1024 * 1024;
       allow update: if signedIn() && request.auth.uid == userId &&
           isEditVideoName(fileName) &&
-          (request.resource.contentType.matches('video/mp4.*') ||
-              resource.contentType.matches('video/mp4.*'));
+          request.resource.contentType.matches('video/mp4.*') &&
+          request.resource.size <= 100 * 1024 * 1024;
       allow delete: if signedIn() && request.auth.uid == userId &&
           isEditVideoName(fileName);
     }
@@ -318,8 +333,8 @@ service firebase.storage {
           request.resource.size <= 100 * 1024 * 1024;
       allow update: if signedIn() && request.auth.uid == userId &&
           isReelVideoName(fileName) &&
-          (request.resource.contentType.matches('video/mp4.*') ||
-              resource.contentType.matches('video/mp4.*'));
+          request.resource.contentType.matches('video/mp4.*') &&
+          request.resource.size <= 100 * 1024 * 1024;
       allow delete: if signedIn() && request.auth.uid == userId &&
           isReelVideoName(fileName);
     }
@@ -340,8 +355,17 @@ service firebase.storage {
     }
 
 
-    // Kirari source upload is owner-only and supports Firebase resumable PUTs.
-    // The backend alone can publish processed renditions and cover images.
+    // Kirari source and custom cover uploads are owner-only and size-bounded.
+    // The backend alone can publish processed renditions.
+    match /kirari/{userId}/{reelId}/cover-source.jpg {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn() && request.auth.uid == userId &&
+        imageUpload(5 * 1024 * 1024) &&
+        request.resource.contentType == 'image/jpeg' &&
+        request.resource.metadata.uploadedBy == 'kirari-client';
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
     match /kirari/{userId}/{reelId}/source.mp4 {
       allow read: if signedIn() && request.auth.uid == userId;
       allow create, update: if signedIn() &&
@@ -351,10 +375,21 @@ service firebase.storage {
       allow delete: if signedIn() && request.auth.uid == userId;
     }
 
+    // Event option images are creator-owned, bounded image assets.
+    match /events/{ownerId}/{eventId}/{fileName} {
+      allow read: if signedIn() &&
+          fileName.matches('option-[0-9]+\\.(jpg|jpeg|png|webp)');
+      allow create, update: if signedIn() && request.auth.uid == ownerId &&
+          fileName.matches('option-[0-9]+\\.(jpg|jpeg|png|webp)') &&
+          imageUpload(5 * 1024 * 1024);
+      allow delete: if signedIn() && request.auth.uid == ownerId &&
+          fileName.matches('option-[0-9]+\\.(jpg|jpeg|png|webp)');
+    }
+
     match /kirari-audio/{audioId}/{fileName} {
       allow read: if signedIn() && kirariAudioPublished(audioId) &&
         fileName.matches('audio\\.(mp3|m4a|aac|ogg)');
-      allow create, update: if signedIn() && request.auth.token.admin == true &&
+      allow create, update: if isAdmin() &&
         fileName.matches('audio\\.(mp3|m4a|aac|ogg)') &&
         request.resource.contentType.matches('audio/.*') &&
         request.resource.size <= 25 * 1024 * 1024;

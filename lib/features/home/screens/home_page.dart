@@ -641,7 +641,7 @@ class _KirariDiscoverySectionState extends State<_KirariDiscoverySection> {
                 return ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: reels.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+                  separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final reel = reels[index];
                     return SizedBox(
