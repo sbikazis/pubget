@@ -94,21 +94,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
       },
       compactBrand: true,
       trailing: _step == 0
-          ? offline
-                ? PubgetTextButton(
-                    key: const Key('onboarding-skip-step'),
-                    onPressed: loading ? null : _skip,
-                    semanticLabel: copy.onboardingOfflineSaveSemantic,
-                    child: Text(copy.onboardingOfflineSave),
-                  )
-                : null
+          ? null
           : PubgetTextButton(
               key: const Key('onboarding-skip-step'),
-              onPressed: loading ? null : _skipStepOrFinish(offline),
+              onPressed: loading ? null : _skipStepOrFinish,
               semanticLabel: copy.onboardingSkipStep,
-              child: Text(
-                offline ? copy.onboardingOfflineSave : copy.onboardingSkipStep,
-              ),
+              child: Text(copy.onboardingSkipStep),
             ),
       primaryAction: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -212,7 +203,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   }
                 });
               },
-              onSkipInterests: () => _finish(completed: true),
+              onSkipInterests: () {
+                setState(_interests.clear);
+              },
             ),
         ],
       ),
@@ -336,15 +329,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
     });
   }
 
-  VoidCallback _skipStepOrFinish(bool offline) {
-    if (offline) return _skip;
-    return () {
-      if (_step < _totalSteps - 1) {
-        setState(() => _step += 1);
-      } else {
-        _finish(completed: true);
-      }
-    };
+  void _skipStepOrFinish() {
+    if (_step < _totalSteps - 1) {
+      setState(() => _step += 1);
+      return;
+    }
+    setState(_interests.clear);
   }
 
   Future<void> _finish({required bool completed}) async {
@@ -366,14 +356,19 @@ class _OnboardingPageState extends State<OnboardingPage> {
       return;
     }
     final provider = context.read<OnboardingProvider>();
-    if (completed && _isOnline && username.isNotEmpty) {
-      // Claim the username server-side before the direct profile write so the
-      // reserved-name flow stays race-safe (spec §3.2).
+    if (!_isOnline) {
+      PubgetSnackbars.showError(context, copy.onboardingOfflineMessage);
+      return;
+    }
+    var canonicalUsername = username;
+    if (completed && username.isNotEmpty) {
+      // Claim the username server-side before the profile write. Persist only
+      // the canonical reserved form so Firestore and the registry stay aligned.
       final reserve = await provider.reserveUsername(username);
       if (!mounted) return;
       if (reserve is FailureResult) {
         final reserveFailure = reserve.failureOrNull;
-        if (reserveFailure is NetworkError && _isOnline) {
+        if (reserveFailure is NetworkError) {
           setState(() => _usernameError = copy.usernameCheckFailed);
           return;
         }
@@ -383,14 +378,18 @@ class _OnboardingPageState extends State<OnboardingPage> {
         });
         return;
       }
+      canonicalUsername = reserve.valueOrNull ?? username.toLowerCase();
     }
     final age = int.tryParse(_age.text.trim());
+    final country = _country.text.trim();
     final Result<Object> result = _avatarBytes == null
         ? await provider.saveProfile(
             authUser: authUser,
-            username: username,
+            username: canonicalUsername,
             displayName: _displayName.text,
             bio: _bio.text,
+            age: age,
+            country: country,
             favoriteAnimes: _interests.toList(growable: false),
             isProfileCompleted: completed,
           )
@@ -406,43 +405,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
           );
     if (!mounted) return;
     if (result is Success) {
-      // Persist optional extras via a second soft update when completed.
-      if (completed &&
-          (_country.text.trim().isNotEmpty ||
-              age != null ||
-              _bio.text.trim().isNotEmpty)) {
-        await provider.saveProfile(
-          authUser: authUser,
-          username: username,
-          displayName: _displayName.text,
-          bio: _bio.text,
-          favoriteAnimes: _interests.toList(growable: false),
-          isProfileCompleted: true,
-        );
-        if (!mounted) return;
-      }
       await AppNavigation.go(context, '/home');
     }
   }
 
-  Future<void> _skip() async {
-    final user = context.read<AuthProvider>().currentUser;
-    if (user == null) {
-      await AppNavigation.go(context, '/login');
-      return;
-    }
-    final result = await context
-        .read<OnboardingProvider>()
-        .skip(
-          user,
-          username: _username.text,
-          displayName: _displayName.text,
-          bio: _bio.text,
-          favoriteAnimes: _interests.toList(growable: false),
-        );
-    if (!mounted) return;
-    if (result.isSuccess) await AppNavigation.go(context, '/home');
-  }
 }
 
 class _OnboardingAvailabilityIcon extends StatelessWidget {
