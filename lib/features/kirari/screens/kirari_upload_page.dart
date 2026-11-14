@@ -246,10 +246,12 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       _audioPreview.stop();
       controller.setVolume(_originalAudioVolume);
       controller.seekTo(Duration(milliseconds: (_trim.start * 1000).round()));
-      if (mounted) setState(() {
-        _overlayVisible = _overlayText.text.trim().isNotEmpty &&
-            _trim.start >= _overlayStart && _trim.start <= _overlayEnd;
-      });
+      if (mounted) {
+        setState(() {
+          _overlayVisible = _overlayText.text.trim().isNotEmpty &&
+              _trim.start >= _overlayStart && _trim.start <= _overlayEnd;
+        });
+      }
     }
   }
 
