@@ -47,22 +47,53 @@ final class OnboardingProvider extends ChangeNotifier {
     String? displayName,
     String? avatarUrl,
     String? bio,
+    int? age,
+    String? country,
     List<String> favoriteAnimes = const <String>[],
     required bool isProfileCompleted,
   }) async {
     _failure = null;
     _setState(LoadingState.loading);
+    final cleanUsername = _clean(username) ?? _profile?.username;
+    final cleanDisplayName =
+        _clean(displayName) ?? _clean(authUser.displayName) ?? _profile?.displayName;
+    final cleanAvatarUrl =
+        _clean(avatarUrl) ?? _profile?.avatarUrl ?? _clean(authUser.avatarUrl);
+    if (isProfileCompleted &&
+        (cleanUsername == null ||
+            cleanDisplayName == null ||
+            cleanAvatarUrl == null)) {
+      const failure = ValidationError(
+        'A username, display name, and profile photo are required.',
+      );
+      _setFailure(failure);
+      return const FailureResult<PubgetUser>(failure);
+    }
     final profile = PubgetUser(
       id: authUser.id,
       email: authUser.email,
-      username: _clean(username),
-      displayName: _clean(displayName) ?? authUser.displayName,
-      avatarUrl: _clean(avatarUrl) ?? authUser.avatarUrl,
-      bio: _clean(bio),
+      username: cleanUsername,
+      displayName: cleanDisplayName,
+      avatarUrl: cleanAvatarUrl,
+      coverUrl: _profile?.coverUrl,
+      bio: bio == null ? _profile?.bio : _clean(bio),
+      age: age ?? _profile?.age,
+      country: country == null ? _profile?.country : _clean(country),
+      favoriteQuote: _profile?.favoriteQuote,
+      animeTwin: _profile?.animeTwin,
+      socialLinks: _profile?.socialLinks ?? const <ProfileSocialLink>[],
       favoriteAnimes: List<String>.unmodifiable(favoriteAnimes),
+      favoriteAnimeIds: _profile?.favoriteAnimeIds ?? const <String>[],
+      profileVisibility: _profile?.profileVisibility ?? 'public',
+      activityVisibility: _profile?.activityVisibility ?? 'public',
+      whoCanMessageMe: _profile?.whoCanMessageMe ?? 'related',
+      sectionPrivacy: _profile?.sectionPrivacy ?? ProfileSectionPrivacy.public,
+      totalRespect: _profile?.totalRespect ?? 0,
+      fansCount: _profile?.fansCount ?? 0,
+      language: _profile?.language,
       createdAt: _profile?.createdAt ?? DateTime.now(),
       isProfileCompleted: isProfileCompleted,
-      hasSkippedOnboarding: !isProfileCompleted,
+      hasSkippedOnboarding: false,
     );
     final result = _profile == null
         ? await _repository.createUserProfile(profile)
@@ -84,6 +115,8 @@ final class OnboardingProvider extends ChangeNotifier {
     String? username,
     String? displayName,
     String? bio,
+    int? age,
+    String? country,
     List<String> favoriteAnimes = const <String>[],
     required bool isProfileCompleted,
   }) async {
@@ -101,6 +134,8 @@ final class OnboardingProvider extends ChangeNotifier {
         displayName: displayName,
         avatarUrl: avatarUrl,
         bio: bio,
+        age: age,
+        country: country,
         favoriteAnimes: favoriteAnimes,
         isProfileCompleted: isProfileCompleted,
       ),
@@ -109,52 +144,6 @@ final class OnboardingProvider extends ChangeNotifier {
         return FailureResult<PubgetUser>(failure);
       },
     );
-  }
-
-  Future<Result<PubgetUser>> skip(
-    AuthUser authUser, {
-    String? username,
-    String? displayName,
-    String? avatarUrl,
-    String? bio,
-    List<String> favoriteAnimes = const <String>[],
-  }) async {
-    final result = await saveProfile(
-      authUser: authUser,
-      username: username,
-      displayName: displayName,
-      avatarUrl: avatarUrl,
-      bio: bio,
-      favoriteAnimes: favoriteAnimes,
-      isProfileCompleted: false,
-    );
-    if (result is FailureResult<PubgetUser> && result.failure is NetworkError) {
-      final local = PubgetUser(
-        id: authUser.id,
-        email: authUser.email,
-        username: _clean(username) ?? _profile?.username,
-        displayName:
-            _clean(displayName) ??
-            _profile?.displayName ??
-            authUser.displayName,
-        avatarUrl:
-            _clean(avatarUrl) ?? _profile?.avatarUrl ?? authUser.avatarUrl,
-        bio: _clean(bio) ?? _profile?.bio,
-        favoriteAnimes: List<String>.unmodifiable(
-          favoriteAnimes.isEmpty
-              ? _profile?.favoriteAnimes ?? const <String>[]
-              : favoriteAnimes,
-        ),
-        createdAt: _profile?.createdAt ?? DateTime.now(),
-        isProfileCompleted: false,
-        hasSkippedOnboarding: true,
-      );
-      _profile = local;
-      _failure = null;
-      _setState(LoadingState.loaded);
-      return Success<PubgetUser>(local);
-    }
-    return result;
   }
 
   void applyFavoriteAnimeIds(List<String> ids) {
