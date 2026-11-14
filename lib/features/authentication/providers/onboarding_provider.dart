@@ -82,7 +82,7 @@ final class OnboardingProvider extends ChangeNotifier {
       country: country == null ? _profile?.country : _clean(country),
       favoriteQuote: _profile?.favoriteQuote,
       animeTwin: _profile?.animeTwin,
-      socialLinks: _profile?.socialLinks ?? const <ProfileSocialLink>[],
+      socialLinks: _profile?.socialLinks ?? const [],
       favoriteAnimes: List<String>.unmodifiable(favoriteAnimes),
       favoriteAnimeIds: _profile?.favoriteAnimeIds ?? const <String>[],
       profileVisibility: _profile?.profileVisibility ?? 'public',
