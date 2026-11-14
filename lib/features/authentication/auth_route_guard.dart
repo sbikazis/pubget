@@ -90,7 +90,9 @@ abstract final class AuthRouteGuard {
         authState == LoadingState.initial ||
         authState == LoadingState.loading;
 
-    if (!isVersionGatePassed && path != '/splash') return '/splash';
+    if (!isVersionGatePassed && path != '/splash') {
+      return '/splash';
+    }
 
     if (path == '/verify-email') {
       if (authBusy || (isAuthenticated && !isVersionGatePassed)) {
