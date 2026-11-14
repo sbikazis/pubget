@@ -178,7 +178,9 @@ class _SplashPageState extends State<SplashPage> {
 
   Future<bool> _applyVersionPolicy() async {
     final status = await AppVersionGate().check();
-    if (!mounted) return false;
+    if (!mounted) {
+      return false;
+    }
     if (status.isRequired) {
       await Navigator.of(context).pushAndRemoveUntil<void>(
         MaterialPageRoute<void>(
