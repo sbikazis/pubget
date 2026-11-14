@@ -21,6 +21,19 @@ bool isOpaqueMediaReference(String reference) {
   return !isRemoteMediaUrl(value) && value.contains('://');
 }
 
+/// Upgrades legacy `http://` media links to TLS.
+///
+/// Release Android forbids cleartext traffic, so an old record pointing at
+/// plain HTTP would otherwise render as a broken image. Opaque and non-HTTP
+/// references pass through unchanged.
+String secureMediaUrl(String reference) {
+  final value = reference.trim();
+  if (value.startsWith('http://')) {
+    return 'https://${value.substring('http://'.length)}';
+  }
+  return value;
+}
+
 /// Matches only the stable object-key formats accepted by the R2 Worker.
 /// This is client-side input hygiene; the Worker remains the security boundary.
 bool isR2MediaKey(String reference) {

@@ -459,6 +459,10 @@ final class AppStrings {
   );
   String get retryConnection => pick('Retry now', 'أعد المحاولة الآن');
 
+  /// Group list "unread" semantic label. Kept in the shared copy so the
+  /// card's accessibility label is localized like every other surface.
+  String get unreadLabel => pick('Unread', 'غير مقروء');
+
   /// Discovery failures. Kept beside the Home section titles because Home is
   /// the only surface that renders a bare `Failure` with no screen-specific
   /// copy of its own.

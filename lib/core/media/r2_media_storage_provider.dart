@@ -87,15 +87,16 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
     String? scopeId,
   }) async {
     final token = await _requireToken();
+    final fields = <String, String>{
+      'kind': kind.name,
+      'contentType': contentType,
+      'ext': extension,
+    };
+    if (scopeType != null) fields['scopeType'] = scopeType;
+    if (scopeId != null) fields['scopeId'] = scopeId;
     final request = http.MultipartRequest('POST', _uri('/upload'))
       ..headers['Authorization'] = 'Bearer $token'
-      ..fields['kind'] = kind.name
-      ..fields['contentType'] = contentType
-      ..fields['ext'] = extension
-      ..fields.addAll({
-        if (scopeType != null) 'scopeType': scopeType,
-        if (scopeId != null) 'scopeId': scopeId,
-      })
+      ..fields.addAll(fields)
       ..files.add(
         http.MultipartFile.fromBytes('file', bytes,
             filename: 'upload.$extension', contentType: null),
@@ -121,9 +122,9 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
       'contentType': contentType,
       'sizeBytes': '${bytes.length}',
       'ext': extension,
-      if (scopeType != null) 'scopeType': scopeType,
-      if (scopeId != null) 'scopeId': scopeId,
     };
+    if (scopeType != null) query['scopeType'] = scopeType;
+    if (scopeId != null) query['scopeId'] = scopeId;
     final presignResponse = await _client
         .get(
           _uri('/presign', query),
