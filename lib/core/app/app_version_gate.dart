@@ -107,7 +107,9 @@ class AppVersionGate {
     for (var index = 0; index < length; index++) {
       final a = index < left.length ? left[index] : 0;
       final b = index < right.length ? right[index] : 0;
-      if (a != b) return a.compareTo(b);
+      if (a != b) {
+        return a.compareTo(b);
+      }
     }
     return 0;
   }
