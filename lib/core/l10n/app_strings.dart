@@ -135,8 +135,6 @@ final class AppStrings {
     'I have verified my email',
     'لقد تحققت من بريدي الإلكتروني',
   );
-  String get signOut => pick('Sign out', 'تسجيل الخروج');
-
   String get resetPassword =>
       pick('Reset your password', 'إعادة تعيين كلمة المرور');
   String get resetPasswordSubtitle => pick(
