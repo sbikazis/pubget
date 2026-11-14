@@ -357,7 +357,7 @@ class _EditFeedPageState extends State<EditFeedPage>
         );
       }
       return PubgetErrorState(
-        message: failure?.message ?? copy.failedLoad,
+        message: failure.message ?? copy.failedLoad,
         onRetry: provider.load,
       );
     }
