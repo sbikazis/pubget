@@ -298,6 +298,26 @@ test("self-owned presentation fields are writable on update and validated", asyn
   await assertFails(db("alice").doc("users/alice").update({
     sectionPrivacy: { ...sectionPrivacy, fans: "no" },
   }));
+  // A profile cannot be made complete or have its required identity erased
+  // through a client write that bypasses the server-side username registry.
+  await assertFails(db("alice").doc("users/alice").update({
+    isProfileCompleted: true,
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    hasSkippedOnboarding: true,
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    displayName: null,
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    avatarUrl: null,
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    age: 12,
+  }));
+  await assertFails(db("alice").doc("users/alice").update({
+    country: "c".repeat(65),
+  }));
 });
 
 test("users create accepts the full self-owned presentation payload", async () => {
