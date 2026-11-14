@@ -24,6 +24,9 @@ class AppVersionStatus {
 }
 
 class AppVersionGate {
+  static bool _hasPassed = false;
+  static bool get hasPassed => _hasPassed;
+
   AppVersionGate({FirebaseRemoteConfig? remoteConfig})
     : _remoteConfig = remoteConfig ?? FirebaseRemoteConfig.instance;
 
@@ -59,6 +62,7 @@ class AppVersionGate {
 
       if (minimum.isNotEmpty &&
           compareVersions(package.version, minimum) < 0) {
+        _hasPassed = false;
         return AppVersionStatus(
           level: AppUpdateLevel.required,
           currentVersion: package.version,
@@ -68,6 +72,7 @@ class AppVersionGate {
         );
       }
       if (latest.isNotEmpty && compareVersions(package.version, latest) < 0) {
+        _hasPassed = true;
         return AppVersionStatus(
           level: AppUpdateLevel.optional,
           currentVersion: package.version,
@@ -76,6 +81,7 @@ class AppVersionGate {
           updateUrl: updateUrl,
         );
       }
+      _hasPassed = true;
       return AppVersionStatus(
         level: AppUpdateLevel.none,
         currentVersion: package.version,
@@ -84,6 +90,7 @@ class AppVersionGate {
         updateUrl: updateUrl,
       );
     } on Object catch (error, stackTrace) {
+      _hasPassed = true;
       debugPrint('Pubget version check failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return const AppVersionStatus(
