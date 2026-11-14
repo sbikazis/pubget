@@ -1641,7 +1641,16 @@ String get onboardingSkipAge => pick('Skip age', 'تخطي العمر');
 String get onboardingSkipAgeSemantic => pick('Skip age', 'تخطي العمر');
 
 String get onboardingInterestsTitle =>
-      pick('Anime interests', 'اهتماماتك الأنمي');
+      pick('Choose favorite anime (optional)', 'اختر أنمياتك المفضلة (اختياري)');
+String get onboardingFavoriteAnimeHint => pick(
+  'Search the Anime Hub catalog and select real anime titles.',
+  'ابحث في كتالوج مركز الأنمي واختر عناوين حقيقية.',
+);
+String get onboardingSearchAnime => pick('Search anime', 'ابحث عن أنمي');
+String get onboardingNoAnimeFound =>
+    pick('No anime found. Try another title.', 'لم يتم العثور على أنمي. جرّب عنواناً آخر.');
+String get onboardingSelectedAnime =>
+    pick('Selected anime', 'الأنميات المختارة');
 
 String get onboardingSkipInterests =>
       pick('Skip interests', 'تخطي الاهتمامات');
