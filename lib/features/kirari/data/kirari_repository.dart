@@ -357,7 +357,7 @@ class FirebaseKirariRepository implements KirariRepository {
   Future<KirariFeedPageResult> getSavedReels({int limit = 30, Map<String, dynamic>? cursor}) async {
     final result = await _call('getSavedKirariReels', {
       'limit': limit,
-      if (cursor != null && cursor['cursor'] != null) 'cursor': cursor['cursor'],
+      'cursor': ?cursor?['cursor'],
     });
     final nextCursor = result['nextCursor'];
     return KirariFeedPageResult(
@@ -388,7 +388,7 @@ class FirebaseKirariRepository implements KirariRepository {
   Future<void> reviewContent({required String reelId, String? commentId, required String decision}) async {
     await _call('reviewKirariContent', {
       'reelId': reelId,
-      if (commentId != null) 'commentId': commentId,
+      'commentId': ?commentId,
       'decision': decision,
     });
   }
@@ -420,7 +420,7 @@ class FirebaseKirariRepository implements KirariRepository {
     String reelId, {String? before, int limit = 30}
   ) async {
     final result = await _call('getKirariComments', {
-      'reelId': reelId, 'limit': limit, if (before != null) 'before': before,
+      'reelId': reelId, 'limit': limit, 'before': ?before,
     });
     final raw = result['items'];
     return raw is List
@@ -431,7 +431,7 @@ class FirebaseKirariRepository implements KirariRepository {
   @override
   Future<void> addComment(String reelId, String text, {String? parentId}) async {
     await _call('addKirariComment', {
-      'reelId': reelId, 'text': text, if (parentId != null) 'parentId': parentId,
+      'reelId': reelId, 'text': text, 'parentId': ?parentId,
     });
   }
 
@@ -470,7 +470,7 @@ class FirebaseKirariRepository implements KirariRepository {
       'hashtags': hashtags,
       'idempotencyKey': idempotencyKey,
       'editSettings': editSettings,
-      if (audioId != null) 'audioId': audioId,
+      'audioId': ?audioId,
       'allowOriginalAudioReuse': allowOriginalAudioReuse,
       'animeIds': animeIds,
       'characterIds': characterIds,
@@ -479,8 +479,8 @@ class FirebaseKirariRepository implements KirariRepository {
       'characterMetadata': characterMetadata,
       'mentionMetadata': mentionMetadata,
       'contentCategory': contentCategory,
-      if (groupId != null) 'groupId': groupId,
-      if (eventId != null) 'eventId': eventId,
+      'groupId': ?groupId,
+      'eventId': ?eventId,
     });
     final path = result['storagePath'] as String?;
     final reelId = result['reelId'] as String?;
@@ -663,7 +663,9 @@ class KirariPlaybackReporter {
   Future<void> report(VideoPlayerController controller) async {
     final session = _sessionId;
     if (session == null || _busy || !controller.value.isInitialized ||
-        !controller.value.isPlaying) return;
+        !controller.value.isPlaying) {
+      return;
+    }
     final duration = controller.value.duration.inMilliseconds / 1000;
     final position = controller.value.position.inMilliseconds / 1000;
     if (duration <= 0) return;
