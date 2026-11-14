@@ -1628,6 +1628,10 @@ String get onboardingSkipCountrySemantic =>
 
 String get onboardingAge => pick('Age (optional)', 'العمر (اختياري)');
 String get onboardingGender => pick('Gender (optional)', 'الجنس (اختياري)');
+String get onboardingAgeInvalid => pick(
+  'Enter an age between 13 and 120, or leave it empty.',
+  'أدخل عمراً بين 13 و120 أو اترك الحقل فارغاً.',
+);
 String get genderFemale => pick('Female', 'أنثى');
 String get genderMale => pick('Male', 'ذكر');
 String get genderOther => pick('Other', 'آخر');
