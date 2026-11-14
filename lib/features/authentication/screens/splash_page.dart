@@ -140,6 +140,10 @@ class _SplashPageState extends State<SplashPage> {
       await AppNavigation.go(context, '/login');
       return;
     }
+    if (!user.emailVerified) {
+      await AppNavigation.go(context, '/verify-email');
+      return;
+    }
     final onboarding = context.read<OnboardingProvider>();
     final result = await onboarding.loadProfile(user.id);
     if (!mounted) return;
