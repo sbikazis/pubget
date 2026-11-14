@@ -4,6 +4,7 @@ import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/loading/loading_state.dart';
 import '../models/auth_user.dart';
+import '../../social/models/profile_section_privacy.dart';
 import '../models/pubget_user.dart';
 import '../models/username_status.dart';
 import '../repositories/user_repository.dart';
