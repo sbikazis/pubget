@@ -409,17 +409,7 @@ final class _FakeFanWorkRepository implements FanWorkRepository {
     ),
   );
 
-  @override
-  Future<Result<FanWorkReadingProgress>> getReadingProgress({
-    required String workId,
-    required String userId,
-  }) async => const Success(FanWorkReadingProgress());
 
-  @override
-  Future<Result<void>> saveReadingProgress({
-    required String workId,
-    required FanWorkReadingProgress progress,
-  }) async => const Success<void>(null);
 
   @override
   Future<Result<void>> markAsRead({required String workId}) async =>
