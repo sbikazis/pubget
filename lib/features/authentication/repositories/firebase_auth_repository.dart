@@ -136,7 +136,9 @@ final class FirebaseAuthRepository implements AuthRepository {
           PermissionError('Sign in before verifying your email.'),
         );
       }
-      if (user.emailVerified) return const Success<void>(null);
+      if (user.emailVerified) {
+        return const Success<void>(null);
+      }
       await user.sendEmailVerification();
       return const Success<void>(null);
     } on Object catch (error, stackTrace) {
