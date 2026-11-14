@@ -137,7 +137,9 @@ class _SplashPageState extends State<SplashPage> {
       return;
     }
     final shouldContinue = await _applyVersionPolicy();
-    if (!mounted || !shouldContinue) return;
+    if (!mounted || !shouldContinue) {
+      return;
+    }
     final user = auth.currentUser;
     if (user == null) {
       if (!alreadyReady) await _holdBrandMoment();
