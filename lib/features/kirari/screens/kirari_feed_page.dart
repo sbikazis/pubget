@@ -901,7 +901,7 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
               if (_replyToId != null)
                 ListTile(
                   dense: true,
-                  title: Text('Replying to @' + (_replyToAuthor ?? '')),
+                  title: Text('Replying to @${_replyToAuthor ?? ''}'),
                   trailing: IconButton(
                     onPressed: () => setState(() { _replyToId = null; _replyToAuthor = null; }),
                     icon: const Icon(Icons.close),
