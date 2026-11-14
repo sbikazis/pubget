@@ -8,7 +8,6 @@ import '../../../app/app_router.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/widgets/app_image_loader.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../anime/models/anime_models.dart';
 import '../../authentication/providers/auth_provider.dart';
