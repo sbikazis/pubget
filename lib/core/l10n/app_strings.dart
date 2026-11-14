@@ -236,6 +236,24 @@ final class AppStrings {
     'تم إرسال رسالة إعادة التعيين إن وُجد الحساب.',
   );
   String get signOut => pick('Sign out', 'تسجيل الخروج');
+  String get forceUpdateTitle =>
+      pick('Update required', 'التحديث مطلوب');
+  String get forceUpdateMessage => pick(
+    'This version of Pubget is no longer supported. Update the app to continue.',
+    'هذا الإصدار من Pubget لم يعد مدعوماً. حدّث التطبيق للمتابعة.',
+  );
+  String get softUpdateTitle =>
+      pick('Update available', 'يتوفر تحديث جديد');
+  String get softUpdateMessage => pick(
+    'A newer version of Pubget is available with improvements and fixes.',
+    'يتوفر إصدار أحدث من Pubget مع تحسينات وإصلاحات.',
+  );
+  String get updateNow => pick('Update now', 'حدّث الآن');
+  String get updateLater => pick('Later', 'لاحقاً');
+  String get updateLinkUnavailable => pick(
+    'The update link is not configured yet. Try again later.',
+    'رابط التحديث غير مُعدّ حالياً. حاول مرة أخرى لاحقاً.',
+  );
   String get appearance => pick('Appearance', 'المظهر');
   String get themeSystem => pick('System', 'تلقائي');
   String get themeLight => pick('Light', 'فاتح');
