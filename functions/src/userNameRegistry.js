@@ -38,6 +38,7 @@ function createUserNameRegistry({ db }) {
     return {
       valid: true,
       reason: snapshot.exists && ownerUid !== uid ? "taken" : null,
+      reservedByUser: snapshot.exists && ownerUid === uid,
       normalized,
     };
   }
