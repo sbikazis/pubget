@@ -95,6 +95,23 @@ void main() {
     expect(provider.profile?.bio, 'Updated bio');
   });
 
+  test('legacy skipped profiles still require identity completion', () async {
+    final repository = FakeUserRepository()
+      ..user = PubgetUser(
+        id: authUser.id,
+        email: authUser.email,
+        hasSkippedOnboarding: true,
+        createdAt: DateTime.utc(2026, 1, 1),
+        isProfileCompleted: false,
+      );
+    final provider = OnboardingProvider(repository: repository);
+    addTearDown(provider.dispose);
+
+    await provider.loadProfile(authUser.id);
+
+    expect(provider.canEnterHome, isFalse);
+  });
+
   test('avatar bytes are uploaded through the repository', () async {
     final repository = FakeUserRepository();
     final provider = OnboardingProvider(repository: repository);
@@ -104,9 +121,11 @@ void main() {
       authUser: authUser,
       avatarBytes: Uint8List.fromList(<int>[1, 2, 3]),
       contentType: 'image/png',
+      username: 'anime_fan',
+      displayName: 'Anime Fan',
       age: 22,
       country: 'Morocco',
-      isProfileCompleted: false,
+      isProfileCompleted: true,
     );
 
     expect(result.isSuccess, isTrue);
