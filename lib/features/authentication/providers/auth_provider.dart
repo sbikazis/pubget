@@ -72,6 +72,31 @@ final class AuthProvider extends ChangeNotifier {
     return result;
   }
 
+  Future<Result<void>> sendEmailVerification() async {
+    final result = await _repository.sendEmailVerification();
+    result.fold(
+      onSuccess: (_) {
+        _failure = null;
+        notifyListeners();
+      },
+      onFailure: _setFailure,
+    );
+    return result;
+  }
+
+  Future<Result<AuthUser?>> reloadCurrentUser() async {
+    final result = await _repository.reloadCurrentUser();
+    result.fold(
+      onSuccess: (user) {
+        _currentUser = user;
+        _failure = null;
+        _setState(LoadingState.loaded);
+      },
+      onFailure: _setFailure,
+    );
+    return result;
+  }
+
   Future<Result<void>> signOut() async {
     _setState(LoadingState.loading);
     final result = await _repository.signOut();
