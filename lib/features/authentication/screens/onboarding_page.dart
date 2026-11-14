@@ -257,7 +257,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
       query,
       limit: 12,
     );
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _searchingAnime = false;
       result.fold(
