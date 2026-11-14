@@ -45,6 +45,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final _country = TextEditingController();
   final _age = TextEditingController();
   final _interests = <String>{};
+  String? _gender;
   Uint8List? _avatarBytes;
   String _avatarContentType = 'image/png';
   String? _usernameError;
@@ -74,6 +75,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     _bio.text = profile?.bio ?? '';
     _country.text = profile?.country ?? '';
     _age.text = profile?.age?.toString() ?? '';
+    _gender = profile?.gender;
     _interests.addAll(profile?.favoriteAnimes ?? const <String>[]);
     _seededIdentity = true;
   }
@@ -195,7 +197,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
               bio: _bio,
               country: _country,
               age: _age,
+              gender: _gender,
               loading: loading,
+              onGenderChanged: (value) => setState(() => _gender = value),
               onSkipBio: () {
                 _bio.clear();
                 setState(() => _step = 2);
@@ -410,6 +414,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
             displayName: _displayName.text,
             bio: _bio.text,
             age: age,
+            gender: _gender,
             country: country,
             favoriteAnimes: _interests.toList(growable: false),
             isProfileCompleted: completed,
@@ -612,7 +617,9 @@ class _AboutStep extends StatelessWidget {
     required this.bio,
     required this.country,
     required this.age,
+    required this.gender,
     required this.loading,
+    required this.onGenderChanged,
     required this.onSkipBio,
     required this.onSkipCountry,
     required this.onSkipAge,
@@ -622,7 +629,9 @@ class _AboutStep extends StatelessWidget {
   final TextEditingController bio;
   final TextEditingController country;
   final TextEditingController age;
+  final String? gender;
   final bool loading;
+  final ValueChanged<String?> onGenderChanged;
   final VoidCallback onSkipBio;
   final VoidCallback onSkipCountry;
   final VoidCallback onSkipAge;
@@ -664,6 +673,51 @@ class _AboutStep extends StatelessWidget {
           label: copy.onboardingAge,
           enabled: !loading,
           keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(
+            copy.onboardingGender,
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: <Widget>[
+            PubgetSelectionChip(
+              label: copy.genderFemale,
+              selected: gender == 'female',
+              onSelected: loading
+                  ? null
+                  : (selected) => onGenderChanged(selected ? 'female' : null),
+            ),
+            PubgetSelectionChip(
+              label: copy.genderMale,
+              selected: gender == 'male',
+              onSelected: loading
+                  ? null
+                  : (selected) => onGenderChanged(selected ? 'male' : null),
+            ),
+            PubgetSelectionChip(
+              label: copy.genderOther,
+              selected: gender == 'other',
+              onSelected: loading
+                  ? null
+                  : (selected) => onGenderChanged(selected ? 'other' : null),
+            ),
+            PubgetSelectionChip(
+              label: copy.genderPreferNotToSay,
+              selected: gender == 'prefer_not_to_say',
+              onSelected: loading
+                  ? null
+                  : (selected) => onGenderChanged(
+                      selected ? 'prefer_not_to_say' : null,
+                    ),
+            ),
+          ],
         ),
         Align(
           alignment: AlignmentDirectional.centerEnd,
