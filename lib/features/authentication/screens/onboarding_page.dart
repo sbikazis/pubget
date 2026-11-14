@@ -397,9 +397,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
             authUser: authUser,
             avatarBytes: _avatarBytes!,
             contentType: _avatarContentType,
-            username: username,
+            username: canonicalUsername,
             displayName: _displayName.text,
             bio: _bio.text,
+            age: age,
+            country: country,
             favoriteAnimes: _interests.toList(growable: false),
             isProfileCompleted: completed,
           );
