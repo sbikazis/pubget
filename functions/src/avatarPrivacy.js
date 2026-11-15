@@ -164,6 +164,7 @@ function createUpdateSocialProfile({
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
     }
     if (input.avatarUrl !== undefined &&
+        input.avatarUrl !== null &&
         !optionalString(input.avatarUrl, 2048)) {
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
     }

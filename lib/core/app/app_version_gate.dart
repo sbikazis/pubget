@@ -28,13 +28,14 @@ class AppVersionGate {
   static bool get hasPassed => _hasPassed;
 
   AppVersionGate({FirebaseRemoteConfig? remoteConfig})
-    : _remoteConfig = remoteConfig ?? FirebaseRemoteConfig.instance;
+    : _remoteConfig = remoteConfig;
 
-  final FirebaseRemoteConfig _remoteConfig;
+  final FirebaseRemoteConfig? _remoteConfig;
 
   Future<AppVersionStatus> check() async {
     try {
-      await _remoteConfig.setConfigSettings(
+      final remoteConfig = _remoteConfig ?? FirebaseRemoteConfig.instance;
+      await remoteConfig.setConfigSettings(
         RemoteConfigSettings(
           fetchTimeout: const Duration(seconds: 8),
           minimumFetchInterval: kReleaseMode
@@ -42,7 +43,7 @@ class AppVersionGate {
               : Duration.zero,
         ),
       );
-      await _remoteConfig.setDefaults(const <String, Object>{
+      await remoteConfig.setDefaults(const <String, Object>{
         'min_version_android': '',
         'latest_version_android': '',
         'update_url_android': '',
@@ -50,16 +51,16 @@ class AppVersionGate {
         'latest_version_ios': '',
         'update_url_ios': '',
       });
-      await _remoteConfig.fetchAndActivate();
+      await remoteConfig.fetchAndActivate();
 
       final package = await PackageInfo.fromPlatform();
       final platform = defaultTargetPlatform == TargetPlatform.iOS
           ? 'ios'
           : 'android';
-      final minimum = _remoteConfig.getString('min_version_$platform').trim();
-      final latest = _remoteConfig.getString('latest_version_$platform').trim();
+      final minimum = remoteConfig.getString('min_version_$platform').trim();
+      final latest = remoteConfig.getString('latest_version_$platform').trim();
       final configuredUpdateUrl =
-          _remoteConfig.getString('update_url_$platform').trim();
+          remoteConfig.getString('update_url_$platform').trim();
       final parsedUpdateUrl = Uri.tryParse(configuredUpdateUrl);
       final updateUrl = parsedUpdateUrl != null &&
               parsedUpdateUrl.hasScheme &&

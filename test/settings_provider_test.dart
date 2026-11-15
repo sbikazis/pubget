@@ -68,6 +68,8 @@ void main() {
     await onboarding.saveProfile(
       authUser: const AuthUser(id: 'a', email: 'a@example.com'),
       username: 'alice',
+      displayName: 'Alice',
+      avatarUrl: 'https://example.com/avatar.jpg',
       isProfileCompleted: true,
     );
     expect(onboarding.profile?.username, 'alice');
