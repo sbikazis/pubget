@@ -22,6 +22,8 @@ void main() {
     final result = await provider.saveProfile(
       authUser: authUser,
       username: 'anime_fan',
+      age: 24,
+      country: 'Morocco',
       favoriteAnimes: const <String>['Fantasy'],
       isProfileCompleted: true,
     );
@@ -29,6 +31,8 @@ void main() {
     expect(result.isSuccess, isTrue);
     expect(provider.isProfileCompleted, isTrue);
     expect(provider.profile?.favoriteAnimes, <String>['Fantasy']);
+    expect(provider.profile?.age, 24);
+    expect(provider.profile?.country, 'Morocco');
     expect(provider.state, LoadingState.loaded);
   });
 
@@ -49,21 +53,23 @@ void main() {
     expect(provider.profile?.avatarUrl, 'https://example.com/avatar.jpg');
   });
 
-  test('skip still lets the user through when saving is offline', () async {
+  test('an offline profile save cannot unlock Home', () async {
     final repository = FakeUserRepository()
       ..failure = const NetworkError('Check your connection and try again.');
     final provider = OnboardingProvider(repository: repository);
     addTearDown(provider.dispose);
 
-    final result = await provider.skip(
-      authUser,
-      username: 'fan',
+    final result = await provider.saveProfile(
+      authUser: authUser,
+      username: 'anime_fan',
       displayName: 'Fan',
+      isProfileCompleted: true,
     );
 
-    expect(result.isSuccess, isTrue);
-    expect(provider.canEnterHome, isTrue);
+    expect(result.isSuccess, isFalse);
+    expect(provider.canEnterHome, isFalse);
     expect(provider.isProfileCompleted, isFalse);
-    expect(provider.failure, isNull);
+    expect(provider.failure, isA<NetworkError>());
+    expect(provider.state, LoadingState.offline);
   });
 }
