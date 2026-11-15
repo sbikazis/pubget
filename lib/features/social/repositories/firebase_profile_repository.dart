@@ -6,6 +6,7 @@ import '../../../core/media/media_repository_factory.dart';
 import '../../../core/media/media_url_uploader.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/identity/identity_worker_client.dart';
 import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
 import '../../authentication/models/pubget_user.dart';
@@ -22,18 +23,32 @@ final class FirebaseProfileRepository implements ProfileRepository {
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
     MediaUrlUploader? mediaUploader,
+    IdentityWorkerClient? identityClient,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
+       _identityClient = identityClient ?? IdentityWorkerClient(),
        _mediaUploader = mediaUploader;
 
   final FirebaseFirestore _firestore;
-  final FirebaseFunctions _functions;
+  final IdentityWorkerClient _identityClient;
   MediaUrlUploader? _mediaUploader;
 
   MediaUrlUploader get _uploader => _mediaUploader ??= RepositoryMediaUrlUploader(
     repository: createMediaRepository(),
   );
+
+  Failure _mapIdentityFailure(Object error, String message) {
+    if (error is IdentityWorkerException) {
+      return switch (error.statusCode) {
+        400 || 409 || 412 => ValidationError(
+          error.statusCode == 409 ? 'This username is already taken.' : error.message,
+        ),
+        401 || 403 => const PermissionError('You do not have permission to update this profile.'),
+        404 => const NotFoundError('Profile not found.'),
+        _ => const NetworkError('Check your connection and try again.'),
+      };
+    }
+    return mapFirebaseFailure(error, message: message);
+  }
 
   @override
   Future<Result<PublicProfile>> getPublicProfile(String userId) async {
@@ -82,13 +97,13 @@ final class FirebaseProfileRepository implements ProfileRepository {
     ProfileUpdate update,
   ) async {
     try {
-      await _functions.httpsCallable('updateSocialProfile').call<void>(
-        <String, dynamic>{...update.toMap()},
+      await _identityClient.post(
+        '/identity/profile/update', <String, dynamic>{...update.toMap()},
       );
       return await getOwnProfile(userId);
     } on Object catch (error) {
       return FailureResult<PubgetUser>(
-        mapFirebaseFailure(error, message: 'Could not update your profile.'),
+        _mapIdentityFailure(error, 'Could not update your profile.'),
       );
     }
   }
@@ -132,13 +147,13 @@ final class FirebaseProfileRepository implements ProfileRepository {
     final key = uploaded.valueOrNull;
     if (key == null) return uploaded;
     try {
-      await _functions.httpsCallable('updateSocialProfile').call<void>(
-        <String, dynamic>{'coverUrl': key},
+      await _identityClient.post(
+        '/identity/profile/update', <String, dynamic>{'coverUrl': key},
       );
       return Success<String>(key);
     } on Object catch (error) {
       return FailureResult<String>(
-        mapFirebaseFailure(error, message: 'Could not save your cover photo.'),
+        _mapIdentityFailure(error, 'Could not save your cover photo.'),
       );
     }
   }
