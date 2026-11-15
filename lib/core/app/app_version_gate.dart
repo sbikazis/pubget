@@ -58,9 +58,9 @@ class AppVersionGate {
           ? 'ios'
           : 'android';
       final minimum = remoteConfig.getString('min_version_$platform').trim();
-      final latest = _remoteConfig.getString('latest_version_$platform').trim();
+      final latest = remoteConfig.getString('latest_version_$platform').trim();
       final configuredUpdateUrl =
-          _remoteConfig.getString('update_url_$platform').trim();
+          remoteConfig.getString('update_url_$platform').trim();
       final parsedUpdateUrl = Uri.tryParse(configuredUpdateUrl);
       final updateUrl = parsedUpdateUrl != null &&
               parsedUpdateUrl.hasScheme &&
