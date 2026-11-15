@@ -1770,3 +1770,52 @@ test("account moderation flags and block relationships are never client writable
     blockedBy: "bob",
   }));
 });
+
+
+test("onboarding requires a reserved username and persists optional identity fields", async () => {
+  const alice = db("alice");
+  const profile = {
+    email: "newfan@example.com",
+    username: "newfan",
+    displayName: "New Fan",
+    avatarUrl: "https://cdn.example.com/avatar.jpg",
+    bio: "",
+    favoriteAnimes: ["Action", "Fantasy"],
+    age: 24,
+    country: "Morocco",
+    isProfileCompleted: true,
+    createdAt: serverTimestamp(),
+  };
+
+  // A client cannot create a completed profile using an unclaimed username.
+  await assertFails(alice.doc("users/new-user").set(profile));
+
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("usernames/newfan").set({
+      uid: "new-user",
+      normalized: "newfan",
+    });
+  });
+  await assertSucceeds(db("new-user").doc("users/new-user").set(profile));
+
+  // Optional identity fields are persisted by the self-service profile flow.
+  await assertSucceeds(alice.doc("users/alice").update({
+    age: 24,
+    country: "Morocco",
+    favoriteAnimes: ["Action"],
+  }));
+  await assertFails(alice.doc("users/alice").update({ age: 12 }));
+  await assertFails(alice.doc("users/alice").update({
+    username: "unreserved_name",
+  }));
+
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.firestore().doc("usernames/claimed_name").set({
+      uid: "alice",
+      normalized: "claimed_name",
+    });
+  });
+  await assertSucceeds(alice.doc("users/alice").update({
+    username: "claimed_name",
+  }));
+});
