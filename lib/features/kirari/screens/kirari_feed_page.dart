@@ -236,8 +236,12 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   }
 
   Future<void> _prefetchNext(int index) async {
-    if (index < 0 || index >= _items.length ||
-        _prefetchController != null || index != _activeIndex + 1) return;
+    if (index < 0 ||
+        index >= _items.length ||
+        _prefetchController != null ||
+        index != _activeIndex + 1) {
+      return;
+    }
     final reel = _items[index];
     VideoPlayerController? controller;
     try {
