@@ -8,7 +8,6 @@ import '../../../app/app_router.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../core/widgets/app_image_loader.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../anime/models/anime_models.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -539,11 +538,10 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                           .surfaceContainerHighest,
                       child: const Icon(Icons.movie_outlined),
                     )
-                  : Image.network(
-                      anime.imageUrl,
+                  : AppImageLoader(
+                      imageUrl: anime.imageUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          const Icon(Icons.broken_image_outlined),
+                      errorWidget: const Icon(Icons.broken_image_outlined),
                     ),
             ),
           ),
@@ -785,11 +783,10 @@ class _EventBuilderPageState extends State<EventBuilderPage> {
                                   size: 16,
                                 ),
                               )
-                            : Image.network(
-                                option.imageUrl,
+                            : AppImageLoader(
+                                imageUrl: option.imageUrl,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) =>
-                                    const Icon(Icons.broken_image_outlined, size: 16),
+                                errorWidget: const Icon(Icons.broken_image_outlined, size: 16),
                               ),
                       ),
                     ),

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../l10n/app_strings.dart';
 import '../loading/loading_state.dart';
+import '../network/network_service.dart';
 import '../theme/app_spacing.dart';
 import 'pubget_buttons.dart';
 import 'pubget_skeleton.dart';
@@ -102,6 +104,109 @@ class PubgetOfflineState extends StatelessWidget {
               semanticLabel: retry,
               child: Text(retry),
             ),
+    );
+  }
+}
+
+/// Axis Zero: the third verdict. A backend outage is not a missing
+/// connection, and saying "check your internet" for it destroys trust.
+class PubgetServiceUnavailableState extends StatelessWidget {
+  const PubgetServiceUnavailableState({
+    this.onRetry,
+    this.loading = false,
+    super.key,
+  });
+
+  final VoidCallback? onRetry;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    return _StateLayout(
+      icon: Icons.cloud_sync_outlined,
+      title: copy.serviceUnavailableTitle,
+      message: copy.serviceUnavailableMessage,
+      iconColor: Theme.of(context).colorScheme.tertiary,
+      action: onRetry == null
+          ? null
+          : PubgetSecondaryButton(
+              onPressed: loading ? null : onRetry,
+              loading: loading,
+              semanticLabel: copy.retryConnection,
+              child: Text(copy.retryConnection),
+            ),
+    );
+  }
+}
+
+/// One honest surface for all three connectivity verdicts, with a retry that
+/// actually does something: it re-verifies the link through [NetworkService]
+/// *and* re-runs the failed action. A button that only changes a label is not
+/// a retry.
+class PubgetConnectionStateView extends StatefulWidget {
+  const PubgetConnectionStateView({
+    required this.onRetry,
+    this.isServiceFailure = false,
+    super.key,
+  });
+
+  /// Re-runs the failed operation after the link has been re-verified.
+  final Future<void> Function() onRetry;
+
+  /// True when the failure came from the backend (`UnavailableError`,
+  /// `TimeoutError`) rather than from the platform reporting no link.
+  final bool isServiceFailure;
+
+  @override
+  State<PubgetConnectionStateView> createState() =>
+      _PubgetConnectionStateViewState();
+}
+
+class _PubgetConnectionStateViewState
+    extends State<PubgetConnectionStateView> {
+  bool _retrying = false;
+
+  Future<void> _retry() async {
+    if (_retrying) return;
+    setState(() => _retrying = true);
+    try {
+      // Refreshing first means a user who just reconnected is not told
+      // "no internet" a second time by a stale offline verdict.
+      await context.read<NetworkService>().refresh();
+      await widget.onRetry();
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = AppStrings.of(context);
+    final status = context.select<NetworkService, NetworkStatus>(
+      (network) => network.status,
+    );
+
+    if (status == NetworkStatus.offline && !widget.isServiceFailure) {
+      return PubgetOfflineState(
+        title: copy.connectionOfflineTitle,
+        message: copy.connectionOfflineMessage,
+        onRetry: _retry,
+        retryLabel: copy.retryConnection,
+      );
+    }
+
+    if (widget.isServiceFailure || status == NetworkStatus.unknown) {
+      return PubgetServiceUnavailableState(
+        onRetry: _retry,
+        loading: _retrying,
+      );
+    }
+
+    // Online and the operation still failed: a generic, retryable error.
+    return PubgetErrorState(
+      onRetry: _retry,
+      retryLabel: copy.retryConnection,
     );
   }
 }

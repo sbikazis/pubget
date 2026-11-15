@@ -11,7 +11,9 @@ bool isRemoteHttpUrl(String? value) {
   final uri = Uri.tryParse(trimmed);
   if (uri != null &&
       (uri.scheme == 'https' || uri.scheme == 'http') &&
-      uri.host.isNotEmpty) return true;
+      uri.host.isNotEmpty) {
+    return true;
+  }
   if (trimmed.contains('://') || trimmed.startsWith('/')) return false;
   final parts = trimmed.split('/');
   final imageKey = parts.length == 3 &&

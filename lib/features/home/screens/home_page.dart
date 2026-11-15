@@ -641,7 +641,7 @@ class _KirariDiscoverySectionState extends State<_KirariDiscoverySection> {
                 return ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: reels.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+                  separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final reel = reels[index];
                     return SizedBox(
@@ -653,8 +653,8 @@ class _KirariDiscoverySectionState extends State<_KirariDiscoverySection> {
                           borderRadius: BorderRadius.circular(16),
                           child: Stack(fit: StackFit.expand, children: [
                             if (reel.coverUrl.isNotEmpty)
-                              Image.network(reel.coverUrl, fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.black12)),
+                              AppImageLoader(imageUrl: reel.coverUrl, fit: BoxFit.cover,
+                                errorWidget: const ColoredBox(color: Colors.black12)),
                             if (reel.coverUrl.isEmpty)
                               const ColoredBox(color: Colors.black12),
                             Align(

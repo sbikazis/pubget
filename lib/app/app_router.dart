@@ -67,6 +67,7 @@ final class AppRouterDelegate extends RouterDelegate<AppRoute>
     '/onboarding',
     '/terms',
     '/forgot-password',
+    '/verify-email',
   };
 
   @override
@@ -273,6 +274,7 @@ final class AppRouter {
     '/splash',
     '/login',
     '/onboarding',
+    '/verify-email',
     '/reels',
     ...shellPaths,
   };

@@ -14,6 +14,9 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
+import '../../anime/models/anime_models.dart';
+import '../../anime/repositories/anime_repository.dart';
+import '../../anime/widgets/anime_widgets.dart';
 import '../auth_validators.dart';
 import '../models/username_status.dart';
 import '../providers/auth_provider.dart';
@@ -28,15 +31,6 @@ class OnboardingPage extends StatefulWidget {
 }
 
 class _OnboardingPageState extends State<OnboardingPage> {
-  static const _interestOptions = <String>[
-    'Action',
-    'Adventure',
-    'Comedy',
-    'Fantasy',
-    'Mystery',
-    'Romance',
-  ];
-
   static const _usernameDebounce = Duration(milliseconds: 250);
 
   final _username = TextEditingController();
@@ -44,7 +38,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final _bio = TextEditingController();
   final _country = TextEditingController();
   final _age = TextEditingController();
-  final _interests = <String>{};
+  final _animeQuery = TextEditingController();
+  final _favoriteAnimeIds = <String>{};
+  final _favoriteAnimeTitles = <String, String>{};
+  List<Anime> _animeResults = const <Anime>[];
+  String? _animeSearchError;
+  String? _gender;
+  var _searchingAnime = false;
   Uint8List? _avatarBytes;
   String _avatarContentType = 'image/png';
   String? _usernameError;
@@ -54,8 +54,36 @@ class _OnboardingPageState extends State<OnboardingPage> {
   Timer? _availabilityTimer;
   var _checking = false;
   var _step = 0;
+  var _seededIdentity = false;
 
   static const _totalSteps = 3;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final onboarding = context.watch<OnboardingProvider>();
+    final authUser = context.watch<AuthProvider>().currentUser;
+    if (_seededIdentity ||
+        onboarding.state != LoadingState.loaded ||
+        authUser == null) {
+      return;
+    }
+    final profile = onboarding.profile;
+    _username.text = profile?.username ?? '';
+    _displayName.text = profile?.displayName ?? authUser.displayName ?? '';
+    _bio.text = profile?.bio ?? '';
+    _country.text = profile?.country ?? '';
+    _age.text = profile?.age?.toString() ?? '';
+    _gender = profile?.gender;
+    final favoriteIds = profile?.favoriteAnimeIds ?? const <String>[];
+    final favoriteTitles = profile?.favoriteAnimes ?? const <String>[];
+    _favoriteAnimeIds.addAll(favoriteIds);
+    for (var index = 0; index < favoriteIds.length; index++) {
+      _favoriteAnimeTitles[favoriteIds[index]] =
+          index < favoriteTitles.length ? favoriteTitles[index] : favoriteIds[index];
+    }
+    _seededIdentity = true;
+  }
 
   @override
   void dispose() {
@@ -65,6 +93,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     _bio.dispose();
     _country.dispose();
     _age.dispose();
+    _animeQuery.dispose();
     super.dispose();
   }
 
@@ -94,21 +123,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
       },
       compactBrand: true,
       trailing: _step == 0
-          ? offline
-                ? PubgetTextButton(
-                    key: const Key('onboarding-skip-step'),
-                    onPressed: loading ? null : _skip,
-                    semanticLabel: copy.onboardingOfflineSaveSemantic,
-                    child: Text(copy.onboardingOfflineSave),
-                  )
-                : null
+          ? null
           : PubgetTextButton(
               key: const Key('onboarding-skip-step'),
-              onPressed: loading ? null : _skipStepOrFinish(offline),
+              onPressed: loading ? null : _skipStepOrFinish,
               semanticLabel: copy.onboardingSkipStep,
-              child: Text(
-                offline ? copy.onboardingOfflineSave : copy.onboardingSkipStep,
-              ),
+              child: Text(copy.onboardingSkipStep),
             ),
       primaryAction: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -183,7 +203,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
               bio: _bio,
               country: _country,
               age: _age,
+              gender: _gender,
               loading: loading,
+              onGenderChanged: (value) => setState(() => _gender = value),
               onSkipBio: () {
                 _bio.clear();
                 setState(() => _step = 2);
@@ -198,25 +220,71 @@ class _OnboardingPageState extends State<OnboardingPage> {
               },
             )
           else
-            _InterestsStep(
+            _FavoriteAnimeStep(
               copy: copy,
-              interests: _interests,
-              options: _interestOptions,
+              query: _animeQuery,
+              results: _animeResults,
+              selectedIds: _favoriteAnimeIds,
+              selectedTitles: _favoriteAnimeTitles,
               loading: loading,
-              onToggle: (interest, selected) {
+              searching: _searchingAnime,
+              error: _animeSearchError,
+              onSearch: _searchFavoriteAnime,
+              onToggle: _toggleFavoriteAnime,
+              onSkipInterests: () {
                 setState(() {
-                  if (selected) {
-                    _interests.add(interest);
-                  } else {
-                    _interests.remove(interest);
-                  }
+                  _favoriteAnimeIds.clear();
+                  _favoriteAnimeTitles.clear();
                 });
               },
-              onSkipInterests: () => _finish(completed: true),
             ),
         ],
       ),
     );
+  }
+
+  Future<void> _searchFavoriteAnime() async {
+    final query = _animeQuery.text.trim();
+    if (query.isEmpty || _searchingAnime) {
+      return;
+    }
+    setState(() {
+      _searchingAnime = true;
+      _animeSearchError = null;
+      _animeResults = const <Anime>[];
+    });
+    final result = await context.read<AnimeRepository>().searchAnime(
+      query,
+      limit: 12,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _searchingAnime = false;
+      result.fold(
+        onSuccess: (page) {
+          _animeResults = page.items;
+          _animeSearchError = null;
+        },
+        onFailure: (failure) {
+          _animeSearchError = failure.message;
+          _animeResults = const <Anime>[];
+        },
+      );
+    });
+  }
+
+  void _toggleFavoriteAnime(Anime anime, bool selected) {
+    setState(() {
+      if (selected) {
+        _favoriteAnimeIds.add(anime.id);
+        _favoriteAnimeTitles[anime.id] = anime.title;
+      } else {
+        _favoriteAnimeIds.remove(anime.id);
+        _favoriteAnimeTitles.remove(anime.id);
+      }
+    });
   }
 
   bool get _isOnline => !context.read<NetworkService>().isOffline;
@@ -336,15 +404,15 @@ class _OnboardingPageState extends State<OnboardingPage> {
     });
   }
 
-  VoidCallback _skipStepOrFinish(bool offline) {
-    if (offline) return _skip;
-    return () {
-      if (_step < _totalSteps - 1) {
-        setState(() => _step += 1);
-      } else {
-        _finish(completed: true);
-      }
-    };
+  void _skipStepOrFinish() {
+    if (_step < _totalSteps - 1) {
+      setState(() => _step += 1);
+      return;
+    }
+    setState(() {
+      _favoriteAnimeIds.clear();
+      _favoriteAnimeTitles.clear();
+    });
   }
 
   Future<void> _finish({required bool completed}) async {
@@ -366,14 +434,25 @@ class _OnboardingPageState extends State<OnboardingPage> {
       return;
     }
     final provider = context.read<OnboardingProvider>();
-    if (completed && _isOnline && username.isNotEmpty) {
-      // Claim the username server-side before the direct profile write so the
-      // reserved-name flow stays race-safe (spec §3.2).
+    if (!_isOnline) {
+      PubgetSnackbars.showError(context, copy.onboardingOfflineMessage);
+      return;
+    }
+    final ageText = _age.text.trim();
+    final age = int.tryParse(ageText);
+    if (ageText.isNotEmpty && (age == null || age < 13 || age > 120)) {
+      PubgetSnackbars.showError(context, copy.onboardingAgeInvalid);
+      return;
+    }
+    var canonicalUsername = username;
+    if (completed && username.isNotEmpty) {
+      // Claim the username server-side before the profile write. Persist only
+      // the canonical reserved form so Firestore and the registry stay aligned.
       final reserve = await provider.reserveUsername(username);
       if (!mounted) return;
       if (reserve is FailureResult) {
         final reserveFailure = reserve.failureOrNull;
-        if (reserveFailure is NetworkError && _isOnline) {
+        if (reserveFailure is NetworkError) {
           setState(() => _usernameError = copy.usernameCheckFailed);
           return;
         }
@@ -383,66 +462,50 @@ class _OnboardingPageState extends State<OnboardingPage> {
         });
         return;
       }
+      canonicalUsername = reserve.valueOrNull ?? username.toLowerCase();
     }
-    final age = int.tryParse(_age.text.trim());
+    final country = _country.text.trim();
     final Result<Object> result = _avatarBytes == null
         ? await provider.saveProfile(
             authUser: authUser,
-            username: username,
+            username: canonicalUsername,
             displayName: _displayName.text,
             bio: _bio.text,
-            favoriteAnimes: _interests.toList(growable: false),
+            age: age,
+            clearAge: ageText.isEmpty,
+            gender: _gender,
+            clearGender: _gender == null,
+            country: country,
+            favoriteAnimes: _favoriteAnimeIds
+                .map((id) => _favoriteAnimeTitles[id] ?? id)
+                .toList(growable: false),
+            favoriteAnimeIds: _favoriteAnimeIds.toList(growable: false),
             isProfileCompleted: completed,
           )
         : await provider.saveProfileWithAvatar(
             authUser: authUser,
             avatarBytes: _avatarBytes!,
             contentType: _avatarContentType,
-            username: username,
+            username: canonicalUsername,
             displayName: _displayName.text,
             bio: _bio.text,
-            favoriteAnimes: _interests.toList(growable: false),
+            age: age,
+            clearAge: ageText.isEmpty,
+            gender: _gender,
+            clearGender: _gender == null,
+            country: country,
+            favoriteAnimes: _favoriteAnimeIds
+                .map((id) => _favoriteAnimeTitles[id] ?? id)
+                .toList(growable: false),
+            favoriteAnimeIds: _favoriteAnimeIds.toList(growable: false),
             isProfileCompleted: completed,
           );
     if (!mounted) return;
     if (result is Success) {
-      // Persist optional extras via a second soft update when completed.
-      if (completed &&
-          (_country.text.trim().isNotEmpty ||
-              age != null ||
-              _bio.text.trim().isNotEmpty)) {
-        await provider.saveProfile(
-          authUser: authUser,
-          username: username,
-          displayName: _displayName.text,
-          bio: _bio.text,
-          favoriteAnimes: _interests.toList(growable: false),
-          isProfileCompleted: true,
-        );
-        if (!mounted) return;
-      }
       await AppNavigation.go(context, '/home');
     }
   }
 
-  Future<void> _skip() async {
-    final user = context.read<AuthProvider>().currentUser;
-    if (user == null) {
-      await AppNavigation.go(context, '/login');
-      return;
-    }
-    final result = await context
-        .read<OnboardingProvider>()
-        .skip(
-          user,
-          username: _username.text,
-          displayName: _displayName.text,
-          bio: _bio.text,
-          favoriteAnimes: _interests.toList(growable: false),
-        );
-    if (!mounted) return;
-    if (result.isSuccess) await AppNavigation.go(context, '/home');
-  }
 }
 
 class _OnboardingAvailabilityIcon extends StatelessWidget {
@@ -623,7 +686,9 @@ class _AboutStep extends StatelessWidget {
     required this.bio,
     required this.country,
     required this.age,
+    required this.gender,
     required this.loading,
+    required this.onGenderChanged,
     required this.onSkipBio,
     required this.onSkipCountry,
     required this.onSkipAge,
@@ -633,7 +698,9 @@ class _AboutStep extends StatelessWidget {
   final TextEditingController bio;
   final TextEditingController country;
   final TextEditingController age;
+  final String? gender;
   final bool loading;
+  final ValueChanged<String?> onGenderChanged;
   final VoidCallback onSkipBio;
   final VoidCallback onSkipCountry;
   final VoidCallback onSkipAge;
@@ -676,6 +743,51 @@ class _AboutStep extends StatelessWidget {
           enabled: !loading,
           keyboardType: TextInputType.number,
         ),
+        const SizedBox(height: AppSpacing.md),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(
+            copy.onboardingGender,
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: <Widget>[
+            PubgetSelectionChip(
+              label: copy.genderFemale,
+              selected: gender == 'female',
+              onSelected: loading
+                  ? null
+                  : (selected) => onGenderChanged(selected ? 'female' : null),
+            ),
+            PubgetSelectionChip(
+              label: copy.genderMale,
+              selected: gender == 'male',
+              onSelected: loading
+                  ? null
+                  : (selected) => onGenderChanged(selected ? 'male' : null),
+            ),
+            PubgetSelectionChip(
+              label: copy.genderOther,
+              selected: gender == 'other',
+              onSelected: loading
+                  ? null
+                  : (selected) => onGenderChanged(selected ? 'other' : null),
+            ),
+            PubgetSelectionChip(
+              label: copy.genderPreferNotToSay,
+              selected: gender == 'prefer_not_to_say',
+              onSelected: loading
+                  ? null
+                  : (selected) => onGenderChanged(
+                      selected ? 'prefer_not_to_say' : null,
+                    ),
+            ),
+          ],
+        ),
         Align(
           alignment: AlignmentDirectional.centerEnd,
           child: PubgetTextButton(
@@ -689,25 +801,36 @@ class _AboutStep extends StatelessWidget {
   }
 }
 
-class _InterestsStep extends StatelessWidget {
-  const _InterestsStep({
+class _FavoriteAnimeStep extends StatelessWidget {
+  const _FavoriteAnimeStep({
     required this.copy,
-    required this.interests,
-    required this.options,
+    required this.query,
+    required this.results,
+    required this.selectedIds,
+    required this.selectedTitles,
     required this.loading,
+    required this.searching,
+    required this.error,
+    required this.onSearch,
     required this.onToggle,
     required this.onSkipInterests,
   });
 
   final AppStrings copy;
-  final Set<String> interests;
-  final List<String> options;
+  final TextEditingController query;
+  final List<Anime> results;
+  final Set<String> selectedIds;
+  final Map<String, String> selectedTitles;
   final bool loading;
-  final void Function(String interest, bool selected) onToggle;
+  final bool searching;
+  final String? error;
+  final VoidCallback onSearch;
+  final void Function(Anime anime, bool selected) onToggle;
   final VoidCallback onSkipInterests;
 
   @override
   Widget build(BuildContext context) {
+    final busy = loading || searching;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -715,39 +838,94 @@ class _InterestsStep extends StatelessWidget {
           copy.onboardingInterestsTitle,
           style: Theme.of(context).textTheme.titleMedium,
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.sm,
-          children: options
-              .map(
-                (interest) => PubgetSelectionChip(
-                  label: _interestLabel(copy, interest),
-                  selected: interests.contains(interest),
-                  onSelected: loading
-                      ? null
-                      : (selected) => onToggle(interest, selected),
-                ),
-              )
-              .toList(growable: false),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          copy.onboardingFavoriteAnimeHint,
+          style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: AppSpacing.md),
+        PubgetTextField(
+          controller: query,
+          label: copy.onboardingSearchAnime,
+          enabled: !busy,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (_) => onSearch(),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        PubgetPrimaryButton(
+          onPressed: busy ? null : onSearch,
+          loading: searching,
+          semanticLabel: copy.onboardingSearchAnime,
+          child: Text(copy.onboardingSearchAnime),
+        ),
+        if (selectedIds.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            copy.onboardingSelectedAnime,
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Wrap(
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
+            children: selectedIds
+                .map(
+                  (id) => InputChip(
+                    label: Text(selectedTitles[id] ?? id),
+                    onDeleted: busy ? null : () => onToggle(
+                      Anime(id: id, title: selectedTitles[id] ?? id),
+                      false,
+                    ),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ],
+        if (error != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          PubgetInlineBanner.error(
+            title: copy.pubgetCouldNotStart,
+            message: error!,
+          ),
+        ],
+        if (searching) ...[
+          const SizedBox(height: AppSpacing.md),
+          const Center(child: CircularProgressIndicator()),
+        ] else if (query.text.trim().isNotEmpty && results.isEmpty && error == null) ...[
+          const SizedBox(height: AppSpacing.md),
+          Text(copy.onboardingNoAnimeFound),
+        ] else if (results.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          ...results.map((anime) {
+            final selected = selectedIds.contains(anime.id);
+            return ListTile(
+              key: ValueKey<String>('onboarding-anime-${anime.id}'),
+              contentPadding: EdgeInsets.zero,
+              leading: SizedBox(
+                width: 44,
+                height: 60,
+                child: AnimePoster(images: anime.images, memCacheWidth: 88),
+              ),
+              title: Text(anime.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: anime.subtitle.isEmpty ? null : Text(anime.subtitle),
+              trailing: IconButton(
+                tooltip: selected ? copy.close : copy.onboardingSearchAnime,
+                onPressed: busy ? null : () => onToggle(anime, !selected),
+                icon: Icon(
+                  selected ? Icons.check_circle : Icons.add_circle_outline,
+                  color: selected ? Theme.of(context).colorScheme.primary : null,
+                ),
+              ),
+            );
+          }),
+        ],
+        const SizedBox(height: AppSpacing.md),
         PubgetTextButton(
-          onPressed: loading ? null : onSkipInterests,
+          onPressed: busy ? null : onSkipInterests,
           semanticLabel: copy.onboardingSkipInterestsSemantic,
           child: Text(copy.onboardingSkipInterests),
         ),
       ],
     );
   }
-
-  static String _interestLabel(AppStrings copy, String interest) =>
-      switch (interest) {
-        'Action' => copy.onboardingInterestAction,
-        'Adventure' => copy.onboardingInterestAdventure,
-        'Comedy' => copy.onboardingInterestComedy,
-        'Fantasy' => copy.onboardingInterestFantasy,
-        'Mystery' => copy.onboardingInterestMystery,
-        _ => copy.onboardingInterestRomance,
-      };
 }

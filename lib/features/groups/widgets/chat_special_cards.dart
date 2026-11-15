@@ -1,7 +1,9 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../app/app_router.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/media/media_reference.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../games/models/game_type_registry.dart';
@@ -220,7 +222,9 @@ class ChatGameLobbyCard extends StatelessWidget {
                                     radius: 14,
                                     backgroundColor: _gameAccent,
                                     backgroundImage: avatars[i].startsWith('http')
-                                        ? NetworkImage(avatars[i])
+                                        ? CachedNetworkImageProvider(
+                                            secureMediaUrl(avatars[i]),
+                                          )
                                         : null,
                                     child: avatars[i].startsWith('http')
                                         ? null

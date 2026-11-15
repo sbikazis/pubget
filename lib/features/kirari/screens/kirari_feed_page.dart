@@ -77,7 +77,9 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       _isAppForeground = false;
       _resumeAfterLifecycle =
           _resumeAfterLifecycle || controller?.value.isPlaying == true;
-      if (controller?.value.isPlaying == true) unawaited(controller!.pause());
+      if (controller?.value.isPlaying == true) {
+        unawaited(controller!.pause());
+      }
     } else if (state == AppLifecycleState.resumed) {
       _isAppForeground = true;
       final controller = _controller;
@@ -234,8 +236,12 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   }
 
   Future<void> _prefetchNext(int index) async {
-    if (index < 0 || index >= _items.length ||
-        _prefetchController != null || index != _activeIndex + 1) return;
+    if (index < 0 ||
+        index >= _items.length ||
+        _prefetchController != null ||
+        index != _activeIndex + 1) {
+      return;
+    }
     final reel = _items[index];
     VideoPlayerController? controller;
     try {
@@ -506,9 +512,11 @@ class _KirariFeedPageState extends State<KirariFeedPage>
     try {
       await _repository.giveCreatorRespect(creatorId: creatorId, value: selected);
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(KirariCopy.of(context).actionError)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(KirariCopy.of(context).actionError)),
+        );
+      }
     }
   }
 
@@ -722,13 +730,15 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
   Future<void> _load() async {
     try {
       final comments = await widget.repository.getComments(widget.reel.id);
-      if (mounted) setState(() {
-        _comments = comments;
-        _nextCursor = comments.isEmpty ? null : comments.last['id'] as String?;
-        _hasMore = comments.length >= 30;
-        _loading = false;
-        _error = null;
-      });
+      if (mounted) {
+        setState(() {
+          _comments = comments;
+          _nextCursor = comments.isEmpty ? null : comments.last['id'] as String?;
+          _hasMore = comments.length >= 30;
+          _loading = false;
+          _error = null;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() { _loading = false; _error = 'Could not load comments.'; });
     }
@@ -824,7 +834,7 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                                   spacing: 8,
                                   crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
-                                    Text('@' + authorId),
+                                    Text('@$authorId'),
                                     if (item['creatorComment'] == true)
                                       const Chip(
                                         visualDensity: VisualDensity.compact,
@@ -895,7 +905,7 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
               if (_replyToId != null)
                 ListTile(
                   dense: true,
-                  title: Text('Replying to @' + (_replyToAuthor ?? '')),
+                  title: Text('Replying to @${_replyToAuthor ?? ''}'),
                   trailing: IconButton(
                     onPressed: () => setState(() { _replyToId = null; _replyToAuthor = null; }),
                     icon: const Icon(Icons.close),

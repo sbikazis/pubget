@@ -45,7 +45,9 @@ Pubget ليس تطبيق أنمي، ولا دردشة، ولا منصة فيدي
 ## المحور 01 — المعمارية التقنية
 
 ### 1.1 الستاك
-- Flutter (Dart null-safety) + Firebase (Auth, Firestore, Storage, Functions, FCM) + Provider لإدارة الحالة (مع إعادة تنظيم كاملة حول Domains).
+- Flutter (Dart null-safety) + Firebase (Auth, Firestore, Functions, FCM) + Cloudflare R2 للوسائط الجديدة + Provider لإدارة الحالة (مع إعادة تنظيم كاملة حول Domains).
+- **وسائط الإنتاج (قرار المحور صفر، مُعتمد):** Cloudflare R2 هو الوجهة الوحيدة لبايتات الوسائط الجديدة، عبر Worker `pubget-media` يُصدر روابط موقّعة قصيرة العمر بعد تحقّق Firebase Auth وصلاحيات Firestore. يبقى Firebase Auth وFirestore للهوية والبيانات الوصفية. التفاصيل الإلزامية في `docs/CLOUDFLARE_MEDIA_MIGRATION.md`. تُعامل كائنات Firebase Storage القديمة كـ legacy: تُقرأ ولا تُمسح حتى قرار ترحيل/احتفاظ صريح؛ و`AppImageLoader` هو السطح الوحيد الذي يحلّ كلا الشكلين (رابط موقّع أو مفتاح/مسار قديم) مع تحديث الرابط المنتهي وحالة خطأ محترمة. لا تخزين قرصي بمفتاح الرابط الموقّع لأنه ينتهي خلال دقائق.
+- **صدق الاتصال:** كشف حدَثي عبر `connectivity_plus` (لا استطلاع دوري)، مع مسبار HTTPS-204 لمرة واحدة عند كل انتقال، وثلاث حالات: `online` / `offline` / `unknown`. فشل خلفي ≠ «لا يوجد اتصال».
 - الطبقات الإلزامية: UI ← Provider/Controller ← Repository/Service ← Firebase/Media Provider. ممنوع وضع Business Logic داخل Widgets، وممنوع على UI الوصول المباشر لـ Firestore إلا عبر Repositories.
 
 ### 1.2 الهيكل

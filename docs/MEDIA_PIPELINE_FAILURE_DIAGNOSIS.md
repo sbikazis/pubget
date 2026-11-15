@@ -45,12 +45,25 @@ legacy `.appspot.com` name for this project does **not** exist.
 
 ### 2.2 The shared image widget and URL helpers are correct
 
-- `lib/core/widgets/app_image_loader.dart` renders `http(s)` values with
-  `Image.network` and bare object paths with `FirebaseStorage.instance.ref(path)
-  .getData()`; failures fall back to a placeholder rather than crashing.
+> **Update (Axis Zero, 2026-11-14):** the production media backend is now
+> Cloudflare R2, per the decision recorded in `docs/PUBGET_MASTER_SPEC.md` §1.1
+> and detailed in `docs/CLOUDFLARE_MEDIA_MIGRATION.md`. The Firebase-Storage
+> findings below remain valid as the **legacy policy** for older objects:
+> they are still read, never deleted, until an explicit retention decision.
+
+- `lib/core/widgets/app_image_loader.dart` is the single image surface. It
+  resolves signed R2/CDN URLs and legacy Firebase Storage references through
+  `resolveMediaDownloadUrl`, refreshes an expired signed URL once, decodes with
+  a physical-pixel cache budget, and renders a **static** placeholder plus an
+  honest error widget. A static placeholder is deliberate: an indeterminate
+  indicator never lets widget trees reach a stable frame (`pumpAndSettle`
+  once produced a 140 MB CI log).
+- **No disk cache keyed by signed URL.** R2 playback URLs are short-lived bearer
+  credentials; caching them by URL would serve expired data. Re-resolution on
+  expiry is the correct cache strategy here.
 - `lib/core/media/media_reference.dart` (`isRemoteMediaUrl`,
-  `isOpaqueMediaReference`, `resolveMediaDownloadUrl`) correctly separates the
-  two reference shapes.
+  `isOpaqueMediaReference`, `isR2MediaKey`, `resolveMediaDownloadUrl`) separates
+  the reference shapes, including bare R2 object keys handled by the Worker.
 
 These are not the defect. (One caveat is recorded in hypothesis H4.)
 

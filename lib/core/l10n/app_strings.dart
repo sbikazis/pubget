@@ -113,6 +113,28 @@ final class AppStrings {
   String get acceptTermsToContinue =>
       pick('Accept the terms to continue.', 'وافق على الشروط للمتابعة.');
 
+  String get verifyEmailTitle =>
+      pick('Verify your email', 'تحقق من بريدك الإلكتروني');
+  String verifyEmailSubtitle(String email) => pick(
+    'We sent a verification link to $email. Verify your address before creating your Pubget profile.',
+    'أرسلنا رابط التحقق إلى $email. تحقق من بريدك قبل إنشاء ملفك في Pubget.',
+  );
+  String get verificationSent => pick(
+    'A new verification email has been sent.',
+    'تم إرسال رسالة تحقق جديدة.',
+  );
+  String get verificationNotConfirmed => pick(
+    'Your email is not verified yet. Open the link in your inbox, then try again.',
+    'لم يتم التحقق من بريدك بعد. افتح الرابط في صندوق الوارد ثم حاول مجدداً.',
+  );
+  String get resendVerification => pick(
+    'Resend verification email',
+    'إعادة إرسال رسالة التحقق',
+  );
+  String get checkVerification => pick(
+    'I have verified my email',
+    'لقد تحققت من بريدي الإلكتروني',
+  );
   String get resetPassword =>
       pick('Reset your password', 'إعادة تعيين كلمة المرور');
   String get resetPasswordSubtitle => pick(
@@ -214,6 +236,24 @@ final class AppStrings {
     'تم إرسال رسالة إعادة التعيين إن وُجد الحساب.',
   );
   String get signOut => pick('Sign out', 'تسجيل الخروج');
+  String get forceUpdateTitle =>
+      pick('Update required', 'التحديث مطلوب');
+  String get forceUpdateMessage => pick(
+    'This version of Pubget is no longer supported. Update the app to continue.',
+    'هذا الإصدار من Pubget لم يعد مدعوماً. حدّث التطبيق للمتابعة.',
+  );
+  String get softUpdateTitle =>
+      pick('Update available', 'يتوفر تحديث جديد');
+  String get softUpdateMessage => pick(
+    'A newer version of Pubget is available with improvements and fixes.',
+    'يتوفر إصدار أحدث من Pubget مع تحسينات وإصلاحات.',
+  );
+  String get updateNow => pick('Update now', 'حدّث الآن');
+  String get updateLater => pick('Later', 'لاحقاً');
+  String get updateLinkUnavailable => pick(
+    'The update link is not configured yet. Try again later.',
+    'رابط التحديث غير مُعدّ حالياً. حاول مرة أخرى لاحقاً.',
+  );
   String get appearance => pick('Appearance', 'المظهر');
   String get themeSystem => pick('System', 'تلقائي');
   String get themeLight => pick('Light', 'فاتح');
@@ -430,6 +470,38 @@ final class AppStrings {
   String get tryAgainShort => pick('Please try again.', 'حاول مرة أخرى.');
   String get couldNotLoad => pick("Couldn't load this", 'تعذّر التحميل');
   String get tryAgain => pick('Try again', 'حاول مرة أخرى');
+
+  /// Axis Zero — the three connectivity verdicts must never share a sentence.
+  /// A backend hiccup used to be reported as "no connection", which is the
+  /// single most damaging lie in the app: the user has internet, the app says
+  /// otherwise, and the retry button cannot fix a server-side outage.
+  String get connectionOfflineTitle =>
+      pick('No internet connection', 'لا يوجد اتصال بالإنترنت');
+  String get connectionOfflineMessage => pick(
+    'This device is not connected to a network. Reconnect, then try again.',
+    'هذا الجهاز غير متصل بأي شبكة. أعد الاتصال ثم حاول مجدداً.',
+  );
+  String get connectionCheckingTitle =>
+      pick('Checking the connection…', 'جارٍ التحقق من الاتصال…');
+  String get connectionCheckingMessage => pick(
+    'The connection could not be verified, but requests are still allowed.',
+    'لم نتأكد من الاتصال، لكن الطلبات ما زالت مسموحة.',
+  );
+  String get serviceUnavailableTitle => pick(
+    'The service is temporarily unavailable',
+    'الخدمة غير متاحة مؤقتاً',
+  );
+  String get serviceUnavailableMessage => pick(
+    'Your internet connection is working. Pubget could not reach its servers '
+        'this time, so this is not a connection problem.',
+    'اتصالك بالإنترنت يعمل. تعذّر على Pubget الوصول إلى خوادمه هذه المرة، '
+        'لذا المشكلة ليست في اتصالك.',
+  );
+  String get retryConnection => pick('Retry now', 'أعد المحاولة الآن');
+
+  /// Group list "unread" semantic label. Kept in the shared copy so the
+  /// card's accessibility label is localized like every other surface.
+  String get unreadLabel => pick('Unread', 'غير مقروء');
 
   /// Discovery failures. Kept beside the Home section titles because Home is
   /// the only surface that renders a bare `Failure` with no screen-specific
@@ -1572,14 +1644,33 @@ String get onboardingSkipCountry => pick('Skip country', 'تخطي البلد');
 String get onboardingSkipCountrySemantic =>
       pick('Skip country', 'تخطي البلد');
 
-String get onboardingAge => pick('Age', 'العمر');
+String get onboardingAge => pick('Age (optional)', 'العمر (اختياري)');
+String get onboardingGender => pick('Gender (optional)', 'الجنس (اختياري)');
+String get onboardingAgeInvalid => pick(
+  'Enter an age between 13 and 120, or leave it empty.',
+  'أدخل عمراً بين 13 و120 أو اترك الحقل فارغاً.',
+);
+String get genderFemale => pick('Female', 'أنثى');
+String get genderMale => pick('Male', 'ذكر');
+String get genderOther => pick('Other', 'آخر');
+String get genderPreferNotToSay =>
+    pick('Prefer not to say', 'أفضل عدم الإفصاح');
 
 String get onboardingSkipAge => pick('Skip age', 'تخطي العمر');
 
 String get onboardingSkipAgeSemantic => pick('Skip age', 'تخطي العمر');
 
 String get onboardingInterestsTitle =>
-      pick('Anime interests', 'اهتماماتك الأنمي');
+      pick('Choose favorite anime (optional)', 'اختر أنمياتك المفضلة (اختياري)');
+String get onboardingFavoriteAnimeHint => pick(
+  'Search the Anime Hub catalog and select real anime titles.',
+  'ابحث في كتالوج مركز الأنمي واختر عناوين حقيقية.',
+);
+String get onboardingSearchAnime => pick('Search anime', 'ابحث عن أنمي');
+String get onboardingNoAnimeFound =>
+    pick('No anime found. Try another title.', 'لم يتم العثور على أنمي. جرّب عنواناً آخر.');
+String get onboardingSelectedAnime =>
+    pick('Selected anime', 'الأنميات المختارة');
 
 String get onboardingSkipInterests =>
       pick('Skip interests', 'تخطي الاهتمامات');

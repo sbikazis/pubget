@@ -1540,8 +1540,8 @@ class _CreatorKirariState extends State<_CreatorKirari> {
                           borderRadius: BorderRadius.circular(14),
                           child: Stack(fit: StackFit.expand, children: [
                             if (reel.coverUrl.isNotEmpty)
-                              Image.network(reel.coverUrl, fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.black12)),
+                              AppImageLoader(imageUrl: reel.coverUrl, fit: BoxFit.cover,
+                                errorWidget: const ColoredBox(color: Colors.black12)),
                             if (reel.coverUrl.isEmpty) const ColoredBox(color: Colors.black12),
                             const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 34)),
                             Align(

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/widgets/app_image_loader.dart';
 import '../data/kirari_repository.dart';
 
 class KirariModerationPage extends StatefulWidget {
@@ -83,7 +84,7 @@ class _KirariModerationPageState extends State<KirariModerationPage> {
             child: ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 16),
+              separatorBuilder: (_, _) => const SizedBox(height: 16),
               itemBuilder: (context, index) {
                 final item = items[index];
                 final id = item['id'] as String? ?? '';
@@ -98,7 +99,7 @@ class _KirariModerationPageState extends State<KirariModerationPage> {
                         Text(isComment ? 'Reported comment' : 'Reported video',
                           style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 6),
-                        Text('Reason: ' + (item['reason'] as String? ?? 'Community report')),
+                        Text('Reason: ${item['reason'] as String? ?? 'Community report'}'),
                         if (isComment) ...[
                           const SizedBox(height: 10),
                           Text(item['content'] as String? ?? ''),
@@ -106,11 +107,11 @@ class _KirariModerationPageState extends State<KirariModerationPage> {
                           if (item['videoPreviewUrl'] is String)
                             _ModerationVideoPreview(url: item['videoPreviewUrl'] as String)
                           else if (item['coverPreviewUrl'] is String)
-                            Image.network(item['coverPreviewUrl'] as String,
-                              fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                            AppImageLoader(imageUrl: item['coverPreviewUrl'] as String,
+                              fit: BoxFit.cover, errorWidget: const SizedBox.shrink()),
                           const SizedBox(height: 10),
                           Text(item['content'] as String? ?? ''),
-                          Text('Creator: ' + (item['creatorId'] as String? ?? 'unknown')),
+                          Text('Creator: ${item['creatorId'] as String? ?? 'unknown'}'),
                         ],
                         const SizedBox(height: 14),
                         Row(children: [

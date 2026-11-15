@@ -11,6 +11,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart' as provider;
 
+import '../core/app/app_version_gate.dart';
+import '../core/network/connectivity_events.dart';
 import '../core/network/network_service.dart';
 import '../core/theme/app_theme.dart';
 import '../features/authentication/auth_route_guard.dart';
@@ -28,6 +30,7 @@ import '../features/authentication/screens/onboarding_page.dart';
 import '../features/authentication/screens/register_page.dart';
 import '../features/authentication/screens/splash_page.dart';
 import '../features/authentication/screens/terms_page.dart';
+import '../features/authentication/screens/verify_email_page.dart';
 import '../features/groups/models/group_models.dart';
 import '../features/groups/data/group_image_uploader.dart';
 import '../features/groups/providers/group_members_provider.dart';
@@ -179,7 +182,10 @@ class PubgetApp extends StatelessWidget {
     return provider.MultiProvider(
       providers: [
         provider.ChangeNotifierProvider<NetworkService>(
-          create: (_) => NetworkService()..start(),
+          create: (_) => NetworkService(
+            linkChanges: linkStateChanges(),
+            initialLinkState: currentLinkState,
+          )..start(),
         ),
         provider.Provider<AuthRepository>.value(value: repositories.$1),
         provider.Provider<UserRepository>.value(value: repositories.$2),
@@ -838,6 +844,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/login': const LoginPage(),
         '/register': const RegisterPage(),
         '/forgot-password': const ForgotPasswordPage(),
+        '/verify-email': const VerifyEmailPage(),
         '/terms': const TermsPage(),
         '/onboarding': const OnboardingPage(),
         '/home': const AppShell(),
@@ -989,6 +996,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         isInitialized: auth.isInitialized,
         authState: auth.state,
         isAuthenticated: auth.isAuthenticated,
+        isEmailVerified: auth.currentUser?.emailVerified ?? false,
+        isVersionGatePassed: AppVersionGate.hasPassed,
         onboardingState: onboarding.state,
         canEnterHome: onboarding.canEnterHome,
       ),

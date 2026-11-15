@@ -11,6 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
   firebase_core: 4.11.0
+  firebase_remote_config: ^6.5.1
+  package_info_plus: ^9.0.1
   firebase_app_check: ^0.4.4+1
   provider: ^6.1.5+1
   flutter_localizations:
@@ -41,6 +43,19 @@ dependencies:
   file_selector: ^1.0.4
   pdfrx: 2.1.5
   url_launcher: ^6.3.2
+
+  # Axis Zero: the OS *tells* us when the link changes instead of asking a DNS
+  # server every 15 seconds. A one-shot HTTPS-204 probe remains as verification
+  # that the internet behind that link is actually reachable.
+  connectivity_plus: ^7.3.2
+  # Used only for chat wallpapers and avatar decoration providers, whose URLs
+  # are stable. The shared AppImageLoader deliberately does NOT disk-cache
+  # signed R2 URLs: they are short-lived bearer credentials (see
+  # docs/MEDIA_PIPELINE_FAILURE_DIAGNOSIS.md §2.2).
+  cached_network_image: ^3.4.1
+  # Restored by the merge: lib/features/economy/ads/admob_service.dart is still
+  # wired through ads.dart, so the SDK must remain declared.
+  google_mobile_ads: ^6.0.0
 
 dev_dependencies:
   flutter_test:

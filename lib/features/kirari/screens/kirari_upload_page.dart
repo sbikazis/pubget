@@ -246,10 +246,12 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
       _audioPreview.stop();
       controller.setVolume(_originalAudioVolume);
       controller.seekTo(Duration(milliseconds: (_trim.start * 1000).round()));
-      if (mounted) setState(() {
-        _overlayVisible = _overlayText.text.trim().isNotEmpty &&
-            _trim.start >= _overlayStart && _trim.start <= _overlayEnd;
-      });
+      if (mounted) {
+        setState(() {
+          _overlayVisible = _overlayText.text.trim().isNotEmpty &&
+              _trim.start >= _overlayStart && _trim.start <= _overlayEnd;
+        });
+      }
     }
   }
 
@@ -308,7 +310,7 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
         _overlayVisible = true;
         _allowOriginalAudioReuse = false;
         _session = null;
-        _idempotencyKey = 'kirari-' + DateTime.now().microsecondsSinceEpoch.toString();
+        _idempotencyKey = 'kirari-${DateTime.now().microsecondsSinceEpoch}';
         _progress = 0;
         _error = null;
         _status = null;
@@ -555,7 +557,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     );
     controller.dispose();
     if (!mounted || selected == null ||
-        _selectedAnime.any((item) => item.id == selected.id)) return;
+        _selectedAnime.any((item) => item.id == selected.id)) {
+      return;
+    }
     setState(() => _selectedAnime = [..._selectedAnime, selected]);
     await _savePendingUpload();
   }
@@ -706,7 +710,9 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     );
     controller.dispose();
     if (!mounted || selected == null ||
-        _selectedMentions.any((item) => item.uid == selected.uid)) return;
+        _selectedMentions.any((item) => item.uid == selected.uid)) {
+      return;
+    }
     setState(() => _selectedMentions = [..._selectedMentions, selected]);
     await _savePendingUpload();
   }

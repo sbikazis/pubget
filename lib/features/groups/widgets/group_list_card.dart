@@ -7,9 +7,16 @@ import '../../../core/widgets/pubget_design_system.dart';
 import '../models/group_models.dart';
 
 class GroupListCard extends StatelessWidget {
-  const GroupListCard({required this.group, super.key});
+  const GroupListCard({
+    required this.group,
+    this.showUnread = false,
+    super.key,
+  });
 
   final Group group;
+
+  /// Joined-group lists surface the unread marker; catalog lists do not.
+  final bool showUnread;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +60,16 @@ class GroupListCard extends StatelessWidget {
               ),
             ),
           ),
+          if (showUnread && group.hasUnread)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: AppSpacing.md),
+              child: Icon(
+                Icons.circle,
+                size: 10,
+                color: Theme.of(context).colorScheme.primary,
+                semanticLabel: copy.unreadLabel,
+              ),
+            ),
         ],
       ),
     );

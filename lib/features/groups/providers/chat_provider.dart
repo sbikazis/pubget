@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/media/image_dimensions.dart';
 import '../../../core/loading/loading_state.dart';
@@ -131,9 +132,15 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
           (result) => _receiveForSession(result, groupId, generation),
           onError: (Object error) {
             if (!_isSession(groupId, generation)) return;
-            _failure = NetworkError(error.toString());
+            // A Firestore stream error can be a rule rejection, a backend
+            // hiccup, or a genuinely dropped connection. Classify it instead
+            // of labelling every failure "offline".
+            final failure = mapFirebaseFailure(error);
+            _failure = failure;
             _state = _messages.isEmpty
-                ? LoadingState.offline
+                ? (failure is NetworkError
+                      ? LoadingState.offline
+                      : LoadingState.error)
                 : LoadingState.loaded;
             _safeNotify();
           },
@@ -856,6 +863,9 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
     if (_disposed || !_isSession(groupId, generation)) return;
     result.fold(
       onSuccess: (incoming) {
+        // A live Firestore snapshot arrived: this is conclusive evidence that
+        // the device is online, whatever the DNS probe last reported.
+        _network?.noteSuccessfulRequest();
         _merge(incoming);
         _contentRevision++;
         unawaited(_markDelivered(incoming));
@@ -1058,7 +1068,9 @@ final class ChatProvider extends ChangeNotifier implements ChatMediaUploadHost {
   }
 
   void _onNetworkChanged() {
-    if (_network?.isOnline == true) {
+    // "Unknown" means we are no longer proven offline — pending sends should
+    // be retried instead of waiting for a second DNS probe to succeed.
+    if (_network?.canAttemptRequest == true) {
       _kickPendingRetries(forceImmediate: true);
     }
   }

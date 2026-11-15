@@ -35,11 +35,11 @@ test("making a public avatar private revokes its bearer token and clears URL", a
     data: {
       before: snapshot({
         profileVisibility: "public",
-        avatarUrl: "https://example.test/old?token=old-token",
+        avatarUrl: "https://firebasestorage.googleapis.com/v0/b/demo.appspot.com/o/users%2Falice%2Favatar.jpg?alt=media&token=old-token",
       }),
       after: snapshot({
         profileVisibility: "private",
-        avatarUrl: "https://example.test/old?token=old-token",
+        avatarUrl: "https://firebasestorage.googleapis.com/v0/b/demo.appspot.com/o/users%2Falice%2Favatar.jpg?alt=media&token=old-token",
       }),
     },
   });
@@ -54,6 +54,37 @@ test("making a public avatar private revokes its bearer token and clears URL", a
   );
 });
 
+test("private R2 avatars keep their object key while the public projection is removed", async () => {
+  const metadataWrites = [];
+  const userUpdates = [];
+  const key = "images/alice/avatar-123.jpg";
+  const handler = createAvatarPrivacySync({
+    db: {
+      collection: () => ({
+        doc: () => ({ update: async (value) => userUpdates.push(value) }),
+      }),
+    },
+    bucket: {
+      name: "demo.appspot.com",
+      file: () => ({
+        setMetadata: async (value) => metadataWrites.push(value),
+      }),
+    },
+    randomUUID: () => "replacement-token",
+  });
+
+  await handler({
+    params: { uid: "alice" },
+    data: {
+      before: snapshot({ profileVisibility: "public", avatarUrl: key }),
+      after: snapshot({ profileVisibility: "private", avatarUrl: key }),
+    },
+  });
+
+  assert.deepEqual(metadataWrites, []);
+  assert.deepEqual(userUpdates, []);
+});
+
 test("profile callable rotates the old token before making profile private", async () => {
   const order = [];
   const handler = createUpdateSocialProfile({
@@ -62,7 +93,7 @@ test("profile callable rotates the old token before making profile private", asy
         doc: () => ({
           get: async () => snapshot({
             profileVisibility: "public",
-            avatarUrl: "https://example.test/avatar?token=old",
+            avatarUrl: "https://firebasestorage.googleapis.com/v0/b/demo.appspot.com/o/users%2Falice%2Favatar.jpg?alt=media&token=old",
           }),
           update: async (value) => order.push(["update", value]),
         }),
@@ -135,6 +166,12 @@ const stubRegistry = () => ({
     return valid ? { valid, reason: null } : { valid, reason: "invalid-characters" };
   },
   normalizeUsername: (value) => String(value || "").trim().toLowerCase(),
+  status: async (value, uid) => ({
+    valid: true,
+    reason: null,
+    reservedByUser: true,
+    normalized: String(value || "").trim().toLowerCase(),
+  }),
 });
 
 function profileHandler({ reservations = [], releases = [], updateError = null }) {
@@ -180,6 +217,85 @@ function profileHandler({ reservations = [], releases = [], updateError = null }
     },
   };
 }
+
+test("profile callable completes identity only with a reserved username and required fields", async () => {
+  const updates = [];
+  const handler = createUpdateSocialProfile({
+    db: {
+      collection: () => ({
+        doc: () => ({
+          get: () => snapshot({
+            username: "alice",
+            displayName: "Alice",
+            avatarUrl: "images/alice/avatar.jpg",
+            isProfileCompleted: false,
+          }),
+          update: async (value) => updates.push(value),
+        }),
+      }),
+    },
+    bucket: {
+      file: () => ({ setMetadata: async () => {}, exists: async () => [false] }),
+    },
+    randomUUID: () => "token",
+    HttpsError: class extends Error {
+      constructor(code, message) { super(message); this.code = code; }
+    },
+    userNameRegistry: stubRegistry(),
+  });
+
+  await handler({
+    auth: { uid: "alice" },
+    data: { isProfileCompleted: true, gender: "female" },
+  });
+  assert.equal(updates[0].isProfileCompleted, true);
+  assert.equal(updates[0].hasSkippedOnboarding, false);
+  assert.equal(updates[0].gender, "female");
+
+  await assert.rejects(
+    () => handler({
+      auth: { uid: "alice" },
+      data: { isProfileCompleted: true, avatarUrl: null },
+    }),
+    (error) => error.code === "failed-precondition",
+  );
+});
+
+test("profile callable preserves R2 avatar keys when privacy changes", async () => {
+  const updates = [];
+  const key = "images/alice/avatar-456.jpg";
+  const handler = createUpdateSocialProfile({
+    db: {
+      collection: () => ({
+        doc: () => ({
+          get: () => snapshot({
+            username: "alice",
+            profileVisibility: "public",
+            avatarUrl: key,
+          }),
+          update: async (value) => updates.push(value),
+        }),
+      }),
+    },
+    bucket: {
+      file: () => ({
+        setMetadata: async () => { throw new Error("R2 keys must not touch Firebase Storage"); },
+        exists: async () => [false],
+      }),
+    },
+    randomUUID: () => "token",
+    HttpsError: class extends Error {},
+    userNameRegistry: stubRegistry(),
+  });
+
+  await handler({
+    auth: { uid: "alice" },
+    data: { profileVisibility: "private", avatarUrl: key },
+  });
+
+  assert.equal(updates[0].profileVisibility, "private");
+  assert.equal(updates[0].avatarUrl, key);
+});
 
 test("profile callable writes a valid language and rejects unsupported codes", async () => {
   const { handler, updates } = profileHandler({});

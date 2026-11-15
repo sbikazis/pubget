@@ -73,10 +73,19 @@ class _AppImageLoaderState extends State<AppImageLoader> {
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: const Center(child: Icon(Icons.broken_image_outlined)),
         );
+    // Axis Zero: a *static* placeholder. An indeterminate progress indicator
+    // schedules a frame forever, so `pumpAndSettle` in widget tests never
+    // converges (it once produced a 140 MB CI log), and a short signed-URL
+    // fetch spins a whole animation tree for nothing on real devices.
     final loading = widget.placeholder ??
         ColoredBox(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: const Center(child: CircularProgressIndicator()),
+          child: Center(
+            child: Icon(
+              Icons.image_outlined,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         );
 
     return FutureBuilder<String?>(

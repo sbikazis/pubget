@@ -141,6 +141,25 @@ final class _FakeGameRepository implements GameRepository {
   Future<Result<void>> start(String gameId) async => const Success<void>(null);
 
   @override
+  Future<Result<List<AnimeSearchItem>>> searchAnime(
+    String query, {
+    int limit = 20,
+  }) async => const Success(<AnimeSearchItem>[]);
+
+  @override
+  Future<Result<List<CharacterSearchItem>>> searchCharacters(
+    String query, {
+    String? animeId,
+    int limit = 20,
+  }) async => const Success(<CharacterSearchItem>[]);
+
+  @override
+  Future<Result<List<GameHistoryEntry>>> getHistory({
+    required String userId,
+    int limit = 20,
+  }) async => const Success(<GameHistoryEntry>[]);
+
+  @override
   Future<Result<void>> submitAction({
     required String gameId,
     required String actionType,

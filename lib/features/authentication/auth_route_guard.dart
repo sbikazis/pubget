@@ -8,6 +8,7 @@ abstract final class AuthRouteGuard {
     '/onboarding',
     '/terms',
     '/forgot-password',
+    '/verify-email',
   };
 
   static const guestOnlyPaths = <String>{
@@ -79,6 +80,8 @@ abstract final class AuthRouteGuard {
     required bool isInitialized,
     required LoadingState authState,
     required bool isAuthenticated,
+    required bool isEmailVerified,
+    required bool isVersionGatePassed,
     required LoadingState onboardingState,
     required bool canEnterHome,
   }) {
@@ -86,6 +89,20 @@ abstract final class AuthRouteGuard {
         !isInitialized ||
         authState == LoadingState.initial ||
         authState == LoadingState.loading;
+
+    if (!isVersionGatePassed && path != '/splash') {
+      return '/splash';
+    }
+
+    if (path == '/verify-email') {
+      if (authBusy || (isAuthenticated && !isVersionGatePassed)) {
+        return '/splash';
+      }
+      return isAuthenticated ? null : '/login';
+    }
+    if (isAuthenticated && !isEmailVerified && path != '/splash') {
+      return '/splash';
+    }
 
     if (guestOnlyPaths.contains(path) && isAuthenticated) {
       if (authBusy || onboardingState == LoadingState.initial) {

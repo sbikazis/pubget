@@ -130,7 +130,13 @@ class KirariAudioTrack {
   const KirariAudioTrack({
     required this.id, required this.title, required this.artist,
     required this.license, required this.attribution, required this.audioUrl,
-    this.creatorId, this.sourceReelId, this.usageCount = 0,
+    this.creatorId,
+    this.sourceReelId,
+    this.licenseUrl,
+    this.sourceUrl,
+    this.rightsHolder,
+    this.sourceCreatorId,
+    this.usageCount = 0,
   });
   final String id;
   final String title;
@@ -140,6 +146,10 @@ class KirariAudioTrack {
   final String audioUrl;
   final String? creatorId;
   final String? sourceReelId;
+  final String? licenseUrl;
+  final String? sourceUrl;
+  final String? rightsHolder;
+  final String? sourceCreatorId;
   final int usageCount;
 
   factory KirariAudioTrack.fromMap(Map<dynamic, dynamic> map, String url) =>
@@ -152,6 +162,10 @@ class KirariAudioTrack {
         audioUrl: url,
         creatorId: map['creatorId'] as String?,
         sourceReelId: map['sourceReelId'] as String?,
+        licenseUrl: map['licenseUrl'] as String?,
+        sourceUrl: map['sourceUrl'] as String?,
+        rightsHolder: map['rightsHolder'] as String?,
+        sourceCreatorId: map['sourceCreatorId'] as String?,
         usageCount: (map['usageCount'] as num?)?.toInt() ?? 0,
       );
 }
@@ -341,10 +355,11 @@ class FirebaseKirariRepository implements KirariRepository {
 
   @override
   Future<KirariFeedPageResult> getSavedReels({int limit = 30, Map<String, dynamic>? cursor}) async {
-    final result = await _call('getSavedKirariReels', {
-      'limit': limit,
-      if (cursor != null && cursor['cursor'] != null) 'cursor': cursor['cursor'],
-    });
+    final payload = <String, dynamic>{'limit': limit};
+    if (cursor != null && cursor['cursor'] != null) {
+      payload['cursor'] = cursor['cursor'];
+    }
+    final result = await _call('getSavedKirariReels', payload);
     final nextCursor = result['nextCursor'];
     return KirariFeedPageResult(
       await _resolveReels(result['items']),
@@ -372,11 +387,12 @@ class FirebaseKirariRepository implements KirariRepository {
 
   @override
   Future<void> reviewContent({required String reelId, String? commentId, required String decision}) async {
-    await _call('reviewKirariContent', {
+    final payload = <String, dynamic>{
       'reelId': reelId,
-      if (commentId != null) 'commentId': commentId,
       'decision': decision,
-    });
+    };
+    if (commentId != null) payload['commentId'] = commentId;
+    await _call('reviewKirariContent', payload);
   }
 
   @override
@@ -405,9 +421,11 @@ class FirebaseKirariRepository implements KirariRepository {
   Future<List<Map<String, dynamic>>> getComments(
     String reelId, {String? before, int limit = 30}
   ) async {
-    final result = await _call('getKirariComments', {
-      'reelId': reelId, 'limit': limit, if (before != null) 'before': before,
-    });
+    final payload = <String, dynamic>{
+      'reelId': reelId, 'limit': limit,
+    };
+    if (before != null) payload['before'] = before;
+    final result = await _call('getKirariComments', payload);
     final raw = result['items'];
     return raw is List
         ? raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
@@ -416,9 +434,11 @@ class FirebaseKirariRepository implements KirariRepository {
 
   @override
   Future<void> addComment(String reelId, String text, {String? parentId}) async {
-    await _call('addKirariComment', {
-      'reelId': reelId, 'text': text, if (parentId != null) 'parentId': parentId,
-    });
+    final payload = <String, dynamic>{
+      'reelId': reelId, 'text': text,
+    };
+    if (parentId != null) payload['parentId'] = parentId;
+    await _call('addKirariComment', payload);
   }
 
   @override
@@ -451,12 +471,11 @@ class FirebaseKirariRepository implements KirariRepository {
     String? groupId,
     String? eventId,
   }) async {
-    final result = await _call('startKirariUpload', {
+    final payload = <String, dynamic>{
       'caption': caption,
       'hashtags': hashtags,
       'idempotencyKey': idempotencyKey,
       'editSettings': editSettings,
-      if (audioId != null) 'audioId': audioId,
       'allowOriginalAudioReuse': allowOriginalAudioReuse,
       'animeIds': animeIds,
       'characterIds': characterIds,
@@ -465,9 +484,11 @@ class FirebaseKirariRepository implements KirariRepository {
       'characterMetadata': characterMetadata,
       'mentionMetadata': mentionMetadata,
       'contentCategory': contentCategory,
-      if (groupId != null) 'groupId': groupId,
-      if (eventId != null) 'eventId': eventId,
-    });
+    };
+    if (audioId != null) payload['audioId'] = audioId;
+    if (groupId != null) payload['groupId'] = groupId;
+    if (eventId != null) payload['eventId'] = eventId;
+    final result = await _call('startKirariUpload', payload);
     final path = result['storagePath'] as String?;
     final reelId = result['reelId'] as String?;
     if (path == null || reelId == null) {
@@ -649,7 +670,9 @@ class KirariPlaybackReporter {
   Future<void> report(VideoPlayerController controller) async {
     final session = _sessionId;
     if (session == null || _busy || !controller.value.isInitialized ||
-        !controller.value.isPlaying) return;
+        !controller.value.isPlaying) {
+      return;
+    }
     final duration = controller.value.duration.inMilliseconds / 1000;
     final position = controller.value.position.inMilliseconds / 1000;
     if (duration <= 0) return;

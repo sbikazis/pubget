@@ -51,6 +51,13 @@ app.*.map.json
 # Signing material must stay out of source control
 *.jks
 
+# Axis Zero: service-account private keys. functions/.gitignore already has a
+# local rule; this root rule is defence in depth so a key dropped anywhere in
+# the tree (a backup folder, a copied fixture) is ignored too. Use Application
+# Default Credentials / GOOGLE_APPLICATION_CREDENTIALS outside the repo.
+serviceAccount*.json
+service-account*.json
+
 # Local toolchain (portable JDK for the rules emulator)
 .tooling/
 

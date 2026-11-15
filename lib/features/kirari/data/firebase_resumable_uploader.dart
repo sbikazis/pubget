@@ -44,7 +44,7 @@ class FirebaseResumableUploader {
     if (range == null || range.isEmpty) return 0;
     final match = RegExp(r'^bytes=0-(\d+)$').firstMatch(range.trim());
     if (match == null) {
-      throw FormatException('Invalid resumable upload Range header: ' + range);
+      throw FormatException('Invalid resumable upload Range header: $range');
     }
     return int.parse(match.group(1)!) + 1;
   }
@@ -58,8 +58,8 @@ class FirebaseResumableUploader {
     final total = await file.length();
     if (total <= 0) throw StateError('Cannot upload an empty file.');
     final modified = await file.lastModified();
-    final fingerprint = file.absolute.path + '|' + total.toString() + '|' +
-        modified.millisecondsSinceEpoch.toString();
+    final fingerprint =
+        '${file.absolute.path}|$total|${modified.millisecondsSinceEpoch}';
     final prefs = await _prefs();
     final sessionKey = _sessionKey(storagePath);
     final fingerprintKey = _fingerprintKey(storagePath);
@@ -145,8 +145,7 @@ class FirebaseResumableUploader {
           if (offset > previousOffset) retries = 0;
         } else {
           throw HttpException(
-            'Firebase Storage upload failed (' + response.statusCode.toString() +
-            '): ' + response.body,
+            'Firebase Storage upload failed (${response.statusCode}): ${response.body}',
           );
         }
       } catch (error) {
@@ -201,12 +200,12 @@ class FirebaseResumableUploader {
     if (ownerUid.isEmpty) throw StateError('Sign in before uploading a Kirari reel.');
     final uri = Uri.https(
       'firebasestorage.googleapis.com',
-      '/v0/b/' + bucket + '/o',
+      '/v0/b/$bucket/o',
       <String, String>{'uploadType': 'resumable', 'name': storagePath},
     );
     final request = http.Request('POST', uri)
       ..headers.addAll(<String, String>{
-        'Authorization': 'Firebase ' + token,
+        'Authorization': 'Firebase $token',
         'Content-Type': 'application/json; charset=UTF-8',
         'X-Upload-Content-Type': contentType,
         'X-Upload-Content-Length': total.toString(),
@@ -220,8 +219,7 @@ class FirebaseResumableUploader {
     final response = await http.Response.fromStream(await _client.send(request));
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw HttpException(
-        'Unable to start Firebase Storage upload (' +
-        response.statusCode.toString() + '): ' + response.body,
+        'Unable to start Firebase Storage upload (${response.statusCode}): ${response.body}',
       );
     }
     final location = response.headers['location'];
@@ -235,7 +233,7 @@ class FirebaseResumableUploader {
     final request = http.Request('PUT', Uri.parse(sessionUrl))
       ..headers.addAll(<String, String>{
         'Content-Length': '0',
-        'Content-Range': 'bytes */' + total.toString(),
+        'Content-Range': 'bytes */$total',
       });
     final response = await http.Response.fromStream(await _client.send(request));
     if (response.statusCode == 200 || response.statusCode == 201) return total;
@@ -246,8 +244,7 @@ class FirebaseResumableUploader {
       throw _UploadSessionExpired();
     }
     throw HttpException(
-      'Unable to query Firebase Storage offset (' +
-      response.statusCode.toString() + '): ' + response.body,
+      'Unable to query Firebase Storage offset (${response.statusCode}): ${response.body}',
     );
   }
 
@@ -264,8 +261,7 @@ class FirebaseResumableUploader {
       ..contentLength = length
       ..headers.addAll(<String, String>{
         'Content-Type': contentType,
-        'Content-Range': 'bytes ' + start.toString() + '-' +
-            (endExclusive - 1).toString() + '/' + total.toString(),
+        'Content-Range': 'bytes $start-${endExclusive - 1}/$total',
       });
     final responseFuture = _client.send(request);
     await request.sink.addStream(file.openRead(start, endExclusive));

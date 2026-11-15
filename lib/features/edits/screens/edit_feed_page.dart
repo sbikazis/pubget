@@ -340,13 +340,31 @@ class _EditFeedPageState extends State<EditFeedPage>
       );
     }
     if (feedState == LoadingState.error && feedItems.isEmpty) {
+      final failure = provider.failure;
+      // Axis Zero: an unavailable backend is NOT a missing connection. Only a
+      // real transport failure earns the offline message; everything else gets
+      // honest "service temporarily unavailable" copy and a working retry.
+      final isConnectionFailure = failure == null ||
+          failure is NetworkError ||
+          failure is UnavailableError ||
+          failure is TimeoutError ||
+          failure is RateLimitedError;
+      if (isConnectionFailure) {
+        return PubgetConnectionStateView(
+          isServiceFailure:
+              failure is UnavailableError || failure is TimeoutError,
+          onRetry: () async => provider.load(refresh: true),
+        );
+      }
       return PubgetErrorState(
-        message: provider.failure?.message ?? copy.failedLoad,
+        message: failure.message,
         onRetry: provider.load,
       );
     }
     if (offline && feedItems.isEmpty) {
-      return PubgetOfflineState(onRetry: () => provider.load(refresh: true));
+      return PubgetConnectionStateView(
+        onRetry: () async => provider.load(refresh: true),
+      );
     }
     return RefreshIndicator(
       color: AppColors.gold,

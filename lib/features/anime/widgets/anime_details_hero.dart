@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/widgets/app_image_loader.dart';
 import '../../../core/widgets/pubget_buttons.dart';
 import '../l10n/anime_copy.dart';
 import '../models/anime_models.dart';
@@ -54,13 +55,12 @@ class AnimeDetailsHero extends StatelessWidget {
               if (backdrop.isEmpty)
                 ColoredBox(color: hub.gradient.first)
               else
-                Image.network(
-                  backdrop,
+                AppImageLoader(
+                  imageUrl: backdrop,
                   fit: BoxFit.cover,
                   // Small decode: this copy is only ever a backdrop.
-                  cacheWidth: 480,
-                  errorBuilder: (_, _, _) =>
-                      ColoredBox(color: hub.gradient.first),
+                  memCacheWidth: 480,
+                  errorWidget: ColoredBox(color: hub.gradient.first),
                 ),
               // Darken the art so the overlaid cover card and chips stay
               // legible no matter how bright the key visual is.

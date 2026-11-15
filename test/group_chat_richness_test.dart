@@ -44,7 +44,10 @@ void main() {
     }, id: 'card-1');
     expect(message.gameActivity?.isCreated, isTrue);
     expect(message.gameActivity?.isMafia, isTrue);
-    expect(message.gameActivity?.actionLabel, 'Join');
+    // A freshly created lobby is joinable: not full, not started, not cancelled.
+    expect(message.gameActivity?.isFull, isFalse);
+    expect(message.gameActivity?.isStarted, isFalse);
+    expect(message.gameActivity?.isCancelled, isFalse);
   });
 
   test('chatMediaTypeFor classifies gif, audio, video, and images', () {
@@ -257,6 +260,18 @@ final class _FakeChatRepository implements ChatRepository {
   }) => stream.stream;
 
   @override
+  Future<Result<List<ChatMessage>>> getRecentMessages({
+    required String groupId,
+    int limit = 40,
+  }) async => const Success(<ChatMessage>[]);
+
+  @override
+  Future<Result<ChatMediaUpload?>> findReadyMedia({
+    required String groupId,
+    required String mediaId,
+  }) async => const Success<ChatMediaUpload?>(null);
+
+  @override
   Future<Result<ChatMessage>> sendMessage({
     required String groupId,
     required String messageId,
@@ -394,12 +409,6 @@ final class _FakeChatRepository implements ChatRepository {
       ),
     );
   }
-  @override
-  Future<Result<ChatMediaUpload?>> findReadyMedia({
-    required String groupId,
-    required String mediaId,
-  }) async => const Success<ChatMediaUpload?>(null);
-
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 
