@@ -3,6 +3,7 @@ name: Deploy Cloudflare R2 Worker
 on:
   push:
     branches:
+      - main
       - fix/media-group-image-r2-reference
     paths:
       - "worker/**"
