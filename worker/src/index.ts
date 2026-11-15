@@ -6,7 +6,7 @@ export interface Env {
   FIREBASE_PROJECT_ID: string;
   MEDIA_SIGNING_SECRET: string;
   KIRARI_R2_SERVICE_ACCOUNT_EMAIL: string;
-  KIRARI_R2_SERVICE_AUDIENCE: string;\n  FIRESTORE_SERVICE_ACCOUNT_EMAIL?: string;\n  FIRESTORE_SERVICE_ACCOUNT_PRIVATE_KEY?: string;
+  KIRARI_R2_SERVICE_AUDIENCE: string;
 }
 
 const CORS: Record<string, string> = {
