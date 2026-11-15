@@ -73,6 +73,8 @@ void main() {
     await onboarding.saveProfile(
       authUser: const AuthUser(id: 'user-1', email: 'fan@example.com'),
       username: 'fan',
+      displayName: 'Anime Fan',
+      avatarUrl: 'https://example.com/avatar.jpg',
       isProfileCompleted: true,
     );
     final details = AnimeDetailsProvider(
