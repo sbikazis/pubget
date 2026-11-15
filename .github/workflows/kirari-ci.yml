@@ -94,7 +94,7 @@ jobs:
       - name: Kirari resumable upload recovery tests
         run: flutter test test/features/kirari/firebase_resumable_uploader_test.dart
       - name: Android debug build
-        run: flutter build apk --debug
+        run: flutter build apk --debug --verbose
       - name: Full Flutter test suite (repository baseline; bounded)
         run: flutter test --exclude-tags golden --reporter expanded
         timeout-minutes: 20
