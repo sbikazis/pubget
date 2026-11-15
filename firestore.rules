@@ -536,7 +536,7 @@ service cloud.firestore {
          request.resource.data.language in ['ar','en']) &&
         (!request.resource.data.keys().hasAny(['username']) ||
          (request.resource.data.username is string &&
-          request.resource.data.username.size() <= 32)) &&
+          request.resource.data.username.size() <= 20)) &&
         (!request.resource.data.keys().hasAny(['displayName']) ||
          request.resource.data.displayName == null ||
          (request.resource.data.displayName is string &&
@@ -550,7 +550,7 @@ service cloud.firestore {
           'favoriteAnimes','age','country',
           'favoriteAnimeIds','favoriteQuote','animeTwin','socialLinks',
           'sectionPrivacy','activityVisibility',
-          'whoCanMessageMe','age','country','favoriteAnimes',
+          'whoCanMessageMe',
           'isProfileCompleted','hasSkippedOnboarding','updatedAt','language'
         ]) &&
          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['username']) ||
