@@ -44,6 +44,9 @@ jobs:
             exit $status
           fi
 
+      - name: Build debug APK
+        run: flutter build apk --debug --no-pub
+
   functions-gate:
     name: Functions syntax and unit tests
     runs-on: ubuntu-latest
