@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
+import '../../../core/identity/identity_worker_client.dart';
 import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/media/media_url_uploader.dart';
@@ -17,13 +18,13 @@ final class FirebaseUserRepository implements UserRepository {
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
     MediaUrlUploader? mediaUploader,
+    IdentityWorkerClient? identityClient,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
+       _identityClient = identityClient ?? IdentityWorkerClient(),
        _mediaUploader = mediaUploader;
 
   final FirebaseFirestore _firestore;
-  final FirebaseFunctions _functions;
+  final IdentityWorkerClient _identityClient;
 
   /// Avatar bytes always use the shared Cloudflare media stack.
   MediaUrlUploader? _mediaUploader;
@@ -42,7 +43,7 @@ final class FirebaseUserRepository implements UserRepository {
       await _users.doc(user.id).set(data);
       return Success<PubgetUser>(user);
     } on Object catch (error) {
-      return FailureResult<PubgetUser>(_mapFailure(error));
+      return FailureResult<PubgetUser>(_mapIdentityOrFirebaseFailure(error));
     }
   }
 
@@ -80,7 +81,7 @@ final class FirebaseUserRepository implements UserRepository {
       if (user.language == null) {
         data.remove('language');
       }
-      await _functions.httpsCallable('updateSocialProfile').call<void>(data);
+      await _identityClient.post('/identity/profile/update', data);
       return Success<PubgetUser>(user);
     } on Object catch (error) {
       return FailureResult<PubgetUser>(_mapFailure(error));
@@ -104,10 +105,9 @@ final class FirebaseUserRepository implements UserRepository {
   @override
   Future<Result<UsernameStatus>> checkUsernameAvailable(String username) async {
     try {
-      final response = await _functions
-          .httpsCallable('checkUsernameAvailable')
-          .call<Map<String, dynamic>>({'username': username});
-      final data = response.data;
+      final data = await _identityClient.post(
+        '/identity/username/check', {'username': username},
+      );
       final available = data['available'] as bool? ?? false;
       final normalized = data['normalized'] as String? ?? '';
       final reason = data['reason'] as String?;
@@ -121,17 +121,17 @@ final class FirebaseUserRepository implements UserRepository {
       };
       return Success<UsernameStatus>(UsernameStatus.unavailable(cause));
     } on Object catch (error) {
-      return FailureResult<UsernameStatus>(_mapFailure(error));
+      return FailureResult<UsernameStatus>(_mapIdentityOrFirebaseFailure(error));
     }
   }
 
   @override
   Future<Result<String>> reserveUsername(String username) async {
     try {
-      final response = await _functions
-          .httpsCallable('reserveUsername')
-          .call<Map<String, dynamic>>({'username': username});
-      final normalized = response.data['normalized'] as String? ?? '';
+      final data = await _identityClient.post(
+        '/identity/username/reserve', {'username': username},
+      );
+      final normalized = data['normalized'] as String? ?? '';
       if (normalized.isEmpty) {
         return const FailureResult<String>(
           UnknownError('The username could not be reserved.'),
@@ -139,20 +139,36 @@ final class FirebaseUserRepository implements UserRepository {
       }
       return Success<String>(normalized);
     } on Object catch (error) {
-      return FailureResult<String>(_mapFailure(error));
+      return FailureResult<String>(_mapIdentityOrFirebaseFailure(error));
     }
   }
 
   @override
   Future<Result<void>> updateLanguage(String language) async {
     try {
-      await _functions
-          .httpsCallable('updateSocialProfile')
-          .call<void>({'language': language});
+      await _identityClient.post(
+        '/identity/profile/update', {'language': language},
+      );
       return const Success<void>(null);
     } on Object catch (error) {
-      return FailureResult<void>(_mapFailure(error));
+      return FailureResult<void>(_mapIdentityOrFirebaseFailure(error));
     }
+  }
+
+  static Failure _mapIdentityOrFirebaseFailure(Object error) {
+    if (error is IdentityWorkerException) {
+      return switch (error.statusCode) {
+        400 || 412 || 409 => ValidationError(
+          error.statusCode == 409 ? 'This username is already taken.' : error.message,
+        ),
+        401 || 403 => const PermissionError(
+          'You do not have permission to update this profile.',
+        ),
+        404 => const NotFoundError('Profile not found.'),
+        _ => const NetworkError('Check your connection and try again.'),
+      };
+    }
+    return _mapFailure(error);
   }
 
   static Failure _mapFailure(Object error) {

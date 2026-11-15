@@ -1,5 +1,6 @@
 import { authenticateKirariService } from "./kirariServiceAuth.cjs";
 import { verifyFirebaseIdToken } from "./firebaseAuth";
+import { handleIdentityRequest } from "./identity";
 
 export interface Env {
   MEDIA_BUCKET: R2Bucket;
@@ -7,6 +8,8 @@ export interface Env {
   MEDIA_SIGNING_SECRET: string;
   KIRARI_R2_SERVICE_ACCOUNT_EMAIL: string;
   KIRARI_R2_SERVICE_AUDIENCE: string;
+  FIRESTORE_SERVICE_ACCOUNT_EMAIL: string;
+  FIRESTORE_SERVICE_ACCOUNT_PRIVATE_KEY: string;
 }
 
 const CORS: Record<string, string> = {
@@ -407,6 +410,18 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    if (url.pathname.startsWith("/identity/")) {
+      try {
+        const identityResponse = await handleIdentityRequest(request, env);
+        if (identityResponse) return identityResponse;
+      } catch (error) {
+        if (error instanceof Error && error.message === "TRANSACTION_CONFLICT") {
+          return json({ error: "Username reservation changed concurrently. Please retry." }, 409);
+        }
+        return json({ error: "Identity operation failed." }, 503);
+      }
+    }
 
     // Resolve a published Kirari object to a short-lived signed playback URL.
     if (url.pathname === "/kirari/resolve" && request.method === "GET") {
