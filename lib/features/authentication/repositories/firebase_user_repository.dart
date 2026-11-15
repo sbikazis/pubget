@@ -84,7 +84,7 @@ final class FirebaseUserRepository implements UserRepository {
       await _identityClient.post('/identity/profile/update', data);
       return Success<PubgetUser>(user);
     } on Object catch (error) {
-      return FailureResult<PubgetUser>(_mapFailure(error));
+      return FailureResult<PubgetUser>(_mapIdentityOrFirebaseFailure(error));
     }
   }
 
