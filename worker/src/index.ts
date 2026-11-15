@@ -1,4 +1,5 @@
 import { authenticateKirariService } from "./kirariServiceAuth.cjs";
+import { verifyFirebaseIdToken } from "./firebaseAuth";
 
 export interface Env {
   MEDIA_BUCKET: R2Bucket;
@@ -37,75 +38,11 @@ function json(data: unknown, status = 200, extra: HeadersInit = {}): Response {
   });
 }
 
-function decodeBase64Url(value: string): Uint8Array {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
-  return Uint8Array.from(raw, (character) => character.charCodeAt(0));
-}
-
 async function authenticate(request: Request, projectId: string): Promise<string | null> {
   const token = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return null;
-
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-
-    const header = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[0]))) as {
-      alg?: string;
-      kid?: string;
-    };
-    const claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[1]))) as {
-      aud?: string;
-      iss?: string;
-      sub?: string;
-      exp?: number;
-      iat?: number;
-    };
-    const now = Math.floor(Date.now() / 1000);
-
-    if (
-      header.alg !== "RS256" ||
-      !header.kid ||
-      claims.aud !== projectId ||
-      claims.iss !== `https://securetoken.google.com/${projectId}` ||
-      typeof claims.sub !== "string" ||
-      !claims.sub ||
-      typeof claims.exp !== "number" ||
-      claims.exp <= now ||
-      typeof claims.iat !== "number" ||
-      claims.iat > now + 60
-    ) {
-      return null;
-    }
-
-    const jwksResponse = await fetch(
-      "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com",
-    );
-    if (!jwksResponse.ok) return null;
-    const jwks = (await jwksResponse.json()) as { keys: JsonWebKey[] };
-    const jwk = jwks.keys.find(
-      (key) => (key as JsonWebKey & { kid?: string }).kid === header.kid,
-    );
-    if (!jwk) return null;
-
-    const publicKey = await crypto.subtle.importKey(
-      "jwk",
-      jwk,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
-    const valid = await crypto.subtle.verify(
-      "RSASSA-PKCS1-v1_5",
-      publicKey,
-      decodeBase64Url(parts[2]),
-      new TextEncoder().encode(parts[0] + "." + parts[1]),
-    );
-    return valid ? claims.sub : null;
-  } catch {
-    return null;
-  }
+  const result = await verifyFirebaseIdToken(token, projectId);
+  return result?.uid ?? null;
 }
 
 async function hmac(env: Env, message: string): Promise<string> {
