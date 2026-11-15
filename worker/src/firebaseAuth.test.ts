@@ -9,7 +9,7 @@ import {
 function base64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/=/g, "").replace(/\\+/g, "-").replace(/\\//g, "_");
+  return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
 async function makeSignedFirebaseToken(overrides: Record<string, unknown> = {}) {
@@ -98,7 +98,7 @@ describe("Google service-account OAuth", () => {
     const der = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
     let binary = "";
     for (const byte of der) binary += String.fromCharCode(byte);
-    const pem = "-----BEGIN PRIVATE KEY-----\\n" + btoa(binary).match(/.{1,64}/g)!.join("\\n") + "\\n-----END PRIVATE KEY-----";
+    const pem = ["-----BEGIN " + "PRIVATE KEY-----", btoa(binary).match(/.{1,64}/g)!.join("\n"), "-----END " + "PRIVATE KEY-----"].join("\n");
     let calls = 0;
     const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
       calls++;
