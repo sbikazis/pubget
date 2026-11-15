@@ -372,7 +372,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
         return;
       }
     }
-    final usernameForSave = username.isEmpty ? username : (provider.profile?.username == username ? username : username.toLowerCase());
+    final usernameForSave = username.toLowerCase();
     final age = int.tryParse(_age.text.trim());
     final Result<Object> result = _avatarBytes == null
         ? await provider.saveProfile(
@@ -389,9 +389,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
             authUser: authUser,
             avatarBytes: _avatarBytes!,
             contentType: _avatarContentType,
-            username: username,
+            username: usernameForSave,
             displayName: _displayName.text,
             bio: _bio.text,
+            age: age,
+            country: _country.text,
             favoriteAnimes: _interests.toList(growable: false),
             isProfileCompleted: completed,
           );
