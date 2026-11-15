@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -235,10 +237,16 @@ void main() {
     ) async {
       var probes = 0;
       var retries = 0;
+      // A real reachability probe takes time. Holding the retry-time probe
+      // open reproduces the actual double-tap window: the first retry is still
+      // in flight when the second tap lands. With an instantaneous fake the
+      // first retry would already be finished, so the second tap would be a
+      // separate (legitimate) action instead of a duplicate.
+      final retryProbe = Completer<bool>();
       final network = NetworkService(
         probe: () async {
           probes++;
-          return true;
+          return probes == 1 ? true : retryProbe.future;
         },
       );
       addTearDown(network.dispose);
@@ -259,6 +267,11 @@ void main() {
 
       await tester.tap(find.byType(PubgetSecondaryButton));
       await tester.tap(find.byType(PubgetSecondaryButton));
+      // Render the disabled/loading button while the probe is still pending.
+      await tester.pump();
+      expect(retries, 0, reason: 'the action waits for link verification');
+
+      retryProbe.complete(true);
       await tester.pumpAndSettle();
 
       expect(probes, 2, reason: 'the link must be re-verified before retrying');
