@@ -39,7 +39,7 @@ function json(data: unknown, status = 200, extra: HeadersInit = {}): Response {
 }
 
 async function authenticate(request: Request, projectId: string): Promise<string | null> {
-  const token = request.headers.get("authorization")?.match(/^Bearer\\s+(.+)$/i)?.[1];
+  const token = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return null;
   const result = await verifyFirebaseIdToken(token, projectId);
   return result?.uid ?? null;
