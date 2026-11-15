@@ -199,24 +199,30 @@ class PubgetErrorState extends StatelessWidget {
             title: title,
             message: message,
             onRetry: onRetry,
+            retryLabel: retryLabel,
           );
         case PubgetFailureKind.expired:
           return PubgetExpiredState(
             title: title,
             message: message,
             onRetry: onRetry,
+            retryLabel: retryLabel,
           );
+        // Connectivity verdicts own their *message*. A domain override such as
+        // "check your connection" must never turn a backend outage back into a
+        // false "no internet" claim; the domain title may still describe what
+        // failed ("Unable to load anime right now.").
         case PubgetFailureKind.serviceUnavailable:
           return PubgetServiceUnavailableState(
             title: title,
-            message: message,
             onRetry: onRetry,
+            retryLabel: retryLabel,
           );
         case PubgetFailureKind.offline:
           return PubgetOfflineState(
             forceOffline: true,
-            title: title,
-            message: message,
+            title: title ?? copy.connectionOfflineTitle,
+            message: copy.connectionOfflineMessage,
             onRetry: onRetry,
             retryLabel: retryLabel,
           );
@@ -274,18 +280,30 @@ class PubgetOfflineState extends StatelessWidget {
     if (!forceOffline) {
       final status = readNetworkStatus(context);
       if (status == NetworkStatus.online || status == NetworkStatus.unknown) {
-        return PubgetServiceUnavailableState(onRetry: onRetry);
+        return PubgetServiceUnavailableState(
+          onRetry: onRetry,
+          retryLabel: retryLabel,
+        );
       }
       if (failure != null) {
         final kind = classifyPubgetFailure(failure, linkStatus: status);
         if (kind == PubgetFailureKind.permissionDenied) {
-          return PubgetPermissionDeniedState(onRetry: onRetry);
+          return PubgetPermissionDeniedState(
+            onRetry: onRetry,
+            retryLabel: retryLabel,
+          );
         }
         if (kind == PubgetFailureKind.expired) {
-          return PubgetExpiredState(onRetry: onRetry);
+          return PubgetExpiredState(
+            onRetry: onRetry,
+            retryLabel: retryLabel,
+          );
         }
         if (kind == PubgetFailureKind.serviceUnavailable) {
-          return PubgetServiceUnavailableState(onRetry: onRetry);
+          return PubgetServiceUnavailableState(
+            onRetry: onRetry,
+            retryLabel: retryLabel,
+          );
         }
       }
     }
@@ -313,6 +331,7 @@ class PubgetServiceUnavailableState extends StatelessWidget {
     this.loading = false,
     this.title,
     this.message,
+    this.retryLabel,
     super.key,
   });
 
@@ -321,9 +340,14 @@ class PubgetServiceUnavailableState extends StatelessWidget {
   final String? title;
   final String? message;
 
+  /// Domain screens may keep their own localized retry verb. It defaults to
+  /// the honest "Retry now" connection copy.
+  final String? retryLabel;
+
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
+    final retry = retryLabel ?? copy.retryConnection;
     return _StateLayout(
       icon: Icons.cloud_sync_outlined,
       title: title ?? copy.serviceUnavailableTitle,
@@ -334,8 +358,8 @@ class PubgetServiceUnavailableState extends StatelessWidget {
           : PubgetSecondaryButton(
               onPressed: loading ? null : onRetry,
               loading: loading,
-              semanticLabel: copy.retryConnection,
-              child: Text(copy.retryConnection),
+              semanticLabel: retry,
+              child: Text(retry),
             ),
     );
   }
@@ -347,16 +371,19 @@ class PubgetPermissionDeniedState extends StatelessWidget {
     this.onRetry,
     this.title,
     this.message,
+    this.retryLabel,
     super.key,
   });
 
   final VoidCallback? onRetry;
   final String? title;
   final String? message;
+  final String? retryLabel;
 
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
+    final retry = retryLabel ?? copy.tryAgain;
     return _StateLayout(
       icon: Icons.lock_outline,
       title: title ?? copy.permissionDeniedTitle,
@@ -366,8 +393,8 @@ class PubgetPermissionDeniedState extends StatelessWidget {
           ? null
           : PubgetSecondaryButton(
               onPressed: onRetry,
-              semanticLabel: copy.tryAgain,
-              child: Text(copy.tryAgain),
+              semanticLabel: retry,
+              child: Text(retry),
             ),
     );
   }
@@ -379,16 +406,19 @@ class PubgetExpiredState extends StatelessWidget {
     this.onRetry,
     this.title,
     this.message,
+    this.retryLabel,
     super.key,
   });
 
   final VoidCallback? onRetry;
   final String? title;
   final String? message;
+  final String? retryLabel;
 
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
+    final retry = retryLabel ?? copy.tryAgain;
     return _StateLayout(
       icon: Icons.history_toggle_off,
       title: title ?? copy.expiredTitle,
@@ -398,8 +428,8 @@ class PubgetExpiredState extends StatelessWidget {
           ? null
           : PubgetSecondaryButton(
               onPressed: onRetry,
-              semanticLabel: copy.tryAgain,
-              child: Text(copy.tryAgain),
+              semanticLabel: retry,
+              child: Text(retry),
             ),
     );
   }
@@ -418,6 +448,7 @@ class PubgetFailureStateView extends StatefulWidget {
     this.offlineHint = false,
     this.title,
     this.message,
+    this.retryLabel,
     this.onRetry,
     super.key,
   });
@@ -431,6 +462,7 @@ class PubgetFailureStateView extends StatefulWidget {
   /// message here — that is the contract of the whole error taxonomy.
   final String? title;
   final String? message;
+  final String? retryLabel;
   final Future<void> Function()? onRetry;
 
   @override
@@ -482,28 +514,31 @@ class _PubgetFailureStateViewState extends State<PubgetFailureStateView> {
         title: copy.connectionOfflineTitle,
         message: copy.connectionOfflineMessage,
         onRetry: retry,
-        retryLabel: copy.retryConnection,
+        retryLabel: widget.retryLabel ?? copy.retryConnection,
       ),
       PubgetFailureKind.serviceUnavailable =>
         PubgetServiceUnavailableState(
           onRetry: retry,
           loading: _retrying,
+          retryLabel: widget.retryLabel,
         ),
       PubgetFailureKind.permissionDenied => PubgetPermissionDeniedState(
         title: widget.title,
         message: widget.message,
         onRetry: retry,
+        retryLabel: widget.retryLabel,
       ),
       PubgetFailureKind.expired => PubgetExpiredState(
         title: widget.title,
         message: widget.message,
         onRetry: retry,
+        retryLabel: widget.retryLabel,
       ),
       PubgetFailureKind.generic => PubgetErrorState(
         title: widget.title,
         message: widget.message,
         onRetry: retry,
-        retryLabel: copy.retryConnection,
+        retryLabel: widget.retryLabel ?? copy.retryConnection,
       ),
     };
   }
@@ -608,6 +643,7 @@ class PubgetLoadingStateView extends StatelessWidget {
     this.offline,
     this.loadingMoreIndicator,
     this.onRetry,
+    this.retryLabel,
     this.failure,
     super.key,
   });
@@ -620,6 +656,7 @@ class PubgetLoadingStateView extends StatelessWidget {
   final Widget? offline;
   final Widget? loadingMoreIndicator;
   final VoidCallback? onRetry;
+  final String? retryLabel;
 
   /// The typed failure behind `error`/`offline`. Passing it upgrades the
   /// default surfaces from a flat message to the honest verdict (§2.1).
@@ -647,13 +684,18 @@ class PubgetLoadingStateView extends StatelessWidget {
             ),
       LoadingState.error =>
         error ??
-            PubgetFailureStateView(failure: failure, onRetry: retry),
+            PubgetFailureStateView(
+              failure: failure,
+              onRetry: retry,
+              retryLabel: retryLabel,
+            ),
       LoadingState.offline =>
         offline ??
             PubgetFailureStateView(
               failure: failure,
               offlineHint: true,
               onRetry: retry,
+              retryLabel: retryLabel,
             ),
       LoadingState.refreshing => Stack(
         children: <Widget>[

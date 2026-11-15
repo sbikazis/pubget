@@ -195,6 +195,41 @@ void main() {
       expect(find.byType(PubgetExpiredState), findsOneWidget);
     });
 
+    testWidgets('a typed verdict keeps the domain retry label', (
+      tester,
+    ) async {
+      await pumpSurface(
+        tester,
+        PubgetErrorState(
+          title: 'Unable to load anime right now.',
+          message: 'Check your connection and try again.',
+          failure: const UnavailableError(),
+          onRetry: () {},
+          retryLabel: 'Retry',
+        ),
+      );
+
+      expect(find.byType(PubgetServiceUnavailableState), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('Unable to load anime right now.'), findsOneWidget);
+      // The whole point of the verdict: a backend outage must never inherit a
+      // "check your connection" override from a legacy screen.
+      expect(find.text('Check your connection and try again.'), findsNothing);
+    });
+
+    testWidgets('the resolver forwards a domain retry label', (tester) async {
+      await pumpSurface(
+        tester,
+        PubgetFailureStateView(
+          failure: const UnavailableError(),
+          retryLabel: 'Retry',
+          onRetry: () async {},
+        ),
+      );
+
+      expect(find.text('Retry'), findsOneWidget);
+    });
+
     testWidgets('retry re-verifies the link then re-runs the action once', (
       tester,
     ) async {
