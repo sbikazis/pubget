@@ -890,7 +890,7 @@ class _FavoriteAnimeStep extends StatelessWidget {
         ],
         if (searching) ...[
           const SizedBox(height: AppSpacing.md),
-          const Center(child: CircularProgressIndicator()),
+          const PubgetPageLoading(),
         ] else if (query.text.trim().isNotEmpty && results.isEmpty && error == null) ...[
           const SizedBox(height: AppSpacing.md),
           Text(copy.onboardingNoAnimeFound),

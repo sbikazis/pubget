@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -109,18 +110,28 @@ class _SearchBody extends StatelessWidget {
       );
     }
     if (search.state == LoadingState.empty) {
-      return const PubgetEmptyState(
-        title: 'Nothing found',
-        message: 'Try another group, username, event, anime, or Fan Work.',
+      final copy = AppStrings.of(context);
+      return PubgetEmptyState(
+        title: copy.searchNothingFound,
+        message: copy.searchEmptyHint,
       );
     }
     if (search.state == LoadingState.offline) {
-      return PubgetOfflineState(onRetry: search.retry);
+      return PubgetFailureStateView(
+        failure: search.failure,
+        offlineHint: true,
+        onRetry: () async {
+          search.retry();
+        },
+      );
     }
     if (search.state == LoadingState.error) {
-      return PubgetErrorState(
-        message: search.failure?.message ?? 'Search failed.',
-        onRetry: search.retry,
+      return PubgetFailureStateView(
+        failure: search.failure,
+        message: AppStrings.of(context).searchLoadFailed,
+        onRetry: () async {
+          search.retry();
+        },
       );
     }
     return ListView.builder(

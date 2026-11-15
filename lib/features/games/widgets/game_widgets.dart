@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_router.dart';
+import '../../../core/errors/failure.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
@@ -311,15 +312,22 @@ class GameEmptyState extends StatelessWidget {
 }
 
 class GameErrorState extends StatelessWidget {
-  const GameErrorState({required this.onRetry, this.message, super.key});
+  const GameErrorState({
+    required this.onRetry,
+    this.message,
+    this.failure,
+    super.key,
+  });
 
   final VoidCallback onRetry;
   final String? message;
+  final Failure? failure;
 
   @override
   Widget build(BuildContext context) {
     return PubgetErrorState(
       message: message ?? GameCopy.of(context).gamesCouldNotLoad,
+      failure: failure,
       onRetry: onRetry,
     );
   }

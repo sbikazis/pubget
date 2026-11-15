@@ -165,7 +165,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> {
           icon: Icons.event_busy_outlined,
         ),
         error: PubgetErrorState(
-          message: provider.failure?.message ?? copy.eventMissing,
+          message: copy.eventMissing,
+          failure: provider.failure,
         ),
         offline: const PubgetOfflineState(),
         child: event == null
@@ -1617,7 +1618,7 @@ class _ResolveEventDialogState extends State<_ResolveEventDialog> {
       content: SizedBox(
         width: double.maxFinite,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const PubgetPageLoading()
             : isPrediction
             ? SingleChildScrollView(
                 child: Column(

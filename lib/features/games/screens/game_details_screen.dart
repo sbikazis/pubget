@@ -91,11 +91,11 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
           title: copy.missing,
           message: copy.missing,
         ),
-        error: GameErrorState(
-          message: state.failure?.message,
-          onRetry: () =>
-              context.read<GameProvider>().open(widget.gameId, userId: uid),
-        ),
+         error: GameErrorState(
+           failure: state.failure,
+           onRetry: () =>
+               context.read<GameProvider>().open(widget.gameId, userId: uid),
+         ),
         offline: PubgetOfflineState(
           onRetry: () =>
               context.read<GameProvider>().open(widget.gameId, userId: uid),

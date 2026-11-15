@@ -92,7 +92,8 @@ class _MafiaGameScreenState extends State<MafiaGameScreen> {
         ),
         error: PubgetErrorState(
           title: 'تعذر تحميل المافيا',
-          message: state.failure?.message ?? 'تحقق من الاتصال وحاول مجددًا.',
+          message: 'تحقق من الاتصال وحاول مجددًا.',
+          failure: state.failure,
           onRetry: uid == null
               ? null
               : () => context.read<MafiaProvider>().open(

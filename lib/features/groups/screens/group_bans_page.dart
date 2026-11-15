@@ -78,7 +78,8 @@ class _GroupBansPageState extends State<GroupBansPage> {
                 title: 'لا يوجد أعضاء محظورون حاليًا.',
               ),
               error: PubgetErrorState(
-                message: members.failure?.message ?? 'تعذّر تحميل المحظورين.',
+                message: 'تعذّر تحميل المحظورين.',
+                failure: members.failure,
                 onRetry: () => members.loadBans(widget.groupId),
               ),
               offline: PubgetOfflineState(

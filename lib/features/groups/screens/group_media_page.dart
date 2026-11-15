@@ -55,7 +55,7 @@ class _GroupMediaPageState extends State<GroupMediaPage> {
           leading: AppBackButton.maybeOf(context),
           title: Text(copy.groupMedia),
         ),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const PubgetPageLoading(),
       );
     }
     return ChangeNotifierProvider<ChatMediaLibrary>.value(
@@ -104,14 +104,21 @@ class _GroupMediaPageState extends State<GroupMediaPage> {
                   final filtered = all.where(_matches).toList(growable: false);
                   switch (lib.state) {
                     case ChatMediaLibraryState.loading:
-                      return const Center(child: CircularProgressIndicator());
+                      return const PubgetPageLoading(compact: true);
                     case ChatMediaLibraryState.error:
-                      return PubgetErrorState(
+                      return PubgetFailureStateView(
                         message: copy.chatMediaLoadFailed,
-                        onRetry: lib.refresh,
+                        onRetry: () async {
+                          lib.refresh();
+                        },
                       );
                     case ChatMediaLibraryState.offline:
-                      return PubgetOfflineState(onRetry: lib.refresh);
+                      return PubgetFailureStateView(
+                        offlineHint: true,
+                        onRetry: () async {
+                          lib.refresh();
+                        },
+                      );
                     case ChatMediaLibraryState.empty:
                     case ChatMediaLibraryState.loaded:
                     case ChatMediaLibraryState.initial:

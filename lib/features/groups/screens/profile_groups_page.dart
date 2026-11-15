@@ -60,7 +60,7 @@ class _ProfileGroupsPageState extends State<ProfileGroupsPage> {
           future: _future,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
+              return const PubgetPageLoading();
             }
             if (snapshot.hasError || snapshot.data is FailureResult) {
               return PubgetErrorState(

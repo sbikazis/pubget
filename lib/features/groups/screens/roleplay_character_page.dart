@@ -44,7 +44,8 @@ class _RoleplayCharacterPageState extends State<RoleplayCharacterPage> {
         ),
         error: PubgetErrorState(
           key: const Key('group-roleplay-error'),
-          message: provider.failure?.message ?? copy.roleplayCharactersLoadFailed,
+          message: copy.roleplayCharactersLoadFailed,
+          failure: provider.failure,
           onRetry: () => provider.load(widget.groupId),
         ),
         offline: PubgetOfflineState(

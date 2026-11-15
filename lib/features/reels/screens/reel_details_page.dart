@@ -160,7 +160,7 @@ class _ReelDetailsPageState extends State<ReelDetailsPage> {
 
   Widget _body(EditCopy copy, Edit? edit) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const PubgetPageLoading();
     }
     if (edit == null) {
       return PubgetErrorState(

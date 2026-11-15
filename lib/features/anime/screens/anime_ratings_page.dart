@@ -119,7 +119,8 @@ class _MalRankingBody extends StatelessWidget {
         ),
         error: PubgetErrorState(
           title: copy.unableToLoad,
-          message: list.failure?.message ?? copy.checkConnection,
+          message: copy.checkConnection,
+          failure: list.failure,
           onRetry: onRetry,
           retryLabel: copy.retry,
         ),

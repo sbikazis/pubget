@@ -108,6 +108,27 @@ def main() -> int:
                         f"({fragment})"
                     )
 
+        # Axis 02 §2.1 regression guards. A state widget must receive the
+        # typed Failure (so it can classify the verdict), never the raw
+        # backend sentence; and a full-page loading state must be a skeleton,
+        # not an indeterminate spinner that also breaks pumpAndSettle.
+        if relative.startswith("lib/features/") and relative.endswith(".dart"):
+            for number, line in enumerate(text.splitlines(), start=1):
+                if "message:" in line and "failure?.message" in line:
+                    problems.append(
+                        f"{relative}:{number}: raw failure message in a state "
+                        "widget — pass `failure:` instead"
+                    )
+                compact = "".join(line.split())
+                if (
+                    "Center(child:CircularProgressIndicator())" in compact
+                    or "Center(child:constCircularProgressIndicator())" in compact
+                ):
+                    problems.append(
+                        f"{relative}:{number}: blind full-page spinner — use "
+                        "PubgetPageLoading()"
+                    )
+
     for relative in JSON_TARGETS:
         path = ROOT / relative
         if not path.is_file():

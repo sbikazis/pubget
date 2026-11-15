@@ -35,7 +35,8 @@ class _JoinRequestsPageState extends State<JoinRequestsPage> {
         onRetry: () => provider.loadRequests(widget.groupId),
         empty: const PubgetEmptyState(title: 'No pending requests'),
         error: PubgetErrorState(
-          message: provider.failure?.message ?? 'Requests could not load.',
+          message: 'Requests could not load.',
+          failure: provider.failure,
           onRetry: () => provider.loadRequests(widget.groupId),
         ),
         offline: PubgetOfflineState(

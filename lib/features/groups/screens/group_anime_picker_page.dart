@@ -333,7 +333,7 @@ class _AnimeFooter extends StatelessWidget {
     if (loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
-        child: Center(child: CircularProgressIndicator()),
+        child: PubgetPageLoading(),
       );
     }
     if (hasNextPage) {

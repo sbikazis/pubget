@@ -243,18 +243,21 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
       );
     }
     if (list.state == LoadingState.error) {
-      return PubgetErrorState(
+      return PubgetFailureStateView(
+        failure: list.failure,
         title: AnimeCopy.of(context).unableToLoad,
-        message: list.failure?.message ?? AnimeCopy.of(context).checkConnection,
-        onRetry: list.retrySearch,
-        retryLabel: AnimeCopy.of(context).retry,
+        onRetry: () async {
+          list.retrySearch();
+        },
       );
     }
     if (list.state == LoadingState.offline && list.items.isEmpty) {
-      return PubgetOfflineState(
-        message: AnimeCopy.of(context).checkConnection,
-        onRetry: list.retrySearch,
-        retryLabel: AnimeCopy.of(context).retry,
+      return PubgetFailureStateView(
+        failure: list.failure,
+        offlineHint: true,
+        onRetry: () async {
+          list.retrySearch();
+        },
       );
     }
     if (list.state == LoadingState.empty || list.items.isEmpty) {

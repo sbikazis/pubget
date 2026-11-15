@@ -78,7 +78,8 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
         onRetry: () => _reload(context),
         empty: PubgetEmptyState(title: copy.settingsUnavailable),
         error: PubgetErrorState(
-          message: provider.failure?.message ?? copy.settingsLoadFailed,
+          message: copy.settingsLoadFailed,
+          failure: provider.failure,
           onRetry: () => _reload(context),
         ),
         offline: PubgetOfflineState(onRetry: () => _reload(context)),

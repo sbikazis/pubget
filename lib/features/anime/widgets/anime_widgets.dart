@@ -677,13 +677,13 @@ class _PaginationFooter extends StatelessWidget {
     if (list.state == LoadingState.loadingMore) {
       return const Padding(
         padding: EdgeInsets.all(AppSpacing.lg),
-        child: Center(child: CircularProgressIndicator()),
+        child: PubgetPageLoading(compact: true),
       );
     }
     if (list.pageFailure != null) {
       return PubgetErrorState(
         title: AnimeCopy.of(context).unableToLoad,
-        message: list.pageFailure!.message,
+        failure: list.pageFailure,
         onRetry: list.retryLoadMore,
         retryLabel: AnimeCopy.of(context).retry,
       );
