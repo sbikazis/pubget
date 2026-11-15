@@ -1788,7 +1788,7 @@ test("onboarding requires a reserved username and persists optional identity fie
   };
 
   // A client cannot create a completed profile using an unclaimed username.
-  await assertFails(alice.doc("users/new-user").set(profile));
+  await assertFails(db("new-user").doc("users/new-user").set(profile));
 
   await env.withSecurityRulesDisabled(async (context) => {
     await context.firestore().doc("usernames/newfan").set({
