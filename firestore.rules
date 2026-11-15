@@ -463,6 +463,19 @@ service cloud.firestore {
         optionalSectionPrivacy(data);
     }
 
+    function usernameClaimedBy(uid, username) {
+      return exists(/databases/$(database)/documents/usernames/$(username)) &&
+        get(/databases/$(database)/documents/usernames/$(username)).data.uid == uid;
+    }
+    function validCompletedIdentity(data) {
+      return data.get('username', null) is string &&
+        data.username.size() >= 3 && data.username.size() <= 20 &&
+        data.get('displayName', null) is string &&
+        data.displayName.size() > 0 && data.displayName.size() <= 80 &&
+        data.get('avatarUrl', null) is string &&
+        data.avatarUrl.size() > 0 && data.avatarUrl.size() <= 2048;
+    }
+
     match /users/{uid} {
       // The root user document contains credentials-adjacent and account
       // state. Display data for other users lives in public_profiles.
@@ -486,6 +499,27 @@ service cloud.firestore {
         request.resource.data.email is string &&
         request.resource.data.createdAt is timestamp &&
         request.resource.data.isProfileCompleted is bool &&
+        (!request.resource.data.isProfileCompleted ||
+         validCompletedIdentity(request.resource.data)) &&
+        (!request.resource.data.keys().hasAny(['username']) ||
+         request.resource.data.username == null ||
+         request.resource.data.username == '' ||
+         (request.resource.data.username is string &&
+          request.resource.data.username.size() >= 3 &&
+          request.resource.data.username.size() <= 20 &&
+          usernameClaimedBy(uid, request.resource.data.username))) &&
+        (!request.resource.data.keys().hasAny(['age']) ||
+         request.resource.data.age == null ||
+         (request.resource.data.age is int &&
+          request.resource.data.age >= 13 &&
+          request.resource.data.age <= 120)) &&
+        (!request.resource.data.keys().hasAny(['country']) ||
+         request.resource.data.country == null ||
+         (request.resource.data.country is string &&
+          request.resource.data.country.size() <= 64)) &&
+        (!request.resource.data.keys().hasAny(['favoriteAnimes']) ||
+         (request.resource.data.favoriteAnimes is list &&
+          request.resource.data.favoriteAnimes.size() <= 50)) &&
         request.resource.data.get('subscriptionType', 'free') == 'free' &&
         request.resource.data.get('totalRespect', 0) == 0 &&
         request.resource.data.get('fansCount', 0) == 0 &&
@@ -516,9 +550,29 @@ service cloud.firestore {
           'favoriteAnimes','age','country',
           'favoriteAnimeIds','favoriteQuote','animeTwin','socialLinks',
           'sectionPrivacy','activityVisibility',
-          'whoCanMessageMe',
+          'whoCanMessageMe','age','country','favoriteAnimes',
           'isProfileCompleted','hasSkippedOnboarding','updatedAt','language'
         ]) &&
+         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['username']) ||
+          (request.resource.data.username is string &&
+           request.resource.data.username.size() >= 3 &&
+           request.resource.data.username.size() <= 20 &&
+           usernameClaimedBy(uid, request.resource.data.username))) &&
+         (!request.resource.data.isProfileCompleted ||
+          resource.data.get('isProfileCompleted', false) == true ||
+          validCompletedIdentity(request.resource.data)) &&
+         (!request.resource.data.keys().hasAny(['age']) ||
+          request.resource.data.age == null ||
+          (request.resource.data.age is int &&
+           request.resource.data.age >= 13 &&
+           request.resource.data.age <= 120)) &&
+         (!request.resource.data.keys().hasAny(['country']) ||
+          request.resource.data.country == null ||
+          (request.resource.data.country is string &&
+           request.resource.data.country.size() <= 64)) &&
+         (!request.resource.data.keys().hasAny(['favoriteAnimes']) ||
+          (request.resource.data.favoriteAnimes is list &&
+           request.resource.data.favoriteAnimes.size() <= 50)) &&
           (!request.resource.data.keys().hasAny(['username']) ||
            (request.resource.data.username is string &&
             request.resource.data.username.size() <= 32)) &&
