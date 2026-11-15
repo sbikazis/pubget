@@ -29,7 +29,7 @@ function encodeBase64Url(value: Uint8Array | string): string {
   const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/=/g, "").replace(/\\+/g, "-").replace(/\\//g, "_");
+  return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
 async function getFirebaseJwks(fetcher: typeof fetch, forceRefresh = false): Promise<JwkSet> {
@@ -45,7 +45,7 @@ async function getFirebaseJwks(fetcher: typeof fetch, forceRefresh = false): Pro
       throw new Error("Firebase signing keys response is invalid.");
     }
     const cacheControl = response.headers.get("cache-control") ?? "";
-    const maxAge = Number(cacheControl.match(/(?:^|, )max-age=(\\d+)/i)?.[1] ?? 300);
+    const maxAge = Number(cacheControl.match(/(?:^|, )max-age=(\d+)/i)?.[1] ?? 300);
     jwksCache = { keys: body, expiresAt: Date.now() + Math.max(60, Math.min(maxAge, 3600)) * 1000 };
     return body;
   })();
@@ -112,7 +112,7 @@ export async function verifyFirebaseIdToken(
 }
 
 function pemToBytes(pem: string): Uint8Array {
-  const body = pem.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\\s/g, "");
+  const body = pem.replace(/-----BEGIN [A-Z ]+-----|-----END [A-Z ]+-----|\s/g, "");
   return decodeBase64(body);
 }
 
