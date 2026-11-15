@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/loading/loading_state.dart';
 import 'package:pubget/features/authentication/models/auth_user.dart';
+import 'package:pubget/features/authentication/models/pubget_user.dart';
 import 'package:pubget/features/authentication/providers/onboarding_provider.dart';
 
 import 'authentication_test_support.dart';
