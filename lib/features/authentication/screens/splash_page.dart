@@ -219,12 +219,23 @@ class _SplashPageState extends State<SplashPage> {
       if (!mounted) return false;
       if (updateNow == true) {
         final uri = Uri.tryParse(status.updateUrl);
-        if (uri == null ||
-            !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        if (uri == null) {
           PubgetSnackbars.showError(
             context,
             AppStrings.of(context).updateLinkUnavailable,
           );
+        } else {
+          final launched = await launchUrl(
+            uri,
+            mode: LaunchMode.externalApplication,
+          );
+          if (!mounted) return false;
+          if (!launched) {
+            PubgetSnackbars.showError(
+              context,
+              AppStrings.of(context).updateLinkUnavailable,
+            );
+          }
         }
       }
     }
