@@ -1513,15 +1513,15 @@ function createEditsDomain({
     if (data.status === "rejected") {
       return { ok: true, status: "rejected", reason: data.moderationReason || null };
     }
-    if (!["uploading", "processing", "failed"].includes(data.status)) {
+    if (data.status === "processing") {
+      return { ok: true, status: "processing", videoPath: data.processedStoragePath || null };
+    }
+    if (!["uploading", "failed"].includes(data.status)) {
       throw new HttpsError("failed-precondition", "This Reel cannot be finalized.");
     }
     const videoPath = data.originalStoragePath || data.videoPath;
     if (!videoPath) {
       throw new HttpsError("failed-precondition", "The original video is missing.");
-    }
-    if (data.mediaBackend === "r2" && data.status === "processing") {
-      await ref.update({ status: "failed", failureReason: "finalize-retry" });
     }
     return kickProcessing(ref, data, videoPath, { awaitProcessing: false });
   }
