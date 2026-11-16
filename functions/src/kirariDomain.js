@@ -564,6 +564,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, legacyBucket =
     // refund is transactionally guarded above, while storage cleanup is safe to retry.
     const paths = [
       reel.originalStoragePath || reel.storagePath,
+      `kirari/${uid}/${reelId}/cover-source.jpg`,
       reel.coverPath,
       ...Object.values(reel.renditions || {}).map((item) => item && item.path),
     ].filter((value) => typeof value === "string" && value.length > 0);
@@ -571,8 +572,6 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, legacyBucket =
     await Promise.all(paths.map((value) =>
       mediaBucket.file(value).delete({ ignoreNotFound: true }).catch(() => {}),
     ));
-    await legacyBucket.file(`kirari/${uid}/${reelId}/cover-source.jpg`)
-      .delete({ ignoreNotFound: true }).catch(() => {});
     return { ok: true };
   }
 
@@ -663,7 +662,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, legacyBucket =
     const storagePath = initialData.originalStoragePath || initialData.storagePath;
     const mediaBucket = initialData.mediaBackend === 'r2' ? bucket : legacyBucket;
     if (storagePath) await mediaBucket.file(storagePath).delete({ ignoreNotFound: true }).catch(() => {});
-    await legacyBucket.file(`kirari/${uid}/${reelId}/cover-source.jpg`)
+    await mediaBucket.file(`kirari/${uid}/${reelId}/cover-source.jpg`)
       .delete({ ignoreNotFound: true }).catch(() => {});
     return { ok: true };
   }
