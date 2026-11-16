@@ -16,7 +16,9 @@ void main() {
       'lib/app/pubget_app.dart',
       'lib/app/entity_routes.dart',
     ];
-    final literal = RegExp(r"'/(?:[A-Za-z0-9_]+/)*[A-Za-z0-9_]+'");
+    // Paths such as '/fan-work' and '/private-chat' legitimately contain
+    // hyphens — excluding them produced false "unregistered route" failures.
+    final literal = RegExp(r"'/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+'");
     for (final file in files) {
       final source = File(file).readAsStringSync();
       for (final match in literal.allMatches(source)) {
