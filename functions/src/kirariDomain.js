@@ -564,7 +564,6 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, legacyBucket =
     // refund is transactionally guarded above, while storage cleanup is safe to retry.
     const paths = [
       reel.originalStoragePath || reel.storagePath,
-      `kirari/${uid}/${reelId}/cover-source.jpg`,
       reel.coverPath,
       ...Object.values(reel.renditions || {}).map((item) => item && item.path),
     ].filter((value) => typeof value === "string" && value.length > 0);
