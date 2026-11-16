@@ -543,7 +543,11 @@ export default {
       const reelDocument = await reelResponse.json() as { fields?: Record<string, { stringValue?: string }> };
       const fields = reelDocument.fields ?? {};
       const key = fields.originalStoragePath?.stringValue ?? fields.storagePath?.stringValue ?? "";
-      if (fields.creatorId?.stringValue !== uid || fields.status?.stringValue !== "uploading" ||
+      const isAbortRequest = routeParts.length === 5 &&
+        routeParts[4] === "abort" && request.method === "DELETE";
+      const uploadStatus = fields.status?.stringValue;
+      if (fields.creatorId?.stringValue !== uid ||
+          (uploadStatus !== "uploading" && !(isAbortRequest && uploadStatus === "failed")) ||
           key !== `kirari/${uid}/${reelId}/source.mp4` || !validKirariServiceKey(key)) {
         return json({ error: "This Kirari upload is not available." }, 403);
       }
@@ -620,7 +624,9 @@ export default {
 
       if (routeParts.length === 5 && routeParts[4] === "abort" && request.method === "DELETE") {
         const upload = env.MEDIA_BUCKET.resumeMultipartUpload(key, routeParts[3]);
-        await upload.abort();
+        try { await upload.abort(); } catch {
+          // Aborting an already-expired multipart session is idempotent cleanup.
+        }
         return new Response(null, { status: 204, headers: CORS });
       }
       return json({ error: "Unsupported Kirari multipart operation." }, 405);
