@@ -1506,6 +1506,9 @@ function createEditsDomain({
     if (data.status === "published") {
       return { ok: true, videoPath: data.processedStoragePath || null, status: "published" };
     }
+    if (data.status === "processing") {
+      await ref.update({ status: "failed", failureReason: "retry-requested" });
+    }
     const videoPath = data.originalStoragePath || data.videoPath;
     if (!videoPath) {
       throw new HttpsError("failed-precondition", "The original video is missing.");
