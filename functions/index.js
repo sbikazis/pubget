@@ -480,6 +480,7 @@ exports.processKirariVideo = onObjectFinalized(
 const processKirariR2StateTransition = createKirariR2ProcessingTrigger({
   bucket: r2KirariBucket,
   processVideo: processKirariR2Video,
+  db: getFirestore(),
 });
 exports.processKirariR2Upload = onDocumentUpdated(
   { document: "kirari/{reelId}", region: "europe-west3", memory: "2GiB", timeoutSeconds: 540 },
