@@ -16,6 +16,7 @@ test("Kirari R2 adapter rejects keys outside the Kirari namespace", () => {
   const bucket = createR2KirariBucket({ tokenProvider: async () => "header.payload.signature" });
   assert.throws(() => bucket.file("groups/g1/u1/image.jpg"), /Invalid Kirari/);
   assert.throws(() => bucket.file("kirari/../u1/source.mp4"), /Invalid Kirari/);
+  assert.doesNotThrow(() => bucket.file("kirari/u1/r1/cover-source.jpg"));
 });
 
 test("Kirari R2 adapter requests a Google metadata identity token with the Worker audience", async () => {
