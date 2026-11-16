@@ -116,16 +116,13 @@ class FirebaseEditsRepository
     FirebaseFunctions? functions,
     bool reels = false,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _storage = storage ?? FirebaseStorage.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
        _reels = reels;
 
   final FirebaseFirestore _firestore;
-  final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
   final bool _reels;
-  UploadTask? _activeUpload;
   String? _activeEditId;
 
   String get _collection => _reels ? 'reels' : 'edits';
