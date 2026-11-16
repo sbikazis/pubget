@@ -181,7 +181,7 @@ class FirebaseEditsRepository
   }
 
   Future<Edit> _resolveEditMedia(Edit edit) async {
-    if (!edit.isPublished) return edit;
+    if (!edit.isPublished || edit.mediaBackend != 'r2') return edit;
     final resolved = await Future.wait<String>([
       resolveEditMediaUrl(edit.videoUrl),
       resolveEditMediaUrl(edit.thumbnailUrl),
