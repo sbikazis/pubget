@@ -1,0 +1,92 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:pubget/features/kirari/data/r2_kirari_multipart_uploader.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  test('uploads a source in R2 multipart parts and finalizes with ETags', () async {
+    final directory = await Directory.systemTemp.createTemp('pubget-r2-kirari-');
+    final file = File('${directory.path}/source.mp4');
+    await file.writeAsBytes(Uint8List(9 * 1024 * 1024));
+    final methods = <String>[];
+    final uploadedParts = <int>[];
+    final client = MockClient((request) async {
+      methods.add('${request.method} ${request.url.path}');
+      expect(request.headers['authorization'], 'Bearer firebase-token');
+      if (request.method == 'HEAD') return http.Response('', 404);
+      if (request.method == 'POST' && request.url.path.endsWith('/reel-1')) {
+        expect(request.headers['x-kirari-size'], (9 * 1024 * 1024).toString());
+        return http.Response(jsonEncode({'uploadId': 'multipart-1'}), 201);
+      }
+      if (request.method == 'PUT') {
+        final number = int.parse(request.url.path.split('/').last);
+        uploadedParts.add(number);
+        final body = await request.finalize().toBytes();
+        expect(body.length, number == 1 ? 8 * 1024 * 1024 : 1024 * 1024);
+        return http.Response(jsonEncode({'partNumber': number, 'etag': 'etag-$number'}), 201);
+      }
+      if (request.method == 'POST' && request.url.path.endsWith('/complete')) {
+        final payload = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(payload['parts'], [
+          {'partNumber': 1, 'etag': 'etag-1'},
+          {'partNumber': 2, 'etag': 'etag-2'},
+        ]);
+        return http.Response(jsonEncode({'key': 'kirari/alice/reel-1/source.mp4'}), 201);
+      }
+      return http.Response('unexpected', 500);
+    });
+    final uploader = R2KirariMultipartUploader(
+      workerUrl: 'https://pubget-media.example',
+      uidProvider: () => 'alice',
+      getIdToken: () async => 'firebase-token',
+      client: client,
+      preferences: await SharedPreferences.getInstance(),
+    );
+    final progress = <double>[];
+
+    await uploader.upload(
+      file: file,
+      reelId: 'reel-1',
+      onProgress: progress.add,
+    );
+
+    expect(uploadedParts, [1, 2]);
+    expect(methods, contains('POST /kirari/multipart/reel-1/multipart-1/complete'));
+    expect(progress.last, 1);
+    await directory.delete(recursive: true);
+  });
+
+  test('resolves a published Kirari object only through the Worker', () async {
+    late Uri requested;
+    final client = MockClient((request) async {
+      requested = request.url;
+      expect(request.method, 'GET');
+      expect(request.headers['authorization'], 'Bearer firebase-token');
+      return http.Response(jsonEncode({'url': 'https://pubget-media.example/kirari/asset?signed=1'}), 200);
+    });
+    final uploader = R2KirariMultipartUploader(
+      workerUrl: 'https://pubget-media.example/',
+      uidProvider: () => 'alice',
+      getIdToken: () async => 'firebase-token',
+      client: client,
+      preferences: await SharedPreferences.getInstance(),
+    );
+
+    final url = await uploader.resolveUrl('kirari-processed/alice/reel-1/540.mp4');
+
+    expect(requested.path, '/kirari/resolve');
+    expect(requested.queryParameters['key'], 'kirari-processed/alice/reel-1/540.mp4');
+    expect(url, 'https://pubget-media.example/kirari/asset?signed=1');
+  });
+}
