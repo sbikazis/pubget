@@ -182,6 +182,7 @@ function createEditsDomain({
   achievements,
   processEdit,
   bucket,
+  r2Bucket,
   collectionName = "edits",
   uploadKeyCollection = "editUploadKeys",
   quotaCollectionName = "editUploadQuota",
@@ -1431,7 +1432,7 @@ function createEditsDomain({
       moderationReason: null,
       processingStartedAt: FieldValue.serverTimestamp(),
     });
-    if (typeof processEdit === "function") {
+    if (data.mediaBackend !== "r2" && typeof processEdit === "function") {
       const job = processEdit({
         data: {
           name: videoPath,
