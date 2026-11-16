@@ -125,6 +125,7 @@ class FirebaseEditsRepository
   final FirebaseFunctions _functions;
   final bool _reels;
   UploadTask? _activeUpload;
+  String? _activeEditId;
 
   String get _collection => _reels ? 'reels' : 'edits';
   String _callable(String editName) {
@@ -237,11 +238,13 @@ class FirebaseEditsRepository
       editId = _returnedId(start.data);
     }
     onStarted?.call(editId, path);
+    _activeEditId = editId;
     await uploadEditVideoToR2(
       editId: editId,
       source: source,
       contentType: contentType,
     );
+    _activeEditId = null;
     onProgress?.call(1);
 
     // Explicit finalize — recovers when Storage finalize trigger is delayed/missed.
@@ -269,10 +272,10 @@ class FirebaseEditsRepository
 
   @override
   Future<Result<void>> cancelUpload() async {
-    final task = _activeUpload;
-    if (task == null) return const Success<void>(null);
-    await task.cancel();
-    _activeUpload = null;
+    final editId = _activeEditId;
+    if (editId == null) return const Success<void>(null);
+    await cancelEditVideoUpload(editId);
+    _activeEditId = null;
     return const Success<void>(null);
   }
 
