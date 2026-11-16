@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -14,6 +15,7 @@ Future<void> uploadEditVideoToR2({
   required String editId,
   required EditUploadSource source,
   required String contentType,
+  void Function(double progress)? onProgress,
 }) async {
   if (contentType != 'video/mp4') {
     throw ArgumentError.value(contentType, 'contentType', 'Only MP4 is supported.');
@@ -51,7 +53,15 @@ Future<void> uploadEditVideoToR2({
       'authorization': 'Bearer $token',
       'content-type': 'video/mp4',
     });
-    await request.sink.addStream(body);
+    var transferred = 0;
+    final monitoredBody = body.transform(StreamTransformer<List<int>, List<int>>.fromHandlers(
+      handleData: (chunk, sink) {
+        transferred += chunk.length;
+        onProgress?.call((transferred / length).clamp(0.0, 1.0));
+        sink.add(chunk);
+      },
+    ));
+    await request.sink.addStream(monitoredBody);
     await request.sink.close();
     final response = await client.send(request);
     final responseBody = await response.stream.bytesToString();
