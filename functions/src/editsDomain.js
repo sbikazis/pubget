@@ -926,6 +926,7 @@ function createEditsDomain({
       creatorId: editData.creatorId || "",
       videoUrl: editData.videoUrl || "",
       thumbnailUrl: editData.thumbnailUrl || "",
+      mediaBackend: editData.mediaBackend || "firebase",
       caption: editData.caption || "",
       durationSeconds: Number(editData.durationSeconds) || 0,
       likesCount: Number(editData.likesCount) || 0,
