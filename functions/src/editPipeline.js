@@ -589,7 +589,28 @@ function createEditPipeline({
       if (decision.publish) {
         decision.update.publishedAt = new Date();
       }
-      await ref.update(decision.update);
+      if (editData.mediaBackend === "r2") {
+        const applied = await db.runTransaction(async (transaction) => {
+          const latest = await transaction.get(ref);
+          if (!latest.exists || latest.data()?.status !== "processing") return false;
+          transaction.update(ref, decision.update);
+          return true;
+        });
+        if (!applied) {
+          const partialOutputs = [
+            `${processedPrefix}/${creatorId}/${editId}.mp4`,
+            `${processedPrefix}/${creatorId}/${editId}_720.mp4`,
+            `${processedPrefix}/${creatorId}/${editId}_480.mp4`,
+            `${storagePrefix}/${creatorId}/t_${editId}.jpg`,
+          ];
+          await Promise.allSettled(partialOutputs.map((key) =>
+            mediaBucket.file(key).delete({ ignoreNotFound: true }),
+          ));
+          return null;
+        }
+      } else {
+        await ref.update(decision.update);
+      }
       // §15.18 — publish the bytes. Until this receipt exists the Storage
       // rules refuse to serve the transcoded renditions, because nothing has
       // authorised them. Without it a correctly published Reel would render a
