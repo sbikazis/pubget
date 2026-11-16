@@ -283,6 +283,9 @@ class FirebaseEditsRepository
     final editId = _activeEditId;
     if (editId == null) return const Success<void>(null);
     await cancelEditVideoUpload(editId);
+    await _functions.httpsCallable(_callable('deleteEdit')).call({
+      'editId': editId,
+    });
     _activeEditId = null;
     return const Success<void>(null);
   }
