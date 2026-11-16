@@ -548,9 +548,8 @@ class FirebaseEditsRepository
         .orderBy(FieldPath.documentId, descending: true)
         .limit(limit.clamp(1, 24))
         .get();
-    return snapshot.docs
-        .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
-        .toList(growable: false);
+    return Future.wait(snapshot.docs
+        .map((doc) => _resolveEditMedia(Edit.fromMap(doc.data(), id: doc.id))));
   });
 
   @override
