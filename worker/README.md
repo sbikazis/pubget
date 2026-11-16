@@ -17,6 +17,8 @@ The deployed Worker name is `pubget-media` and the default app endpoint is
 
 ## Kirari source uploads
 
+- `PUT /kirari/cover/{reelId}` accepts an owner-bound JPEG/PNG custom cover (maximum 5 MiB) and stores it at the server-derived private cover-source key.
+
 - `POST /kirari/multipart/{reelId}` starts an owner-bound multipart upload.
   The Worker obtains the object key from the Firestore reel document; clients
   cannot supply or override it. Send the declared byte count in
