@@ -252,22 +252,24 @@ class FirebaseEditsRepository
       contentType: contentType,
       onProgress: onProgress,
     );
-    _activeEditId = null;
     onProgress?.call(1);
 
     // Explicit finalize — recovers when Storage finalize trigger is delayed/missed.
     final finalized = await finalizeEditUpload(editId);
     if (finalized.isSuccess) {
+      _activeEditId = null;
       return finalized.valueOrNull!;
     }
     // Upload itself succeeded; surface server state even if finalize soft-fails.
-    return _readEdit(
+    final readBack = await _readEdit(
       editId,
       caption: caption,
       animeTag: animeTag,
       hashtags: hashtags,
       characterTags: characterTags,
     );
+    _activeEditId = null;
+    return readBack;
   });
 
   @override
