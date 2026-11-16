@@ -545,10 +545,14 @@ export default {
       const key = fields.originalStoragePath?.stringValue ?? fields.storagePath?.stringValue ?? "";
       const isAbortRequest = routeParts.length === 5 &&
         routeParts[4] === "abort" && request.method === "DELETE";
+      const isHeadRequest = routeParts.length === 3 && request.method === "HEAD";
       const uploadStatus = fields.status?.stringValue;
+      const canInspectCompletedUpload = isHeadRequest &&
+        ["failed", "processing", "preparing", "published", "rejected"].includes(uploadStatus ?? "");
       if (fields.creatorId?.stringValue !== uid ||
           fields.mediaBackend?.stringValue !== "r2" ||
-          (uploadStatus !== "uploading" && !(isAbortRequest && uploadStatus === "failed")) ||
+          (uploadStatus !== "uploading" && !canInspectCompletedUpload &&
+            !(isAbortRequest && uploadStatus === "failed")) ||
           key !== `kirari/${uid}/${reelId}/source.mp4` || !validKirariServiceKey(key)) {
         return json({ error: "This Kirari upload is not available." }, 403);
       }
