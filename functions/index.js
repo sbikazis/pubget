@@ -46,6 +46,7 @@ const { createAudioDomain } = require("./src/audioDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createKirariDomain } = require("./src/kirariDomain");
 const { createKirariPipeline } = require("./src/kirariPipeline");
+const { createR2KirariBucket } = require("./src/r2KirariStorage");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createAnimeCatalogDomain } = require("./src/animeCatalogDomain");
@@ -265,16 +266,25 @@ const processEditVideo = createEditPipeline({
   notifications: notificationBuilder,
   FieldValue,
 });
-const processKirariVideo = createKirariPipeline({
+const legacyKirariBucket = getStorage().bucket(STORAGE_BUCKET);
+const r2KirariBucket = createR2KirariBucket();
+const processKirariR2Video = createKirariPipeline({
   db: getFirestore(),
-  bucket: getStorage().bucket(),
+  bucket: r2KirariBucket,
+  legacyBucket: legacyKirariBucket,
+});
+const processKirariLegacyVideo = createKirariPipeline({
+  db: getFirestore(),
+  bucket: legacyKirariBucket,
 });
 const kirariDomain = createKirariDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
-  bucket: getStorage().bucket(),
-  processVideo: processKirariVideo,
+  bucket: r2KirariBucket,
+  legacyBucket: legacyKirariBucket,
+  processVideo: processKirariR2Video,
+  processLegacyVideo: processKirariLegacyVideo,
 });
 const editsDomain = createEditsDomain({
   db: lazyFirestore,
@@ -457,9 +467,33 @@ exports.setKirariCreatorMute = onCall(
   { region: "us-central1" },
   kirariDomain.setCreatorMute,
 );
+// Legacy Firebase Storage uploads keep their original object-finalize path.
 exports.processKirariVideo = onObjectFinalized(
   { region: "europe-west3", memory: "2GiB", timeoutSeconds: 540 },
-  processKirariVideo,
+  processKirariLegacyVideo,
+);
+
+// R2 uploads are finalized by the client callable, then processed from the
+// Firestore state transition. This replaces the Firebase Storage trigger for
+// all new Kirari media without exposing the private R2 bucket.
+exports.processKirariR2Upload = onDocumentUpdated(
+  { document: "kirari/{reelId}", region: "europe-west3", memory: "2GiB", timeoutSeconds: 540 },
+  async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    if (!before || !after || before.status === after.status ||
+        after.status !== "processing" || after.mediaBackend !== "r2") return null;
+    const storagePath = after.originalStoragePath || after.storagePath;
+    if (typeof storagePath !== "string" || !storagePath) return null;
+    const [metadata] = await r2KirariBucket.file(storagePath).getMetadata();
+    return processKirariR2Video({ data: {
+      name: storagePath,
+      bucket: r2KirariBucket.name,
+      size: Number(metadata.size || 0),
+      contentType: metadata.contentType || "video/mp4",
+      generation: event.id,
+    } });
+  },
 );
 
 
