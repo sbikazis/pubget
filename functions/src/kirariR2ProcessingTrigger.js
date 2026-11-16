@@ -22,8 +22,11 @@ function createKirariR2ProcessingTrigger({ bucket, processVideo, db }) {
     }
 
     const storagePath = after.originalStoragePath || after.storagePath;
+    const reelId = event.params?.reelId;
+    const ownerUid = after.creatorId;
     if (typeof storagePath !== "string" ||
-        !/^kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/source\.mp4$/.test(storagePath)) {
+        typeof ownerUid !== "string" || !reelId ||
+        storagePath !== `kirari/${ownerUid}/${reelId}/source.mp4`) {
       return null;
     }
 
