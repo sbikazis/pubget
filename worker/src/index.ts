@@ -547,6 +547,7 @@ export default {
         routeParts[4] === "abort" && request.method === "DELETE";
       const uploadStatus = fields.status?.stringValue;
       if (fields.creatorId?.stringValue !== uid ||
+          fields.mediaBackend?.stringValue !== "r2" ||
           (uploadStatus !== "uploading" && !(isAbortRequest && uploadStatus === "failed")) ||
           key !== `kirari/${uid}/${reelId}/source.mp4` || !validKirariServiceKey(key)) {
         return json({ error: "This Kirari upload is not available." }, 403);
