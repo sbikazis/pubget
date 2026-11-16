@@ -47,6 +47,7 @@ const { createEditPipeline } = require("./src/editPipeline");
 const { createKirariDomain } = require("./src/kirariDomain");
 const { createKirariPipeline } = require("./src/kirariPipeline");
 const { createR2KirariBucket } = require("./src/r2KirariStorage");
+const { createKirariR2ProcessingTrigger } = require("./src/kirariR2ProcessingTrigger");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createAnimeCatalogDomain } = require("./src/animeCatalogDomain");
@@ -476,24 +477,13 @@ exports.processKirariVideo = onObjectFinalized(
 // R2 uploads are finalized by the client callable, then processed from the
 // Firestore state transition. This replaces the Firebase Storage trigger for
 // all new Kirari media without exposing the private R2 bucket.
+const processKirariR2StateTransition = createKirariR2ProcessingTrigger({
+  bucket: r2KirariBucket,
+  processVideo: processKirariR2Video,
+});
 exports.processKirariR2Upload = onDocumentUpdated(
   { document: "kirari/{reelId}", region: "europe-west3", memory: "2GiB", timeoutSeconds: 540 },
-  async (event) => {
-    const before = event.data?.before?.data();
-    const after = event.data?.after?.data();
-    if (!before || !after || before.status === after.status ||
-        after.status !== "processing" || after.mediaBackend !== "r2") return null;
-    const storagePath = after.originalStoragePath || after.storagePath;
-    if (typeof storagePath !== "string" || !storagePath) return null;
-    const [metadata] = await r2KirariBucket.file(storagePath).getMetadata();
-    return processKirariR2Video({ data: {
-      name: storagePath,
-      bucket: r2KirariBucket.name,
-      size: Number(metadata.size || 0),
-      contentType: metadata.contentType || "video/mp4",
-      generation: event.id,
-    } });
-  },
+  processKirariR2StateTransition,
 );
 
 
