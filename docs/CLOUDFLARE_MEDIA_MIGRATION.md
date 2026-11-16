@@ -56,6 +56,23 @@ processor in place: that would strand uploads in a non-published state.
   this source change. Deploy only after the processing migration and CI pass.
 
 
+## Phase 3 implementation update (2026-11-16)
+
+- Kirari source video uploads now use the authenticated Worker multipart API
+  from Flutter on Android, iOS, and other supported platforms. The upload ID,
+  local-file fingerprint, and completed part ETags are persisted locally so a
+  retry resumes instead of silently starting over.
+- The Worker derives the source key from the owner's Firestore reel document,
+  checks owner/status, validates the first MP4 part, and verifies the final
+  byte count against the declared size. A completed-object HEAD check avoids
+  re-uploading after an app restart between completion and finalization.
+- New Kirari reel/audio records are marked `mediaBackend: "r2"`. The client
+  resolves those assets through `/kirari/resolve`; records without that marker
+  continue using Firebase Storage as an explicit legacy read path.
+- The custom cover-source upload and the Edits/Reels FFmpeg pipeline are not
+  yet migrated by this update. Do not remove Firebase Storage access or
+  legacy readers until those remaining paths have been moved and verified.
+
 ## Kirari R2 migration (Cloudflare Worker + Firebase Functions)
 
 Kirari source uploads now use authenticated R2 multipart uploads rather than
