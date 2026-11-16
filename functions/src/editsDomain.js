@@ -947,6 +947,8 @@ function createEditsDomain({
       videoUrl: editData.videoUrl || "",
       thumbnailUrl: editData.thumbnailUrl || "",
       mediaBackend: editData.mediaBackend || "firebase",
+      status: editData.status || "published",
+      moderationStatus: editData.moderationStatus || "approved",
       caption: editData.caption || "",
       durationSeconds: Number(editData.durationSeconds) || 0,
       likesCount: Number(editData.likesCount) || 0,
