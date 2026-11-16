@@ -128,6 +128,7 @@ final class Edit {
     this.coverFrameMs = 0,
     this.visibility = 'public',
     this.allowRemix = true,
+    this.mediaBackend = 'firebase',
   });
 
   final String id;
@@ -162,6 +163,7 @@ final class Edit {
   final int coverFrameMs;
   final String visibility;
   final bool allowRemix;
+  final String mediaBackend;
 
   EditStatus get statusEnum => EditStatus.parse(status);
   bool get isPublished => statusEnum == EditStatus.published;
@@ -301,6 +303,7 @@ final class Edit {
       coverFrameMs: _int(map['coverFrameMs']),
       visibility: map['visibility'] as String? ?? 'public',
       allowRemix: map['allowRemix'] != false,
+      mediaBackend: map['mediaBackend'] as String? ?? 'firebase',
     );
   }
 
