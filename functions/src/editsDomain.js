@@ -504,35 +504,55 @@ function createEditsDomain({
     }
     if (data.status === "deleted") return { ok: true, alreadyDeleted: true };
 
-    const deletedAt = new Date();
-    await ref.update({
-      status: "deleted",
-      moderationStatus: "removed",
-      moderationReason: "creator_deleted",
-      deletedAt,
-      // §15.18 — the links must not keep resolving to a playable Reel.
-      videoUrl: null,
-      processedStoragePath: null,
-      originalStoragePath: null,
-      thumbnailUrl: null,
-      thumbnailStoragePath: null,
-      renditions: null,
-    });
-
-    // §15.18 — revoke the bytes. Flipping `status` alone left the raw upload
-    // and every transcoded rung readable to any signed-in account forever,
-    // because the Storage rules only checked for a caller.
+    const deletedAt = data.deletedAt || new Date();
     if (data.mediaBackend === "r2") {
-      const keys = new Set([
+      if (!r2Bucket) {
+        throw new HttpsError("unavailable", "R2 media cleanup is temporarily unavailable. Retry deletion.");
+      }
+      // Persist the exact cleanup manifest before deleting anything. If one
+      // object delete fails, the document stays non-published and a retry can
+      // finish from this manifest instead of losing the object keys.
+      const keys = [...new Set([
+        ...(Array.isArray(data.mediaCleanupKeys) ? data.mediaCleanupKeys : []),
         data.originalStoragePath,
         data.processedStoragePath,
         data.thumbnailStoragePath,
         ...Object.values(data.renditions || {}).map((item) => item && item.path),
-      ].filter((key) => typeof key === "string" && key.length > 0));
-      await Promise.all([...keys].map((key) =>
+      ].filter((key) => typeof key === "string" && key.length > 0))];
+      await ref.update({
+        status: "deleting",
+        moderationStatus: "removed",
+        moderationReason: "creator_deleted",
+        deletedAt,
+        videoUrl: null,
+        thumbnailUrl: null,
+        mediaCleanupKeys: keys,
+      });
+      await Promise.all(keys.map((key) =>
         r2Bucket.file(key).delete({ ignoreNotFound: true }),
       ));
+      await ref.update({
+        status: "deleted",
+        originalStoragePath: null,
+        processedStoragePath: null,
+        thumbnailStoragePath: null,
+        renditions: null,
+        mediaCleanupKeys: FieldValue.delete(),
+      });
     } else {
+      await ref.update({
+        status: "deleted",
+        moderationStatus: "removed",
+        moderationReason: "creator_deleted",
+        deletedAt,
+        // Legacy Firebase Storage media remains protected by its visibility receipt.
+        videoUrl: null,
+        processedStoragePath: null,
+        originalStoragePath: null,
+        thumbnailUrl: null,
+        thumbnailStoragePath: null,
+        renditions: null,
+      });
       await setMediaVisible({
         db,
         bucket,
