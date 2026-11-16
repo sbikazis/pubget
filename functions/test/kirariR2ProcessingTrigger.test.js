@@ -10,7 +10,7 @@ function event(before, after, path = "kirari/alice/reel-1/source.mp4") {
     params: { reelId: "reel-1" },
     data: {
       before: { data: () => before },
-      after: { data: () => ({ ...after, originalStoragePath: path }) },
+      after: { data: () => ({ ...after, creatorId: "alice", originalStoragePath: path }) },
     },
   };
 }
