@@ -1402,8 +1402,8 @@ function createEditsDomain({
   }
 
   async function resolveSourceObject(videoPath, editData = {}) {
-    if (!bucket || !videoPath) {
-      return { contentType: "video/mp4", size: config.maxBytes, exists: true };
+    if (!videoPath) {
+      return { contentType: "video/mp4", size: 0, exists: false };
     }
     const selectedBucket = editData.mediaBackend === "r2" ? r2Bucket : bucket;
     if (!selectedBucket) return { contentType: "video/mp4", size: 0, exists: false };
