@@ -1497,6 +1497,9 @@ function createEditsDomain({
     if (!videoPath) {
       throw new HttpsError("failed-precondition", "The original video is missing.");
     }
+    if (data.mediaBackend === "r2" && data.status === "processing") {
+      await ref.update({ status: "failed", failureReason: "finalize-retry" });
+    }
     return kickProcessing(ref, data, videoPath, { awaitProcessing: false });
   }
 
