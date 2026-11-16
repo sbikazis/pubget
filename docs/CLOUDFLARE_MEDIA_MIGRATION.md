@@ -122,3 +122,35 @@ production-like end-to-end smoke test is still required for multipart source
 upload, Firestore-triggered FFmpeg processing, signed playback/seek, retry,
 moderation preview, and deletion. Do not deploy until CI and that runtime
 smoke test pass.
+
+
+## Edits/Reels R2 implementation (2026-11-16)
+
+- New Edits uploads are marked `mediaBackend: "r2"` and retain the server-derived
+  `edits/{creatorId}/{editId}.mp4` object key. The Flutter repository streams
+  the MP4 directly to the authenticated `/edits/upload/{editId}` Worker route;
+  the Worker checks the Firebase ID token, Firestore owner, upload state, exact
+  key, declared size, MIME type, and MP4 signature.
+- A private Functions-to-Worker bridge now provides the Edits FFmpeg pipeline
+  with authenticated R2 HEAD/GET/PUT/DELETE operations. It accepts only the
+  Edits source, rendition, and thumbnail key layouts.
+- A Firestore transition trigger starts the existing FFmpeg pipeline for
+  R2-backed Edits. The pipeline writes the rendition ladder and thumbnail to
+  R2, while unmarked legacy records continue to use Firebase Storage.
+- Published R2 Edits resolve through an authenticated endpoint to short-lived
+  signed playback URLs. The asset endpoint supports byte ranges for seeking.
+- Creator cancellation removes an incomplete source upload; creator deletion
+  revokes the Firestore publication state and deletes the known R2 source,
+  renditions, and thumbnail. Saved-Reel snapshots preserve the media backend.
+- The Flutter repository resolves R2 URLs for feed, creator, anime, character,
+  saved, and watched Edit reads; legacy records retain their Firebase Storage
+  paths unchanged.
+
+### Edits rollout gate
+
+The code path is implemented in this PR but is not yet production-verified.
+Run the Functions, Worker, and Flutter CI checks, deploy the Worker and
+Functions only where the existing project plan permits, and smoke-test a
+real authenticated upload through FFmpeg, playback/seek, retry, cancellation,
+and deletion. Firebase Storage legacy objects must remain untouched until a
+separate verified migration and retention decision.
