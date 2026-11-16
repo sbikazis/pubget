@@ -69,6 +69,13 @@ processor in place: that would strand uploads in a non-published state.
 - New Kirari reel/audio records are marked `mediaBackend: "r2"`. The client
   resolves those assets through `/kirari/resolve`; records without that marker
   continue using Firebase Storage as an explicit legacy read path.
+- A Firestore transition trigger now starts the existing FFmpeg pipeline for
+  R2-backed reels using the R2 service adapter. The original Firebase Storage
+  object-finalize trigger remains for legacy records; processing failures move
+  the R2 reel to a retryable failed state.
+- Explicit cancellation aborts the multipart session. R2 also automatically
+  aborts incomplete multipart uploads after seven days, covering abandoned
+  sessions when the app is removed or loses its local session record.
 - The custom cover-source upload and the Edits/Reels FFmpeg pipeline are not
   yet migrated by this update. Do not remove Firebase Storage access or
   legacy readers until those remaining paths have been moved and verified.
