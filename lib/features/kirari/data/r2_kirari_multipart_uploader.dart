@@ -136,6 +136,9 @@ class R2KirariMultipartUploader {
           decoded['uploadId'] is! String ||
           decoded['fingerprint'] is! String ||
           decoded['parts'] is! Map) return null;
+      final parts = decoded['parts'] as Map;
+      if (parts.entries.any((entry) =>
+          entry.key is! String || entry.value is! String)) return null;
       return decoded;
     } on Object {
       return null;
