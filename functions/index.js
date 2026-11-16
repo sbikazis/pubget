@@ -47,6 +47,7 @@ const { createEditPipeline } = require("./src/editPipeline");
 const { createKirariDomain } = require("./src/kirariDomain");
 const { createKirariPipeline } = require("./src/kirariPipeline");
 const { createR2KirariBucket } = require("./src/r2KirariStorage");
+const { createR2EditsBucket } = require("./src/r2EditsStorage");
 const { createKirariR2ProcessingTrigger } = require("./src/kirariR2ProcessingTrigger");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
@@ -259,9 +260,11 @@ const animeHubDomain = createAnimeHubDomain({
   FieldValue,
   HttpsError,
 });
+const r2EditsBucket = createR2EditsBucket();
 const processEditVideo = createEditPipeline({
   db: lazyFirestore,
   bucket: lazyStorageBucket,
+  r2Bucket: r2EditsBucket,
   economy: economyDomain,
   achievements: achievementsDomain,
   notifications: notificationBuilder,
