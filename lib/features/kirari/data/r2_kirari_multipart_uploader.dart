@@ -204,6 +204,8 @@ class R2KirariMultipartUploader {
           throw HttpException('R2 rejected upload part $number (${response.statusCode}).');
         }
         lastError = HttpException('R2 temporarily rejected upload part $number.');
+      } on HttpException {
+        rethrow;
       } on Object catch (error) {
         lastError = error;
       }
