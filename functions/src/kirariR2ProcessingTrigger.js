@@ -7,16 +7,16 @@
  * Only R2-backed records entering processing are handled here. Legacy
  * Firebase Storage records continue through their object-finalize trigger.
  */
-function createKirariR2ProcessingTrigger({ bucket, processVideo }) {
+function createKirariR2ProcessingTrigger({ bucket, processVideo, db }) {
   if (!bucket || typeof bucket.file !== "function" ||
-      typeof processVideo !== "function") {
-    throw new TypeError("R2 bucket and Kirari processor are required.");
+      typeof processVideo !== "function" || !db) {
+    throw new TypeError("R2 bucket, Firestore, and Kirari processor are required.");
   }
 
   return async (event) => {
     const before = event.data?.before?.data?.();
     const after = event.data?.after?.data?.();
-    if (!before || !after || before.status === after.status ||
+    if (!before || !after || !["uploading", "failed"].includes(before.status) ||
         after.status !== "processing" || after.mediaBackend !== "r2") {
       return null;
     }
@@ -27,7 +27,22 @@ function createKirariR2ProcessingTrigger({ bucket, processVideo }) {
       return null;
     }
 
-    const [metadata] = await bucket.file(storagePath).getMetadata();
+    let metadata;
+    try {
+      [metadata] = await bucket.file(storagePath).getMetadata();
+    } catch (error) {
+      const reelId = event.params?.reelId;
+      if (!reelId) throw error;
+      await db.collection("kirari").doc(reelId).update({
+        status: "failed",
+        failureReason: "r2-source-unavailable",
+        processingErrorCode: "R2_SOURCE_UNAVAILABLE",
+        failedAt: new Date(),
+        processingLeaseId: null,
+        processingLeaseUntil: new Date(0),
+      });
+      return null;
+    }
     return processVideo({ data: {
       name: storagePath,
       bucket: bucket.name,
