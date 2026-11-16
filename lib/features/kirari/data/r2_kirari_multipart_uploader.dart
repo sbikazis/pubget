@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -66,7 +67,7 @@ class R2KirariMultipartUploader {
       throw StateError('The video must be between 1 byte and 500 MB.');
     }
     final modified = await file.lastModified();
-    final fingerprint = '${file.absolute.path}|$total|${modified.millisecondsSinceEpoch}';
+    final fingerprint = sha256.convert(utf8.encode('${file.absolute.path}|$total|${modified.millisecondsSinceEpoch}')).toString();
     final prefs = await _prefs();
     final key = _sessionKey(reelId);
     final existing = await _request('HEAD', '/kirari/multipart/$reelId');
