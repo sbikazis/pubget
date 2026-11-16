@@ -34,31 +34,38 @@ void main() {
   }
 
   void expectBarLayout(WidgetTester tester) {
-    final screen = tester.getSize(find.byType(Scaffold));
-    final avatar = tester.getRect(find.byKey(const Key('home-avatar')));
-    final notify = tester.getRect(find.byKey(const Key('home-notifications')));
-    final coins = tester.getRect(find.byKey(const Key('home-coins')));
     final logo = tester.getRect(find.byKey(const Key('home-logo')));
-    final settings = tester.getRect(find.byKey(const Key('home-settings')));
+    final coins = tester.getRect(find.byKey(const Key('home-coins')));
+    final store = tester.getRect(find.byKey(const Key('home-store')));
+    final search = tester.getRect(find.byKey(const Key('home-search')));
+    final notify = tester.getRect(find.byKey(const Key('home-notifications')));
+    final avatar = tester.getRect(find.byKey(const Key('home-avatar')));
     final menu = tester.getRect(find.byKey(const Key('app-shell-menu')));
 
-    expect(avatar.left, lessThan(notify.left));
-    expect(avatar.right + 7, lessThanOrEqualTo(notify.left));
-    expect(notify.right, lessThan(logo.left));
-    expect(settings.left, greaterThan(logo.right));
-    expect(settings.right + 7, lessThanOrEqualTo(menu.left));
-    expect(logo.center.dx, closeTo(screen.width / 2, 16));
-    expect(logo.overlaps(coins), isFalse);
-    expect(coins.top, greaterThanOrEqualTo(logo.bottom - 2));
-    expect(notify.width, closeTo(HomeTopBar.iconSize, 2));
-    expect(notify.height, closeTo(HomeTopBar.iconSize, 2));
-    expect(settings.width, closeTo(HomeTopBar.iconSize, 2));
-    expect(menu.width, closeTo(HomeTopBar.iconSize, 2));
+    // Master Spec §4.1 — RTL order, right to left.
+    final ordered = <Rect>[logo, coins, store, search, notify, avatar, menu];
+    for (var i = 0; i < ordered.length - 1; i++) {
+      expect(
+        ordered[i].right,
+        greaterThan(ordered[i + 1].right),
+        reason: 'slot $i must sit to the right of slot ${i + 1}',
+      );
+      expect(
+        ordered[i].left,
+        greaterThanOrEqualTo(ordered[i + 1].right),
+        reason: 'slot $i overlaps slot ${i + 1}',
+      );
+    }
+
     expect(logo.width, closeTo(HomeTopBar.logoSize, 2));
-    expect(logo.width / notify.width, closeTo(1.5, 0.12));
+    for (final rect in <Rect>[store, search, notify, avatar, menu]) {
+      expect(rect.width, closeTo(HomeTopBar.iconSize, 2));
+      expect(rect.height, closeTo(HomeTopBar.iconSize, 2));
+    }
+    expect(find.byKey(const Key('home-settings')), findsNothing);
   }
 
-  testWidgets('home bar keeps equal icons, 1.5x logo, and coins below', (
+  testWidgets('home bar follows the spec RTL order on a tablet', (
     tester,
   ) async {
     await pumpBar(tester, size: const Size(1080, 1920));

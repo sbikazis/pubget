@@ -74,7 +74,9 @@ import '../features/anime/repositories/anime_repository.dart';
 import '../features/anime/repositories/cached_anime_repository.dart';
 import '../features/anime/repositories/jikan_anime_repository.dart';
 import '../features/anime/screens/anime_browse_page.dart';
+import '../features/anime/screens/anime_character_page.dart';
 import '../features/anime/screens/anime_details_page.dart';
+import '../features/anime/screens/anime_favorite_characters_page.dart';
 import '../features/anime/screens/anime_hub_page.dart';
 import '../features/anime/screens/anime_library_page.dart';
 import '../features/anime/screens/anime_my_page.dart';
@@ -210,7 +212,8 @@ class PubgetApp extends StatelessWidget {
           create: (_) => firebaseState.isReady
               ? FirebaseKirariRepository()
               : UnavailableKirariRepository(
-                  firebaseState.message ?? 'Firebase is unavailable in this build.',
+                  firebaseState.message ??
+                      'Firebase is unavailable in this build.',
                 ),
         ),
         provider.Provider<PrivateChatRepository>.value(value: repositories.$12),
@@ -310,11 +313,10 @@ class PubgetApp extends StatelessWidget {
           create: (_) => FirebaseGroupCatalogRepository(),
         ),
         provider.ChangeNotifierProvider<RoleplayProvider>(
-          create: (context) =>
-              RoleplayProvider(
-                repository: context.read<RoleplayRepository>(),
-                catalogRepository: context.read<GroupCatalogRepository>(),
-              ),
+          create: (context) => RoleplayProvider(
+            repository: context.read<RoleplayRepository>(),
+            catalogRepository: context.read<GroupCatalogRepository>(),
+          ),
         ),
         provider.ChangeNotifierProvider<ChatProvider>(
           create: (context) => ChatProvider(
@@ -620,12 +622,8 @@ class PubgetApp extends StatelessWidget {
         auth: firebase_auth.FirebaseAuth.instance,
         googleSignIn: GoogleSignIn.instance,
       ),
-      FirebaseUserRepository(
-        firestore: FirebaseFirestore.instance,
-      ),
-      FirebaseProfileRepository(
-        firestore: FirebaseFirestore.instance,
-      ),
+      FirebaseUserRepository(firestore: FirebaseFirestore.instance),
+      FirebaseProfileRepository(firestore: FirebaseFirestore.instance),
       FirebaseSocialRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
@@ -872,7 +870,8 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/economy/history': const EconomyHistoryPage(),
       },
       parameterizedPages: <String, ParameterizedPageBuilder>{
-        '/reels/upload': (parameters) => KirariUploadPage(initialAudioId: parameters['audioId']),
+        '/reels/upload': (parameters) =>
+            KirariUploadPage(initialAudioId: parameters['audioId']),
         ...EntityRoutes.pages(),
         '/profile': (parameters) => ProfilePage(userId: parameters['uid']),
         '/groups/create': (parameters) {
@@ -945,7 +944,18 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         ),
         '/anime/library': (parameters) => const AnimeLibraryPage(),
         '/anime/ratings': (parameters) => const AnimeRatingsPage(),
+        '/anime/ratings/pubget': (_) =>
+            const AnimeRatingsPage(source: AnimeRankingSource.pubget),
         '/anime/characters': (parameters) => const AnimePopularCharactersPage(),
+        '/anime/characters/favorites': (parameters) =>
+            AnimeFavoriteCharactersPage(userId: parameters['uid']),
+        '/anime/character': (parameters) =>
+            AnimeCharacterPage(characterId: parameters['characterId'] ?? ''),
+        '/anime/studio': (parameters) => AnimeBrowsePage(
+          studioId: parameters['studioId'] ?? parameters['id'],
+          studioName: parameters['name'],
+        ),
+        '/anime/updated': (_) => const AnimeBrowsePage(latest: true),
         '/anime/me': (parameters) => AnimeMyPage(userId: parameters['uid']),
         '/game': (parameters) =>
             GameDetailsScreen(gameId: parameters['gameId'] ?? ''),

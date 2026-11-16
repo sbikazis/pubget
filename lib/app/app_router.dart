@@ -454,6 +454,21 @@ AppRoute _routeFromUri(Uri uri) {
     }
     return entity(path: '/anime/details', key: 'animeId', id: second);
   }
+  // Legacy scoped Reels links were shared before `PubgetLinks` switched to
+  // canonical entity paths. They must keep resolving, but they never had a
+  // page of their own: the reels live on the owning entity. Redirecting here
+  // (instead of registering a second, empty route) keeps the promise honest.
+  if (segments.length == 3 && segments.first == 'reels') {
+    final id = segments[2];
+    switch (segments[1]) {
+      case 'anime':
+        return entity(path: '/anime/details', key: 'animeId', id: id);
+      case 'character':
+        return entity(path: '/anime/character', key: 'characterId', id: id);
+      case 'creator':
+        return entity(path: '/profile', key: 'uid', id: id);
+    }
+  }
   if (segments.length == 2 && segments.first == 'game') {
     return entity(path: '/game', key: 'gameId', id: segments[1]);
   }
@@ -465,21 +480,6 @@ AppRoute _routeFromUri(Uri uri) {
   }
   if (segments.length == 2 && segments.first == 'work') {
     return entity(path: '/fan-work', key: 'workId', id: segments[1]);
-  }
-  // §15.18 — canonical single-Reel and single-audio share links. Without these
-  // branches `/reel/{id}` and `/audio/{id}` fell through to an unregistered
-  // path and opened the unknown-link page.
-  if (segments.length == 2 && segments.first == 'reel') {
-    return entity(path: '/reel', key: 'reelId', id: segments[1]);
-  }
-  if (segments.length == 2 && segments.first == 'audio') {
-    return entity(path: '/audio', key: 'audioId', id: segments[1]);
-  }
-  // §15.11 — canonical hashtag share links. Only the query form
-  // (`/hashtag?tag=…`) was parsed before, so a path link `/hashtag/onepiece`
-  // fell through to the unknown-link page even though the page accepted the id.
-  if (segments.length == 2 && segments.first == 'hashtag') {
-    return entity(path: '/hashtag', key: 'tag', id: segments[1]);
   }
   if (segments.length == 2 && segments.first == 'group') {
     return entity(path: '/group', key: 'groupId', id: segments[1]);
