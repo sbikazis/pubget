@@ -184,7 +184,14 @@ class R2KirariMultipartUploader {
           if (etag is String && etag.isNotEmpty) return etag;
           throw const FormatException('R2 returned a multipart part without an ETag.');
         }
+        if (response.statusCode == 404 || response.statusCode == 410) {
+          await _abort(reelId, uploadId);
+          await clearSession(reelId);
+          throw HttpException('The R2 upload session expired. Start the upload again.');
+        }
         if (response.statusCode < 500 && response.statusCode != 429) {
+          await _abort(reelId, uploadId);
+          await clearSession(reelId);
           throw HttpException('R2 rejected upload part $number (${response.statusCode}).');
         }
         lastError = HttpException('R2 temporarily rejected upload part $number.');
