@@ -269,7 +269,10 @@ function createKirariPipeline({ db, bucket, legacyBucket = bucket }) {
         throw new Error("Selected Kirari audio is no longer approved for reuse.");
       }
       const audioSource = reel.audioId ? path.join(dir, "selected-audio") : null;
-      if (audioSource) await bucket.file(audioData.audioPath).download({ destination: audioSource });
+      if (audioSource) {
+        const audioBucket = audioData.mediaBackend === "r2" ? bucket : legacyBucket;
+        await audioBucket.file(audioData.audioPath).download({ destination: audioSource });
+      }
       const originalAudioId = reel.allowOriginalAudioReuse && metadata.hasAudio
         ? "original_" + reelId : null;
       let originalAudioData = null;
