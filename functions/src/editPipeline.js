@@ -431,7 +431,24 @@ function createEditPipeline({
     const editData = edit.data() || {};
     const mediaBucket = editData.mediaBackend === "r2" ? r2Bucket : bucket;
     if (!mediaBucket) throw new Error("The selected media backend is unavailable.");
-    await ref.update({ status: "processing", processingStartedAt: new Date() });
+    if (editData.mediaBackend === "r2") {
+      const claimed = await db.runTransaction(async (transaction) => {
+        const latest = await transaction.get(ref);
+        const latestData = latest.data() || {};
+        if (!latest.exists || latestData.creatorId !== creatorId ||
+            latestData.mediaBackend !== "r2" ||
+            !["processing", "uploading"].includes(latestData.status) ||
+            latestData.processingStartedAt) return false;
+        transaction.update(ref, {
+          status: "processing",
+          processingStartedAt: new Date(),
+        });
+        return true;
+      });
+      if (!claimed) return null;
+    } else {
+      await ref.update({ status: "processing", processingStartedAt: new Date() });
+    }
     if (!(String(object.contentType || "").startsWith("video/mp4")) ||
         Number(object.size || 0) > config.maxBytes) {
       await ref.update({ status: "failed", failureReason: "invalid-video" });
