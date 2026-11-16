@@ -57,7 +57,7 @@ Future<void> uploadEditVideoToR2({
     final monitoredBody = body.transform(StreamTransformer<List<int>, List<int>>.fromHandlers(
       handleData: (chunk, sink) {
         transferred += chunk.length;
-        onProgress?.call((transferred / length).clamp(0.0, 1.0));
+        onProgress?.call((transferred / length).clamp(0.0, 1.0).toDouble());
         sink.add(chunk);
       },
     ));
