@@ -696,10 +696,32 @@ export default {
       if (!validFileSignature("reels", "video/mp4", inspected.prefix)) {
         return json({ error: "The uploaded file is not a valid MP4 video." }, 415);
       }
+      // Recheck the owner-controlled state immediately before and after the
+      // R2 write. This closes the cancellation/delete race: a stream that was
+      // already accepted cannot recreate a source after the draft is deleted.
+      const currentResponse = await fetch(documentUrl, { headers: { Authorization: token } });
+      if (!currentResponse.ok) return json({ error: "Edit upload was cancelled." }, 409);
+      const currentDoc = await currentResponse.json() as { fields?: Record<string, any> };
+      if (currentDoc.fields?.creatorId?.stringValue !== uid ||
+          currentDoc.fields?.mediaBackend?.stringValue !== "r2" ||
+          currentDoc.fields?.status?.stringValue !== "uploading") {
+        return json({ error: "Edit upload was cancelled." }, 409);
+      }
       await env.MEDIA_BUCKET.put(key, inspected.stream, {
         httpMetadata: { contentType: "video/mp4", cacheControl: "private, no-store" },
         customMetadata: { uploadedBy: uid, editId, mediaKind: "edit-source" },
       });
+      const finalResponse = await fetch(documentUrl, { headers: { Authorization: token } });
+      if (!finalResponse.ok) {
+        await env.MEDIA_BUCKET.delete(key);
+        return json({ error: "Edit upload was cancelled." }, 409);
+      }
+      const finalDoc = await finalResponse.json() as { fields?: Record<string, any> };
+      if (finalDoc.fields?.status?.stringValue !== "uploading" ||
+          finalDoc.fields?.creatorId?.stringValue !== uid) {
+        await env.MEDIA_BUCKET.delete(key);
+        return json({ error: "Edit upload was cancelled." }, 409);
+      }
       return json({ key, sizeBytes: size }, 201);
     }
 
