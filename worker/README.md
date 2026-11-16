@@ -15,6 +15,23 @@ The deployed Worker name is `pubget-media` and the default app endpoint is
   for video playback.
 - `DELETE /media/{key}`: owner-only deletion.
 
+## Kirari source uploads
+
+- `POST /kirari/multipart/{reelId}` starts an owner-bound multipart upload.
+  The Worker obtains the object key from the Firestore reel document; clients
+  cannot supply or override it. Send the declared byte count in
+  `x-kirari-size`.
+- `PUT /kirari/multipart/{reelId}/{uploadId}/{partNumber}` accepts one
+  bounded chunk (up to 16 MiB). Use ordered part numbers and retain each
+  returned ETag for completion.
+- `POST /kirari/multipart/{reelId}/{uploadId}/complete` completes the upload
+  and checks the actual R2 object size against the declaration.
+- `DELETE /kirari/multipart/{reelId}/{uploadId}/abort` aborts an abandoned
+  multipart session. `HEAD /kirari/multipart/{reelId}` verifies whether the
+  expected source object has already completed.
+- `GET /kirari/resolve?key=...` issues short-lived signed playback URLs only
+  for published/approved renditions or approved reusable audio.
+
 ## Required secret
 
 Set a cryptographically random 32-byte hexadecimal secret. Do not commit it,
