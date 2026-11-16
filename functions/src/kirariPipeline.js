@@ -352,9 +352,9 @@ function createKirariPipeline({ db, bucket, legacyBucket = bucket }) {
       const cover = path.join(dir, "cover.jpg");
       const coverTime = Math.max(trimStart, Math.min(Number(settings.coverTimeSeconds) || trimStart, trimEnd - 0.1));
       const customCoverPath = `kirari/${uid}/${reelId}/cover-source.jpg`;
-      const [hasCustomCover] = await legacyBucket.file(customCoverPath).exists();
+      const [hasCustomCover] = await bucket.file(customCoverPath).exists();
       if (hasCustomCover) {
-        await legacyBucket.file(customCoverPath).download({ destination: path.join(dir, "cover-source.jpg") });
+        await bucket.file(customCoverPath).download({ destination: path.join(dir, "cover-source.jpg") });
         await run(ffmpeg, [
           "-i", path.join(dir, "cover-source.jpg"), "-frames:v", "1",
           "-vf", "scale=404:720:force_original_aspect_ratio=increase,crop=404:720",
@@ -376,7 +376,7 @@ function createKirariPipeline({ db, bucket, legacyBucket = bucket }) {
         },
       });
       if (hasCustomCover) {
-        await legacyBucket.file(customCoverPath).delete({ ignoreNotFound: true }).catch(() => {});
+        await bucket.file(customCoverPath).delete({ ignoreNotFound: true }).catch(() => {});
       }
       if (reel.audioId && audioTrack && audioTrack.exists) {
         await db.runTransaction(async (tx) => {
