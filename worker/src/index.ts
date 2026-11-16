@@ -566,19 +566,31 @@ export default {
         }
         return new Response(null, {
           status: 200,
-          headers: { ...CORS, "content-length": String(object.size) },
+          headers: {
+            ...CORS,
+            "content-length": String(object.size),
+            "x-kirari-fingerprint": object.customMetadata?.sourceFingerprint ?? "",
+          },
         });
       }
 
       if (routeParts.length === 3 && request.method === "POST") {
         const size = Number(request.headers.get("x-kirari-size"));
+        const fingerprint = request.headers.get("x-kirari-fingerprint") ?? "";
         if (!Number.isSafeInteger(size) || size <= 0 || size > 500 * 1024 * 1024 ||
+            fingerprint.length < 1 || fingerprint.length > 512 ||
             request.headers.get("content-type") !== "application/json") {
-          return json({ error: "Invalid Kirari source size." }, 400);
+          return json({ error: "Invalid Kirari source size or fingerprint." }, 400);
         }
         const upload = await env.MEDIA_BUCKET.createMultipartUpload(key, {
           httpMetadata: { contentType: "video/mp4", cacheControl: "private, no-store" },
-          customMetadata: { uploadedBy: uid, reelId, mediaKind: "kirari-source", declaredSizeBytes: String(size) },
+          customMetadata: {
+            uploadedBy: uid,
+            reelId,
+            mediaKind: "kirari-source",
+            declaredSizeBytes: String(size),
+            sourceFingerprint: fingerprint,
+          },
         });
         return json({ uploadId: upload.uploadId, key }, 201);
       }
