@@ -66,12 +66,13 @@ class R2KirariMultipartUploader {
     final key = _sessionKey(reelId);
     final existing = await _request('HEAD', '/kirari/multipart/$reelId');
     if (existing.statusCode == 200 &&
-        int.tryParse(existing.headers['content-length'] ?? '') == total) {
+        int.tryParse(existing.headers['content-length'] ?? '') == total &&
+        existing.headers['x-kirari-fingerprint'] == fingerprint) {
       await clearSession(reelId);
       onProgress(1);
       return;
     }
-    if (existing.statusCode != 404) {
+    if (existing.statusCode != 404 && existing.statusCode != 200) {
       throw HttpException('Could not verify the existing R2 upload (' + existing.statusCode.toString() + ').');
     }
     var saved = _decodeSession(prefs.getString(key));
@@ -149,7 +150,11 @@ class R2KirariMultipartUploader {
     final response = await _request(
       'POST',
       '/kirari/multipart/$reelId',
-      headers: {'content-type': 'application/json', 'x-kirari-size': '$total'},
+      headers: {
+        'content-type': 'application/json',
+        'x-kirari-size': '$total',
+        'x-kirari-fingerprint': fingerprint,
+      },
       body: '{}',
     );
     if (response.statusCode != 201) {
