@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -101,7 +102,7 @@ void main() {
     final file = File('${directory.path}/source.mp4');
     await file.writeAsBytes(Uint8List(1024));
     final modified = await file.lastModified();
-    final fingerprint = '${file.absolute.path}|1024|${modified.millisecondsSinceEpoch}';
+    final fingerprint = sha256.convert(utf8.encode('${file.absolute.path}|1024|${modified.millisecondsSinceEpoch}')).toString();
     var requests = 0;
     final client = MockClient((request) async {
       requests++;
