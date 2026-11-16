@@ -645,7 +645,7 @@ export default {
       }
       const range = request.headers.get("range");
       if (range) {
-        const match = /^bytes=(\\d+)-(\\d*)$/.exec(range);
+        const match = /^bytes=(\d+)-(\d*)$/.exec(range);
         if (!match) return new Response(null, { status: 416, headers: { "content-range": `bytes */${head.size}` } });
         const start = Number(match[1]);
         const end = match[2] ? Math.min(Number(match[2]), head.size - 1) : head.size - 1;
