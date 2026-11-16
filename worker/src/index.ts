@@ -704,7 +704,9 @@ export default {
       const currentDoc = await currentResponse.json() as { fields?: Record<string, any> };
       if (currentDoc.fields?.creatorId?.stringValue !== uid ||
           currentDoc.fields?.mediaBackend?.stringValue !== "r2" ||
-          currentDoc.fields?.status?.stringValue !== "uploading") {
+          currentDoc.fields?.status?.stringValue !== "uploading" ||
+          (currentDoc.fields?.originalStoragePath?.stringValue ??
+            currentDoc.fields?.videoPath?.stringValue) !== key) {
         return json({ error: "Edit upload was cancelled." }, 409);
       }
       await env.MEDIA_BUCKET.put(key, inspected.stream, {
@@ -718,7 +720,10 @@ export default {
       }
       const finalDoc = await finalResponse.json() as { fields?: Record<string, any> };
       if (finalDoc.fields?.status?.stringValue !== "uploading" ||
-          finalDoc.fields?.creatorId?.stringValue !== uid) {
+          finalDoc.fields?.creatorId?.stringValue !== uid ||
+          finalDoc.fields?.mediaBackend?.stringValue !== "r2" ||
+          (finalDoc.fields?.originalStoragePath?.stringValue ??
+            finalDoc.fields?.videoPath?.stringValue) !== key) {
         await env.MEDIA_BUCKET.delete(key);
         return json({ error: "Edit upload was cancelled." }, 409);
       }
