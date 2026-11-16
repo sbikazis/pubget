@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_storage/firebase_storage.dart';
 import '../data/edit_r2_uploader.dart';
+import '../data/edit_media_resolver.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
@@ -176,7 +177,16 @@ class FirebaseEditsRepository
         status: 'processing',
       );
     }
-    return Edit.fromMap(snap.data()!, id: editId);
+    return _resolveEditMedia(Edit.fromMap(snap.data()!, id: editId));
+  }
+
+  Future<Edit> _resolveEditMedia(Edit edit) async {
+    if (!edit.isPublished) return edit;
+    final resolved = await Future.wait<String>([
+      resolveEditMediaUrl(edit.videoUrl),
+      resolveEditMediaUrl(edit.thumbnailUrl),
+    ]);
+    return edit.copyWith(videoUrl: resolved[0], thumbnailUrl: resolved[1]);
   }
 
   @override
@@ -281,13 +291,13 @@ class FirebaseEditsRepository
 
   @override
   Stream<Result<Edit>> watchEdit(String editId) {
-    return _firestore.collection(_collection).doc(editId).snapshots().map((
+    return _firestore.collection(_collection).doc(editId).snapshots().asyncMap((
       snap,
-    ) {
+    ) async {
       if (!snap.exists || snap.data() == null) {
         return const FailureResult<Edit>(NotFoundError('Reel not found.'));
       }
-      return Success(Edit.fromMap(snap.data()!, id: snap.id));
+      return Success(await _resolveEditMedia(Edit.fromMap(snap.data()!, id: snap.id)));
     });
   }
 
@@ -338,7 +348,8 @@ class FirebaseEditsRepository
                 .where((edit) => edit.id.isNotEmpty)
                 .toList(growable: false);
             if (items.isNotEmpty) {
-              return EditPage(items, hasMore: result.data['hasMore'] == true);
+              final resolvedItems = await Future.wait(items.map(_resolveEditMedia));
+              return EditPage(resolvedItems, hasMore: result.data['hasMore'] == true);
             }
           }
         } on Object {
@@ -424,7 +435,7 @@ class FirebaseEditsRepository
       }
       query = query.startAfterDocument(docs.last);
     }
-    final page = matches.take(limit).toList(growable: false);
+    final page = await Future.wait(matches.take(limit).map(_resolveEditMedia));
     // Honest paging: if we filled the page and the source still had documents
     // left to scan, there is likely more.
     final hasMore = !sourceExhausted || matches.length > limit;
@@ -445,9 +456,8 @@ class FirebaseEditsRepository
         .orderBy(FieldPath.documentId, descending: true)
         .limit(limit)
         .get();
-    return snapshot.docs
-        .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
-        .toList(growable: false);
+    return Future.wait(snapshot.docs
+        .map((doc) => _resolveEditMedia(Edit.fromMap(doc.data(), id: doc.id))));
   });
 
   /// Equality-only query on the stored `audioId`, so no composite index is
@@ -484,9 +494,9 @@ class FirebaseEditsRepository
     return _publishedNewestFirst(snapshot.docs);
   });
 
-  List<Edit> _publishedNewestFirst(
+  Future<List<Edit>> _publishedNewestFirst(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-  ) {
+  ) async {
     final items =
         docs
             .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
@@ -500,7 +510,7 @@ class FirebaseEditsRepository
             if (right == null) return -1;
             return right.compareTo(left);
           });
-    return items;
+    return Future.wait(items.map(_resolveEditMedia));
   }
 
   @override
@@ -520,9 +530,8 @@ class FirebaseEditsRepository
         .orderBy(FieldPath.documentId, descending: true)
         .limit(limit.clamp(1, 24))
         .get();
-    return snapshot.docs
-        .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
-        .toList(growable: false);
+    return Future.wait(snapshot.docs
+        .map((doc) => _resolveEditMedia(Edit.fromMap(doc.data(), id: doc.id))));
   });
 
   @override
@@ -553,7 +562,7 @@ class FirebaseEditsRepository
     if (!doc.exists || doc.data() == null) {
       throw const NotFoundError('Reel not found.');
     }
-    return Edit.fromMap(doc.data()!, id: doc.id);
+    return _resolveEditMedia(Edit.fromMap(doc.data()!, id: doc.id));
   });
 
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
@@ -716,6 +725,7 @@ class FirebaseEditsRepository
             ))
         .where((edit) => edit.id.isNotEmpty)
         .toList(growable: false);
-    return SavedReelsPage(items, hasMore: data['hasMore'] == true);
+    final resolvedItems = await Future.wait(items.map(_resolveEditMedia));
+    return SavedReelsPage(resolvedItems, hasMore: data['hasMore'] == true);
   });
 }
