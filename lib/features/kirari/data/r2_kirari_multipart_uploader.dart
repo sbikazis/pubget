@@ -275,9 +275,16 @@ class R2KirariMultipartUploader {
     if (total <= 0 || total > 5 * 1024 * 1024) {
       throw StateError('The cover image must be no larger than 5 MB.');
     }
-    final contentType = file.path.toLowerCase().endsWith('.png')
-        ? 'image/png'
-        : 'image/jpeg';
+    final prefix = await file.openRead(0, 8).fold<List<int>>(
+      <int>[],
+      (bytes, chunk) => bytes..addAll(chunk),
+    );
+    final isPng = prefix.length >= 8 &&
+        prefix[0] == 0x89 && prefix[1] == 0x50 &&
+        prefix[2] == 0x4e && prefix[3] == 0x47 &&
+        prefix[4] == 0x0d && prefix[5] == 0x0a &&
+        prefix[6] == 0x1a && prefix[7] == 0x0a;
+    final contentType = isPng ? 'image/png' : 'image/jpeg';
     final request = http.StreamedRequest(
       'PUT',
       Uri.parse('$_baseUrl/kirari/cover/$reelId'),
