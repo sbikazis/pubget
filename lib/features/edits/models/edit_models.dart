@@ -214,6 +214,8 @@ final class Edit {
   }
 
   Edit copyWith({
+    String? videoUrl,
+    String? thumbnailUrl,
     int? likesCount,
     int? commentsCount,
     int? viewsCount,
@@ -223,8 +225,8 @@ final class Edit {
     return Edit(
       id: id,
       creatorId: creatorId,
-      videoUrl: videoUrl,
-      thumbnailUrl: thumbnailUrl,
+      videoUrl: videoUrl ?? this.videoUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       caption: caption,
       animeTag: animeTag,
       likesCount: likesCount ?? this.likesCount,
