@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 
 import '../models/edit_models.dart';
 
+http.Client? _activeEditUploadClient;
+
 const String _workerBaseUrl = 'https://pubget-media.pubget.workers.dev';
 
 Future<void> uploadEditVideoToR2({
@@ -39,6 +41,7 @@ Future<void> uploadEditVideoToR2({
   }
 
   final client = http.Client();
+  _activeEditUploadClient = client;
   try {
     final request = http.StreamedRequest(
       'PUT',
@@ -58,6 +61,23 @@ Future<void> uploadEditVideoToR2({
       );
     }
   } finally {
+    if (identical(_activeEditUploadClient, client)) _activeEditUploadClient = null;
     client.close();
+  }
+}
+
+Future<void> cancelEditVideoUpload(String editId) async {
+  _activeEditUploadClient?.close();
+  _activeEditUploadClient = null;
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+  final token = await user.getIdToken();
+  if (token == null || token.isEmpty) return;
+  final response = await http.delete(
+    Uri.parse('$_workerBaseUrl/edits/upload/\${Uri.encodeComponent(editId)}'),
+    headers: {'authorization': 'Bearer $token'},
+  );
+  if (response.statusCode != 204 && response.statusCode != 404) {
+    throw HttpException('Could not cancel Reel upload (\${response.statusCode}).');
   }
 }
