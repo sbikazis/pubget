@@ -436,6 +436,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
         animeIds, characterIds, animeMetadata, characterMetadata,
         mentions, mentionMetadata, contentCategory, groupId, eventId,
         status: "uploading",
+        mediaBackend: "r2",
         idempotencyKey, quotaDay: day,
         schemaVersion: KIRARI.schemaVersion,
         storagePath, originalStoragePath: storagePath,
