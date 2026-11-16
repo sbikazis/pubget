@@ -250,6 +250,7 @@ class FirebaseEditsRepository
       editId: editId,
       source: source,
       contentType: contentType,
+      onProgress: onProgress,
     );
     _activeEditId = null;
     onProgress?.call(1);
