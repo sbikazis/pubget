@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_storage/firebase_storage.dart';
 import '../data/edit_r2_uploader.dart';
 import '../data/edit_media_resolver.dart';
+import '../data/edit_storage_put.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
@@ -116,14 +117,17 @@ class FirebaseEditsRepository
     FirebaseFunctions? functions,
     bool reels = false,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
+       _storage = storage ?? FirebaseStorage.instance,
        _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
        _reels = reels;
 
   final FirebaseFirestore _firestore;
+  final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
   final bool _reels;
   String? _activeEditId;
+  UploadTask? _activeUpload;
 
   String get _collection => _reels ? 'reels' : 'edits';
   String _callable(String editName) {
@@ -205,6 +209,7 @@ class FirebaseEditsRepository
   }) => _guard(() async {
     late final String path;
     late final String editId;
+    late final bool legacyResume;
     final resumeId = resumeEditId?.trim();
     final resumePath = resumeVideoPath?.trim();
     if (resumeId != null &&
@@ -213,7 +218,17 @@ class FirebaseEditsRepository
         resumePath.isNotEmpty) {
       editId = resumeId;
       path = resumePath;
+      final existing = await _firestore.collection(_collection).doc(editId).get();
+      if (!existing.exists || existing.data() == null) {
+        throw StateError('The saved Reel upload no longer exists.');
+      }
+      final existingData = existing.data()!;
+      if (existingData['status'] != 'uploading') {
+        return _resolveEditMedia(Edit.fromMap(existingData, id: editId));
+      }
+      legacyResume = existingData['mediaBackend'] != 'r2';
     } else {
+      legacyResume = false;
       final startPayload = <String, dynamic>{
         'caption': caption,
         'animeTag': animeTag,
@@ -246,13 +261,29 @@ class FirebaseEditsRepository
     }
     onStarted?.call(editId, path);
     _activeEditId = editId;
-    await uploadEditVideoToR2(
-      editId: editId,
-      source: source,
-      // Preserve the Edit upload API's MP4-only contract.
-      contentType: 'video/mp4',
-      onProgress: onProgress,
-    );
+    if (legacyResume) {
+      final task = putEditVideo(
+        _storage.ref(path),
+        source,
+        SettableMetadata(contentType: 'video/mp4'),
+      );
+      _activeUpload = task;
+      task.snapshotEvents.listen((snapshot) {
+        if (snapshot.totalBytes > 0) {
+          onProgress?.call(snapshot.bytesTransferred / snapshot.totalBytes);
+        }
+      });
+      await task;
+      _activeUpload = null;
+    } else {
+      await uploadEditVideoToR2(
+        editId: editId,
+        source: source,
+        // Preserve the Edit upload API's MP4-only contract.
+        contentType: 'video/mp4',
+        onProgress: onProgress,
+      );
+    }
     onProgress?.call(1);
 
     // Explicit finalize — recovers when Storage finalize trigger is delayed/missed.
@@ -285,6 +316,8 @@ class FirebaseEditsRepository
   Future<Result<void>> cancelUpload() async {
     final editId = _activeEditId;
     if (editId == null) return const Success<void>(null);
+    await _activeUpload?.cancel();
+    _activeUpload = null;
     await cancelEditVideoUpload();
     await _functions.httpsCallable(_callable('deleteEdit')).call({
       'editId': editId,
