@@ -687,14 +687,26 @@ function createEditPipeline({
           mediaBucket.file(key).delete({ ignoreNotFound: true }),
         ));
       }
-      await ref.update({ status: "failed", failureReason: "processing-failed" });
+      let failureRecorded = true;
+      if (editData.mediaBackend === "r2") {
+        failureRecorded = await db.runTransaction(async (transaction) => {
+          const latest = await transaction.get(ref);
+          if (!latest.exists || latest.data()?.status !== "processing") return false;
+          transaction.update(ref, { status: "failed", failureReason: "processing-failed" });
+          return true;
+        });
+      } else {
+        await ref.update({ status: "failed", failureReason: "processing-failed" });
+      }
       console.error("Edit processing failed", { editId, error: error.message });
-      await notifyCreator({
-        creatorId,
-        editId,
-        kind: "failed",
-        reason: "We could not finish processing your Reel. Open the app to retry.",
-      });
+      if (failureRecorded) {
+        await notifyCreator({
+          creatorId,
+          editId,
+          kind: "failed",
+          reason: "We could not finish processing your Reel. Open the app to retry.",
+        });
+      }
     } finally {
       await fsp.rm(dir, { recursive: true, force: true });
     }
