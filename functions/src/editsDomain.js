@@ -522,17 +522,29 @@ function createEditsDomain({
     // §15.18 — revoke the bytes. Flipping `status` alone left the raw upload
     // and every transcoded rung readable to any signed-in account forever,
     // because the Storage rules only checked for a caller.
-    await setMediaVisible({
-      db,
-      bucket,
-      creatorId,
-      editId: id,
-      visible: false,
-      storagePrefix,
-      processedPrefix,
-      collectionName,
-      FieldValue,
-    });
+    if (data.mediaBackend === "r2") {
+      const keys = new Set([
+        data.originalStoragePath,
+        data.processedStoragePath,
+        data.thumbnailStoragePath,
+        ...Object.values(data.renditions || {}).map((item) => item && item.path),
+      ].filter((key) => typeof key === "string" && key.length > 0));
+      await Promise.all([...keys].map((key) =>
+        r2Bucket.file(key).delete({ ignoreNotFound: true }),
+      ));
+    } else {
+      await setMediaVisible({
+        db,
+        bucket,
+        creatorId,
+        editId: id,
+        visible: false,
+        storagePrefix,
+        processedPrefix,
+        collectionName,
+        FieldValue,
+      });
+    }
 
     // Saved-Reel snapshots are denormalized copies that kept the old
     // `videoUrl`, so a deleted Reel stayed playable from someone else's saved
