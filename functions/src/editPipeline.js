@@ -655,6 +655,17 @@ function createEditPipeline({
       }
       await notifyCreator({ creatorId, editId, kind: "published" });
     } catch (error) {
+      if (editData.mediaBackend === "r2" && mediaBucket) {
+        const partialOutputs = [
+          `${processedPrefix}/${creatorId}/${editId}.mp4`,
+          `${processedPrefix}/${creatorId}/${editId}_720.mp4`,
+          `${processedPrefix}/${creatorId}/${editId}_480.mp4`,
+          `${storagePrefix}/${creatorId}/t_${editId}.jpg`,
+        ];
+        await Promise.allSettled(partialOutputs.map((key) =>
+          mediaBucket.file(key).delete({ ignoreNotFound: true }),
+        ));
+      }
       await ref.update({ status: "failed", failureReason: "processing-failed" });
       console.error("Edit processing failed", { editId, error: error.message });
       await notifyCreator({
