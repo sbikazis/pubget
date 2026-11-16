@@ -37,6 +37,15 @@ class R2KirariMultipartUploader {
     await prefs.remove(_sessionKey(reelId));
   }
 
+  Future<void> abort(String reelId) async {
+    final prefs = await _prefs();
+    final saved = _decodeSession(prefs.getString(_sessionKey(reelId)));
+    if (saved != null) {
+      await _abort(reelId, saved['uploadId'] as String);
+    }
+    await clearSession(reelId);
+  }
+
   Future<void> upload({
     required File file,
     required String reelId,
