@@ -584,6 +584,45 @@ export default {
       return json({ error: "Method not allowed." }, 405);
     }
 
+    // Authenticated Edits source upload. The object key is derived from the
+    // creator-owned Firestore document; callers cannot choose arbitrary R2 keys.
+    if (url.pathname.startsWith("/edits/upload/") && ["PUT", "DELETE"].includes(request.method)) {
+      const uid = await authenticate(request, env.FIREBASE_PROJECT_ID);
+      if (!uid) return json({ error: "Authentication required." }, 401);
+      const editId = url.pathname.split("/").filter(Boolean)[2] ?? "";
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(editId)) return json({ error: "Invalid edit id." }, 400);
+      const token = request.headers.get("authorization") ?? "";
+      const documentUrl = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/edits/${encodeURIComponent(editId)}`;
+      const response = await fetch(documentUrl, { headers: { Authorization: token } });
+      if (!response.ok) return json({ error: "Edit upload not found or not permitted." }, 403);
+      const doc = await response.json() as { fields?: Record<string, any> };
+      const fields = doc.fields ?? {};
+      const key = `edits/${uid}/${editId}.mp4`;
+      if (fields.creatorId?.stringValue !== uid || fields.mediaBackend?.stringValue !== "r2" ||
+          fields.status?.stringValue !== "uploading" ||
+          (fields.originalStoragePath?.stringValue ?? fields.videoPath?.stringValue) !== key) {
+        return json({ error: "This Edit upload is not available." }, 403);
+      }
+      if (request.method === "DELETE") {
+        await env.MEDIA_BUCKET.delete(key);
+        return new Response(null, { status: 204, headers: CORS });
+      }
+      const size = Number(request.headers.get("content-length"));
+      if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
+          size > 100 * 1024 * 1024 || request.headers.get("content-type") !== "video/mp4") {
+        return json({ error: "Invalid Edit video upload." }, 400);
+      }
+      const inspected = await inspectAndRestoreBody(request.body);
+      if (!validFileSignature("reels", "video/mp4", inspected.prefix)) {
+        return json({ error: "The uploaded file is not a valid MP4 video." }, 415);
+      }
+      await env.MEDIA_BUCKET.put(key, inspected.stream, {
+        httpMetadata: { contentType: "video/mp4", cacheControl: "private, no-store" },
+        customMetadata: { uploadedBy: uid, editId, mediaKind: "edit-source" },
+      });
+      return json({ key, sizeBytes: size }, 201);
+    }
+
     // Small, owner-bound custom cover upload. The source remains private and
     // is consumed only by the authenticated FFmpeg pipeline.
     if (url.pathname.startsWith("/kirari/cover/") && request.method === "PUT") {
