@@ -67,6 +67,33 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  test('uploads custom covers through the authenticated Worker route', () async {
+    final directory = await Directory.systemTemp.createTemp('pubget-r2-cover-');
+    final file = File('${directory.path}/cover.png');
+    await file.writeAsBytes(Uint8List(2048));
+    late http.Request sent;
+    final client = MockClient((request) async {
+      sent = request;
+      return http.Response(jsonEncode({'key': 'kirari/alice/reel-1/cover-source.jpg'}), 201);
+    });
+    final uploader = R2KirariMultipartUploader(
+      workerUrl: 'https://pubget-media.example',
+      uidProvider: () => 'alice',
+      getIdToken: () async => 'firebase-token',
+      client: client,
+      preferences: await SharedPreferences.getInstance(),
+    );
+
+    await uploader.uploadCover(file: file, reelId: 'reel-1');
+
+    expect(sent.method, 'PUT');
+    expect(sent.url.path, '/kirari/cover/reel-1');
+    expect(sent.headers['authorization'], 'Bearer firebase-token');
+    expect(sent.headers['content-type'], 'image/png');
+    expect((sent.bodyBytes).length, 2048);
+    await directory.delete(recursive: true);
+  });
+
   test('does not retransmit an already completed identical R2 source', () async {
     final directory = await Directory.systemTemp.createTemp('pubget-r2-existing-');
     final file = File('${directory.path}/source.mp4');
