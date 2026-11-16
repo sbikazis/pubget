@@ -156,7 +156,7 @@ function editorVideoFilter(width, height, settings) {
   filters.push("setpts=PTS/" + settings.speed);
   return filters.join(",");
 }
-function createKirariPipeline({ db, bucket }) {
+function createKirariPipeline({ db, bucket, legacyBucket = bucket }) {
   return async (event) => {
     const object = event.data || event;
     const objectName = object.name || "";
@@ -302,7 +302,7 @@ function createKirariPipeline({ db, bucket }) {
           creatorId: uid,
           sourceReelId: reelId,
           audioPath: originalAudioPath,
-          mediaBackend: "r2",
+          mediaBackend: bucket.name === "pubget-media" ? "r2" : "firebase",
           allowReuse: false,
           status: "pending",
           usageCount: 1,
@@ -352,9 +352,9 @@ function createKirariPipeline({ db, bucket }) {
       const cover = path.join(dir, "cover.jpg");
       const coverTime = Math.max(trimStart, Math.min(Number(settings.coverTimeSeconds) || trimStart, trimEnd - 0.1));
       const customCoverPath = `kirari/${uid}/${reelId}/cover-source.jpg`;
-      const [hasCustomCover] = await bucket.file(customCoverPath).exists();
+      const [hasCustomCover] = await legacyBucket.file(customCoverPath).exists();
       if (hasCustomCover) {
-        await bucket.file(customCoverPath).download({ destination: path.join(dir, "cover-source.jpg") });
+        await legacyBucket.file(customCoverPath).download({ destination: path.join(dir, "cover-source.jpg") });
         await run(ffmpeg, [
           "-i", path.join(dir, "cover-source.jpg"), "-frames:v", "1",
           "-vf", "scale=404:720:force_original_aspect_ratio=increase,crop=404:720",
@@ -376,7 +376,7 @@ function createKirariPipeline({ db, bucket }) {
         },
       });
       if (hasCustomCover) {
-        await bucket.file(customCoverPath).delete({ ignoreNotFound: true }).catch(() => {});
+        await legacyBucket.file(customCoverPath).delete({ ignoreNotFound: true }).catch(() => {});
       }
       if (reel.audioId && audioTrack && audioTrack.exists) {
         await db.runTransaction(async (tx) => {
@@ -392,7 +392,7 @@ function createKirariPipeline({ db, bucket }) {
       }
       await ref.update({
         status: "published",
-        mediaBackend: "r2",
+        mediaBackend: bucket.name === "pubget-media" ? "r2" : "firebase",
         moderationStatus: decision.flagged ? "review_pending" : "approved",
         rankingScore: 20,
         velocityScore: 0,
