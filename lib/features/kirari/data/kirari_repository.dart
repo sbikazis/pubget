@@ -531,8 +531,8 @@ class FirebaseKirariRepository implements KirariRepository {
 
   @override
   Future<void> cancelUpload(String reelId) async {
+    await _r2Uploader.abort(reelId);
     await _call('cancelKirariUpload', {'reelId': reelId});
-    await _r2Uploader.clearSession(reelId);
   }
 
   @override
@@ -567,6 +567,7 @@ class FirebaseKirariRepository implements KirariRepository {
 
   @override
   Future<void> deleteReel(String reelId) async {
+    await _r2Uploader.abort(reelId);
     await _call('deleteKirariReel', {'reelId': reelId});
   }
 
