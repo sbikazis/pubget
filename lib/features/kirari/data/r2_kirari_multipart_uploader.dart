@@ -127,6 +127,13 @@ class R2KirariMultipartUploader {
         'Could not verify the existing R2 upload (${existing.statusCode}).',
       );
     }
+    if (existing.statusCode == 200) {
+      final stale = _decodeSession(prefs.getString(key));
+      if (stale != null) {
+        await _abort(reelId, stale['uploadId'] as String);
+      }
+      await clearSession(reelId);
+    }
 
     var saved = _decodeSession(prefs.getString(key));
     if (saved == null || saved['fingerprint'] != fingerprint) {
