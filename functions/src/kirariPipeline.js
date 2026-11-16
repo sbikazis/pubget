@@ -302,6 +302,7 @@ function createKirariPipeline({ db, bucket }) {
           creatorId: uid,
           sourceReelId: reelId,
           audioPath: originalAudioPath,
+          mediaBackend: "r2",
           allowReuse: false,
           status: "pending",
           usageCount: 1,
@@ -391,6 +392,7 @@ function createKirariPipeline({ db, bucket }) {
       }
       await ref.update({
         status: "published",
+        mediaBackend: "r2",
         moderationStatus: decision.flagged ? "review_pending" : "approved",
         rankingScore: 20,
         velocityScore: 0,
