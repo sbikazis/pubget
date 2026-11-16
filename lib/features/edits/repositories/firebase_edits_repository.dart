@@ -6,7 +6,6 @@ import '../data/edit_r2_uploader.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/errors/retry.dart';
-import '../data/edit_storage_put.dart';
 import '../models/edit_models.dart';
 import 'edits_repository.dart';
 
@@ -137,13 +136,6 @@ class FirebaseEditsRepository
     return (data['reelId'] ?? data['editId']) as String;
   }
 
-  Map<String, String> _uploadMetadata({String? fileName, int? sizeBytes}) {
-    final metadata = <String, String>{};
-    final name = fileName;
-    if (name != null) metadata['fileName'] = name;
-    if (sizeBytes != null) metadata['clientSize'] = '$sizeBytes';
-    return metadata;
-  }
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
