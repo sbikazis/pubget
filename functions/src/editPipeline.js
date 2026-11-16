@@ -349,6 +349,7 @@ function decideEditPublication(editData, processingFields, watermarkScan) {
 function createEditPipeline({
   db,
   bucket,
+  r2Bucket,
   economy,
   achievements,
   notifications,
@@ -427,6 +428,9 @@ function createEditPipeline({
     const edit = await ref.get();
     if (!edit.exists || edit.data()?.creatorId !== creatorId ||
         !["processing", "uploading"].includes(edit.data()?.status)) return null;
+    const editData = edit.data() || {};
+    const mediaBucket = editData.mediaBackend === "r2" ? r2Bucket : bucket;
+    if (!mediaBucket) throw new Error("The selected media backend is unavailable.");
     await ref.update({ status: "processing", processingStartedAt: new Date() });
     if (!(String(object.contentType || "").startsWith("video/mp4")) ||
         Number(object.size || 0) > config.maxBytes) {
@@ -444,7 +448,7 @@ function createEditPipeline({
     const thumbnail = path.join(dir, "thumbnail.jpg");
     const processed = path.join(dir, "processed.mp4");
     try {
-      await bucket.file(object.name).download({ destination: source });
+      await mediaBucket.file(object.name).download({ destination: source });
       const ffmpeg = ffmpegBinary();
       const probed = await probe(ffmpeg, source);
       const durationSeconds = probed.durationSeconds;
@@ -509,7 +513,7 @@ function createEditPipeline({
           rendition,
           isPrimary,
         );
-        await bucket.upload(destination, {
+        await mediaBucket.upload(destination, {
           destination: destinationPath, resumable: false,
           metadata: {
             contentType: "video/mp4",
@@ -541,7 +545,7 @@ function createEditPipeline({
         "-q:v", "4", "-y", thumbnail,
       ]);
       const thumbnailPath = `${storagePrefix}/${creatorId}/t_${editId}.jpg`;
-      await bucket.upload(thumbnail, {
+      await mediaBucket.upload(thumbnail, {
         destination: thumbnailPath, resumable: false,
         metadata: {
           contentType: "image/jpeg",
@@ -590,7 +594,7 @@ function createEditPipeline({
       // rules refuse to serve the transcoded renditions, because nothing has
       // authorised them. Without it a correctly published Reel would render a
       // black frame, so the flip has to happen exactly here and not earlier.
-      if (decision.publish) {
+      if (decision.publish && editData.mediaBackend !== "r2") {
         await setMediaVisible({
           db,
           bucket,
