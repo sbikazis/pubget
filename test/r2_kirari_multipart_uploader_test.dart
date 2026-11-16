@@ -70,7 +70,9 @@ void main() {
   test('uploads custom covers through the authenticated Worker route', () async {
     final directory = await Directory.systemTemp.createTemp('pubget-r2-cover-');
     final file = File('${directory.path}/cover.png');
-    await file.writeAsBytes(Uint8List(2048));
+    final pngBytes = Uint8List(2048);
+    pngBytes.setRange(0, 8, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    await file.writeAsBytes(pngBytes);
     late http.Request sent;
     final client = MockClient((request) async {
       sent = request;
