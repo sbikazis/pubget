@@ -76,9 +76,12 @@ processor in place: that would strand uploads in a non-published state.
 - Explicit cancellation aborts the multipart session. R2 also automatically
   aborts incomplete multipart uploads after seven days, covering abandoned
   sessions when the app is removed or loses its local session record.
-- The custom cover-source upload and the Edits/Reels FFmpeg pipeline are not
-  yet migrated by this update. Do not remove Firebase Storage access or
-  legacy readers until those remaining paths have been moved and verified.
+- New custom Kirari cover sources also upload directly to private R2 and are
+  read/deleted by the R2 pipeline. Older unmarked Kirari records continue to use
+  their legacy Firebase Storage cover path.
+- The Edits/Reels source and FFmpeg output pipeline is not yet migrated. Do not
+  remove Firebase Storage access or legacy readers until that path and existing
+  objects have been moved and verified.
 
 ## Kirari R2 migration (Cloudflare Worker + Firebase Functions)
 
