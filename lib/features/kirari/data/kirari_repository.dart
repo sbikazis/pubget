@@ -582,16 +582,15 @@ class FirebaseKirariRepository implements KirariRepository {
 
   @override
   Future<void> uploadCover({required String storagePath, required XFile image}) async {
-    final file = File(image.path);
-    final size = await file.length();
-    if (size <= 0 || size > 5 * 1024 * 1024) {
-      throw StateError('The cover image must be smaller than 5 MB.');
+    final parts = storagePath.split('/');
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (parts.length != 4 || parts[0] != 'kirari' ||
+        parts[1] != uid || parts[3] != 'cover-source.jpg') {
+      throw StateError('The server returned an invalid Kirari cover path.');
     }
-    await _storage.ref(storagePath).putFile(
-      file,
-      SettableMetadata(contentType: 'image/jpeg', customMetadata: {
-        'uploadedBy': 'kirari-client',
-      }),
+    await _r2Uploader.uploadCover(
+      file: File(image.path),
+      reelId: parts[2],
     );
   }
 }
