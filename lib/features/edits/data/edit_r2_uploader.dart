@@ -77,17 +77,9 @@ Future<void> uploadEditVideoToR2({
 }
 
 Future<void> cancelEditVideoUpload(String editId) async {
+  // Closing the active client interrupts the stream. The caller then invokes
+  // the owner-checked deleteEdit callable, which marks the document deleting
+  // before removing any R2 objects.
   _activeEditUploadClient?.close();
   _activeEditUploadClient = null;
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return;
-  final token = await user.getIdToken();
-  if (token == null || token.isEmpty) return;
-  final response = await http.delete(
-    Uri.parse('$_workerBaseUrl/edits/upload/${Uri.encodeComponent(editId)}'),
-    headers: {'authorization': 'Bearer $token'},
-  );
-  if (response.statusCode != 204 && response.statusCode != 404) {
-    throw HttpException('Could not cancel Reel upload (${response.statusCode}).');
-  }
 }
