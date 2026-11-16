@@ -55,6 +55,16 @@ class R2KirariMultipartUploader {
     final fingerprint = '${file.absolute.path}|$total|${modified.millisecondsSinceEpoch}';
     final prefs = await _prefs();
     final key = _sessionKey(reelId);
+    final existing = await _request('HEAD', '/kirari/multipart/$reelId');
+    if (existing.statusCode == 200 &&
+        int.tryParse(existing.headers['content-length'] ?? '') == total) {
+      await clearSession(reelId);
+      onProgress(1);
+      return;
+    }
+    if (existing.statusCode != 404) {
+      throw HttpException('Could not verify the existing R2 upload (' + existing.statusCode.toString() + ').');
+    }
     var saved = _decodeSession(prefs.getString(key));
     if (saved == null || saved['fingerprint'] != fingerprint) {
       if (saved != null) await _abort(reelId, saved['uploadId'] as String);
@@ -186,6 +196,21 @@ class R2KirariMultipartUploader {
       }
     }
     throw HttpException('Video upload paused; retry safely to resume. $lastError');
+  }
+
+  Future<String> resolveUrl(String storageKey) async {
+    final uri = Uri.parse('$_baseUrl/kirari/resolve')
+        .replace(queryParameters: {'key': storageKey});
+    final response = await _request('GET', uri.toString().replaceFirst(_baseUrl, ''));
+    if (response.statusCode != 200) {
+      throw HttpException('Kirari media is unavailable (' + response.statusCode.toString() + ').');
+    }
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final url = payload['url'];
+    if (url is! String || !url.startsWith('https://')) {
+      throw const FormatException('Kirari returned an invalid playback URL.');
+    }
+    return url;
   }
 
   Future<void> _abort(String reelId, String uploadId) async {
