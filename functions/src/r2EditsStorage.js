@@ -50,7 +50,7 @@ function createR2EditsBucket({
 
   function validateKey(key) {
     const valid = typeof key === "string" && key.length <= 512 &&
-      /^(?:kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:[A-Za-z0-9_-]{1,128}\.mp4)|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:[A-Za-z0-9_-]{1,128}(?:_(?:720|480))?)\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/t_[A-Za-z0-9_-]{1,128}\.jpg|kirari-audio\/[A-Za-z0-9_-]{1,128}\/audio\.(?:mp3|m4a|aac|ogg))$/.test(key);
+            /^edits\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\.mp4$|^edits-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}(?:_(?:720|480))?\.mp4$|^edits\/[A-Za-z0-9_-]{1,128}\/t_[A-Za-z0-9_-]{1,128}\.jpg$/.test(key);
     if (!valid) throw new Error("Invalid Edits R2 object key.");
     return key;
   }
