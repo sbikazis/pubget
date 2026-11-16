@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validFileSignature } from "./index";
+import { validFileSignature, validKirariServiceKey } from "./index";
 
 describe("R2 upload content signatures", () => {
   it("accepts JPEG only when its magic bytes match image/jpeg", () => {
@@ -71,5 +71,22 @@ describe("R2 object key validation", () => {
     expect(isSafeMediaKey("images/alice/not-an-image.exe")).toBe(false);
     expect(isSafeMediaKey("reels/alice/file.jpg")).toBe(false);
     expect(isSafeMediaKey("audio/alice/file.mp4")).toBe(false);
+  });
+});
+
+describe("Kirari private R2 object keys", () => {
+  it("accepts only the server-owned source, cover, rendition and approved audio layouts", () => {
+    expect(validKirariServiceKey("kirari/alice/reel_1/source.mp4")).toBe(true);
+    expect(validKirariServiceKey("kirari/alice/reel_1/cover-source.jpg")).toBe(true);
+    expect(validKirariServiceKey("kirari-processed/alice/reel_1/540.mp4")).toBe(true);
+    expect(validKirariServiceKey("kirari-processed/alice/reel_1/cover.jpg")).toBe(true);
+    expect(validKirariServiceKey("kirari-audio/audio_1/audio.mp3")).toBe(true);
+  });
+
+  it("rejects traversal, arbitrary extensions and caller-controlled paths", () => {
+    expect(validKirariServiceKey("kirari/../reel/source.mp4")).toBe(false);
+    expect(validKirariServiceKey("kirari/alice/reel_1/private.mp4")).toBe(false);
+    expect(validKirariServiceKey("kirari-processed/alice/reel_1/source.mp4")).toBe(false);
+    expect(validKirariServiceKey("kirari-audio/audio_1/audio.exe")).toBe(false);
   });
 });
