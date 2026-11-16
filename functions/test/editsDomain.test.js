@@ -128,6 +128,7 @@ test("startUpload ignores client moderation fields and starts pending", async ()
   assert.equal(stored.schemaVersion, 2);
   assert.equal(stored.originalCreatorId, "alice");
   assert.equal(stored.originalStoragePath, `edits/alice/${started.editId}.mp4`);
+  assert.equal(stored.mediaBackend, "r2");
   assert.equal(stored.counters.views, 0);
 });
 
