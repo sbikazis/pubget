@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_storage/firebase_storage.dart';
+import '../data/edit_r2_uploader.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
@@ -243,27 +244,12 @@ class FirebaseEditsRepository
       path = start.data['videoPath'] as String;
       editId = _returnedId(start.data);
     }
-    // Always force exact video/mp4 — Storage rules reject codec-suffixed types.
-    final task = putEditVideo(
-      _storage.ref(path),
-      source,
-      SettableMetadata(
-        contentType: 'video/mp4',
-        customMetadata: _uploadMetadata(
-          fileName: fileName,
-          sizeBytes: sizeBytes,
-        ),
-      ),
-    );
     onStarted?.call(editId, path);
-    _activeUpload = task;
-    task.snapshotEvents.listen((snapshot) {
-      if (snapshot.totalBytes > 0) {
-        onProgress?.call(snapshot.bytesTransferred / snapshot.totalBytes);
-      }
-    });
-    await task;
-    _activeUpload = null;
+    await uploadEditVideoToR2(
+      editId: editId,
+      source: source,
+      contentType: contentType,
+    );
     onProgress?.call(1);
 
     // Explicit finalize — recovers when Storage finalize trigger is delayed/missed.
