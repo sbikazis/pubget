@@ -391,7 +391,7 @@ async function authorizeConversation(
 }
 
 function validKirariServiceKey(key: string): boolean {
-  return /^(?:kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/source\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:360|540|720)\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/cover\.jpg|kirari-audio\/[A-Za-z0-9_-]{1,128}\/audio\.(?:mp3|m4a|aac|ogg))$/.test(key);
+  return /^(?:kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:source\.mp4|cover-source\.jpg)|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:360|540|720)\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/cover\.jpg|kirari-audio\/[A-Za-z0-9_-]{1,128}\/audio\.(?:mp3|m4a|aac|ogg))$/.test(key);
 }
 
 function constantTimeEqual(left: string, right: string): boolean {
@@ -525,6 +525,45 @@ export default {
         "accept-ranges": "bytes",
         "cache-control": "private, max-age=60",
       } });
+    }
+
+    // Small, owner-bound custom cover upload. The source remains private and
+    // is consumed only by the authenticated FFmpeg pipeline.
+    if (url.pathname.startsWith("/kirari/cover/") && request.method === "PUT") {
+      const uid = await authenticate(request, env.FIREBASE_PROJECT_ID);
+      if (!uid) return json({ error: "Authentication required." }, 401);
+      const reelId = url.pathname.split("/").filter(Boolean)[2] ?? "";
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(reelId)) {
+        return json({ error: "Invalid reel id." }, 400);
+      }
+      const token = request.headers.get("authorization") ?? "";
+      const documentUrl = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/kirari/${encodeURIComponent(reelId)}`;
+      const reelResponse = await fetch(documentUrl, { headers: { Authorization: token } });
+      if (!reelResponse.ok) return json({ error: "Kirari upload not found or not permitted." }, 403);
+      const reelDocument = await reelResponse.json() as { fields?: Record<string, { stringValue?: string }> };
+      const fields = reelDocument.fields ?? {};
+      const key = `kirari/${uid}/${reelId}/cover-source.jpg`;
+      if (fields.creatorId?.stringValue !== uid ||
+          fields.mediaBackend?.stringValue !== "r2" ||
+          fields.status?.stringValue !== "uploading" ||
+          !validKirariServiceKey(key)) {
+        return json({ error: "This Kirari cover upload is not available." }, 403);
+      }
+      const size = Number(request.headers.get("content-length"));
+      if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
+          size > 5 * 1024 * 1024 ||
+          request.headers.get("content-type") !== "image/jpeg") {
+        return json({ error: "Invalid Kirari cover image." }, 400);
+      }
+      const inspected = await inspectAndRestoreBody(request.body);
+      if (!validFileSignature("image", "image/jpeg", inspected.prefix)) {
+        return json({ error: "The cover file is not a valid JPEG image." }, 415);
+      }
+      await env.MEDIA_BUCKET.put(key, inspected.stream, {
+        httpMetadata: { contentType: "image/jpeg", cacheControl: "private, no-store" },
+        customMetadata: { uploadedBy: uid, reelId, mediaKind: "kirari-cover" },
+      });
+      return json({ key, sizeBytes: size }, 201);
     }
 
     // Multipart upload keeps each Worker request small while supporting the
