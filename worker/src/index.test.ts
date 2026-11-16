@@ -104,6 +104,6 @@ describe("Edits private R2 object keys", () => {
     expect(validEditsServiceKey("edits/../edit_1.mp4")).toBe(false);
     expect(validEditsServiceKey("edits/alice/edit_1.mov")).toBe(false);
     expect(validEditsServiceKey("edits-processed/alice/edit_1_360.mp4")).toBe(false);
-    expect(validEditsServiceKey("edits-processed/alice/source.mp4")).toBe(true);
+    expect(validEditsServiceKey("kirari-processed/alice/reel_1/540.mp4")).toBe(false);
   });
 });
