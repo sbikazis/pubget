@@ -32,7 +32,7 @@ void main() {
       if (request.method == 'PUT') {
         final number = int.parse(request.url.path.split('/').last);
         uploadedParts.add(number);
-        final body = await request.finalize().toBytes();
+        final body = (request as http.Request).bodyBytes;
         expect(body.length, number == 1 ? 8 * 1024 * 1024 : 1024 * 1024);
         return http.Response(jsonEncode({'partNumber': number, 'etag': 'etag-$number'}), 201);
       }
