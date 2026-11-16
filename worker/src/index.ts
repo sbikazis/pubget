@@ -596,7 +596,7 @@ export default {
       const ownerUid = parts[1];
       const fileName = parts[2];
       const editId = fileName.replace(/^t_/, "").replace(/(?:_720|_480)?\.mp4$/, "").replace(/\.jpg$/, "");
-      if (uid !== ownerUid || !/^[A-Za-z0-9_-]{1,128}$/.test(editId)) {
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(editId)) {
         return json({ error: "Edit media access denied." }, 403);
       }
       const token = request.headers.get("authorization") ?? "";
