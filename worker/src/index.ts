@@ -550,17 +550,18 @@ export default {
         return json({ error: "This Kirari cover upload is not available." }, 403);
       }
       const size = Number(request.headers.get("content-length"));
+      const contentType = request.headers.get("content-type") ?? "";
       if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
           size > 5 * 1024 * 1024 ||
-          request.headers.get("content-type") !== "image/jpeg") {
+          !["image/jpeg", "image/png"].includes(contentType)) {
         return json({ error: "Invalid Kirari cover image." }, 400);
       }
       const inspected = await inspectAndRestoreBody(request.body);
-      if (!validFileSignature("image", "image/jpeg", inspected.prefix)) {
-        return json({ error: "The cover file is not a valid JPEG image." }, 415);
+      if (!validFileSignature("image", contentType, inspected.prefix)) {
+        return json({ error: "The cover file is not a valid JPEG or PNG image." }, 415);
       }
       await env.MEDIA_BUCKET.put(key, inspected.stream, {
-        httpMetadata: { contentType: "image/jpeg", cacheControl: "private, no-store" },
+        httpMetadata: { contentType, cacheControl: "private, no-store" },
         customMetadata: { uploadedBy: uid, reelId, mediaKind: "kirari-cover" },
       });
       return json({ key, sizeBytes: size }, 201);
