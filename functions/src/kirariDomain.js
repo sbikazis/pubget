@@ -259,7 +259,7 @@ function isFeedCursorAfter(score, id, afterScore, afterId) {
   return score < afterScore || (score === afterScore && String(id).localeCompare(String(afterId)) > 0);
 }
 
-function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }) {
+function createKirariDomain({ db, FieldValue, HttpsError, bucket, legacyBucket = bucket, processVideo, processLegacyVideo }) {
   const reels = () => db.collection("kirari");
   const fail = (code, message) => { throw new HttpsError(code, message); };
   function auth(request) {
@@ -485,7 +485,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (reel.status !== "uploading" && reel.status !== "failed") {
       fail("failed-precondition", "This upload cannot be finalized in its current state.");
     }
-    const file = bucket.file(reel.originalStoragePath || reel.storagePath);
+    const mediaBucket = reel.mediaBackend === 'r2' ? bucket : legacyBucket;
+    const file = mediaBucket.file(reel.originalStoragePath || reel.storagePath);
     const [exists] = await file.exists();
     if (!exists) fail("failed-precondition", "The uploaded video is missing.");
     const [meta] = await file.getMetadata();
@@ -567,9 +568,12 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       reel.coverPath,
       ...Object.values(reel.renditions || {}).map((item) => item && item.path),
     ].filter((value) => typeof value === "string" && value.length > 0);
+    const mediaBucket = reel.mediaBackend === 'r2' ? bucket : legacyBucket;
     await Promise.all(paths.map((value) =>
-      bucket.file(value).delete({ ignoreNotFound: true }).catch(() => {}),
+      mediaBucket.file(value).delete({ ignoreNotFound: true }).catch(() => {}),
     ));
+    await legacyBucket.file(`kirari/${uid}/${reelId}/cover-source.jpg`)
+      .delete({ ignoreNotFound: true }).catch(() => {});
     return { ok: true };
   }
 
@@ -584,7 +588,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     if (reel.status === "published") return { status: "published", reelId };
     if (reel.status !== "failed") fail("failed-precondition", "Only failed videos can be retried.");
     const storagePath = reel.originalStoragePath || reel.storagePath;
-    const file = bucket.file(storagePath);
+    const mediaBucket = reel.mediaBackend === 'r2' ? bucket : legacyBucket;
+    const file = mediaBucket.file(storagePath);
     const [exists] = await file.exists();
     if (!exists) fail("failed-precondition", "The original video is missing. Upload it again.");
     const [metadata] = await file.getMetadata();
@@ -594,17 +599,22 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       failureReason: FieldValue.delete(),
       processingStartedAt: FieldValue.serverTimestamp(),
     });
-    if (typeof processVideo !== "function") {
-      fail("unavailable", "Kirari processing is temporarily unavailable.");
+    if (reel.mediaBackend !== "r2") {
+      if (typeof processLegacyVideo !== "function") {
+        fail("unavailable", "Legacy Kirari processing is temporarily unavailable.");
+      }
+      await processLegacyVideo({ data: {
+        name: storagePath,
+        bucket: mediaBucket.name,
+        size: Number(metadata.size || 0),
+        contentType: metadata.contentType || "video/mp4",
+      } });
+      const latest = await ref.get();
+      return { status: latest.data()?.status || "processing", reelId };
     }
-    await processVideo({ data: {
-      name: storagePath,
-      bucket: bucket.name,
-      size: Number(metadata.size || 0),
-      contentType: metadata.contentType || "video/mp4",
-    } });
-    const latest = await ref.get();
-    return { status: latest.data()?.status || "processing", reelId };
+    // R2 processing is kicked by the Firestore uploading/failed -> processing
+    // transition. Do not run the FFmpeg pipeline in the callable request.
+    return { status: "processing", reelId };
   }
 
   async function cancelUpload(request) {
@@ -652,8 +662,9 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       if (keyRef && snapshots[cursor]?.exists) tx.delete(keyRef);
     });
     const storagePath = initialData.originalStoragePath || initialData.storagePath;
-    if (storagePath) await bucket.file(storagePath).delete({ ignoreNotFound: true }).catch(() => {});
-    await bucket.file(`kirari/${uid}/${reelId}/cover-source.jpg`)
+    const mediaBucket = initialData.mediaBackend === 'r2' ? bucket : legacyBucket;
+    if (storagePath) await mediaBucket.file(storagePath).delete({ ignoreNotFound: true }).catch(() => {});
+    await legacyBucket.file(`kirari/${uid}/${reelId}/cover-source.jpg`)
       .delete({ ignoreNotFound: true }).catch(() => {});
     return { ok: true };
   }
@@ -664,7 +675,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       ...Object.values(reel.renditions || {}).map((item) => item && item.path),
     ].filter((value) => typeof value === "string" && value.length > 0);
     await Promise.all(paths.map(async (storagePath) => {
-      const file = bucket.file(storagePath);
+      const mediaBucket = reel.mediaBackend === 'r2' ? bucket : legacyBucket;
+      const file = mediaBucket.file(storagePath);
       try {
         const [metadata] = await file.getMetadata();
         await file.setMetadata({
@@ -1153,11 +1165,12 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       const firstRendition = data.renditions?.["540"] || data.renditions?.["360"] || data.renditions?.["720"];
       const videoPath = firstRendition?.path;
       const previewPath = data.coverPath;
+      const mediaBucket = data.mediaBackend === 'r2' ? bucket : legacyBucket;
       const [videoPreviewUrl, coverPreviewUrl] = await Promise.all([
-        videoPath ? bucket.file(videoPath).getSignedUrl({
+        videoPath ? mediaBucket.file(videoPath).getSignedUrl({
           action: "read", expires: Date.now() + 5 * 60 * 1000,
         }).then(([url]) => url).catch(() => null) : null,
-        previewPath ? bucket.file(previewPath).getSignedUrl({
+        previewPath ? mediaBucket.file(previewPath).getSignedUrl({
           action: "read", expires: Date.now() + 5 * 60 * 1000,
         }).then(([url]) => url).catch(() => null) : null,
       ]);
@@ -1233,10 +1246,16 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       fail("invalid-argument", "Audio path must use the approved Kirari audio location.");
     }
     let metadata;
+    let mediaBackend = "r2";
     try {
       [metadata] = await bucket.file(audioPath).getMetadata();
     } catch (_) {
-      fail("not-found", "Audio file was not found in Storage.");
+      try {
+        [metadata] = await legacyBucket.file(audioPath).getMetadata();
+        mediaBackend = "firebase";
+      } catch (_) {
+        fail("not-found", "Audio file was not found in R2 or legacy Storage.");
+      }
     }
     const size = Number(metadata.size || 0);
     const contentType = String(metadata.contentType || "");
@@ -1244,7 +1263,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       fail("invalid-argument", "Audio must be a valid audio file no larger than 25 MB.");
     }
     await db.collection("kirariAudio").doc(audioId).set({
-      title, artist, license, attribution, creatorId, audioPath,
+      title, artist, license, attribution, creatorId, audioPath, mediaBackend,
       allowReuse: true, status: "approved",
       approvedBy: request.auth.uid,
       approvedAt: FieldValue.serverTimestamp(),
