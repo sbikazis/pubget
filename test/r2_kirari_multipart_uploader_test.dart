@@ -67,6 +67,42 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  test('does not retransmit an already completed identical R2 source', () async {
+    final directory = await Directory.systemTemp.createTemp('pubget-r2-existing-');
+    final file = File('${directory.path}/source.mp4');
+    await file.writeAsBytes(Uint8List(1024));
+    final modified = await file.lastModified();
+    final fingerprint = '${file.absolute.path}|1024|${modified.millisecondsSinceEpoch}';
+    var requests = 0;
+    final client = MockClient((request) async {
+      requests++;
+      expect(request.method, 'HEAD');
+      expect(request.headers['authorization'], 'Bearer firebase-token');
+      return http.Response('', 200, headers: {
+        'content-length': '1024',
+        'x-kirari-fingerprint': fingerprint,
+      });
+    });
+    final uploader = R2KirariMultipartUploader(
+      workerUrl: 'https://pubget-media.example',
+      uidProvider: () => 'alice',
+      getIdToken: () async => 'firebase-token',
+      client: client,
+      preferences: await SharedPreferences.getInstance(),
+    );
+    var progress = 0.0;
+
+    await uploader.upload(
+      file: file,
+      reelId: 'reel-existing',
+      onProgress: (value) => progress = value,
+    );
+
+    expect(requests, 1);
+    expect(progress, 1);
+    await directory.delete(recursive: true);
+  });
+
   test('resolves a published Kirari object only through the Worker', () async {
     late Uri requested;
     final client = MockClient((request) async {
