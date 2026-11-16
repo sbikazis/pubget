@@ -390,6 +390,10 @@ async function authorizeConversation(
   }
 }
 
+export function validEditsServiceKey(key: string): boolean {
+  return /^(?:edits\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\.mp4|edits-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}(?:_(?:720|480))?\.mp4|edits\/[A-Za-z0-9_-]{1,128}\/t_[A-Za-z0-9_-]{1,128}\.jpg)$/.test(key);
+}
+
 export function validKirariServiceKey(key: string): boolean {
   return /^(?:kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:source\.mp4|cover-source\.jpg)|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:360|540|720)\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/cover\.jpg|kirari-audio\/[A-Za-z0-9_-]{1,128}\/audio\.(?:mp3|m4a|aac|ogg))$/.test(key);
 }
@@ -525,6 +529,59 @@ export default {
         "accept-ranges": "bytes",
         "cache-control": "private, max-age=60",
       } });
+    }
+
+    // Private R2 bridge for the Edits/Reels FFmpeg pipeline.
+    // Only the verified Functions runtime identity can read/write these keys.
+    if (url.pathname.startsWith("/_internal/edits/objects/")) {
+      if (!await authenticateKirariService(request, {
+        audience: env.KIRARI_R2_SERVICE_AUDIENCE,
+        serviceAccountEmail: env.KIRARI_R2_SERVICE_ACCOUNT_EMAIL,
+      })) return json({ error: "Service authentication required." }, 401);
+      let key: string;
+      try {
+        key = decodeURIComponent(url.pathname.slice("/_internal/edits/objects/".length));
+      } catch {
+        return json({ error: "Invalid object key." }, 400);
+      }
+      if (!validEditsServiceKey(key)) return json({ error: "Invalid Edits object key." }, 400);
+      if (request.method === "HEAD") {
+        const object = await env.MEDIA_BUCKET.head(key);
+        if (!object) return json({ error: "Not found." }, 404);
+        return new Response(null, { headers: {
+          ...CORS,
+          "content-length": String(object.size),
+          "content-type": object.httpMetadata?.contentType ?? "application/octet-stream",
+        } });
+      }
+      if (request.method === "GET") {
+        const object = await env.MEDIA_BUCKET.get(key);
+        if (!object) return json({ error: "Not found." }, 404);
+        const headers = new Headers(CORS);
+        object.writeHttpMetadata(headers);
+        headers.set("content-length", String(object.size));
+        headers.set("cache-control", "private, no-store");
+        return new Response(object.body, { headers });
+      }
+      if (request.method === "PUT") {
+        const size = Number(request.headers.get("content-length"));
+        const contentType = request.headers.get("content-type") ?? "";
+        const allowed = key.endsWith(".mp4") ? "video/mp4" : "image/jpeg";
+        if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
+            size > 100 * 1024 * 1024 || contentType !== allowed) {
+          return json({ error: "Invalid Edits media upload." }, 400);
+        }
+        await env.MEDIA_BUCKET.put(key, request.body, {
+          httpMetadata: { contentType, cacheControl: "private, no-store" },
+          customMetadata: { pipeline: "edits-ffmpeg-v1" },
+        });
+        return json({ key }, 201);
+      }
+      if (request.method === "DELETE") {
+        await env.MEDIA_BUCKET.delete(key);
+        return new Response(null, { status: 204, headers: CORS });
+      }
+      return json({ error: "Method not allowed." }, 405);
     }
 
     // Small, owner-bound custom cover upload. The source remains private and
