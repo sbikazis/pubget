@@ -328,6 +328,7 @@ function createEditsDomain({
     const videoPath = `${storagePrefix}/${creatorId}/${editId}.mp4`;
     const payload = {
       creatorId,
+      mediaBackend: "r2",
       videoUrl: "",
       thumbnailUrl: "",
       videoPath,
@@ -1386,11 +1387,13 @@ function createEditsDomain({
     };
   }
 
-  async function resolveSourceObject(videoPath) {
+  async function resolveSourceObject(videoPath, editData = {}) {
     if (!bucket || !videoPath) {
       return { contentType: "video/mp4", size: config.maxBytes, exists: true };
     }
-    const file = bucket.file(videoPath);
+    const selectedBucket = editData.mediaBackend === "r2" ? r2Bucket : bucket;
+    if (!selectedBucket) return { contentType: "video/mp4", size: 0, exists: false };
+    const file = selectedBucket.file(videoPath);
     const [exists] = await file.exists();
     if (!exists) {
       return { contentType: "video/mp4", size: 0, exists: false };
@@ -1404,7 +1407,7 @@ function createEditsDomain({
   }
 
   async function kickProcessing(ref, data, videoPath, { awaitProcessing = false } = {}) {
-    const source = await resolveSourceObject(videoPath);
+    const source = await resolveSourceObject(videoPath, data);
     if (!source.exists) {
       throw new HttpsError(
         "failed-precondition",
