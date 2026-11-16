@@ -223,6 +223,7 @@ final class Edit {
     int? viewsCount,
     String? status,
     EditCounters? counters,
+    String? mediaBackend,
   }) {
     return Edit(
       id: id,
@@ -257,6 +258,7 @@ final class Edit {
       coverFrameMs: coverFrameMs,
       visibility: visibility,
       allowRemix: allowRemix,
+      mediaBackend: mediaBackend ?? this.mediaBackend,
     );
   }
 
