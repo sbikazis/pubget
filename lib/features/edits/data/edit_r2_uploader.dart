@@ -84,10 +84,10 @@ Future<void> cancelEditVideoUpload(String editId) async {
   final token = await user.getIdToken();
   if (token == null || token.isEmpty) return;
   final response = await http.delete(
-    Uri.parse('$_workerBaseUrl/edits/upload/\${Uri.encodeComponent(editId)}'),
+    Uri.parse('$_workerBaseUrl/edits/upload/${Uri.encodeComponent(editId)}'),
     headers: {'authorization': 'Bearer $token'},
   );
   if (response.statusCode != 204 && response.statusCode != 404) {
-    throw HttpException('Could not cancel Reel upload (\${response.statusCode}).');
+    throw HttpException('Could not cancel Reel upload (${response.statusCode}).');
   }
 }
