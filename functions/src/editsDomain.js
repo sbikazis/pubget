@@ -1465,7 +1465,7 @@ function createEditsDomain({
       status: "processing",
       failureReason: null,
       moderationReason: null,
-      processingStartedAt: FieldValue.serverTimestamp(),
+      processingStartedAt: data.mediaBackend === "r2" ? null : FieldValue.serverTimestamp(),
     });
     if (data.mediaBackend !== "r2" && typeof processEdit === "function") {
       const job = processEdit({
