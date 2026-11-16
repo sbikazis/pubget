@@ -82,7 +82,8 @@ class _PrivateChatsListScreenState extends State<PrivateChatsListScreen> {
           ),
         ),
         error: PubgetErrorState(
-          message: list.failure?.message ?? 'Private chats could not load.',
+          message: 'Private chats could not load.',
+          failure: list.failure,
           onRetry: () {
             if (uid.isEmpty) return;
             context.read<PrivateChatListProvider>().open(uid);

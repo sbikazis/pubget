@@ -270,7 +270,8 @@ class _GroupMembersPageState extends State<GroupMembersPage> {
                 onRetry: () => provider.load(widget.groupId),
                 empty: PubgetEmptyState(title: copy.noMembers),
                 error: PubgetErrorState(
-                  message: provider.failure?.message ?? copy.membersFailed,
+                  message: copy.membersFailed,
+                  failure: provider.failure,
                   onRetry: () => provider.load(widget.groupId),
                 ),
                 offline: PubgetOfflineState(

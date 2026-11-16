@@ -124,7 +124,8 @@ class _AnimeBrowsePageState extends State<AnimeBrowsePage> {
         ),
         error: PubgetErrorState(
           title: copy.unableToLoad,
-          message: list.failure?.message ?? copy.checkConnection,
+          message: copy.checkConnection,
+          failure: list.failure,
           onRetry: list.retry,
           retryLabel: copy.retry,
         ),

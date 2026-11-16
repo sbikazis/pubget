@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../core/widgets/pubget_states.dart';
 import '../../../app/app_back_button.dart';
 import '../../../core/widgets/app_image_loader.dart';
 import '../data/kirari_repository.dart';
@@ -65,7 +66,7 @@ class _KirariModerationPageState extends State<KirariModerationPage> {
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
+            return const PubgetPageLoading();
           }
           if (snapshot.hasError) {
             return Center(
@@ -180,7 +181,7 @@ class _ModerationVideoPreviewState extends State<_ModerationVideoPreview> {
     if (!_controller.value.isInitialized) {
       return const AspectRatio(
         aspectRatio: 9 / 16,
-        child: Center(child: CircularProgressIndicator()),
+        child: PubgetPageLoading(),
       );
     }
     return AspectRatio(

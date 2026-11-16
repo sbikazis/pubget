@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/widgets/pubget_states.dart';
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
@@ -120,7 +121,7 @@ class _KirariSavedPageState extends State<KirariSavedPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const PubgetPageLoading()
           : _error != null
               ? Center(
                   child: Column(

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
+import '../../../core/errors/failure.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/media/media_reference.dart';
 import '../../../core/loading/loading_state.dart';
@@ -133,7 +134,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               children: <Widget>[
                 if (chat.state == LoadingState.offline ||
                     chat.failure != null && chat.messages.isNotEmpty)
-                  _OfflineBanner(message: chat.failure?.message),
+                  _OfflineBanner(failure: chat.failure),
                 Expanded(
                   child: Stack(
                     children: <Widget>[
@@ -529,18 +530,19 @@ class _MessageList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (chat.messages.isEmpty) {
       if (chat.state == LoadingState.loading) {
-        return const Center(child: CircularProgressIndicator());
+        return const PubgetPageLoading();
       }
       if (chat.state == LoadingState.offline) {
-        return PubgetOfflineState(
-          message: chat.failure?.message ??
-              AppStrings.of(context).cachedMessagesUnavailable,
+        return PubgetFailureStateView(
+          failure: chat.failure,
+          offlineHint: true,
+          message: AppStrings.of(context).cachedMessagesUnavailable,
         );
       }
       if (chat.state == LoadingState.error) {
-        return PubgetErrorState(
-          message: chat.failure?.message ??
-              AppStrings.of(context).messagesCouldNotLoad,
+        return PubgetFailureStateView(
+          failure: chat.failure,
+          message: AppStrings.of(context).messagesCouldNotLoad,
         );
       }
       final copy = AppStrings.of(context);
@@ -732,24 +734,34 @@ class _ReplyComposerBar extends StatelessWidget {
 }
 
 class _OfflineBanner extends StatelessWidget {
-  const _OfflineBanner({this.message});
+  const _OfflineBanner({this.failure});
 
-  final String? message;
+  final Failure? failure;
 
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
+    // Cached messages stay readable while a refresh fails. The banner must
+    // still say *which* failure it is: a backend outage is not "you are
+    // offline", and raw backend text must never reach the user.
+    final typed = failure;
+    final kind = typed == null
+        ? PubgetFailureKind.offline
+        : classifyPubgetFailure(
+            typed,
+            linkStatus: readNetworkStatus(context),
+          );
+    final message = kind == PubgetFailureKind.offline
+        ? copy.pick(
+            'You are offline. Failed sends can be retried.',
+            'أنت غير متصل. يمكنك إعادة إرسال الرسائل الفاشلة.',
+          )
+        : copy.serviceUnavailableMessage;
     return Material(
       color: Theme.of(context).colorScheme.errorContainer,
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.sm),
-         child: Text(
-           message ??
-               copy.pick(
-                 'You are offline. Failed sends can be retried.',
-                 'أنت غير متصل. يمكنك إعادة إرسال الرسائل الفاشلة.',
-               ),
-         ),
+        child: Text(message),
       ),
     );
   }

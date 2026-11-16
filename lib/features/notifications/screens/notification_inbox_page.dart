@@ -37,7 +37,8 @@ class NotificationInboxPage extends StatelessWidget {
         ),
         error: PubgetErrorState(
           key: const Key('notification-inbox-retry'),
-          message: provider.failure?.message ?? 'Notifications could not load.',
+          message: 'Notifications could not load.',
+          failure: provider.failure,
           onRetry: () => unawaited(provider.retry()),
         ),
         offline: PubgetOfflineState(

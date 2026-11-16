@@ -114,7 +114,8 @@ class _EventListScreenState extends State<EventListScreen> {
                 : null,
           ),
           error: PubgetErrorState(
-            message: list.failure?.message ?? copy.eventLoadFailed,
+            message: copy.eventLoadFailed,
+            failure: list.failure,
             onRetry: () => widget.groupId == null
                 ? list.loadHome()
                 : list.loadGroup(widget.groupId!),

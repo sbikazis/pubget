@@ -1235,16 +1235,19 @@ class _MessageListState extends State<_MessageList> {
     if (chat.messages.isEmpty) {
       final copy = AppStrings.of(context);
       if (chat.state == LoadingState.loading) {
-        return const Center(child: CircularProgressIndicator());
+        return const PubgetPageLoading();
       }
       if (chat.state == LoadingState.offline) {
-        return PubgetOfflineState(
-          message: chat.failure?.message ?? copy.cachedMessagesUnavailable,
+        return PubgetFailureStateView(
+          failure: chat.failure,
+          offlineHint: true,
+          message: copy.cachedMessagesUnavailable,
         );
       }
       if (chat.state == LoadingState.error) {
-        return PubgetErrorState(
-          message: chat.failure?.message ?? copy.messagesCouldNotLoad,
+        return PubgetFailureStateView(
+          failure: chat.failure,
+          message: copy.messagesCouldNotLoad,
         );
       }
       return PubgetEmptyState(

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../core/widgets/pubget_states.dart';
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
@@ -144,7 +145,7 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const PubgetPageLoading()
           : reel == null
               ? Center(child: Text(_error ?? copy.loadError))
               : ListView(

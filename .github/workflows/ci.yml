@@ -60,9 +60,26 @@ jobs:
           flutter test --exclude-tags golden --reporter expanded > /tmp/flutter-tests.log 2>&1
           status=$?
           if [ $status -ne 0 ]; then
-            tail -n 160 /tmp/flutter-tests.log
+            # A bare `tail` hides the assertion that actually failed: the
+            # expanded reporter prints exceptions before the final progress
+            # lines. Surface the failing test names and their exception
+            # blocks, and keep the whole log as an artifact below.
+            echo "=== failing tests ==="
+            grep -n -E '\[E\]' /tmp/flutter-tests.log || true
+            echo "=== failure details ==="
+            grep -n -E -B 3 -A 22 'EXCEPTION|Expected:|Actual:|The following|Test failed\.|Bad state' /tmp/flutter-tests.log | head -n 260 || true
+            echo "=== tail ==="
+            tail -n 60 /tmp/flutter-tests.log
             exit $status
           fi
+
+      - name: Upload full Flutter test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-tests-log
+          path: /tmp/flutter-tests.log
+          if-no-files-found: ignore
 
   # Axis Zero: a green analyzer is not a green app. `analyze` cannot catch a
   # missing plugin registrant, a Gradle/plugin incompatibility, or a native

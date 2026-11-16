@@ -102,8 +102,8 @@ class _CastBody extends StatelessWidget {
       ),
       error: PubgetErrorState(
         title: copy.unableToLoad,
-        message:
-            provider.failure?.message ?? copy.checkConnection,
+        message: copy.checkConnection,
+        failure: provider.failure,
         onRetry: provider.retry,
       ),
       child: provider.visible.isEmpty

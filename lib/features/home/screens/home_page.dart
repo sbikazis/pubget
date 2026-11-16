@@ -490,7 +490,8 @@ Widget _stateChild(
   if (state.state == LoadingState.error && !state.hasContent) {
     return PubgetErrorState(
       title: copy.sectionFailed,
-      message: state.failure?.message ?? copy.tryAgainShort,
+      message: copy.tryAgainShort,
+      failure: state.failure,
       onRetry: () => home.retrySection(kind),
     );
   }
@@ -632,7 +633,7 @@ class _KirariDiscoverySectionState extends State<_KirariDiscoverySection> {
                   return Center(child: Text(copy.loadError));
                 }
                 if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const PubgetPageLoading();
                 }
                 final reels = snapshot.data!.items;
                 if (reels.isEmpty) {

@@ -38,7 +38,8 @@ class _RolePermissionsPageState extends State<RolePermissionsPage> {
         onRetry: () => provider.loadRoles(widget.groupId),
         empty: PubgetEmptyState(title: copy.noRoles),
         error: PubgetErrorState(
-          message: provider.failure?.message ?? copy.rolesLoadFailed,
+          message: copy.rolesLoadFailed,
+          failure: provider.failure,
           onRetry: () => provider.loadRoles(widget.groupId),
         ),
         offline: PubgetOfflineState(

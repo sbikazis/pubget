@@ -68,7 +68,7 @@ class _HashtagPageState extends State<HashtagPage> {
         leading: AppBackButton.maybeOf(context),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const PubgetPageLoading()
           : ListView(
               padding: const EdgeInsets.all(AppSpacing.md),
               children: <Widget>[

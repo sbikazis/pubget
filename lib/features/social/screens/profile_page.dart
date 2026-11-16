@@ -128,7 +128,8 @@ class _ProfilePageState extends State<ProfilePage> {
             state: profile.state,
             onRetry: () => _reload(profileId),
             error: PubgetErrorState(
-              message: profile.failure?.message ?? copy.profileFailed,
+              message: copy.profileFailed,
+              failure: profile.failure,
               onRetry: () => _reload(profileId),
             ),
             offline: PubgetOfflineState(onRetry: () => _reload(profileId)),
@@ -1523,7 +1524,7 @@ class _CreatorKirariState extends State<_CreatorKirari> {
             Text(copy.title, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: AppSpacing.md),
             if (!snapshot.hasData)
-              const Center(child: CircularProgressIndicator())
+              const PubgetPageLoading()
             else
               Wrap(
                 spacing: AppSpacing.sm,

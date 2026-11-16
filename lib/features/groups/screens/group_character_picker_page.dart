@@ -375,7 +375,7 @@ class _CharacterFooter extends StatelessWidget {
       );
     }
     if (loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const PubgetPageLoading();
     }
     if (hasNextPage) {
       return Center(

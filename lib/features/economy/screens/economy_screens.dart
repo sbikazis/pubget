@@ -75,7 +75,8 @@ class _StorePageState extends State<StorePage>
         state: economy.state,
         onRetry: economy.load,
         error: PubgetErrorState(
-          message: economy.failure?.message ?? 'The store could not load.',
+          message: 'The store could not load.',
+          failure: economy.failure,
           onRetry: economy.load,
         ),
         offline: PubgetOfflineState(onRetry: economy.load),
@@ -216,7 +217,8 @@ class _StoreItemDetailsPageState extends State<StoreItemDetailsPage> {
         state: economy.state,
         onRetry: economy.load,
         error: PubgetErrorState(
-          message: economy.failure?.message ?? 'This item could not load.',
+          message: 'This item could not load.',
+          failure: economy.failure,
           onRetry: economy.load,
         ),
         offline: PubgetOfflineState(onRetry: economy.load),
@@ -354,7 +356,8 @@ class _InventoryPageState extends State<InventoryPage> {
         state: economy.state,
         onRetry: economy.load,
         error: PubgetErrorState(
-          message: economy.failure?.message ?? 'Inventory could not load.',
+          message: 'Inventory could not load.',
+          failure: economy.failure,
           onRetry: economy.load,
         ),
         offline: PubgetOfflineState(onRetry: economy.load),
@@ -434,7 +437,8 @@ class _PremiumPageState extends State<PremiumPage> {
         state: economy.state,
         onRetry: economy.load,
         error: PubgetErrorState(
-          message: economy.failure?.message ?? 'Premium could not load.',
+          message: 'Premium could not load.',
+          failure: economy.failure,
           onRetry: economy.load,
         ),
         offline: PubgetOfflineState(onRetry: economy.load),
@@ -564,7 +568,8 @@ class _EconomyHistoryPageState extends State<EconomyHistoryPage> {
         state: economy.historyState,
         onRetry: economy.loadHistory,
         error: PubgetErrorState(
-          message: economy.failure?.message ?? 'History could not load.',
+          message: 'History could not load.',
+          failure: economy.failure,
           onRetry: economy.loadHistory,
         ),
         offline: PubgetOfflineState(onRetry: economy.loadHistory),

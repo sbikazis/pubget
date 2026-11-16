@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/widgets/pubget_states.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/widgets/pubget_bottom_sheet.dart';
 import '../../kirari/data/kirari_repository.dart';
@@ -78,7 +79,7 @@ class _AudioPickerSheetState extends State<AudioPickerSheet> {
                 future: _tracks,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const PubgetPageLoading();
                   }
                   if (snapshot.hasError) {
                     return Center(

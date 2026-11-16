@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/app_back_button.dart';
+import '../../../core/errors/failure.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
@@ -33,7 +34,7 @@ class _ProfileFanWorksPageState extends State<ProfileFanWorksPage>
   var _hasMore = true;
   var _loading = false;
   var _loaded = false;
-  String? _failure;
+  Failure? _failure;
   FanWorkAnalyticsProvider? _analyticsProvider;
 
   @override
@@ -90,7 +91,7 @@ class _ProfileFanWorksPageState extends State<ProfileFanWorksPage>
       _loaded = true;
       final failure = result.failureOrNull;
       if (failure != null) {
-        _failure = failure.message;
+        _failure = failure;
         return;
       }
       final page = result.valueOrNull;
@@ -140,13 +141,16 @@ class _ProfileFanWorksPageState extends State<ProfileFanWorksPage>
             child: Builder(
               builder: (context) {
                 if (_failure != null) {
-                  return PubgetErrorState(
+                  return PubgetFailureStateView(
+                    failure: _failure,
                     message: copy.couldNotLoadFanWorks,
-                    onRetry: _retry,
+                    onRetry: () async {
+                      _retry();
+                    },
                   );
                 }
                 if (!_loaded && _items.isEmpty) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const PubgetPageLoading();
                 }
                 if (_loaded && _items.isEmpty) {
                   return PubgetEmptyState(
@@ -171,7 +175,7 @@ class _ProfileFanWorksPageState extends State<ProfileFanWorksPage>
                   itemCount: _items.length + (_hasMore ? 1 : 0),
                   itemBuilder: (context, index) {
                     if (index >= _items.length) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const PubgetPageLoading();
                     }
                     return FanWorkPreviewCard(work: _items[index]);
                   },
@@ -182,7 +186,7 @@ class _ProfileFanWorksPageState extends State<ProfileFanWorksPage>
           if (isOwner && _analyticsProvider != null)
             _FanWorkAnalyticsDashboard(provider: _analyticsProvider!)
           else if (isOwner)
-            const Center(child: CircularProgressIndicator())
+            const PubgetPageLoading()
           else
             Center(child: Text(copy.analyticsOwnOnly)),
         ],
@@ -201,22 +205,28 @@ class _FanWorkAnalyticsDashboard extends StatelessWidget {
     return Consumer<FanWorkAnalyticsProvider>(
       builder: (context, provider, _) {
         if (provider.state == LoadingState.loading) {
-          return const Center(child: CircularProgressIndicator());
+          return const PubgetPageLoading();
         }
         if (provider.state == LoadingState.error) {
-          return PubgetErrorState(
-            message: provider.failure?.message ?? 'Could not load analytics.',
-            onRetry: () => provider.load(provider.creatorId ?? ''),
+          return PubgetFailureStateView(
+            failure: provider.failure,
+            onRetry: () async {
+              await provider.load(provider.creatorId ?? '');
+            },
           );
         }
         if (provider.state == LoadingState.offline) {
-          return PubgetOfflineState(
-            onRetry: () => provider.load(provider.creatorId ?? ''),
+          return PubgetFailureStateView(
+            failure: provider.failure,
+            offlineHint: true,
+            onRetry: () async {
+              await provider.load(provider.creatorId ?? '');
+            },
           );
         }
         final analytics = provider.analytics;
         if (analytics == null) {
-          return const Center(child: CircularProgressIndicator());
+          return const PubgetPageLoading();
         }
         return SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.md),

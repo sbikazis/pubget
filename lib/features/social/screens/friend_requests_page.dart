@@ -40,7 +40,8 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
             : social.state,
         onRetry: _load,
         error: PubgetErrorState(
-          message: social.failure?.message ?? 'Requests could not load.',
+          message: 'Requests could not load.',
+          failure: social.failure,
           onRetry: _load,
         ),
         offline: PubgetOfflineState(onRetry: _load),

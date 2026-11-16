@@ -136,7 +136,8 @@ class _AchievementsPageState extends State<AchievementsPage> {
                   ),
                 ),
                 error: PubgetErrorState(
-                  message: state.failure?.message ?? copy.loadFailed,
+                  message: copy.loadFailed,
+                  failure: state.failure,
                   onRetry: target == null
                       ? null
                       : () => context.read<AchievementProvider>().open(target),

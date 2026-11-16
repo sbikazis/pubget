@@ -136,12 +136,12 @@ class _GameListScreenState extends State<GameListScreen>
         onRetry: () => widget.groupId == null
             ? list.loadHome()
             : list.loadGroup(widget.groupId!),
-        error: GameErrorState(
-          message: list.failure?.message,
-          onRetry: () => widget.groupId == null
-              ? list.loadHome()
-              : list.loadGroup(widget.groupId!),
-        ),
+         error: GameErrorState(
+           failure: list.failure,
+           onRetry: () => widget.groupId == null
+               ? list.loadHome()
+               : list.loadGroup(widget.groupId!),
+         ),
         offline: PubgetOfflineState(
           onRetry: () => widget.groupId == null
               ? list.loadHome()

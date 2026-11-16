@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../core/widgets/pubget_states.dart';
 import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
 
@@ -523,7 +524,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
   Widget _body() {
     final copy = KirariCopy.of(context);
     if (_loading && _items.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const PubgetPageLoading();
     }
     if (_error != null && _items.isEmpty) {
       return Center(
@@ -555,7 +556,7 @@ class _KirariFeedPageState extends State<KirariFeedPage>
       },
       itemBuilder: (context, index) {
         if (index >= _items.length) {
-          return const Center(child: CircularProgressIndicator());
+          return const PubgetPageLoading();
         }
         final reel = _items[index];
         final active = index == _activeIndex;
@@ -800,7 +801,7 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
               ),
               Expanded(
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const PubgetPageLoading()
                     : _comments.isEmpty
                         ? const Center(child: Text('No comments yet.'))
                         : ListView.builder(

@@ -132,7 +132,8 @@ class _AnimeCharacterPageState extends State<AnimeCharacterPage> {
       ),
       error: PubgetErrorState(
         title: copy.unableToLoad,
-        message: provider.failure?.message ?? copy.checkConnection,
+        message: copy.checkConnection,
+        failure: provider.failure,
         onRetry: provider.retry,
       ),
       child: _CharacterScroll(
@@ -606,7 +607,7 @@ class _CharacterReelsSection extends StatelessWidget {
         SizedBox(
           height: 210,
           child: loading && reels.isEmpty
-              ? const Center(child: CircularProgressIndicator())
+              ? const PubgetPageLoading()
               : ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: reels.length,
@@ -755,7 +756,7 @@ class _CharacterDiscussionSectionState
         ),
         const SizedBox(height: AppSpacing.md),
         if (state == LoadingState.loading && posts.isEmpty)
-          const Center(child: CircularProgressIndicator())
+          const PubgetPageLoading()
         else if (posts.isEmpty)
           Text(copy.characterDiscussionEmpty, style: theme.textTheme.bodyMedium)
         else

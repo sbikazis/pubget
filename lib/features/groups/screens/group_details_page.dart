@@ -117,7 +117,8 @@ class _GroupDetailsPageState extends State<GroupDetailsPage> {
             state: provider.state,
             onRetry: () => _reload(context),
             error: PubgetErrorState(
-              message: provider.failure?.message ?? copy.groupFailed,
+              message: copy.groupFailed,
+              failure: provider.failure,
               onRetry: () => _reload(context),
             ),
             offline: PubgetOfflineState(onRetry: () => _reload(context)),

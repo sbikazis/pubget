@@ -170,7 +170,8 @@ class _AnimeHubPageState extends State<AnimeHubPage>
         ),
         error: PubgetErrorState(
           title: AnimeCopy.of(context).unableToLoad,
-          message: catalog.failure?.message ?? AnimeCopy.of(context).checkConnection,
+          message: AnimeCopy.of(context).checkConnection,
+          failure: catalog.failure,
           onRetry: catalog.retry,
           retryLabel: AnimeCopy.of(context).retry,
         ),

@@ -175,7 +175,8 @@ class _AnimeDetailsPageState extends State<AnimeDetailsPage>
         ),
         error: PubgetErrorState(
           title: copy.unableToLoad,
-          message: details.failure?.message ?? copy.checkConnection,
+          message: copy.checkConnection,
+          failure: details.failure,
           onRetry: details.retry,
           retryLabel: copy.retry,
         ),

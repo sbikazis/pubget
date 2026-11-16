@@ -396,6 +396,11 @@ final class AppStrings {
   String get loadMore => pick('Load more', 'تحميل المزيد');
   String get searchHint => pick('Search Pubget', 'ابحث في Pubget');
   String get searchLoadFailed => pick('Search failed.', 'فشل البحث.');
+  String get searchNothingFound => pick('Nothing found', 'لا توجد نتائج');
+  String get searchEmptyHint => pick(
+    'Try another group, username, event, anime, or Fan Work.',
+    'جرّب مجموعة أو اسم مستخدم أو فعالية أو أنمي أو عملاً خاصاً آخر.',
+  );
 
   /// Entity-kind labels for discovery search results (§13.5).
   String searchHitLabel(String type) => switch (type) {
@@ -498,6 +503,23 @@ final class AppStrings {
         'لذا المشكلة ليست في اتصالك.',
   );
   String get retryConnection => pick('Retry now', 'أعد المحاولة الآن');
+
+  /// Axis 02 §2.1 — the remaining mandatory screen verdicts. These live in the
+  /// shared copy so a state widget never falls back to an English sentence on
+  /// an Arabic screen.
+  String get permissionDeniedTitle =>
+      pick('You do not have access', 'ليست لديك صلاحية الوصول');
+  String get permissionDeniedMessage => pick(
+    'Your account cannot open this content. Sign in again or ask for access.',
+    'لا يمكن لحسابك فتح هذا المحتوى. سجّل الدخول مجدداً أو اطلب الصلاحية.',
+  );
+  String get expiredTitle =>
+      pick('This content is no longer available', 'هذا المحتوى لم يعد متاحاً');
+  String get expiredMessage => pick(
+    'It may have been removed or the link may have expired.',
+    'ربما تم حذفه أو انتهت صلاحية الرابط.',
+  );
+  String get loadingContentLabel => pick('Loading content', 'جارٍ تحميل المحتوى');
 
   /// Group list "unread" semantic label. Kept in the shared copy so the
   /// card's accessibility label is localized like every other surface.
