@@ -20,7 +20,6 @@ function createR2EditsBucket({
   workerUrl = process.env.KIRARI_R2_WORKER_URL || DEFAULT_WORKER_URL,
   tokenProvider,
   fetchImpl = global.fetch,
-  tempDir = require("node:os").tmpdir(),
 } = {}) {
   const baseUrl = workerUrl.replace(/\/+$/, "");
 
@@ -90,20 +89,7 @@ function createR2EditsBucket({
         return [destination];
       },
 
-      async getSignedUrl({ expires }) {
-        const expiry = Number(expires);
-        const response = await fetchImpl(`${baseUrl}/_internal/edits/sign`, {
-          method: "POST",
-          headers: await headers({ "content-type": "application/json" }),
-          body: JSON.stringify({ key, expires: Math.floor(expiry / 1000) }),
-        });
-        if (!response.ok) throw new Error(`Edits R2 signing failed (${response.status}).`);
-        const payload = await response.json();
-        if (!payload.url || typeof payload.url !== "string") {
-          throw new Error("Edits R2 signer returned an invalid URL.");
-        }
-        return [payload.url];
-      },
+
 
       async delete({ ignoreNotFound = false } = {}) {
         const response = await fetchImpl(endpoint, { method: "DELETE", headers: await headers() });
