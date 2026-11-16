@@ -1,13 +1,12 @@
 import 'dart:io';
 
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
-import 'firebase_resumable_uploader.dart';
+import '../../../core/media/media_storage_provider.dart';
+import 'r2_kirari_multipart_uploader.dart';
 
 class KirariReel {
   const KirariReel({
@@ -33,6 +32,7 @@ class KirariReel {
     this.animeTitles = const <String>[],
     this.characterNames = const <String>[],
     this.mentionMetadata = const <Map<String, dynamic>>[],
+    this.usesR2Media = false,
   });
 
   final String id;
@@ -57,6 +57,7 @@ class KirariReel {
   final List<String> animeTitles;
   final List<String> characterNames;
   final List<Map<String, dynamic>> mentionMetadata;
+  final bool usesR2Media;
 
   KirariReel copyWith({
     int? likesCount,
@@ -85,6 +86,7 @@ class KirariReel {
     animeTitles: animeTitles,
     characterNames: characterNames,
     mentionMetadata: mentionMetadata,
+    usesR2Media: usesR2Media,
   );
 
   factory KirariReel.fromMap(Map<dynamic, dynamic> map) {
@@ -122,6 +124,7 @@ class KirariReel {
           .whereType<Map>().map((item) => item['name']).whereType<String>().toList(),
       mentionMetadata: (map['mentionMetadata'] as List? ?? const <dynamic>[])
           .whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(),
+      usesR2Media: map['mediaBackend'] == 'r2',
     );
   }
 }
@@ -218,49 +221,46 @@ class FirebaseKirariRepository implements KirariRepository {
     FirebaseFunctions? functions,
     FirebaseStorage? storage,
     ImagePicker? picker,
+    R2KirariMultipartUploader? r2Uploader,
   }) : _functions = functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
        _storage = storage ?? FirebaseStorage.instance,
-       _picker = picker ?? ImagePicker();
+       _picker = picker ?? ImagePicker(),
+       _r2Uploader = r2Uploader ?? R2KirariMultipartUploader(
+         workerUrl: defaultR2WorkerUrl,
+         uidProvider: () => FirebaseAuth.instance.currentUser?.uid ?? '',
+         getIdToken: () async {
+           final user = FirebaseAuth.instance.currentUser;
+           if (user == null) throw StateError('Sign in before accessing Kirari media.');
+           final token = await user.getIdToken();
+           if (token == null || token.isEmpty) throw StateError('Firebase sign-in token is unavailable.');
+           return token;
+         },
+       );
 
   final FirebaseFunctions _functions;
   final FirebaseStorage _storage;
   final ImagePicker _picker;
-  late final FirebaseResumableUploader _iosResumableUploader = FirebaseResumableUploader(
-    bucket: _storage.bucket,
-    uidProvider: () => FirebaseAuth.instance.currentUser?.uid ?? '',
-    getIdToken: () async {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw StateError('Sign in before uploading a Kirari reel.');
-      final token = await user.getIdToken();
-      if (token == null || token.isEmpty) throw StateError('Unable to refresh the Firebase sign-in token.');
-      return token;
-    },
-    getAppCheckToken: () async {
-      try {
-        return await FirebaseAppCheck.instance.getToken();
-      } catch (_) {
-        return null;
-      }
-    },
-  );
-  static const MethodChannel _androidUploadChannel = MethodChannel('pubget/kirari_upload');
+  final R2KirariMultipartUploader _r2Uploader;
   final Map<String, Future<String>> _downloadUrlCache = <String, Future<String>>{};
 
-  Future<String> _downloadUrl(String storagePath) async {
-    final cached = _downloadUrlCache.remove(storagePath);
+  Future<String> _downloadUrl(String storagePath, {bool useR2 = false}) async {
+    final cacheKey = '${useR2 ? 'r2' : 'firebase'}:$storagePath';
+    final cached = _downloadUrlCache.remove(cacheKey);
     if (cached != null) {
-      _downloadUrlCache[storagePath] = cached;
+      _downloadUrlCache[cacheKey] = cached;
       return cached;
     }
-    final pending = _storage.ref(storagePath).getDownloadURL();
-    _downloadUrlCache[storagePath] = pending;
+    final pending = useR2
+        ? _r2Uploader.resolveUrl(storagePath)
+        : _storage.ref(storagePath).getDownloadURL();
+    _downloadUrlCache[cacheKey] = pending;
     while (_downloadUrlCache.length > 128) {
       _downloadUrlCache.remove(_downloadUrlCache.keys.first);
     }
     try {
       return await pending;
     } catch (_) {
-      _downloadUrlCache.remove(storagePath);
+      _downloadUrlCache.remove(cacheKey);
       rethrow;
     }
   }
@@ -280,11 +280,12 @@ class FirebaseKirariRepository implements KirariRepository {
         final preferred = paths['540'] ?? paths['360'] ?? paths['720'];
         final videoPath = preferred is Map ? preferred['path'] as String? : null;
         final coverPath = map['coverPath'] as String?;
+        final useR2 = map['mediaBackend'] == 'r2';
         if (videoPath == null || videoPath.isEmpty) return null;
-        final videoUrl = _downloadUrl(videoPath);
+        final videoUrl = _downloadUrl(videoPath, useR2: useR2);
         final coverUrl = coverPath == null || coverPath.isEmpty
             ? Future<String>.value('')
-            : _downloadUrl(coverPath).catchError((_) => '');
+            : _downloadUrl(coverPath, useR2: useR2).catchError((_) => '');
         final urls = await Future.wait<String>([videoUrl, coverUrl]);
         return KirariReel.fromMap({
           ...map,
@@ -345,11 +346,12 @@ class FirebaseKirariRepository implements KirariRepository {
     final videoPath = preferred is Map ? preferred['path'] as String? : null;
     if (videoPath == null || videoPath.isEmpty) throw StateError('This video is not available.');
     final coverPath = map['coverPath'] as String?;
+    final useR2 = map['mediaBackend'] == 'r2';
     return KirariReel.fromMap({
       ...map,
-      'playbackUrl': await _storage.ref(videoPath).getDownloadURL(),
+      'playbackUrl': await _downloadUrl(videoPath, useR2: useR2),
       'coverUrl': coverPath == null || coverPath.isEmpty
-          ? '' : await _storage.ref(coverPath).getDownloadURL(),
+          ? '' : await _downloadUrl(coverPath, useR2: useR2),
     });
   }
 
@@ -374,7 +376,7 @@ class FirebaseKirariRepository implements KirariRepository {
   Future<String> getPlaybackUrl(KirariReel reel, {required int quality}) async {
     final path = reel.renditionPaths['$quality'];
     if (path == null || path.isEmpty) return reel.videoUrl;
-    return _downloadUrl(path);
+    return _downloadUrl(path, useR2: reel.usesR2Media);
   }
 
   @override
@@ -410,7 +412,7 @@ class FirebaseKirariRepository implements KirariRepository {
         final map = Map<dynamic, dynamic>.from(value);
         final path = map['audioPath'] as String?;
         if (path == null || path.isEmpty) continue;
-        final url = await _storage.ref(path).getDownloadURL();
+        final url = await _downloadUrl(path, useR2: map['mediaBackend'] == 'r2');
         tracks.add(KirariAudioTrack.fromMap(map, url));
       }
     }
@@ -498,78 +500,23 @@ class FirebaseKirariRepository implements KirariRepository {
   }
 
   @override
+  @override
   Future<void> uploadSource({
     required String storagePath,
     required XFile video,
     required void Function(double progress) onProgress,
   }) async {
-    final file = File(video.path);
-    final reference = _storage.ref(storagePath);
-
-    // If the previous attempt completed the object but the app stopped before
-    // finalization, do not upload the same durable local file a second time.
-    try {
-      final metadata = await reference.getMetadata();
-      if (metadata.size == await file.length()) {
-        if (Platform.isIOS) await _iosResumableUploader.clearSession(storagePath);
-        onProgress(1);
-        return;
-      }
-    } on FirebaseException catch (error) {
-      if (error.code != 'object-not-found') {
-        rethrow;
-      }
+    final parts = storagePath.split('/');
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (parts.length != 4 || parts[0] != 'kirari' ||
+        parts[1] != uid || parts[3] != 'source.mp4') {
+      throw StateError('The server returned an invalid Kirari upload path.');
     }
-
-    if (Platform.isAndroid) {
-      _androidUploadChannel.setMethodCallHandler((call) async {
-        final arguments = call.arguments;
-        if (call.method == 'progress' && arguments is Map) {
-          final progress = (arguments['progress'] as num?)?.toDouble();
-          if (progress != null) onProgress(progress.clamp(0, 1).toDouble());
-        }
-      });
-      try {
-        await _androidUploadChannel.invokeMethod<void>('uploadSource', {
-          'storagePath': storagePath,
-          'localPath': file.absolute.path,
-        });
-        onProgress(1);
-      } finally {
-        _androidUploadChannel.setMethodCallHandler(null);
-      }
-      return;
-    }
-
-    if (Platform.isIOS) {
-      await _iosResumableUploader.upload(
-        file: file,
-        storagePath: storagePath,
-        contentType: 'video/mp4',
-        onProgress: onProgress,
-      );
-      return;
-    }
-
-    // Other supported platforms use Firebase Storage's SDK upload task.
-    final task = reference.putFile(
-      file,
-      SettableMetadata(contentType: 'video/mp4', customMetadata: {
-        'uploadedBy': 'kirari-client',
-      }),
+    await _r2Uploader.upload(
+      file: File(video.path),
+      reelId: parts[2],
+      onProgress: onProgress,
     );
-    // Firebase Storage performs resumable transfers internally. Scope the
-    // progress listener to this task so retries do not retain stale listeners.
-    final subscription = task.snapshotEvents.listen((snapshot) {
-      final total = snapshot.totalBytes;
-      if (total > 0) onProgress(snapshot.bytesTransferred / total);
-    });
-    try {
-      await task;
-      onProgress(1);
-    } finally {
-      await subscription.cancel();
-    }
   }
 
   @override
@@ -585,10 +532,7 @@ class FirebaseKirariRepository implements KirariRepository {
   @override
   Future<void> cancelUpload(String reelId) async {
     await _call('cancelKirariUpload', {'reelId': reelId});
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
-      await _iosResumableUploader.clearSession('kirari/$uid/$reelId/source.mp4');
-    }
+    await _r2Uploader.clearSession(reelId);
   }
 
   @override
