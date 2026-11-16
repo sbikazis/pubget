@@ -228,7 +228,6 @@ class FirebaseEditsRepository
       }
       legacyResume = existingData['mediaBackend'] != 'r2';
     } else {
-      legacyResume = false;
       final startPayload = <String, dynamic>{
         'caption': caption,
         'animeTag': animeTag,
