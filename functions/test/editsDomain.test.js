@@ -163,6 +163,67 @@ test("deleteEdit revokes media receipts instead of throwing", async () => {
   assert.equal(receipt.visible, false);
 });
 
+test("R2 deletion keeps a retry manifest when object cleanup partially fails", async () => {
+  const db = createMutableDb({
+    "edits/e-r2": {
+      creatorId: "alice",
+      mediaBackend: "r2",
+      status: "published",
+      moderationStatus: "approved",
+      originalStoragePath: "edits/alice/e-r2.mp4",
+      processedStoragePath: "edits-processed/alice/e-r2.mp4",
+      thumbnailStoragePath: "edits/alice/t_e-r2.jpg",
+      renditions: {
+        720: { path: "edits-processed/alice/e-r2_720.mp4" },
+      },
+    },
+  });
+  const deleted = [];
+  let failOnce = true;
+  const r2Bucket = {
+    file(key) {
+      return {
+        async delete() {
+          deleted.push(key);
+          if (failOnce && key.endsWith("_720.mp4")) {
+            failOnce = false;
+            throw new Error("temporary R2 failure");
+          }
+        },
+      };
+    },
+  };
+  const domain = createEditsDomain({
+    db,
+    FieldValue: {
+      serverTimestamp: () => "now",
+      delete: () => "__DELETE_FIELD__",
+    },
+    HttpsError: TestHttpsError,
+    r2Bucket,
+  });
+
+  await assert.rejects(
+    domain.deleteEdit({ auth: { uid: "alice" }, data: { editId: "e-r2" } }),
+    /temporary R2 failure/,
+  );
+  const pending = db.store.get("edits/e-r2");
+  assert.equal(pending.status, "deleting");
+  assert.equal(pending.videoUrl, null);
+  assert.ok(pending.mediaCleanupKeys.includes("edits-processed/alice/e-r2_720.mp4"));
+
+  const result = await domain.deleteEdit({
+    auth: { uid: "alice" },
+    data: { editId: "e-r2" },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(db.store.get("edits/e-r2").status, "deleted");
+  assert.ok(deleted.includes("edits/alice/e-r2.mp4"));
+  assert.ok(deleted.includes("edits-processed/alice/e-r2.mp4"));
+  assert.ok(deleted.includes("edits-processed/alice/e-r2_720.mp4"));
+  assert.ok(deleted.includes("edits/alice/t_e-r2.jpg"));
+});
+
 test("repost idempotency key is creator-scoped and never double-charges quota", async () => {
   const db = createMutableDb({
     "edits/orig": {
