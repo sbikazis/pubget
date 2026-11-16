@@ -259,7 +259,7 @@ function isFeedCursorAfter(score, id, afterScore, afterId) {
   return score < afterScore || (score === afterScore && String(id).localeCompare(String(afterId)) > 0);
 }
 
-function createKirariDomain({ db, FieldValue, HttpsError, bucket, legacyBucket = bucket, processVideo, processLegacyVideo }) {
+function createKirariDomain({ db, FieldValue, HttpsError, bucket, legacyBucket = bucket, processVideo, processLegacyVideo = processVideo }) {
   const reels = () => db.collection("kirari");
   const fail = (code, message) => { throw new HttpsError(code, message); };
   function auth(request) {
