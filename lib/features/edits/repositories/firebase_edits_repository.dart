@@ -258,6 +258,12 @@ class FirebaseEditsRepository
           .call(startPayload);
       path = start.data['videoPath'] as String;
       editId = _returnedId(start.data);
+      final started = await _firestore.collection(_collection).doc(editId).get();
+      final startedData = started.data();
+      if (startedData != null && startedData['status'] != 'uploading') {
+        return _resolveEditMedia(Edit.fromMap(startedData, id: editId));
+      }
+      legacyResume = startedData != null && startedData['mediaBackend'] != 'r2';
     }
     onStarted?.call(editId, path);
     _activeEditId = editId;
