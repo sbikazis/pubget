@@ -548,6 +548,19 @@ export default {
         return json({ error: "This Kirari upload is not available." }, 403);
       }
 
+      if (routeParts.length === 3 && request.method === "HEAD") {
+        const object = await env.MEDIA_BUCKET.head(key);
+        if (!object ||
+            object.customMetadata?.uploadedBy !== uid ||
+            object.customMetadata?.reelId !== reelId) {
+          return new Response(null, { status: 404, headers: CORS });
+        }
+        return new Response(null, {
+          status: 200,
+          headers: { ...CORS, "content-length": String(object.size) },
+        });
+      }
+
       if (routeParts.length === 3 && request.method === "POST") {
         const size = Number(request.headers.get("x-kirari-size"));
         if (!Number.isSafeInteger(size) || size <= 0 || size > 500 * 1024 * 1024 ||
