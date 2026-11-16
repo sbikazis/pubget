@@ -76,7 +76,7 @@ Future<void> uploadEditVideoToR2({
   }
 }
 
-Future<void> cancelEditVideoUpload(String editId) async {
+Future<void> cancelEditVideoUpload() async {
   // Closing the active client interrupts the stream. The caller then invokes
   // the owner-checked deleteEdit callable, which marks the document deleting
   // before removing any R2 objects.
