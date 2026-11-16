@@ -584,6 +584,86 @@ export default {
       return json({ error: "Method not allowed." }, 405);
     }
 
+    // Resolve a published R2-backed Edit to a short-lived byte-range URL.
+    if (url.pathname === "/edits/resolve" && request.method === "GET") {
+      const uid = await authenticate(request, env.FIREBASE_PROJECT_ID);
+      if (!uid) return json({ error: "Authentication required." }, 401);
+      const key = url.searchParams.get("key") ?? "";
+      if (!validEditsServiceKey(key) || key.startsWith("edits/") && !key.includes("/t_")) {
+        return json({ error: "Invalid Edit playback key." }, 400);
+      }
+      const parts = key.split("/");
+      const ownerUid = parts[1];
+      const fileName = parts[2];
+      const editId = fileName.replace(/^t_/, "").replace(/(?:_720|_480)?\.mp4$/, "").replace(/\.jpg$/, "");
+      if (uid !== ownerUid || !/^[A-Za-z0-9_-]{1,128}$/.test(editId)) {
+        return json({ error: "Edit media access denied." }, 403);
+      }
+      const token = request.headers.get("authorization") ?? "";
+      const docResponse = await fetch(
+        `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/edits/${encodeURIComponent(editId)}`,
+        { headers: { Authorization: token } },
+      );
+      if (!docResponse.ok) return json({ error: "Edit not found or not accessible." }, 404);
+      const doc = await docResponse.json() as { fields?: Record<string, any> };
+      const fields = doc.fields ?? {};
+      const renditionFields = fields.renditions?.mapValue?.fields ?? {};
+      const renditionPaths = Object.values(renditionFields).map((item: any) =>
+        item?.mapValue?.fields?.path?.stringValue);
+      const allowed = fields.processedStoragePath?.stringValue === key ||
+        fields.thumbnailStoragePath?.stringValue === key || renditionPaths.includes(key);
+      if (fields.creatorId?.stringValue !== ownerUid ||
+          fields.mediaBackend?.stringValue !== "r2" ||
+          fields.status?.stringValue !== "published" ||
+          fields.moderationStatus?.stringValue !== "approved" || !allowed) {
+        return json({ error: "This Edit media is not published." }, 403);
+      }
+      const expires = Math.floor(Date.now() / 1000) + 600;
+      const signature = await hmac(env, `${key}\n${expires}`);
+      return json({ url: `${url.origin}/edits/asset?key=${encodeURIComponent(key)}&expires=${expires}&signature=${signature}`, expires });
+    }
+
+    if (url.pathname === "/edits/asset" && ["GET", "HEAD"].includes(request.method)) {
+      const key = url.searchParams.get("key") ?? "";
+      const expires = Number(url.searchParams.get("expires"));
+      const supplied = url.searchParams.get("signature") ?? "";
+      const now = Math.floor(Date.now() / 1000);
+      if (!validEditsServiceKey(key) || key.startsWith("edits/") && !key.includes("/t_") ||
+          !Number.isSafeInteger(expires) || expires < now || expires > now + 630 ||
+          !constantTimeEqual(supplied, await hmac(env, `${key}\n${expires}`))) {
+        return json({ error: "Edit media link expired or invalid." }, 403);
+      }
+      const head = await env.MEDIA_BUCKET.head(key);
+      if (!head) return json({ error: "Not found." }, 404);
+      const headers = new Headers(CORS);
+      headers.set("content-type", head.httpMetadata?.contentType ?? "application/octet-stream");
+      headers.set("accept-ranges", "bytes");
+      headers.set("cache-control", "private, max-age=60");
+      if (request.method === "HEAD") {
+        headers.set("content-length", String(head.size));
+        return new Response(null, { headers });
+      }
+      const range = request.headers.get("range");
+      if (range) {
+        const match = /^bytes=(\\d+)-(\\d*)$/.exec(range);
+        if (!match) return new Response(null, { status: 416, headers: { "content-range": `bytes */${head.size}` } });
+        const start = Number(match[1]);
+        const end = match[2] ? Math.min(Number(match[2]), head.size - 1) : head.size - 1;
+        if (start >= head.size || end < start) {
+          return new Response(null, { status: 416, headers: { "content-range": `bytes */${head.size}` } });
+        }
+        const object = await env.MEDIA_BUCKET.get(key, { range: { offset: start, length: end - start + 1 } });
+        if (!object) return json({ error: "Not found." }, 404);
+        headers.set("content-length", String(end - start + 1));
+        headers.set("content-range", `bytes ${start}-${end}/${head.size}`);
+        return new Response(request.method === "HEAD" ? null : object.body, { status: 206, headers });
+      }
+      const object = await env.MEDIA_BUCKET.get(key);
+      if (!object) return json({ error: "Not found." }, 404);
+      headers.set("content-length", String(object.size));
+      return new Response(request.method === "HEAD" ? null : object.body, { headers });
+    }
+
     // Authenticated Edits source upload. The object key is derived from the
     // creator-owned Firestore document; callers cannot choose arbitrary R2 keys.
     if (url.pathname.startsWith("/edits/upload/") && ["PUT", "DELETE"].includes(request.method)) {
