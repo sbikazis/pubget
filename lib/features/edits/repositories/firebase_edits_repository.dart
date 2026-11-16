@@ -249,7 +249,7 @@ class FirebaseEditsRepository
     await uploadEditVideoToR2(
       editId: editId,
       source: source,
-      // The Edit pipeline normalizes supported sources to MP4 before upload.
+      // Preserve the Edit upload API's MP4-only contract.
       contentType: 'video/mp4',
       onProgress: onProgress,
     );
