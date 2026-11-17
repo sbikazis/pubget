@@ -147,7 +147,7 @@ async function upsertPage(base:string,bearer:string,bucket:string,items:GcsObjec
       sourceMd5:item.md5Hash ?? "",sourceCrc32c:item.crc32c ?? "",
       sourceUpdatedAt:item.updated ?? item.timeCreated ?? "",
       sourceMetadata:metadataMap(item.metadata),contentMetadata:httpMeta(item),
-      status:verified?"verified":"pending",attempts:same?Number(old?.attempts ?? 0):0,
+      status:verified?"verified":same&&old?.status==="failed"&&Number(old?.attempts??0)>=MAX_RETRIES?"failed":"pending",attempts:same?Number(old?.attempts ?? 0):0,
       sourceSha256:verified?old?.sourceSha256 ?? "":"",
       destinationSha256:verified?old?.destinationSha256 ?? "":"",
       verifiedAt:verified?old?.verifiedAt ?? "":"",
@@ -218,7 +218,7 @@ async function copyObject(env:StorageMigrationEnv,base:string,fsToken:string,gcs
  const source=await fetch(url,{headers:{Authorization:"Bearer "+gcsToken}});
  if(!source.ok||!source.body){
   const attempts=Number(d.attempts??0)+1;
-  await patchManifest(base,fsToken,id,{status:attempts>=MAX_RETRIES?"failed":"pending",attempts,lastError:"GCS download failed ("+source.status+")."});
+  await patchManifest(base,fsToken,id,{status:"failed",attempts,lastError:"GCS download failed ("+source.status+")."});
   return {path,status:"failed",reason:"source-http-"+source.status};
  }
  const sourceHash=hashBody(source.body);
@@ -345,7 +345,7 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
       const stale=plain(row.document),attempted=Date.parse(String(stale.lastAttemptAt??""));
       if(!Number.isFinite(attempted)||Date.now()-attempted>15*60*1000){
        const staleId=row.document.name.split("/").pop()??"",attempts=Number(stale.attempts??0)+1;
-       await patchManifest(base,fsToken,staleId,{status:attempts>=MAX_RETRIES?"failed":"pending",attempts,lastError:"Recovered an interrupted copy attempt."});
+       await patchManifest(base,fsToken,staleId,{status:"failed",attempts,lastError:"Recovered an interrupted copy attempt."});
       }
      }
     }
