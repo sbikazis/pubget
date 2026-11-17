@@ -394,7 +394,14 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
     try{results.push(await copyObject(env,base,fsToken,gcsToken,doc,dryRun));}
     catch(error){
      const data=plain(doc),id=doc.name.split("/").pop()??"",attempts=Number(data.attempts??0)+1;
-     if(!dryRun)await patchManifest(base,fsToken,id,{status:"failed",attempts,lastError:"Copy attempt failed; retry is bounded."});
+     if(!dryRun){
+      const key=String(data.sourcePath??"");
+      const partial=await env.MEDIA_BUCKET.head(key);
+      if(partial?.customMetadata?.migrationSourceGeneration===String(data.sourceGeneration??"")){
+       await env.MEDIA_BUCKET.delete(key);
+      }
+      await patchManifest(base,fsToken,id,{status:"failed",attempts,lastError:"Copy attempt failed; retry is bounded."});
+     }
      results.push({path:data.sourcePath,status:"failed",reason:"copy-attempt-failed",attempts});
     }
    }
