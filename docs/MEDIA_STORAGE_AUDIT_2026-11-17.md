@@ -27,6 +27,14 @@ No production Worker or Firebase deployment is implied.
 | Stickers and chat backgrounds in lib_legacy | Firebase Storage SDK | Legacy download URLs | Legacy-only source; confirm runtime reachability before migration or removal |
 | Legacy avatar privacy token rotation | Firebase Storage metadata via avatarPrivacy.js | Applies only to old Firebase avatar objects | Retained for legacy compatibility |
 
+
+The legacy repository's optional reels=true mode is not treated as a separate
+migrated collection: no active construction of FirebaseEditsRepository with
+that flag, no matching startReelUpload/finalizeReelUpload server exports, and
+no Firestore /reels rules were found. The new R2 flow covers the active
+Edits-backed Reel upload path; a distinct reels collection would require its
+own supported server contract before it can be enabled.
+
 ## Security and lifecycle observations
 
 - The R2 bucket remains private. User uploads use Firebase ID-token authentication;
