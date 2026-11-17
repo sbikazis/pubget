@@ -141,6 +141,33 @@ describe("Firebase Storage migration primitives", () => {
     expect(first).toBeTruthy();
     await expect(hooks.acquireLease(base, "service-token")).rejects.toThrow(/lease/i);
   });
+  it("does not download the GCS source again for a matching verified generation", async () => {
+    const state = setup();
+    const first = await hooks.copyObject(
+      {MEDIA_BUCKET:state.bucket} as never,
+      "https://firestore.googleapis.com/v1/projects/pubget-aaf27/databases/(default)/documents",
+      "firestore-token","gcs-token",state.doc,false,
+    );
+    expect(first.status).toBe("verified");
+    const sourceHash = String((state.manifest().sourceSha256 as {stringValue:string}).stringValue);
+    const verifiedDoc = {
+      ...state.doc,
+      fields: {
+        ...state.doc.fields,
+        status: {stringValue:"verified"},
+        destinationSha256: {stringValue:sourceHash},
+      },
+    };
+    const before = state.requests.filter(url=>url.includes("alt=media")).length;
+    const second = await hooks.copyObject(
+      {MEDIA_BUCKET:state.bucket} as never,
+      "https://firestore.googleapis.com/v1/projects/pubget-aaf27/databases/(default)/documents",
+      "firestore-token","gcs-token",verifiedDoc,false,
+    );
+    expect(second).toMatchObject({status:"verified",skipped:true});
+    expect(state.requests.filter(url=>url.includes("alt=media")).length).toBe(before);
+  });
+
 });
 
 
