@@ -99,8 +99,6 @@ describe("Firebase Storage migration primitives", () => {
       sourcePath: "images/a/a.jpg", status: "verified",
       sourceGeneration: "7", sizeBytes: 6, sourceSha256: "a".repeat(64), destinationSha256: "a".repeat(64),
     }, "7", 5)).toBe(false);
-  });
-
     expect(hooks.isVerifiedManifestRecord("images/a/a.jpg", {
       sourcePath: "images/a/a.jpg", status: "verified", sourceGeneration: "7",
       sourceSha256: "a".repeat(64), destinationSha256: "b".repeat(64),
