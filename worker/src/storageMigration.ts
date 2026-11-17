@@ -257,6 +257,13 @@ async function copyObject(env:StorageMigrationEnv,base:string,fsToken:string,gcs
   customMetadata:custom,
  });
  const src=await sourceHash.result;
+ const afterCopy=await getGcsObject(String(d.sourceBucket),path,gcsToken);
+ if(afterCopy.generation!==generation||
+    (String(d.sourceMetageneration??"")!==""&&String(afterCopy.metageneration??"")!==String(d.sourceMetageneration))){
+  await env.MEDIA_BUCKET.delete(path);
+  await patchManifest(base,fsToken,id,{status:"failed",attempts:Number(d.attempts??0)+1,lastError:"Source metadata changed during copy; inventory again."});
+  return {path,status:"failed",reason:"source-changed-during-copy"};
+ }
  const object=await env.MEDIA_BUCKET.get(path);
  if(!object){await patchManifest(base,fsToken,id,{status:"failed",attempts:Number(d.attempts??0)+1,lastError:"R2 object missing after write."});return {path,status:"failed",reason:"r2-missing"};}
  const dst=await digestBody(object.body),head=await env.MEDIA_BUCKET.head(path);
