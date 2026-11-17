@@ -375,4 +375,4 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
  return reply({error:"Unknown migration operation."},404);
  } finally { if(lease) await releaseLease(base,fsToken,lease); }
 }
-export const storageMigrationTestHooks={Sha256,hashBody,validPath,metadataMap,MAX_RETRIES,copyObject,isVerifiedManifestRecord};
+export const storageMigrationTestHooks={Sha256,hashBody,validPath,metadataMap,MAX_RETRIES,copyObject,isVerifiedManifestRecord,gcsList,acquireLease};
