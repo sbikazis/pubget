@@ -861,7 +861,16 @@ class _KirariUploadPageState extends State<KirariUploadPage> {
     final selectedTracks = _audioTracks.where((track) => track.id == _audioId);
     final selectedTrack = selectedTracks.isEmpty ? null : selectedTracks.first;
     return Scaffold(
-      appBar: AppBar(title: Text(copy.create)),
+      appBar: AppBar(
+        title: Text(copy.create),
+        actions: [
+          IconButton(
+            tooltip: copy.analyticsTitle,
+            icon: const Icon(Icons.analytics_outlined),
+            onPressed: () => Navigator.of(context).pushNamed('/kirari/analytics'),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

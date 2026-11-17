@@ -63,6 +63,7 @@ import '../features/edits/repositories/firebase_edits_repository.dart';
 import '../features/edits/repositories/unavailable_edits_repository.dart';
 import '../features/edits/screens/edit_feed_page.dart';
 import '../features/kirari/data/kirari_repository.dart';
+import '../features/kirari/screens/kirari_analytics_page.dart';
 import '../features/kirari/screens/kirari_upload_page.dart';
 import '../features/notifications/widgets/notification_deep_link_binder.dart';
 import '../features/edits/l10n/edit_copy.dart';
@@ -868,6 +869,7 @@ class _PubgetRouterHostState extends State<_PubgetRouterHost> {
         '/inventory': const InventoryPage(),
         '/premium': const PremiumPage(),
         '/economy/history': const EconomyHistoryPage(),
+        '/kirari/analytics': const KirariAnalyticsPage(),
       },
       parameterizedPages: <String, ParameterizedPageBuilder>{
         '/reels/upload': (parameters) =>

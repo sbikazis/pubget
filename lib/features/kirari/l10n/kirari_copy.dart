@@ -127,4 +127,32 @@ final class KirariCopy {
     'Kirari upload received.',
     'تم استلام فيديو كيراري.',
   );
+  String get analyticsTitle => _strings.pick('Creator analytics', 'تحليلات الصانع');
+  String get analyticsRefresh => _strings.pick('Refresh analytics', 'تحديث التحليلات');
+  String get analyticsNoData => _strings.pick('No published videos yet. Analytics appear after your first reel is live.', 'لا توجد فيديوهات منشورة بعد. ستظهر التحليلات بعد نشر أول ريل.');
+  String get analyticsLoadError => _strings.pick('Could not load analytics. Check your connection and retry.', 'تعذّر تحميل التحليلات. تحقق من الاتصال وحاول مجددًا.');
+  String get analyticsOverview => _strings.pick('Overview', 'نظرة عامة');
+  String get analyticsImpressions => _strings.pick('Impressions', 'الظهور');
+  String get analyticsViews => _strings.pick('Views', 'المشاهدات');
+  String get analyticsQualifiedViews => _strings.pick('Qualified views', 'مشاهدات مؤهلة');
+  String get analyticsWatchTime => _strings.pick('Watch time', 'وقت المشاهدة');
+  String get analyticsAverageWatch => _strings.pick('Average watch', 'متوسط المشاهدة');
+  String get analyticsCompletionRate => _strings.pick('Completion rate', 'نسبة الإكمال');
+  String get analyticsReplayRate => _strings.pick('Replay rate', 'نسبة الإعادة');
+  String get analyticsEngagementRate => _strings.pick('Engagement rate', 'معدل التفاعل');
+  String get analyticsEarlySkips => _strings.pick('Early skips', 'تخطٍ مبكر');
+  String get analyticsLikes => _strings.pick('Likes', 'الإعجابات');
+  String get analyticsComments => _strings.pick('Comments', 'التعليقات');
+  String get analyticsSaves => _strings.pick('Saves', 'الحفظ');
+  String get analyticsShares => _strings.pick('Shares', 'المشاركات');
+  String get analyticsReels => _strings.pick('Reels', 'الريلز');
+  String get analyticsTopReels => _strings.pick('Top reels', 'أفضل الريلز');
+  String get analyticsTrending => _strings.pick('Trending reels', 'الريلز الرائجة');
+  String get analyticsTopHashtags => _strings.pick('Top hashtags', 'أفضل الوسوم');
+  String get analyticsTopAnime => _strings.pick('Top anime', 'أفضل الأنميات');
+  String get analyticsTopCharacters => _strings.pick('Top characters', 'أفضل الشخصيات');
+  String get analyticsTopAudio => _strings.pick('Top audio', 'أفضل الصوتيات');
+  String get analyticsScope => _strings.pick('Based on the latest published reels', 'بناءً على آخر الريلز المنشورة');
+  String get analyticsScopeTruncated => _strings.pick('Showing the most recent reels only', 'عرض الريلز الأحدث فقط');
+  String get analyticsNotTracked => _strings.pick('Not tracked yet: unique viewers, replies, new fans, respect, profile visits, traffic sources and retention.', 'غير متاحة بعد: المشاهدون الفريدون، الردود، المعجبون الجدد، الاحترام، زيارات الملف، مصادر الزيارة ومنحنى الاحتفاظ.');
 }
