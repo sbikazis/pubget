@@ -23,7 +23,7 @@ const MANIFEST = "storageMigrationManifest";
 const CONTROL = "storageMigration/control";
 const MAX_BYTES = 500 * 1024 * 1024;
 const MAX_RETRIES = 5;
-const MAX_BATCH = 8;
+const MAX_BATCH = 1;
 const MAX_PAGE = 1000;
 const OMIT = new Set(["firebasestoragedownloadtokens"]);
 
