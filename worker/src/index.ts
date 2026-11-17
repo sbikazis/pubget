@@ -1,7 +1,7 @@
 import { authenticateKirariService } from "./kirariServiceAuth.cjs";
 import { verifyFirebaseIdToken } from "./firebaseAuth";
 import { handleIdentityRequest } from "./identity";
-import { handleStorageMigrationRequest } from "./storageMigration";
+import { handleStorageMigrationRequest, isVerifiedMigratedObject } from "./storageMigration";
 
 export interface Env {
   MEDIA_BUCKET: R2Bucket;
@@ -871,6 +871,10 @@ export default {
       const scoped = parts.length === 4;
       const object = await env.MEDIA_BUCKET.head(key);
       if (!object) return json({ error: "Media not found." }, 404);
+      if (object.customMetadata?.migrationSource === "firebase-storage" &&
+          !await isVerifiedMigratedObject(key, env)) {
+        return json({ error: "Legacy media is not verified in R2 yet." }, 404);
+      }
       if (scoped) {
         const scopeType = parts[0];
         const scopeId = parts[1];
