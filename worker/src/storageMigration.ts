@@ -156,7 +156,7 @@ async function upsertPage(base:string,bearer:string,bucket:string,items:GcsObjec
   const writes=[];
   for (const item of items) {
     const id=await hashText(item.name), old=previous.get(item.name);
-    const same=old?.sourceGeneration===item.generation;
+    const same=old?.sourceGeneration===item.generation&&String(old?.sourceMetageneration??"")===String(item.metageneration??"");
     const verified=same && old?.status==="verified";
     const fields:Record<string,unknown>={
       sourcePath:item.name,sourceBucket:bucket,sourceGeneration:item.generation,
@@ -225,7 +225,7 @@ async function copyObject(env:StorageMigrationEnv,base:string,fsToken:string,gcs
  if(dryRun)return {path,status:"would-copy",sizeBytes:size};
  if(Number(d.attempts??0)>=MAX_RETRIES)return {path,status:"failed",reason:"retry-limit-reached"};
  const latest=await getGcsObject(String(d.sourceBucket),path,gcsToken);
- if(latest.generation!==generation||Number(latest.size)!==size||String(latest.metageneration??"")!==String(d.sourceMetageneration??"")){
+ if(latest.generation!==generation||Number(latest.size)!==size||(String(d.sourceMetageneration??"")!==""&&String(latest.metageneration??"")!==String(d.sourceMetageneration))){
   await patchManifest(base,fsToken,id,{status:"failed",lastError:"Source generation changed; run inventory again.",attempts:Number(d.attempts??0)+1});
   return {path,status:"failed",reason:"source-changed"};
  }
