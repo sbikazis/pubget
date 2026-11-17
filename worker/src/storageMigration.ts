@@ -199,22 +199,31 @@ class Sha256 {
   finish(){const bits=this.length*8n;this.buf[this.used++]=128;if(this.used>56){this.buf.fill(0,this.used);this.block(this.buf);this.used=0;}this.buf.fill(0,this.used,56);const v=new DataView(this.buf.buffer);v.setUint32(56,Number((bits>>32n)&0xffffffffn));v.setUint32(60,Number(bits&0xffffffffn));this.block(this.buf);const out=new Uint8Array(32),o=new DataView(out.buffer);for(let i=0;i<8;i++)o.setUint32(i*4,this.h[i]);return Array.from(out,b=>b.toString(16).padStart(2,"0")).join("");}
   block(b:Uint8Array){const w=new Uint32Array(64),v=new DataView(b.buffer,b.byteOffset,64),r=(x:number,n:number)=>(x>>>n)|(x<<(32-n));for(let i=0;i<16;i++)w[i]=v.getUint32(i*4);for(let i=16;i<64;i++){const x=w[i-15],y=w[i-2],s0=r(x,7)^r(x,18)^(x>>>3),s1=r(y,17)^r(y,19)^(y>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0;}let [a,b0,c,d,e,f,g,h]=this.h;for(let i=0;i<64;i++){const s1=r(e,6)^r(e,11)^r(e,25),ch=(e&f)^(~e&g),t1=(h+s1+ch+K[i]+w[i])>>>0,s0=r(a,2)^r(a,13)^r(a,22),maj=(a&b0)^(a&c)^(b0&c),t2=(s0+maj)>>>0;h=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b0;b0=a;a=(t1+t2)>>>0;}this.h[0]=(this.h[0]+a)>>>0;this.h[1]=(this.h[1]+b0)>>>0;this.h[2]=(this.h[2]+c)>>>0;this.h[3]=(this.h[3]+d)>>>0;this.h[4]=(this.h[4]+e)>>>0;this.h[5]=(this.h[5]+f)>>>0;this.h[6]=(this.h[6]+g)>>>0;this.h[7]=(this.h[7]+h)>>>0;}
 }
-async function digestBody(body:ReadableStream<Uint8Array>){
- const hash=new Sha256();let size=0;
- const hashed=body.pipeThrough(new TransformStream<Uint8Array,Uint8Array>({
-  transform(chunk,controller){size+=chunk.length;hash.update(chunk);controller.enqueue(chunk);}
- }));
- await hashed.pipeTo(new WritableStream({write(){}}));
- return {size,sha256:hash.finish()};
-}
 function hashBody(body:ReadableStream<Uint8Array>){
  const hash=new Sha256();let size=0;
- const [pass,hashInput]=body.tee();
- const hashed=hashInput.pipeThrough(new TransformStream<Uint8Array,Uint8Array>({
-  transform(chunk,controller){size+=chunk.length;hash.update(chunk);controller.enqueue(chunk);}
- }));
- const result=(async()=>{await hashed.pipeTo(new WritableStream({write(){}}));return {size,sha256:hash.finish()};})();
- return {stream:pass,result};
+ const reader=body.getReader();
+ let resolve!:(value:{size:number;sha256:string})=>void;
+ let reject!:(reason:unknown)=>void;
+ const result=new Promise<{size:number;sha256:string}>((yes,no)=>{resolve=yes;reject=no;});
+ // Mark the promise handled if the destination cancels early; callers still
+ // await it on successful writes and receive the original rejection.
+ result.catch(()=>undefined);
+ const stream=new ReadableStream<Uint8Array>({
+  async pull(controller){
+   try{
+    const next=await reader.read();
+    if(next.done){resolve({size,sha256:hash.finish()});controller.close();return;}
+    size+=next.value.length;hash.update(next.value);controller.enqueue(next.value);
+   }catch(error){reject(error);controller.error(error);}
+  },
+  async cancel(reason){try{await reader.cancel(reason);}finally{reject(reason);}},
+ });
+ return {stream,result};
+}
+async function digestBody(body:ReadableStream<Uint8Array>){
+ const hashed=hashBody(body);
+ await hashed.stream.pipeTo(new WritableStream({write(){}}));
+ return await hashed.result;
 }
 async function copyObject(env:StorageMigrationEnv,base:string,fsToken:string,gcsToken:string,doc:FsDocument,dryRun:boolean){
  const d=plain(doc),path=String(d.sourcePath??""),generation=String(d.sourceGeneration??""),size=Number(d.sizeBytes),id=doc.name.split("/").pop()??"";
