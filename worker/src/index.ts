@@ -391,7 +391,7 @@ async function authorizeConversation(
 }
 
 export function validEditsServiceKey(key: string): boolean {
-  return /^(?:edits\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\.mp4|edits-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}(?:_(?:720|480))?\.mp4|edits\/[A-Za-z0-9_-]{1,128}\/t_[A-Za-z0-9_-]{1,128}\.jpg)$/.test(key);
+  return /^(?:edits\/[A-Za-z0-9_-]{1,128}\/(?![A-Za-z0-9_-]{1,128}_360\.mp4$)[A-Za-z0-9_-]{1,128}\.mp4|edits-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}(?:_(?:720|480))?\.mp4|edits\/[A-Za-z0-9_-]{1,128}\/t_[A-Za-z0-9_-]{1,128}\.jpg)$/.test(key);
 }
 
 export function validKirariServiceKey(key: string): boolean {
