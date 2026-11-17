@@ -11,6 +11,8 @@ type FirebaseClaims = {
   exp?: unknown;
   iat?: unknown;
   auth_time?: unknown;
+  email_verified?: unknown;
+  admin?: unknown;
 };
 
 type JwkSet = { keys: Array<JsonWebKey & { kid?: string }> };
