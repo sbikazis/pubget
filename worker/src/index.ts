@@ -1,10 +1,12 @@
 import { authenticateKirariService } from "./kirariServiceAuth.cjs";
 import { verifyFirebaseIdToken } from "./firebaseAuth";
 import { handleIdentityRequest } from "./identity";
+import { handleStorageMigrationRequest } from "./storageMigration";
 
 export interface Env {
   MEDIA_BUCKET: R2Bucket;
   FIREBASE_PROJECT_ID: string;
+  FIREBASE_STORAGE_BUCKET?: string;
   MEDIA_SIGNING_SECRET: string;
   KIRARI_R2_SERVICE_ACCOUNT_EMAIL: string;
   KIRARI_R2_SERVICE_AUDIENCE: string;
@@ -410,6 +412,14 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    try {
+      const migrationResponse = await handleStorageMigrationRequest(request, env);
+      if (migrationResponse) return migrationResponse;
+    } catch (error) {
+      console.error("Storage migration request failed", error);
+      return json({ error: "Storage migration request failed." }, 503);
+    }
 
     if (url.pathname.startsWith("/identity/")) {
       try {
