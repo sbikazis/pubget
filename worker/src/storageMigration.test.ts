@@ -259,7 +259,7 @@ describe("verified GCS to R2 copy lifecycle", () => {
     expect(state.getDestination()).toBeNull();
     expect(state.manifest()).toMatchObject({
       status:{stringValue:"failed"},
-      lastError:{stringValue:expect.stringContaining("verification failed")},
+      lastError:{stringValue:expect.stringContaining("verification mismatch")},
     });
     expect(state.requests.some(url=>url.includes("alt=media"))).toBe(true);
   });
