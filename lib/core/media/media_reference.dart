@@ -4,6 +4,9 @@
 library;
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+
+import '../errors/failure.dart';
 
 import 'media_storage_provider.dart';
 import 'r2_media_storage_provider.dart';
@@ -68,23 +71,41 @@ Future<String?> resolveMediaDownloadUrl(String reference) async {
   final value = reference.trim();
   if (value.isEmpty || isOpaqueMediaReference(value)) return null;
   if (isRemoteMediaUrl(value)) return value;
-  if (!isR2MediaKey(value)) return null;
 
-  final config = resolveMediaBackendConfig();
-  if (!config.isConfigured) return null;
-  final provider = R2MediaStorageProvider(
-    workerUrl: config.workerUrl,
-    idTokenProvider: () async =>
-        await FirebaseAuth.instance.currentUser?.getIdToken(),
-  );
+  // New/current key shapes try verified R2 first. The Worker returns 404 for
+  // an object not yet verified in the persistent migration manifest; only
+  // that condition falls back to the original Firebase Storage object.
+  if (isR2MediaKey(value)) {
+    final config = resolveMediaBackendConfig();
+    if (config.isConfigured) {
+      final provider = R2MediaStorageProvider(
+        workerUrl: config.workerUrl,
+        idTokenProvider: () async =>
+            await FirebaseAuth.instance.currentUser?.getIdToken(),
+      );
+      try {
+        return await provider.resolveUrl(value);
+      } on NotFoundError {
+        // The source object is intentionally retained during backfill.
+      } on Object {
+        return null;
+      } finally {
+        provider.close();
+      }
+    }
+  }
+
+  // Legacy Firebase object paths outside the R2 key grammar remain readable.
+  // Never accept a URL or traversal-like path here; Firebase Storage rules
+  // still enforce the signed-in user's read permissions.
+  if (value.startsWith('/') || value.contains('..') ||
+      value.contains('\\') || value.contains('?') || value.length > 1024) {
+    return null;
+  }
   try {
-    return await provider.resolveUrl(value);
+    return await FirebaseStorage.instance.ref(value).getDownloadURL();
   } on Object {
     return null;
-  } finally {
-    // AppImageLoader resolves every R2 image through this one-shot provider.
-    // Close its HTTP client so a long feed does not accumulate idle pools.
-    provider.close();
   }
 }
 
