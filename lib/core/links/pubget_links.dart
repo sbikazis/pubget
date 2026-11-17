@@ -79,20 +79,22 @@ abstract final class PubgetLinks {
   static String reelHighlight(String reelId) =>
       canonical(reelHighlightPath(reelId));
 
-  static String animeReelsPath(String animeId) =>
-      _encodedPath('/reels/anime', animeId) ?? '/reels';
+  /// Related Reels are shown on the entity that owns them. The old
+  /// `/reels/{scope}/{id}` paths never had a page of their own, so new links
+  /// use the canonical entity route instead; `AppRouter` still redirects
+  /// previously shared scoped links to the same destination.
+  static String animeReelsPath(String animeId) => animePath(animeId);
 
   static String animeReels(String animeId) =>
       canonical(animeReelsPath(animeId));
 
   static String characterReelsPath(String characterId) =>
-      _encodedPath('/reels/character', characterId) ?? '/reels';
+      characterPath(characterId);
 
   static String characterReels(String characterId) =>
       canonical(characterReelsPath(characterId));
 
-  static String creatorReelsPath(String creatorId) =>
-      _encodedPath('/reels/creator', creatorId) ?? '/reels';
+  static String creatorReelsPath(String creatorId) => profilePath(creatorId);
 
   static String creatorReels(String creatorId) =>
       canonical(creatorReelsPath(creatorId));

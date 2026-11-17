@@ -52,39 +52,76 @@ void main() {
     expect(me.parameters['uid'], 'alice');
   });
 
-  test('pending anime deep link is restored after the guard allows it', () async {
-    var authenticated = false;
-    final delegate = AppRouterDelegate(
-      homePage: const Text('Splash'),
-      parameterizedPages: <String, ParameterizedPageBuilder>{
-        '/anime/details': (parameters) =>
-            Text('Anime ${parameters['animeId']}'),
-        '/login': (_) => const Text('Login'),
-      },
-      initialRoute: const ParameterizedRoute(
-        path: '/anime/details',
-        parameters: {'animeId': '52991'},
-      ),
-      routeGuard: (path) {
-        if (path == '/anime/details' && !authenticated) return '/login';
-        return null;
-      },
-    );
+  test('anime hub subpaths resolve to registered page keys', () async {
+    final parser = AppRouteInformationParser();
 
-    expect((delegate.currentConfiguration as ParameterizedRoute).path, '/login');
-    authenticated = true;
-    await delegate.setNewRoutePath(const ParameterizedRoute(path: '/login'));
-    expect(
-      (delegate.currentConfiguration as ParameterizedRoute).path,
-      '/anime/details',
-    );
-    expect(
-      (delegate.currentConfiguration as ParameterizedRoute).parameters['animeId'],
-      '52991',
-    );
+    Future<ParameterizedRoute> parse(String raw) async =>
+        (await parser.parseRouteInformation(
+              RouteInformation(uri: Uri.parse(raw)),
+            ))
+            as ParameterizedRoute;
+
+    final character = await parse('/anime/character/c1');
+    expect(character.path, '/anime/character');
+    expect(character.parameters['characterId'], 'c1');
+
+    final favorites = await parse('/anime/characters/favorites?uid=u1');
+    expect(favorites.path, '/anime/characters/favorites');
+    expect(favorites.parameters['uid'], 'u1');
+
+    final pubgetRatings = await parse('/anime/ratings/pubget');
+    expect(pubgetRatings.path, '/anime/ratings/pubget');
+
+    final studio = await parse('/anime/studio?studioId=21&name=Kyoto');
+    expect(studio.path, '/anime/studio');
+    expect(studio.parameters['studioId'], '21');
+
+    final updated = await parse('/anime/updated');
+    expect(updated.path, '/anime/updated');
   });
 
-  testWidgets('invalid anime id still routes to the details page', (tester) async {
+  test(
+    'pending anime deep link is restored after the guard allows it',
+    () async {
+      var authenticated = false;
+      final delegate = AppRouterDelegate(
+        homePage: const Text('Splash'),
+        parameterizedPages: <String, ParameterizedPageBuilder>{
+          '/anime/details': (parameters) =>
+              Text('Anime ${parameters['animeId']}'),
+          '/login': (_) => const Text('Login'),
+        },
+        initialRoute: const ParameterizedRoute(
+          path: '/anime/details',
+          parameters: {'animeId': '52991'},
+        ),
+        routeGuard: (path) {
+          if (path == '/anime/details' && !authenticated) return '/login';
+          return null;
+        },
+      );
+
+      expect(
+        (delegate.currentConfiguration as ParameterizedRoute).path,
+        '/login',
+      );
+      authenticated = true;
+      await delegate.setNewRoutePath(const ParameterizedRoute(path: '/login'));
+      expect(
+        (delegate.currentConfiguration as ParameterizedRoute).path,
+        '/anime/details',
+      );
+      expect(
+        (delegate.currentConfiguration as ParameterizedRoute)
+            .parameters['animeId'],
+        '52991',
+      );
+    },
+  );
+
+  testWidgets('invalid anime id still routes to the details page', (
+    tester,
+  ) async {
     final delegate = AppRouterDelegate(
       homePage: const Text('Splash'),
       parameterizedPages: <String, ParameterizedPageBuilder>{

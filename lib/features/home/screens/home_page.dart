@@ -6,7 +6,6 @@ import '../../../app/app_shell_scope.dart';
 import '../../../core/branding/pubget_logo.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/loading/loading_state.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/pubget_design_system.dart';
 import '../../authentication/providers/auth_provider.dart';
@@ -141,19 +140,19 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
   static const barHeight = 56.0;
   static const iconSize = 36.0;
   static const logoSize = 54.0;
-  static const coinStripHeight = 36.0;
-  static const itemGap = 8.0;
   static const edgePad = 8.0;
 
   bool get _showCoins => coins != null;
 
   @override
-  Size get preferredSize =>
-      Size.fromHeight(barHeight + (_showCoins ? coinStripHeight : 0));
+  Size get preferredSize => const Size.fromHeight(barHeight);
 
   @override
   Widget build(BuildContext context) {
     final copy = AppStrings.of(context);
+    // Master Spec §4.1 fixes this RTL order: logo, coins+, Dragon Store,
+    // search, notifications with a counted badge, avatar, then the drawer.
+    // Settings deliberately lives in the drawer, not in this crowded row.
     return AppBar(
       automaticallyImplyLeading: false,
       toolbarHeight: barHeight,
@@ -162,81 +161,68 @@ class HomeTopBar extends StatelessWidget implements PreferredSizeWidget {
       title: SizedBox(
         height: barHeight,
         width: double.infinity,
-        child: Directionality(
-          textDirection: TextDirection.ltr,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: edgePad),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        _BarIconBox(
-                          child: GestureDetector(
-                            key: const Key('home-avatar'),
-                            onTap: () => AppNavigation.go(context, '/profile'),
-                            child: FittedBox(
-                              child: EquippedAvatar(
-                                imageUrl: avatarUrl,
-                                name: name,
-                                frameId: frameId,
-                                size: PubgetAvatarSize.nav,
-                                compactFrame: true,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: itemGap),
-                        _BarIconBox(
-                          child: PubgetLuxuryNotifyButton(
-                            tooltip: copy.notifications,
-                            badge: notifyCount,
-                            size: iconSize,
-                            onPressed: () =>
-                                AppNavigation.go(context, '/notifications'),
-                          ),
-                        ),
-                      ],
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: edgePad),
+              child: Directionality(
+                textDirection: TextDirection.rtl,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    const PubgetLogoMark(key: Key('home-logo'), size: logoSize),
+                    if (_showCoins)
+                      PubgetKatanaCoinChip(
+                        balance: coins!,
+                        tooltip: copy.store,
+                        compact: true,
+                        onPressed: () => AppNavigation.go(context, '/store'),
+                      ),
+                    PubgetLuxuryStoreButton(
+                      tooltip: copy.store,
+                      size: iconSize,
+                      onPressed: () => AppNavigation.go(context, '/store'),
                     ),
-                  ),
-                ),
-                const PubgetLogoMark(key: Key('home-logo'), size: logoSize),
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        _BarIconBox(
-                          child: PubgetLuxurySettingsButton(
-                            tooltip: copy.settings,
-                            size: iconSize,
-                            onPressed: () =>
-                                AppNavigation.go(context, '/settings'),
+                    PubgetLuxurySearchButton(
+                      tooltip: copy.search,
+                      size: iconSize,
+                      onPressed: () => AppNavigation.go(context, '/search'),
+                    ),
+                    PubgetLuxuryNotifyButton(
+                      tooltip: copy.notifications,
+                      badge: notifyCount,
+                      size: iconSize,
+                      onPressed: () =>
+                          AppNavigation.go(context, '/notifications'),
+                    ),
+                    _BarIconBox(
+                      child: GestureDetector(
+                        key: const Key('home-avatar'),
+                        onTap: () => AppNavigation.go(context, '/profile'),
+                        child: FittedBox(
+                          child: EquippedAvatar(
+                            imageUrl: avatarUrl,
+                            name: name,
+                            frameId: frameId,
+                            size: PubgetAvatarSize.nav,
+                            compactFrame: true,
                           ),
                         ),
-                        const SizedBox(width: itemGap),
-                        const _BarIconBox(
-                          child: AppShellMenuButton(size: iconSize),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
+                    const _BarIconBox(
+                      child: AppShellMenuButton(size: iconSize),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
       ),
-      bottom: _showCoins
-          ? PreferredSize(
-              preferredSize: const Size.fromHeight(coinStripHeight),
-              child: _HomeCoinStrip(balance: coins!, tooltip: copy.store),
-            )
-          : null,
     );
   }
 }
@@ -249,36 +235,6 @@ class _BarIconBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox.square(dimension: HomeTopBar.iconSize, child: child);
-  }
-}
-
-class _HomeCoinStrip extends StatelessWidget {
-  const _HomeCoinStrip({required this.balance, required this.tooltip});
-
-  final int balance;
-  final String tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.royalNight.withValues(alpha: 0.38),
-      child: SizedBox(
-        height: HomeTopBar.coinStripHeight,
-        width: double.infinity,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: PubgetKatanaCoinChip(
-              balance: balance,
-              tooltip: tooltip,
-              compact: true,
-              onPressed: () => AppNavigation.go(context, '/store'),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
@@ -597,7 +553,8 @@ class _KirariDiscoverySection extends StatefulWidget {
   const _KirariDiscoverySection();
 
   @override
-  State<_KirariDiscoverySection> createState() => _KirariDiscoverySectionState();
+  State<_KirariDiscoverySection> createState() =>
+      _KirariDiscoverySectionState();
 }
 
 class _KirariDiscoverySectionState extends State<_KirariDiscoverySection> {
@@ -606,24 +563,39 @@ class _KirariDiscoverySectionState extends State<_KirariDiscoverySection> {
   @override
   void initState() {
     super.initState();
-    _future = context.read<KirariRepository>().getFeed(type: 'trending', limit: 6);
+    _future = context.read<KirariRepository>().getFeed(
+      type: 'trending',
+      limit: 6,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final copy = KirariCopy.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        0,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Expanded(child: Text(copy.title, style: Theme.of(context).textTheme.titleLarge)),
-            TextButton(
-              onPressed: () => AppNavigation.go(context, '/reels'),
-              child: Text(copy.trending),
-            ),
-          ]),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  copy.title,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              TextButton(
+                onPressed: () => AppNavigation.go(context, '/reels'),
+                child: Text(copy.trending),
+              ),
+            ],
+          ),
           SizedBox(
             height: 190,
             child: FutureBuilder<KirariFeedPageResult>(
@@ -642,35 +614,58 @@ class _KirariDiscoverySectionState extends State<_KirariDiscoverySection> {
                 return ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: reels.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(width: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final reel = reels[index];
                     return SizedBox(
                       width: 118,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(16),
-                        onTap: () => AppNavigation.go(context, PubgetLinks.reelPath(reel.id)),
+                        onTap: () => AppNavigation.go(
+                          context,
+                          PubgetLinks.reelPath(reel.id),
+                        ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: Stack(fit: StackFit.expand, children: [
-                            if (reel.coverUrl.isNotEmpty)
-                              AppImageLoader(imageUrl: reel.coverUrl, fit: BoxFit.cover,
-                                errorWidget: const ColoredBox(color: Colors.black12)),
-                            if (reel.coverUrl.isEmpty)
-                              const ColoredBox(color: Colors.black12),
-                            Align(
-                              alignment: Alignment.bottomCenter,
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(8),
-                                color: Colors.black54,
-                                child: Text(reel.caption.isEmpty ? '@${reel.creatorId}' : reel.caption,
-                                  maxLines: 2, overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.white)),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (reel.coverUrl.isNotEmpty)
+                                AppImageLoader(
+                                  imageUrl: reel.coverUrl,
+                                  fit: BoxFit.cover,
+                                  errorWidget: const ColoredBox(
+                                    color: Colors.black12,
+                                  ),
+                                ),
+                              if (reel.coverUrl.isEmpty)
+                                const ColoredBox(color: Colors.black12),
+                              Align(
+                                alignment: Alignment.bottomCenter,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(8),
+                                  color: Colors.black54,
+                                  child: Text(
+                                    reel.caption.isEmpty
+                                        ? '@${reel.creatorId}'
+                                        : reel.caption,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ),
                               ),
-                            ),
-                            const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 34)),
-                          ]),
+                              const Center(
+                                child: Icon(
+                                  Icons.play_circle_fill,
+                                  color: Colors.white,
+                                  size: 34,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     );
@@ -684,4 +679,3 @@ class _KirariDiscoverySectionState extends State<_KirariDiscoverySection> {
     );
   }
 }
-
