@@ -128,6 +128,7 @@ final class Edit {
     this.coverFrameMs = 0,
     this.visibility = 'public',
     this.allowRemix = true,
+    this.mediaBackend = 'firebase',
   });
 
   final String id;
@@ -162,6 +163,7 @@ final class Edit {
   final int coverFrameMs;
   final String visibility;
   final bool allowRemix;
+  final String mediaBackend;
 
   EditStatus get statusEnum => EditStatus.parse(status);
   bool get isPublished => statusEnum == EditStatus.published;
@@ -214,17 +216,20 @@ final class Edit {
   }
 
   Edit copyWith({
+    String? videoUrl,
+    String? thumbnailUrl,
     int? likesCount,
     int? commentsCount,
     int? viewsCount,
     String? status,
     EditCounters? counters,
+    String? mediaBackend,
   }) {
     return Edit(
       id: id,
       creatorId: creatorId,
-      videoUrl: videoUrl,
-      thumbnailUrl: thumbnailUrl,
+      videoUrl: videoUrl ?? this.videoUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       caption: caption,
       animeTag: animeTag,
       likesCount: likesCount ?? this.likesCount,
@@ -253,6 +258,7 @@ final class Edit {
       coverFrameMs: coverFrameMs,
       visibility: visibility,
       allowRemix: allowRemix,
+      mediaBackend: mediaBackend ?? this.mediaBackend,
     );
   }
 
@@ -299,6 +305,7 @@ final class Edit {
       coverFrameMs: _int(map['coverFrameMs']),
       visibility: map['visibility'] as String? ?? 'public',
       allowRemix: map['allowRemix'] != false,
+      mediaBackend: map['mediaBackend'] as String? ?? 'firebase',
     );
   }
 
