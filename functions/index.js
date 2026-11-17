@@ -46,6 +46,7 @@ const { createAudioDomain } = require("./src/audioDomain");
 const { createEditPipeline } = require("./src/editPipeline");
 const { createKirariDomain } = require("./src/kirariDomain");
 const { createKirariPipeline } = require("./src/kirariPipeline");
+const { createR2KirariBucket } = require("./src/r2KirariStorage");
 const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createAnimeCatalogDomain } = require("./src/animeCatalogDomain");
@@ -265,16 +266,21 @@ const processEditVideo = createEditPipeline({
   notifications: notificationBuilder,
   FieldValue,
 });
+// Kirari bytes live in Cloudflare R2. The adapter speaks the small
+// GCS-style surface the existing pipeline/domain already use, so a single
+// bucket instance governs source, renditions, covers, audio and deletion.
+const kirariBucket = createR2KirariBucket();
 const processKirariVideo = createKirariPipeline({
   db: getFirestore(),
-  bucket: getStorage().bucket(),
+  bucket: kirariBucket,
 });
 const kirariDomain = createKirariDomain({
   db: getFirestore(),
   FieldValue,
   HttpsError,
-  bucket: getStorage().bucket(),
-  processVideo: processKirariVideo,
+  bucket: kirariBucket,
+  // Processing is woken by the Firestore trigger below, not by a direct call.
+  processVideo: null,
 });
 const editsDomain = createEditsDomain({
   db: lazyFirestore,
@@ -457,9 +463,39 @@ exports.setKirariCreatorMute = onCall(
   { region: "us-central1" },
   kirariDomain.setCreatorMute,
 );
-exports.processKirariVideo = onObjectFinalized(
-  { region: "europe-west3", memory: "2GiB", timeoutSeconds: 540 },
-  processKirariVideo,
+// R2 has no onObjectFinalized. A transition into `processing` is the single
+// wake-up signal, whether it came from finalizeUpload or retryProcessing.
+// The pipeline sets a lease in the same transition, so its own status writes
+// cannot re-enter this trigger.
+exports.processKirariVideo = onDocumentUpdated(
+  {
+    document: "kirari/{reelId}",
+    region: "europe-west3",
+    memory: "2GiB",
+    timeoutSeconds: 540,
+  },
+  async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    if (!before || !after) return null;
+    if (before.status === "processing" || after.status !== "processing") return null;
+    if (after.processingLeaseId) return null;
+    const key = after.originalStoragePath || after.storagePath;
+    if (typeof key !== "string" || !/^kirari\/[^/]+\/[^/]+\/source\.mp4$/.test(key)) {
+      return null;
+    }
+    const [metadata] = await kirariBucket.file(key).getMetadata();
+    const size = Number(metadata.size || 0);
+    return processKirariVideo({
+      data: {
+        name: key,
+        bucket: kirariBucket.name,
+        size,
+        contentType: metadata.contentType || "video/mp4",
+        generation: after.processingStartedAt?.toMillis?.() || Date.now(),
+      },
+    });
+  },
 );
 
 

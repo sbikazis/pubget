@@ -98,8 +98,8 @@ jobs:
         run: flutter test test/kirari_social_state_test.dart
       - name: Kirari persistent video cache tests
         run: flutter test test/kirari_video_cache_test.dart
-      - name: Kirari resumable upload recovery tests
-        run: flutter test test/features/kirari/firebase_resumable_uploader_test.dart
+      - name: Kirari R2 uploader recovery tests
+        run: flutter test test/features/kirari/r2_kirari_source_uploader_test.dart
       - name: Android debug build
         run: flutter build apk --debug --verbose
       - name: Full Flutter test suite (repository baseline; bounded)

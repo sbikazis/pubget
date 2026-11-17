@@ -391,7 +391,7 @@ async function authorizeConversation(
 }
 
 function validKirariServiceKey(key: string): boolean {
-  return /^(?:kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/source\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:360|540|720)\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/cover\.jpg|kirari-audio\/[A-Za-z0-9_-]{1,128}\/audio\.(?:mp3|m4a|aac|ogg))$/.test(key);
+  return /^(?:kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:source\.mp4|cover-source\.jpg)|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:360|540|720)\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/cover\.jpg|kirari-audio\/[A-Za-z0-9_-]{1,128}\/audio\.(?:mp3|m4a|aac|ogg))$/.test(key);
 }
 
 function constantTimeEqual(left: string, right: string): boolean {
@@ -546,6 +546,39 @@ export default {
       if (fields.creatorId?.stringValue !== uid || fields.status?.stringValue !== "uploading" ||
           key !== `kirari/${uid}/${reelId}/source.mp4` || !validKirariServiceKey(key)) {
         return json({ error: "This Kirari upload is not available." }, 403);
+      }
+
+      // Lets the client skip a completed upload after an app restart without
+      // trusting a local "finished" flag or re-sending the whole source.
+      if (routeParts.length === 3 && request.method === "HEAD") {
+        const object = await env.MEDIA_BUCKET.head(key);
+        if (!object) return json({ error: "Kirari source not found." }, 404);
+        return new Response(null, { headers: {
+          ...CORS,
+          "content-length": String(object.size),
+          "content-type": object.httpMetadata?.contentType ?? "video/mp4",
+        } });
+      }
+
+      // Custom covers are written by the same authenticated client before
+      // finalization; the FFmpeg pipeline consumes this exact object key.
+      if (routeParts.length === 4 && routeParts[3] === "cover" && request.method === "PUT") {
+        const size = Number(request.headers.get("content-length"));
+        const contentType = request.headers.get("content-type");
+        if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
+            size > 5 * 1024 * 1024 || contentType !== "image/jpeg") {
+          return json({ error: "Invalid Kirari cover upload." }, 400);
+        }
+        const inspected = await inspectAndRestoreBody(request.body);
+        if (!validFileSignature("image", "image/jpeg", inspected.prefix)) {
+          return json({ error: "The cover file is not a valid JPEG." }, 415);
+        }
+        const coverKey = `kirari/${uid}/${reelId}/cover-source.jpg`;
+        await env.MEDIA_BUCKET.put(coverKey, inspected.stream, {
+          httpMetadata: { contentType: "image/jpeg", cacheControl: "private, no-store" },
+          customMetadata: { uploadedBy: uid, reelId, mediaKind: "kirari-cover" },
+        });
+        return json({ key: coverKey }, 201);
       }
 
       if (routeParts.length === 3 && request.method === "POST") {

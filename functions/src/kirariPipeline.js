@@ -391,6 +391,7 @@ function createKirariPipeline({ db, bucket }) {
       }
       await ref.update({
         status: "published",
+        mediaBackend: "r2",
         moderationStatus: decision.flagged ? "review_pending" : "approved",
         rankingScore: 20,
         velocityScore: 0,
