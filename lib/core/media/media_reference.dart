@@ -115,7 +115,13 @@ Future<String?> resolveMediaDownloadUrl(String reference) async {
     try {
       return await _resolveR2Key(legacyKey);
     } on NotFoundError {
-      return value;
+      // Use the Firebase SDK fallback so Storage Rules still authorize the
+      // caller; do not silently fall back to a long-lived bearer URL token.
+      try {
+        return await FirebaseStorage.instance.ref(legacyKey).getDownloadURL();
+      } on Object {
+        return null;
+      }
     } on Object {
       return null;
     }
