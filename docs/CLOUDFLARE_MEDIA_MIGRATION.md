@@ -95,3 +95,24 @@ production-like end-to-end smoke test is still required for multipart source
 upload, Firestore-triggered FFmpeg processing, signed playback/seek, retry,
 moderation preview, and deletion. Do not deploy until CI and that runtime
 smoke test pass.
+
+
+## Firebase Storage legacy backfill
+
+A separate, resumable backfill runner now lives in
+`worker/src/storageMigration.ts`. It inventories the configured Firebase
+Storage bucket through the GCS JSON API, persists per-object state in Firestore,
+copies each source generation to the same private R2 key, and verifies both
+size and streaming SHA-256 before marking the manifest record verified.
+
+This is a copy-only operation. It does not mutate or delete Firebase objects,
+does not create a KV namespace, does not make R2 public, and does not change
+Firebase Spark or any existing Storage/Firestore rules. The Flutter media
+resolver tries the Worker for supported R2 keys and falls back to the original
+Firebase Storage SDK object only when the Worker reports the R2 object is not
+yet verified. Full legacy HTTPS URLs remain unchanged.
+
+See `docs/FIREBASE_STORAGE_R2_BACKFILL.md` for the manual bucket-scoped
+read-only IAM grant, verified-admin requirement, inventory pagination,
+dry-run/resume commands, retry limits, and rollback procedure. No production
+binding or deployment is included in this source change.
