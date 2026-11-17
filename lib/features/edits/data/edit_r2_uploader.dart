@@ -53,7 +53,7 @@ Future<void> uploadEditVideoToR2({
     final response = await client.send(request);
     final responseBody = await response.stream.bytesToString();
     if (response.statusCode != 201) {
-      throw HttpException(
+      throw Exception(
         'Reel upload failed (${response.statusCode}): ${(responseBody.length > 240 ? responseBody.substring(0, 240) : responseBody)}',
       );
     }
