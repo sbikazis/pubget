@@ -35,6 +35,19 @@ describe("Firebase Storage migration primitives", () => {
     expect(hooks.validPath("")).toBe(false);
   });
 
+  it("bounds R2 custom metadata and infers uploader only from supported legacy key shapes", () => {
+    const metadata = hooks.r2CustomMetadata(
+      "groups/group-1/alice/clip.mp4",
+      { firebaseStorageDownloadTokens: "secret", note: "x".repeat(1800) },
+      "generation-1",
+      "legacy-bucket",
+    );
+    expect(metadata.uploadedBy).toBe("alice");
+    expect(metadata.migrationSourceGeneration).toBe("generation-1");
+    expect(metadata.firebaseStorageDownloadTokens).toBeUndefined();
+    expect(Object.entries(metadata).reduce((n,[k,v])=>n+k.length+v.length,0)).toBeLessThanOrEqual(1500);
+  });
+
   it("never copies Firebase permanent download tokens into R2 metadata", () => {
     expect(hooks.metadataMap({
       owner: "alice",
