@@ -28,6 +28,19 @@ describe("Firebase Storage migration primitives", () => {
     expect(digest).toEqual({ size: 3, sha256: sha });
   });
 
+  it("hashes multi-block streams consistently with WebCrypto", async () => {
+    const bytes = Uint8Array.from({length:4097}, (_, index) => index % 251);
+    const expected = Array.from(
+      new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+      value => value.toString(16).padStart(2, "0"),
+    ).join("");
+    const hash = new hooks.Sha256();
+    for (let offset = 0; offset < bytes.length; offset += 37) {
+      hash.update(bytes.subarray(offset, Math.min(offset + 37, bytes.length)));
+    }
+    expect(hash.finish()).toBe(expected);
+  });
+
   it("preserves GCS object names including nested and repeated slash keys", () => {
     expect(hooks.validPath("users/alice/avatar.jpg")).toBe(true);
     expect(hooks.validPath("fan_works/alice//work/file.pdf")).toBe(true);
