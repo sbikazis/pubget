@@ -218,7 +218,7 @@ async function copyObject(env:StorageMigrationEnv,base:string,fsToken:string,gcs
  }
  if(existing && d.status==="verified" && existing.size===size && d.destinationSha256){
   const already=await env.MEDIA_BUCKET.get(path);
-  if(already){const checked=hashBody(already.body),digest=await checked.result;if(digest.sha256===d.destinationSha256&&digest.size===size)return {path,status:"verified",skipped:true,sizeBytes:size,sha256:digest.sha256};}
+  if(already){const digest=await digestBody(already.body);if(digest.sha256===d.destinationSha256&&digest.size===size)return {path,status:"verified",skipped:true,sizeBytes:size,sha256:digest.sha256};}
  }
  await patchManifest(base,fsToken,id,{status:"copying",lastAttemptAt:new Date().toISOString(),lastError:""});
  const url=new URL("https://storage.googleapis.com/storage/v1/b/"+encodeURIComponent(String(d.sourceBucket))+"/o/"+encodeURIComponent(path));
