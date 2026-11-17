@@ -1,6 +1,5 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:typed_data';
+import 'edit_r2_upload_source.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
@@ -25,19 +24,7 @@ Future<void> uploadEditVideoToR2({
   final token = await user.getIdToken();
   if (token == null || token.isEmpty) throw StateError('Authentication token unavailable.');
 
-  late final int length;
-  late final Stream<List<int>> body;
-  if (source.path != null) {
-    final file = File(source.path!);
-    length = await file.length();
-    body = file.openRead();
-  } else if (source.bytes != null) {
-    final bytes = Uint8List.fromList(source.bytes!);
-    length = bytes.length;
-    body = Stream<List<int>>.value(bytes);
-  } else {
-    throw ArgumentError('An upload source is required.');
-  }
+  final (length, body) = await prepareEditR2UploadSource(source);
   if (length <= 0 || length > 100 * 1024 * 1024) {
     throw ArgumentError('The video must be between 1 byte and 100 MB.');
   }
