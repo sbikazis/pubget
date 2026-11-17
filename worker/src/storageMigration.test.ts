@@ -82,6 +82,14 @@ describe("Firebase Storage migration primitives", () => {
       sourcePath: "images/b/b.jpg", status: "verified",
       sourceGeneration: "7", destinationSha256: "a".repeat(64),
     })).toBe(false);
+    expect(hooks.isVerifiedManifestRecord("images/a/a.jpg", {
+      sourcePath: "images/a/a.jpg", status: "verified",
+      sourceGeneration: "8", sizeBytes: 5, destinationSha256: "a".repeat(64),
+    }, "7", 5)).toBe(false);
+    expect(hooks.isVerifiedManifestRecord("images/a/a.jpg", {
+      sourcePath: "images/a/a.jpg", status: "verified",
+      sourceGeneration: "7", sizeBytes: 6, destinationSha256: "a".repeat(64),
+    }, "7", 5)).toBe(false);
   });
 
   it("lists a GCS page without dropping zero-byte or unusual object names", async () => {
