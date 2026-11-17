@@ -35,6 +35,21 @@ test("Kirari R2 adapter requests a Google metadata identity token with the Worke
   assert.equal(calls[1].options.headers.authorization, "Bearer header.payload.signature");
 });
 
+test("Kirari R2 adapter accepts pipeline custom-cover keys", async () => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(String(url));
+    return new Response(null, { status: 200, headers: {
+      "content-length": "4", "content-type": "image/jpeg",
+    } });
+  };
+  const bucket = createR2KirariBucket({
+    tokenProvider: async () => "header.payload.signature", fetchImpl,
+  });
+  assert.deepEqual(await bucket.file("kirari/u1/r1/cover-source.jpg").exists(), [true]);
+  assert.ok(calls[0].includes(encodeURIComponent("kirari/u1/r1/cover-source.jpg")));
+});
+
 test("Kirari R2 adapter streams object downloads and reports metadata", async () => {
   const calls = [];
   const fetchImpl = async (_url, options) => {

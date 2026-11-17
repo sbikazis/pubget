@@ -593,15 +593,8 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
       failureReason: FieldValue.delete(),
       processingStartedAt: FieldValue.serverTimestamp(),
     });
-    if (typeof processVideo !== "function") {
-      fail("unavailable", "Kirari processing is temporarily unavailable.");
-    }
-    await processVideo({ data: {
-      name: storagePath,
-      bucket: bucket.name,
-      size: Number(metadata.size || 0),
-      contentType: metadata.contentType || "video/mp4",
-    } });
+    // The Firestore trigger wakes the R2 pipeline on the transition to
+    // `processing`; invoking it here as well would process the reel twice.
     const latest = await ref.get();
     return { status: latest.data()?.status || "processing", reelId };
   }
@@ -1244,7 +1237,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     }
     await db.collection("kirariAudio").doc(audioId).set({
       title, artist, license, attribution, creatorId, audioPath,
-      allowReuse: true, status: "approved",
+      mediaBackend: "r2", allowReuse: true, status: "approved",
       approvedBy: request.auth.uid,
       approvedAt: FieldValue.serverTimestamp(),
       publishedAt: FieldValue.serverTimestamp(),
