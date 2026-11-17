@@ -41,6 +41,15 @@ describe("Firebase Storage migration primitives", () => {
     expect(hash.finish()).toBe(expected);
   });
 
+  it("only schedules namespaces that the Worker can authorize for R2 reads", () => {
+    expect(hooks.isSupportedMediaPath("images/alice/avatar.jpg")).toBe(true);
+    expect(hooks.isSupportedMediaPath("groups/group-1/alice/clip.mp4")).toBe(true);
+    expect(hooks.isSupportedMediaPath("privateChats/chat-1/alice/voice.m4a")).toBe(true);
+    expect(hooks.isSupportedMediaPath("fan_works/alice/work/cover.jpg")).toBe(false);
+    expect(hooks.isSupportedMediaPath("reelAudios/alice/audio.m4a")).toBe(false);
+    expect(hooks.isSupportedMediaPath("images/alice/../avatar.jpg")).toBe(false);
+  });
+
   it("preserves GCS object names including nested and repeated slash keys", () => {
     expect(hooks.validPath("users/alice/avatar.jpg")).toBe(true);
     expect(hooks.validPath("fan_works/alice//work/file.pdf")).toBe(true);
@@ -72,24 +81,34 @@ describe("Firebase Storage migration primitives", () => {
   it("requires the exact manifest record to be verified before R2 reads", () => {
     expect(hooks.isVerifiedManifestRecord("images/a/a.jpg", {
       sourcePath: "images/a/a.jpg", status: "verified",
-      sourceGeneration: "7", destinationSha256: "a".repeat(64),
+      sourceGeneration: "7", sourceSha256: "a".repeat(64), destinationSha256: "a".repeat(64),
     })).toBe(true);
     expect(hooks.isVerifiedManifestRecord("images/a/a.jpg", {
       sourcePath: "images/a/a.jpg", status: "copying",
-      sourceGeneration: "7", destinationSha256: "a".repeat(64),
+      sourceGeneration: "7", sourceSha256: "a".repeat(64), destinationSha256: "a".repeat(64),
     })).toBe(false);
     expect(hooks.isVerifiedManifestRecord("images/a/a.jpg", {
       sourcePath: "images/b/b.jpg", status: "verified",
-      sourceGeneration: "7", destinationSha256: "a".repeat(64),
+      sourceGeneration: "7", sourceSha256: "a".repeat(64), destinationSha256: "a".repeat(64),
     })).toBe(false);
     expect(hooks.isVerifiedManifestRecord("images/a/a.jpg", {
       sourcePath: "images/a/a.jpg", status: "verified",
-      sourceGeneration: "8", sizeBytes: 5, destinationSha256: "a".repeat(64),
+      sourceGeneration: "8", sizeBytes: 5, sourceSha256: "a".repeat(64), destinationSha256: "a".repeat(64),
     }, "7", 5)).toBe(false);
     expect(hooks.isVerifiedManifestRecord("images/a/a.jpg", {
       sourcePath: "images/a/a.jpg", status: "verified",
-      sourceGeneration: "7", sizeBytes: 6, destinationSha256: "a".repeat(64),
+      sourceGeneration: "7", sizeBytes: 6, sourceSha256: "a".repeat(64), destinationSha256: "a".repeat(64),
     }, "7", 5)).toBe(false);
+  });
+
+    expect(hooks.isVerifiedManifestRecord("images/a/a.jpg", {
+      sourcePath: "images/a/a.jpg", status: "verified", sourceGeneration: "7",
+      sourceSha256: "a".repeat(64), destinationSha256: "b".repeat(64),
+    })).toBe(false);
+    expect(hooks.isVerifiedManifestRecord("images/a/a.jpg", {
+      sourcePath: "images/a/a.jpg", status: "verified", sourceGeneration: "7",
+      sourceSha256: "not-a-hash", destinationSha256: "not-a-hash",
+    })).toBe(false);
   });
 
   it("lists a GCS page without dropping zero-byte or unusual object names", async () => {
