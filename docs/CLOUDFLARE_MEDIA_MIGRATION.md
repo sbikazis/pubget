@@ -154,3 +154,26 @@ Functions only where the existing project plan permits, and smoke-test a
 real authenticated upload through FFmpeg, playback/seek, retry, cancellation,
 and deletion. Firebase Storage legacy objects must remain untouched until a
 separate verified migration and retention decision.
+
+
+## Firebase Storage legacy backfill
+
+A separate, resumable backfill runner now lives in
+`worker/src/storageMigration.ts`. It inventories the configured Firebase
+Storage bucket through the GCS JSON API, persists per-object state in Firestore,
+copies each source generation to the same private R2 key, and verifies both
+size and streaming SHA-256 before marking the manifest record verified.
+
+This is a copy-only operation. It does not mutate or delete Firebase objects,
+does not create a KV namespace, does not make R2 public, and does not change
+Firebase Spark or any existing Storage/Firestore rules. The Flutter media
+resolver tries the Worker for supported R2 keys and falls back to the original
+Firebase Storage SDK object only when the Worker reports the R2 object is not
+yet verified. Canonical Firebase Storage download URLs are also resolved
+R2-first when their object key matches the Worker allowlist; other legacy
+references retain their existing Firebase URL/SDK path.
+
+See `docs/FIREBASE_STORAGE_R2_BACKFILL.md` for the manual bucket-scoped
+read-only IAM grant, verified-admin requirement, inventory pagination,
+dry-run/resume commands, retry limits, and rollback procedure. No production
+binding or deployment is included in this source change.
