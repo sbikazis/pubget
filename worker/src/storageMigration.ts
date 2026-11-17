@@ -199,7 +199,7 @@ async function copyObject(env:StorageMigrationEnv,base:string,fsToken:string,gcs
  if(dryRun)return {path,status:"would-copy",sizeBytes:size};
  if(Number(d.attempts??0)>=MAX_RETRIES)return {path,status:"failed",reason:"retry-limit-reached"};
  const latest=await getGcsObject(String(d.sourceBucket),path,gcsToken);
- if(latest.generation!==generation||Number(latest.size)!==size){
+ if(latest.generation!==generation||Number(latest.size)!==size||String(latest.metageneration??"")!==String(d.sourceMetageneration??"")){
   await patchManifest(base,fsToken,id,{status:"failed",lastError:"Source generation changed; run inventory again.",attempts:Number(d.attempts??0)+1});
   return {path,status:"failed",reason:"source-changed"};
  }
@@ -344,8 +344,8 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
       if(!row.document)continue;
       const stale=plain(row.document),attempted=Date.parse(String(stale.lastAttemptAt??""));
       if(!Number.isFinite(attempted)||Date.now()-attempted>15*60*1000){
-       const staleId=row.document.name.split("/").pop()??"";
-       await patchManifest(base,fsToken,staleId,{status:"pending",lastError:"Recovered an interrupted copy attempt."});
+       const staleId=row.document.name.split("/").pop()??"",attempts=Number(stale.attempts??0)+1;
+       await patchManifest(base,fsToken,staleId,{status:attempts>=MAX_RETRIES?"failed":"pending",attempts,lastError:"Recovered an interrupted copy attempt."});
       }
      }
     }
