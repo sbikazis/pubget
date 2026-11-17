@@ -75,7 +75,9 @@ jobs:
       # Install it explicitly with retries before Gradle configures the Android project.
       - name: Install Android NDK with retry
         run: |
-          set -euo pipefail
+          # Do not enable pipefail here: `yes` exits with SIGPIPE after sdkmanager
+          # accepts the license prompt, even when sdkmanager itself succeeds.
+          set -eu
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
           test -n "$SDKMANAGER"
           for attempt in 1 2 3; do
