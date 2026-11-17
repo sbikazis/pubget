@@ -264,7 +264,7 @@ async function acquireLease(base:string,bearer:string):Promise<string>{
   await fsFetch(base+":rollback",bearer,{method:"POST",body:JSON.stringify({transaction})});
   throw new Error("Another migration request currently holds the lease.");
  }
- const lease=crypto.randomUUID(),fields={...data,leaseToken:lease,leaseUntil:new Date(Date.now()+90000).toISOString()};
+ const lease=crypto.randomUUID(),fields={...data,leaseToken:lease,leaseUntil:new Date(Date.now()+900000).toISOString()};
  const write:Record<string,unknown>={update:{name:base+"/"+CONTROL,fields:Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,encode(v)]))}};
  if(!doc)write.currentDocument={exists:false};
  const committed=await fsFetch(base+":commit",bearer,{method:"POST",body:JSON.stringify({transaction,writes:[write]})});
@@ -332,11 +332,26 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
   const retry=url.pathname.endsWith("/retry"),limit=Math.max(1,Math.min(MAX_BATCH,Number(body.limit)||MAX_BATCH));
   try{
    const control=plain(await readDoc(base,CONTROL,fsToken));
+   if(!retry){
+    const staleQuery={from:[{collectionId:MANIFEST}],where:{fieldFilter:{field:{fieldPath:"status"},op:"EQUAL",value:{stringValue:"copying"}}},limit:MAX_BATCH};
+    const staleResponse=await fsFetch(base+":runQuery",fsToken,{method:"POST",body:JSON.stringify({structuredQuery:staleQuery})});
+    if(staleResponse.ok){
+     const staleRows=await staleResponse.json() as Array<{document?:FsDocument}>;
+     for(const row of staleRows){
+      if(!row.document)continue;
+      const stale=plain(row.document),attempted=Date.parse(String(stale.lastAttemptAt??""));
+      if(!Number.isFinite(attempted)||Date.now()-attempted>15*60*1000){
+       const staleId=row.document.name.split("/").pop()??"";
+       await patchManifest(base,fsToken,staleId,{status:"pending",lastError:"Recovered an interrupted copy attempt."});
+      }
+     }
+    }
+   }
    const query:Record<string,unknown>={from:[{collectionId:MANIFEST}],where:{fieldFilter:{field:{fieldPath:"status"},op:"EQUAL",value:{stringValue:retry?"failed":"pending"}}},orderBy:[{field:{fieldPath:"__name__"},direction:"ASCENDING"}],limit};
    if(!retry&&control.copyCursor)query.startAt={values:[{referenceValue:String(control.copyCursor)}],before:false};
    const q=await fsFetch(base+":runQuery",fsToken,{method:"POST",body:JSON.stringify({structuredQuery:query})});
    if(!q.ok)throw new Error("Manifest query failed ("+q.status+").");
-   const rows=await q.json() as Array<{document?:FsDocument}>,docs=rows.flatMap(x=>x.document?[x.document]:[]);
+   const rows=await q.json() as Array<{document?:FsDocument}>,docs=rows.flatMap(x=>x.document?[x.document]:[]).filter(doc=>!retry||Number(plain(doc).attempts??0)<MAX_RETRIES);
    const results=[];
    for(const doc of docs)results.push(await copyObject(env,base,fsToken,gcsToken,doc,dryRun));
    if(!dryRun&&docs.length&&!retry)await writeDoc(base,CONTROL,fsToken,{...control,copyCursor:docs[docs.length-1].name,lastCopyAt:new Date().toISOString()});
