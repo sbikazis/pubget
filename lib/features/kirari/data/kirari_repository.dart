@@ -213,6 +213,268 @@ class KirariFeedPageResult {
   final Map<String, dynamic>? nextCursor;
 }
 
+int _analyticsInt(Object? value) {
+  final number = value is num
+      ? value.toInt()
+      : int.tryParse(value?.toString() ?? '') ?? 0;
+  return number < 0 ? 0 : number;
+}
+
+double _analyticsDouble(Object? value) {
+  final number = value is num
+      ? value.toDouble()
+      : double.tryParse(value?.toString() ?? '') ?? 0;
+  return number.isFinite && number > 0 ? number : 0;
+}
+
+List<Map<dynamic, dynamic>> _analyticsMaps(Object? value) {
+  if (value is! List) return const <Map<dynamic, dynamic>>[];
+  return value
+      .whereType<Map>()
+      .map((item) => Map<dynamic, dynamic>.from(item))
+      .toList(growable: false);
+}
+
+class KirariAnalyticsOverview {
+  const KirariAnalyticsOverview({
+    required this.reelCount,
+    required this.impressions,
+    required this.views,
+    required this.qualifiedViews,
+    required this.watchSeconds,
+    required this.averageWatchSeconds,
+    required this.completions,
+    required this.completionRate,
+    required this.replays,
+    required this.replayRate,
+    required this.likes,
+    required this.comments,
+    required this.saves,
+    required this.shares,
+    required this.earlySkips,
+    required this.earlySkipRate,
+    required this.negativeFeedback,
+    required this.engagementRate,
+  });
+
+  factory KirariAnalyticsOverview.fromMap(Map<dynamic, dynamic> map) =>
+      KirariAnalyticsOverview(
+        reelCount: _analyticsInt(map['reelCount']),
+        impressions: _analyticsInt(map['impressions']),
+        views: _analyticsInt(map['views']),
+        qualifiedViews: _analyticsInt(map['qualifiedViews']),
+        watchSeconds: _analyticsDouble(map['watchSeconds']),
+        averageWatchSeconds: _analyticsDouble(map['averageWatchSeconds']),
+        completions: _analyticsInt(map['completions']),
+        completionRate: _analyticsDouble(map['completionRate']),
+        replays: _analyticsInt(map['replays']),
+        replayRate: _analyticsDouble(map['replayRate']),
+        likes: _analyticsInt(map['likes']),
+        comments: _analyticsInt(map['comments']),
+        saves: _analyticsInt(map['saves']),
+        shares: _analyticsInt(map['shares']),
+        earlySkips: _analyticsInt(map['earlySkips']),
+        earlySkipRate: _analyticsDouble(map['earlySkipRate']),
+        negativeFeedback: _analyticsInt(map['negativeFeedback']),
+        engagementRate: _analyticsDouble(map['engagementRate']),
+      );
+
+  final int reelCount;
+  final int impressions;
+  final int views;
+  final int qualifiedViews;
+  final double watchSeconds;
+  final double averageWatchSeconds;
+  final int completions;
+  final double completionRate;
+  final int replays;
+  final double replayRate;
+  final int likes;
+  final int comments;
+  final int saves;
+  final int shares;
+  final int earlySkips;
+  final double earlySkipRate;
+  final int negativeFeedback;
+  final double engagementRate;
+}
+
+class KirariAnalyticsReel {
+  const KirariAnalyticsReel({
+    required this.id,
+    required this.caption,
+    required this.coverPath,
+    required this.publishedAtMs,
+    required this.durationSeconds,
+    required this.impressions,
+    required this.views,
+    required this.qualifiedViews,
+    required this.watchSeconds,
+    required this.averageWatchSeconds,
+    required this.completions,
+    required this.completionRate,
+    required this.replays,
+    required this.replayRate,
+    required this.likes,
+    required this.comments,
+    required this.saves,
+    required this.shares,
+    required this.earlySkips,
+    required this.earlySkipRate,
+    required this.negativeFeedback,
+    required this.engagementRate,
+    required this.velocityScore,
+    required this.hashtags,
+  });
+
+  factory KirariAnalyticsReel.fromMap(Map<dynamic, dynamic> map) =>
+      KirariAnalyticsReel(
+        id: map['id'] as String? ?? '',
+        caption: map['caption'] as String? ?? '',
+        coverPath: map['coverPath'] as String? ?? '',
+        publishedAtMs: _analyticsInt(map['publishedAtMs']),
+        durationSeconds: _analyticsDouble(map['durationSeconds']),
+        impressions: _analyticsInt(map['impressions']),
+        views: _analyticsInt(map['views']),
+        qualifiedViews: _analyticsInt(map['qualifiedViews']),
+        watchSeconds: _analyticsDouble(map['watchSeconds']),
+        averageWatchSeconds: _analyticsDouble(map['averageWatchSeconds']),
+        completions: _analyticsInt(map['completions']),
+        completionRate: _analyticsDouble(map['completionRate']),
+        replays: _analyticsInt(map['replays']),
+        replayRate: _analyticsDouble(map['replayRate']),
+        likes: _analyticsInt(map['likes']),
+        comments: _analyticsInt(map['comments']),
+        saves: _analyticsInt(map['saves']),
+        shares: _analyticsInt(map['shares']),
+        earlySkips: _analyticsInt(map['earlySkips']),
+        earlySkipRate: _analyticsDouble(map['earlySkipRate']),
+        negativeFeedback: _analyticsInt(map['negativeFeedback']),
+        engagementRate: _analyticsDouble(map['engagementRate']),
+        velocityScore: _analyticsDouble(map['velocityScore']),
+        hashtags:
+            (map['hashtags'] as List?)?.whereType<String>().toList() ??
+            const <String>[],
+      );
+
+  final String id;
+  final String caption;
+  final String coverPath;
+  final int publishedAtMs;
+  final double durationSeconds;
+  final int impressions;
+  final int views;
+  final int qualifiedViews;
+  final double watchSeconds;
+  final double averageWatchSeconds;
+  final int completions;
+  final double completionRate;
+  final int replays;
+  final double replayRate;
+  final int likes;
+  final int comments;
+  final int saves;
+  final int shares;
+  final int earlySkips;
+  final double earlySkipRate;
+  final int negativeFeedback;
+  final double engagementRate;
+  final double velocityScore;
+  final List<String> hashtags;
+}
+
+class KirariAnalyticsTag {
+  const KirariAnalyticsTag({
+    required this.label,
+    required this.reels,
+    required this.views,
+  });
+
+  factory KirariAnalyticsTag.fromMap(Map<dynamic, dynamic> map) =>
+      KirariAnalyticsTag(
+        label: map['label'] as String? ?? '',
+        reels: _analyticsInt(map['reels']),
+        views: _analyticsInt(map['views']),
+      );
+
+  final String label;
+  final int reels;
+  final int views;
+}
+
+class KirariAnalytics {
+  const KirariAnalytics({
+    required this.overview,
+    required this.scopeReelCount,
+    required this.scopeMaxReels,
+    required this.scopeTruncated,
+    required this.items,
+    required this.topReels,
+    required this.trending,
+    required this.topHashtags,
+    required this.topAnime,
+    required this.topCharacters,
+    required this.topAudio,
+    required this.unavailableMetrics,
+    required this.generatedAtMs,
+  });
+
+  factory KirariAnalytics.fromMap(Map<dynamic, dynamic> map) {
+    final scope = map['scope'] is Map
+        ? Map<dynamic, dynamic>.from(map['scope'] as Map)
+        : const <dynamic, dynamic>{};
+    return KirariAnalytics(
+      overview: KirariAnalyticsOverview.fromMap(
+        map['overview'] is Map
+            ? Map<dynamic, dynamic>.from(map['overview'] as Map)
+            : const <dynamic, dynamic>{},
+      ),
+      scopeReelCount: _analyticsInt(scope['reelCount']),
+      scopeMaxReels: _analyticsInt(scope['maxReels']),
+      scopeTruncated: scope['truncated'] == true,
+      items: _analyticsMaps(
+        map['items'],
+      ).map(KirariAnalyticsReel.fromMap).toList(growable: false),
+      topReels: _analyticsMaps(
+        map['topReels'],
+      ).map(KirariAnalyticsReel.fromMap).toList(growable: false),
+      trending: _analyticsMaps(
+        map['trending'],
+      ).map(KirariAnalyticsReel.fromMap).toList(growable: false),
+      topHashtags: _analyticsMaps(
+        map['topHashtags'],
+      ).map(KirariAnalyticsTag.fromMap).toList(growable: false),
+      topAnime: _analyticsMaps(
+        map['topAnime'],
+      ).map(KirariAnalyticsTag.fromMap).toList(growable: false),
+      topCharacters: _analyticsMaps(
+        map['topCharacters'],
+      ).map(KirariAnalyticsTag.fromMap).toList(growable: false),
+      topAudio: _analyticsMaps(
+        map['topAudio'],
+      ).map(KirariAnalyticsTag.fromMap).toList(growable: false),
+      unavailableMetrics:
+          (map['unavailableMetrics'] as List?)?.whereType<String>().toList() ??
+          const <String>[],
+      generatedAtMs: _analyticsInt(map['generatedAt']),
+    );
+  }
+
+  final KirariAnalyticsOverview overview;
+  final int scopeReelCount;
+  final int scopeMaxReels;
+  final bool scopeTruncated;
+  final List<KirariAnalyticsReel> items;
+  final List<KirariAnalyticsReel> topReels;
+  final List<KirariAnalyticsReel> trending;
+  final List<KirariAnalyticsTag> topHashtags;
+  final List<KirariAnalyticsTag> topAnime;
+  final List<KirariAnalyticsTag> topCharacters;
+  final List<KirariAnalyticsTag> topAudio;
+  final List<String> unavailableMetrics;
+  final int generatedAtMs;
+}
+
 abstract interface class KirariRepository {
   Future<KirariFeedPageResult> getFeed({
     String type = 'forYou',
@@ -226,6 +488,7 @@ abstract interface class KirariRepository {
   Future<List<KirariAudioTrack>> getAudioLibrary({int limit = 30});
   Future<List<KirariReel>> getReelsByAudio(String audioId, {int limit = 24});
   Future<List<KirariReel>> getCreatorReels(String creatorId, {int limit = 20});
+  Future<KirariAnalytics> getCreatorAnalytics({int limit = 5});
   Future<KirariReel> getReel(String reelId);
   Future<KirariFeedPageResult> getSavedReels({
     int limit = 30,
@@ -500,6 +763,12 @@ class FirebaseKirariRepository implements KirariRepository {
       'limit': limit,
     });
     return _resolveReels(result['items']);
+  }
+
+  @override
+  Future<KirariAnalytics> getCreatorAnalytics({int limit = 5}) async {
+    final result = await _call('getKirariCreatorAnalytics', {'limit': limit});
+    return KirariAnalytics.fromMap(result);
   }
 
   @override
@@ -894,6 +1163,9 @@ class UnavailableKirariRepository implements KirariRepository {
     String creatorId, {
     int limit = 20,
   }) async => throw _unavailable();
+  @override
+  Future<KirariAnalytics> getCreatorAnalytics({int limit = 5}) async =>
+      throw _unavailable();
   @override
   Future<KirariReel> getReel(String reelId) async => throw _unavailable();
   @override

@@ -447,6 +447,10 @@ exports.getKirariCreatorReels = onCall(
   { region: "us-central1" },
   kirariDomain.getCreatorReels,
 );
+exports.getKirariCreatorAnalytics = onCall(
+  { region: "us-central1" },
+  kirariDomain.getCreatorAnalytics,
+);
 exports.getKirariReel = onCall(
   { region: "us-central1" },
   kirariDomain.getReel,

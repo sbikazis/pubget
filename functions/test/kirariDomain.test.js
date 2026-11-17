@@ -100,6 +100,7 @@ test("all Kirari callables reject unauthenticated requests before touching Fires
     ["getComments", { reelId: "r1" }],
     ["getReelsByAudio", { audioId: "a1" }],
     ["getCreatorReels", { creatorId: "bob" }],
+    ["getCreatorAnalytics", {}],
     ["getReel", { reelId: "r1" }],
     ["action", { reelId: "r1", kind: "like" }],
     ["addComment", { reelId: "r1", text: "hi" }],
@@ -937,4 +938,160 @@ test("playback heartbeats from a superseded reel session cannot earn views or ra
     (error) => error.code === "failed-precondition",
   );
   assert.equal(writes, 0, "stale sessions must not write playback counters or events");
+});
+
+test("creator analytics refuses to read another creator's dashboard", async () => {
+  const domain = createKirariDomain({
+    db: { collection() { throw new Error("database must not be touched"); } },
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+    bucket: {},
+  });
+  await assert.rejects(
+    domain.getCreatorAnalytics({
+      auth: { uid: "alice" },
+      data: { creatorId: "bob" },
+    }),
+    (error) => error.code === "permission-denied",
+  );
+});
+
+test("creator analytics returns honest zero state without published reels", async () => {
+  let requestedLimit = 0;
+  const filters = [];
+  const query = {
+    where(...args) { filters.push(args); return this; },
+    orderBy(...args) { filters.push(args); return this; },
+    limit(value) { requestedLimit = value; return this; },
+    async get() { return { docs: [] }; },
+  };
+  const domain = createKirariDomain({
+    db: { collection: () => query },
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+    bucket: {},
+  });
+
+  const result = await domain.getCreatorAnalytics({
+    auth: { uid: "alice" }, data: { limit: 99 },
+  });
+
+  assert.equal(requestedLimit, 201);
+  assert.deepEqual(filters.slice(0, 3), [
+    ["creatorId", "==", "alice"],
+    ["status", "==", "published"],
+    ["moderationStatus", "==", "approved"],
+  ]);
+  assert.equal(result.overview.reelCount, 0);
+  assert.equal(result.overview.views, 0);
+  assert.equal(result.overview.averageWatchSeconds, 0);
+  assert.equal(result.overview.completionRate, 0);
+  assert.deepEqual(result.items, []);
+  assert.deepEqual(result.topReels, []);
+  assert.deepEqual(result.topHashtags, []);
+  assert.ok(result.unavailableMetrics.includes("uniqueViewers"));
+  assert.ok(result.unavailableMetrics.includes("retentionCurve"));
+});
+
+test("creator analytics derives rates only from server-credited counters", async () => {
+  const docs = [
+    {
+      id: "r1",
+      data: () => ({
+        caption: "First reel", coverPath: "c1",
+        publishedAt: { toMillis: () => 1000 },
+        durationSeconds: 30,
+        impressionsCount: 200, viewsCount: 60, qualifiedViewsCount: 50,
+        totalQualifiedWatchSeconds: 900, completionCount: 45, replayCount: 12,
+        likesCount: 30, commentsCount: 6, savesCount: 5, sharesCount: 4,
+        earlySkipCount: 20, negativeFeedbackCount: 2, velocityScore: 9,
+        hashtags: ["anime"],
+        animeMetadata: [{ title: "One Piece" }],
+        characterMetadata: [{ name: "Zoro" }],
+        audioAttribution: { title: "Theme" },
+      }),
+    },
+    {
+      id: "r2",
+      data: () => ({
+        caption: "Second reel", coverPath: "c2",
+        publishedAt: { toMillis: () => 2000 },
+        durationSeconds: 20,
+        impressionsCount: 100, viewsCount: 40, qualifiedViewsCount: 30,
+        totalQualifiedWatchSeconds: 600, completionCount: 20, replayCount: 8,
+        likesCount: 10, commentsCount: 4, savesCount: 2, sharesCount: 1,
+        earlySkipCount: 10, negativeFeedbackCount: 1, velocityScore: 5,
+        hashtags: ["anime", "amv"],
+        animeMetadata: [{ title: "One Piece" }],
+        characterMetadata: [{ name: "Luffy" }],
+        audioAttribution: { title: "Theme" },
+      }),
+    },
+  ];
+  const query = {
+    where() { return this; },
+    orderBy() { return this; },
+    limit() { return this; },
+    async get() { return { docs }; },
+  };
+  const domain = createKirariDomain({
+    db: { collection: () => query },
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+    bucket: {},
+  });
+
+  const result = await domain.getCreatorAnalytics({
+    auth: { uid: "alice" }, data: { limit: 2 },
+  });
+
+  assert.equal(result.overview.impressions, 300);
+  assert.equal(result.overview.views, 100);
+  assert.equal(result.overview.qualifiedViews, 80);
+  assert.equal(result.overview.watchSeconds, 1500);
+  assert.equal(result.overview.averageWatchSeconds, 15);
+  assert.equal(result.overview.completionRate, 65);
+  assert.equal(result.overview.replayRate, 20);
+  assert.equal(result.overview.earlySkipRate, 10);
+  assert.equal(result.overview.engagementRate, 62);
+  assert.equal(result.overview.negativeFeedback, 3);
+  assert.deepEqual(result.topReels.map((reel) => reel.id), ["r1", "r2"]);
+  assert.deepEqual(result.trending.map((reel) => reel.id), ["r1", "r2"]);
+  assert.deepEqual(result.topHashtags[0], { label: "anime", reels: 2, views: 100 });
+  assert.deepEqual(result.topAnime.map((tag) => tag.label), ["One Piece"]);
+  assert.deepEqual(result.topCharacters.map((tag) => tag.label), ["Zoro", "Luffy"]);
+  assert.deepEqual(result.topAudio.map((tag) => tag.label), ["Theme"]);
+  const first = result.items.find((reel) => reel.id === "r1");
+  assert.equal(first.publishedAtMs, 1000);
+  assert.deepEqual(first.hashtags, ["anime"]);
+});
+
+test("creator analytics bounds the scan and reports truncation", async () => {
+  let requestedLimit = 0;
+  const docs = Array.from({ length: 201 }, (_, index) => ({
+    id: `reel-${index}`,
+    data: () => ({ viewsCount: 1 }),
+  }));
+  const query = {
+    where() { return this; },
+    orderBy() { return this; },
+    limit(value) { requestedLimit = value; return this; },
+    async get() { return { docs }; },
+  };
+  const domain = createKirariDomain({
+    db: { collection: () => query },
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+    bucket: {},
+  });
+
+  const result = await domain.getCreatorAnalytics({
+    auth: { uid: "alice" }, data: { limit: 3 },
+  });
+
+  assert.equal(requestedLimit, 201);
+  assert.equal(result.scope.reelCount, 200);
+  assert.equal(result.scope.maxReels, 200);
+  assert.equal(result.scope.truncated, true);
+  assert.equal(result.items.length, 200);
 });

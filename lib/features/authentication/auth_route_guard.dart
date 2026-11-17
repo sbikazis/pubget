@@ -36,6 +36,7 @@ abstract final class AuthRouteGuard {
     '/reels/anime',
     '/reels/character',
     '/reels/creator',
+    '/kirari/analytics',
     '/groups',
     '/joined',
     '/groups/create',

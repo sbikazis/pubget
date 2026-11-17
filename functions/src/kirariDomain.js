@@ -1246,7 +1246,205 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     return { ok: true, audioId };
   }
 
-  async function getSavedReels(request) {
+  function analyticsCount(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0
+    ? Math.min(number, Number.MAX_SAFE_INTEGER) : 0;
+}
+
+function analyticsDivide(numerator, denominator) {
+  if (!(denominator > 0)) return 0;
+  return Math.round((numerator / denominator) * 100) / 100;
+}
+
+function analyticsPercent(numerator, denominator) {
+  return Math.min(100, Math.max(0, analyticsDivide(numerator * 100, denominator)));
+}
+
+function analyticsTimestamp(value) {
+  const millis = typeof value?.toMillis === "function" ? value.toMillis() : Number(value);
+  return Number.isFinite(millis) && millis > 0 ? millis : 0;
+}
+
+function analyticsLabels(value, field) {
+  if (!Array.isArray(value)) return [];
+  const labels = [];
+  for (const entry of value) {
+    const raw = typeof entry === "string" ? entry : field ? entry?.[field] : "";
+    if (typeof raw !== "string") continue;
+    const label = raw.trim().slice(0, 80);
+    if (label) labels.push(label);
+    if (labels.length >= 12) break;
+  }
+  return [...new Set(labels)];
+}
+
+function analyticsBump(map, label, views) {
+  const current = map.get(label) || { label, reels: 0, views: 0 };
+  current.reels += 1;
+  current.views += views;
+  map.set(label, current);
+}
+
+function analyticsTop(map, limit) {
+  return [...map.values()]
+    .sort((a, b) => b.views - a.views || b.reels - a.reels ||
+      (a.label < b.label ? -1 : a.label > b.label ? 1 : 0))
+    .slice(0, limit)
+    .map((entry) => ({ ...entry, views: Math.round(entry.views) }));
+}
+
+function byAnalyticsId(a, b) {
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+// Reads only counters already credited by the server. Metrics the locked spec
+// asks for but this schema does not persist are returned as explicit keys so
+// the client can say "not tracked yet" instead of rendering invented numbers.
+async function getCreatorAnalytics(request) {
+  const uid = auth(request);
+  const requestedCreator = request.data?.creatorId;
+  if (requestedCreator != null && requestedCreator !== uid) {
+    fail("permission-denied", "Creator analytics are private to their owner.");
+  }
+  const limit = Math.round(clamp(request.data?.limit || 5, 1, 10));
+  const maxReels = 200;
+  const snap = await reels()
+    .where("creatorId", "==", uid)
+    .where("status", "==", "published")
+    .where("moderationStatus", "==", "approved")
+    .orderBy("publishedAt", "desc")
+    .limit(maxReels + 1)
+    .get();
+  const truncated = snap.docs.length > maxReels;
+  const docs = snap.docs.slice(0, maxReels);
+
+  const hashtags = new Map();
+  const anime = new Map();
+  const characters = new Map();
+  const audio = new Map();
+  const totals = {
+    impressions: 0, views: 0, qualifiedViews: 0, watchSeconds: 0,
+    completions: 0, replays: 0, likes: 0, comments: 0, saves: 0,
+    shares: 0, earlySkips: 0, negativeFeedback: 0,
+  };
+
+  const items = docs.map((doc) => {
+    const data = doc.data() || {};
+    const impressions = analyticsCount(data.impressionsCount);
+    const views = analyticsCount(data.viewsCount);
+    const qualifiedViews = analyticsCount(data.qualifiedViewsCount);
+    const watchSeconds = analyticsCount(data.totalQualifiedWatchSeconds);
+    const completions = analyticsCount(data.completionCount);
+    const replays = analyticsCount(data.replayCount);
+    const likes = analyticsCount(data.likesCount);
+    const comments = analyticsCount(data.commentsCount);
+    const saves = analyticsCount(data.savesCount);
+    const shares = analyticsCount(data.sharesCount);
+    const earlySkips = analyticsCount(data.earlySkipCount);
+    const negativeFeedback = analyticsCount(data.negativeFeedbackCount);
+    const durationSeconds = analyticsCount(data.durationSeconds);
+    const velocity = Number(data.velocityScore);
+
+    const tags = analyticsLabels(data.hashtags);
+    const animeTitles = analyticsLabels(data.animeMetadata, "title");
+    const characterNames = analyticsLabels(data.characterMetadata, "name");
+    const audioId = typeof data.audioId === "string" ? data.audioId : "";
+    const audioTitle = analyticsLabels([
+      data.audioAttribution?.title || data.audioTitle || audioId,
+    ])[0] || "";
+    for (const label of tags) analyticsBump(hashtags, label, views);
+    for (const label of animeTitles) analyticsBump(anime, label, views);
+    for (const label of characterNames) analyticsBump(characters, label, views);
+    if (audioTitle) analyticsBump(audio, audioTitle, views);
+
+    totals.impressions += impressions;
+    totals.views += views;
+    totals.qualifiedViews += qualifiedViews;
+    totals.watchSeconds += watchSeconds;
+    totals.completions += completions;
+    totals.replays += replays;
+    totals.likes += likes;
+    totals.comments += comments;
+    totals.saves += saves;
+    totals.shares += shares;
+    totals.earlySkips += earlySkips;
+    totals.negativeFeedback += negativeFeedback;
+
+    return {
+      id: doc.id,
+      caption: typeof data.caption === "string" ? data.caption.slice(0, 140) : "",
+      coverPath: typeof data.coverPath === "string" ? data.coverPath : "",
+      publishedAtMs: analyticsTimestamp(data.publishedAt),
+      durationSeconds,
+      impressions,
+      views,
+      qualifiedViews,
+      watchSeconds: Math.round(watchSeconds * 10) / 10,
+      averageWatchSeconds: analyticsDivide(watchSeconds, views),
+      completions,
+      completionRate: analyticsPercent(completions, views),
+      replays,
+      replayRate: analyticsPercent(replays, views),
+      likes,
+      comments,
+      saves,
+      shares,
+      earlySkips,
+      earlySkipRate: analyticsPercent(earlySkips, impressions),
+      negativeFeedback,
+      engagementRate: analyticsPercent(likes + comments + saves + shares, views),
+      velocityScore: Number.isFinite(velocity) ? Math.round(velocity * 100) / 100 : 0,
+      hashtags: tags,
+    };
+  });
+
+  const overview = {
+    reelCount: items.length,
+    impressions: totals.impressions,
+    views: totals.views,
+    qualifiedViews: totals.qualifiedViews,
+    watchSeconds: Math.round(totals.watchSeconds * 10) / 10,
+    averageWatchSeconds: analyticsDivide(totals.watchSeconds, totals.views),
+    completions: totals.completions,
+    completionRate: analyticsPercent(totals.completions, totals.views),
+    replays: totals.replays,
+    replayRate: analyticsPercent(totals.replays, totals.views),
+    likes: totals.likes,
+    comments: totals.comments,
+    saves: totals.saves,
+    shares: totals.shares,
+    earlySkips: totals.earlySkips,
+    earlySkipRate: analyticsPercent(totals.earlySkips, totals.impressions),
+    negativeFeedback: totals.negativeFeedback,
+    engagementRate: analyticsPercent(
+      totals.likes + totals.comments + totals.saves + totals.shares, totals.views,
+    ),
+  };
+
+  return {
+    overview,
+    scope: { reelCount: items.length, maxReels, truncated },
+    items,
+    topReels: [...items]
+      .sort((a, b) => b.views - a.views || b.likes - a.likes || byAnalyticsId(a, b))
+      .slice(0, limit),
+    trending: [...items]
+      .sort((a, b) => b.velocityScore - a.velocityScore || b.views - a.views || byAnalyticsId(a, b))
+      .slice(0, limit),
+    topHashtags: analyticsTop(hashtags, limit),
+    topAnime: analyticsTop(anime, limit),
+    topCharacters: analyticsTop(characters, limit),
+    topAudio: analyticsTop(audio, limit),
+    unavailableMetrics: [
+      "uniqueViewers", "commentReplies", "newFans", "respectReceived",
+      "profileVisits", "trafficSources", "retentionCurve",
+    ],
+    generatedAt: Date.now(),
+  };
+}
+
+async function getSavedReels(request) {
     const uid = auth(request);
     const limit = Math.round(clamp(request.data?.limit || 30, 1, 60));
     const savedCollection = db.collection("users").doc(uid).collection("kirariSaved");
@@ -1629,7 +1827,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
 
   return {
     startUpload, finalizeUpload, retryProcessing, cancelUpload, deleteReel, action, addComment, commentAction,
-    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, publishAudioTrack, getComments, getReelsByAudio, getCreatorReels, getSavedReels, getReel, reviewContent, getModerationQueue, setCreatorMute, setProcessingState,
+    startPlayback, recordPlayback, getFeed, getHashtagFeed, getAudioLibrary, publishAudioTrack, getComments, getReelsByAudio, getCreatorReels, getCreatorAnalytics, getSavedReels, getReel, reviewContent, getModerationQueue, setCreatorMute, setProcessingState,
   };
 }
 
