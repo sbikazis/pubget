@@ -44,6 +44,7 @@ const { createAnimeHubDomain } = require("./src/animeHubDomain");
 const { createEditsDomain } = require("./src/editsDomain");
 const { createAudioDomain } = require("./src/audioDomain");
 const { createEditPipeline } = require("./src/editPipeline");
+const { createR2EditsBucket } = require("./src/r2EditsStorage");
 const { createKirariDomain } = require("./src/kirariDomain");
 const { createKirariPipeline } = require("./src/kirariPipeline");
 const { createR2KirariBucket } = require("./src/r2KirariStorage");
@@ -258,9 +259,11 @@ const animeHubDomain = createAnimeHubDomain({
   FieldValue,
   HttpsError,
 });
+const r2EditsBucket = createR2EditsBucket();
 const processEditVideo = createEditPipeline({
   db: lazyFirestore,
   bucket: lazyStorageBucket,
+  r2Bucket: r2EditsBucket,
   economy: economyDomain,
   achievements: achievementsDomain,
   notifications: notificationBuilder,
@@ -289,6 +292,7 @@ const editsDomain = createEditsDomain({
   achievements: achievementsDomain,
   processEdit: processEditVideo,
   bucket: lazyStorageBucket,
+  r2Bucket: r2EditsBucket,
 });
 
 exports.refreshGroupActivityScores = onSchedule(
@@ -599,6 +603,26 @@ exports.removeReelAudio = onCall({ region: "us-central1" }, audioDomain.removeAu
 exports.searchReelAudios = onCall({ region: "us-central1" }, audioDomain.searchAudios);
 // Storage bucket pubget-aaf27.firebasestorage.app lives in europe-west3;
 // Gen2 object-finalize triggers must be in the same region as the bucket.
+exports.processEditR2Video = onDocumentUpdated(
+  { document: "edits/{editId}", region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
+  async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    if (!after || after.mediaBackend !== "r2" || after.status !== "processing" ||
+        before?.status === "processing") return null;
+    const ownerUid = after.creatorId;
+    const editId = event.params.editId;
+    const sourcePath = after.originalStoragePath || after.videoPath;
+    if (typeof ownerUid !== "string" || sourcePath !== `edits/${ownerUid}/${editId}.mp4`) return null;
+    const [meta] = await r2EditsBucket.file(sourcePath).getMetadata();
+    return processEditVideo({ data: {
+      name: sourcePath,
+      contentType: meta.contentType || "video/mp4",
+      size: Number(meta.size || 0),
+    } });
+  },
+);
+
 exports.processEditVideo = onObjectFinalized(
   { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
   processEditVideo,
