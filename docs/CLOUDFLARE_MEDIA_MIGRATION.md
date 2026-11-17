@@ -56,6 +56,33 @@ processor in place: that would strand uploads in a non-published state.
   this source change. Deploy only after the processing migration and CI pass.
 
 
+## Phase 3 implementation update (2026-11-16)
+
+- Kirari source video uploads now use the authenticated Worker multipart API
+  from Flutter on Android, iOS, and other supported platforms. The upload ID,
+  local-file fingerprint, and completed part ETags are persisted locally so a
+  retry resumes instead of silently starting over.
+- The Worker derives the source key from the owner's Firestore reel document,
+  checks owner/status, validates the first MP4 part, and verifies the final
+  byte count against the declared size. A completed-object HEAD check avoids
+  re-uploading after an app restart between completion and finalization.
+- New Kirari reel/audio records are marked `mediaBackend: "r2"`. The client
+  resolves those assets through `/kirari/resolve`; records without that marker
+  continue using Firebase Storage as an explicit legacy read path.
+- A Firestore transition trigger now starts the existing FFmpeg pipeline for
+  R2-backed reels using the R2 service adapter. The original Firebase Storage
+  object-finalize trigger remains for legacy records; processing failures move
+  the R2 reel to a retryable failed state.
+- Explicit cancellation aborts the multipart session. R2 also automatically
+  aborts incomplete multipart uploads after seven days, covering abandoned
+  sessions when the app is removed or loses its local session record.
+- New custom Kirari cover sources also upload directly to private R2 and are
+  read/deleted by the R2 pipeline. Older unmarked Kirari records continue to use
+  their legacy Firebase Storage cover path.
+- The Edits/Reels source and FFmpeg output pipeline is not yet migrated. Do not
+  remove Firebase Storage access or legacy readers until that path and existing
+  objects have been moved and verified.
+
 ## Kirari R2 migration (Cloudflare Worker + Firebase Functions)
 
 Kirari source uploads now use authenticated R2 multipart uploads rather than
@@ -95,3 +122,35 @@ production-like end-to-end smoke test is still required for multipart source
 upload, Firestore-triggered FFmpeg processing, signed playback/seek, retry,
 moderation preview, and deletion. Do not deploy until CI and that runtime
 smoke test pass.
+
+
+## Edits/Reels R2 implementation (2026-11-16)
+
+- New Edits uploads are marked `mediaBackend: "r2"` and retain the server-derived
+  `edits/{creatorId}/{editId}.mp4` object key. The Flutter repository streams
+  the MP4 directly to the authenticated `/edits/upload/{editId}` Worker route;
+  the Worker checks the Firebase ID token, Firestore owner, upload state, exact
+  key, declared size, MIME type, and MP4 signature.
+- A private Functions-to-Worker bridge now provides the Edits FFmpeg pipeline
+  with authenticated R2 HEAD/GET/PUT/DELETE operations. It accepts only the
+  Edits source, rendition, and thumbnail key layouts.
+- A Firestore transition trigger starts the existing FFmpeg pipeline for
+  R2-backed Edits. The pipeline writes the rendition ladder and thumbnail to
+  R2, while unmarked legacy records continue to use Firebase Storage.
+- Published R2 Edits resolve through an authenticated endpoint to short-lived
+  signed playback URLs. The asset endpoint supports byte ranges for seeking.
+- Creator cancellation removes an incomplete source upload; creator deletion
+  revokes the Firestore publication state and deletes the known R2 source,
+  renditions, and thumbnail. Saved-Reel snapshots preserve the media backend.
+- The Flutter repository resolves R2 URLs for feed, creator, anime, character,
+  saved, and watched Edit reads; legacy records retain their Firebase Storage
+  paths unchanged.
+
+### Edits rollout gate
+
+The code path is implemented in this PR but is not yet production-verified.
+Run the Functions, Worker, and Flutter CI checks, deploy the Worker and
+Functions only where the existing project plan permits, and smoke-test a
+real authenticated upload through FFmpeg, playback/seek, retry, cancellation,
+and deletion. Firebase Storage legacy objects must remain untouched until a
+separate verified migration and retention decision.
