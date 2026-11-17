@@ -71,6 +71,25 @@ jobs:
             tail -n 180 /tmp/flutter-web-build.log
             exit $status
           fi
+      # The Google SDK mirror occasionally serves a truncated NDK archive.
+      # Install it explicitly with retries before Gradle configures the Android project.
+      - name: Install Android NDK with retry
+        run: |
+          # Do not enable pipefail here: `yes` exits with SIGPIPE after sdkmanager
+          # accepts the license prompt, even when sdkmanager itself succeeds.
+          set -eu
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          for attempt in 1 2 3; do
+            if yes | "$SDKMANAGER" --install "ndk;27.0.12077973"; then
+              break
+            fi
+            rm -rf "$ANDROID_HOME/ndk/27.0.12077973" "$ANDROID_HOME/.temp"/*
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
+          test -f "$ANDROID_HOME/ndk/27.0.12077973/source.properties"
+
       - name: Build Android release APKs
         run: |
           set +e

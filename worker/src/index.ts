@@ -390,7 +390,11 @@ async function authorizeConversation(
   }
 }
 
-function validKirariServiceKey(key: string): boolean {
+export function validEditsServiceKey(key: string): boolean {
+  return /^(?:edits\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\.mp4|edits-processed\/[A-Za-z0-9_-]{1,128}\/(?![A-Za-z0-9_-]{1,128}_360\.mp4$)[A-Za-z0-9_-]{1,128}(?:_(?:720|480))?\.mp4|edits\/[A-Za-z0-9_-]{1,128}\/t_[A-Za-z0-9_-]{1,128}\.jpg)$/.test(key);
+}
+
+export function validKirariServiceKey(key: string): boolean {
   return /^(?:kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:source\.mp4|cover-source\.jpg)|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:360|540|720)\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/cover\.jpg|kirari-audio\/[A-Za-z0-9_-]{1,128}\/audio\.(?:mp3|m4a|aac|ogg))$/.test(key);
 }
 
@@ -646,6 +650,206 @@ export default {
       return json({ error: "Unsupported Kirari multipart operation." }, 405);
     }
 
+    // Private R2 bridge for the Edits/Reels FFmpeg pipeline.
+    // Only the verified Functions runtime identity can read/write these keys.
+    if (url.pathname.startsWith("/_internal/edits/objects/")) {
+      if (!await authenticateKirariService(request, {
+        audience: env.KIRARI_R2_SERVICE_AUDIENCE,
+        serviceAccountEmail: env.KIRARI_R2_SERVICE_ACCOUNT_EMAIL,
+      })) return json({ error: "Service authentication required." }, 401);
+      let key: string;
+      try {
+        key = decodeURIComponent(url.pathname.slice("/_internal/edits/objects/".length));
+      } catch {
+        return json({ error: "Invalid object key." }, 400);
+      }
+      if (!validEditsServiceKey(key)) return json({ error: "Invalid Edits object key." }, 400);
+      if (request.method === "HEAD") {
+        const object = await env.MEDIA_BUCKET.head(key);
+        if (!object) return json({ error: "Not found." }, 404);
+        return new Response(null, { headers: {
+          ...CORS,
+          "content-length": String(object.size),
+          "content-type": object.httpMetadata?.contentType ?? "application/octet-stream",
+        } });
+      }
+      if (request.method === "GET") {
+        const object = await env.MEDIA_BUCKET.get(key);
+        if (!object) return json({ error: "Not found." }, 404);
+        const headers = new Headers(CORS);
+        object.writeHttpMetadata(headers);
+        headers.set("content-length", String(object.size));
+        headers.set("cache-control", "private, no-store");
+        return new Response(object.body, { headers });
+      }
+      if (request.method === "PUT") {
+        const size = Number(request.headers.get("content-length"));
+        const contentType = request.headers.get("content-type") ?? "";
+        const allowed = key.endsWith(".mp4") ? "video/mp4" : "image/jpeg";
+        if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
+            size > 100 * 1024 * 1024 || contentType !== allowed) {
+          return json({ error: "Invalid Edits media upload." }, 400);
+        }
+        await env.MEDIA_BUCKET.put(key, request.body, {
+          httpMetadata: { contentType, cacheControl: "private, no-store" },
+          customMetadata: { pipeline: "edits-ffmpeg-v1" },
+        });
+        return json({ key }, 201);
+      }
+      if (request.method === "DELETE") {
+        await env.MEDIA_BUCKET.delete(key);
+        return new Response(null, { status: 204, headers: CORS });
+      }
+      return json({ error: "Method not allowed." }, 405);
+    }
+
+    // Resolve a published R2-backed Edit to a short-lived byte-range URL.
+    if (url.pathname === "/edits/resolve" && request.method === "GET") {
+      const uid = await authenticate(request, env.FIREBASE_PROJECT_ID);
+      if (!uid) return json({ error: "Authentication required." }, 401);
+      const key = url.searchParams.get("key") ?? "";
+      if (!validEditsServiceKey(key) || key.startsWith("edits/") && !key.includes("/t_")) {
+        return json({ error: "Invalid Edit playback key." }, 400);
+      }
+      const parts = key.split("/");
+      const ownerUid = parts[1];
+      const fileName = parts[2];
+      const editId = fileName.replace(/^t_/, "").replace(/(?:_720|_480)?\.mp4$/, "").replace(/\.jpg$/, "");
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(editId)) {
+        return json({ error: "Edit media access denied." }, 403);
+      }
+      const token = request.headers.get("authorization") ?? "";
+      const docResponse = await fetch(
+        `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/edits/${encodeURIComponent(editId)}`,
+        { headers: { Authorization: token } },
+      );
+      if (!docResponse.ok) return json({ error: "Edit not found or not accessible." }, 404);
+      const doc = await docResponse.json() as { fields?: Record<string, any> };
+      const fields = doc.fields ?? {};
+      const renditionFields = fields.renditions?.mapValue?.fields ?? {};
+      const renditionPaths = Object.values(renditionFields).map((item: any) =>
+        item?.mapValue?.fields?.path?.stringValue);
+      const allowed = fields.processedStoragePath?.stringValue === key ||
+        fields.thumbnailStoragePath?.stringValue === key || renditionPaths.includes(key);
+      if (fields.creatorId?.stringValue !== ownerUid ||
+          fields.mediaBackend?.stringValue !== "r2" ||
+          fields.status?.stringValue !== "published" ||
+          fields.moderationStatus?.stringValue !== "approved" || !allowed) {
+        return json({ error: "This Edit media is not published." }, 403);
+      }
+      const expires = Math.floor(Date.now() / 1000) + 600;
+      const signature = await hmac(env, `${key}\n${expires}`);
+      return json({ url: `${url.origin}/edits/asset?key=${encodeURIComponent(key)}&expires=${expires}&signature=${signature}`, expires });
+    }
+
+    if (url.pathname === "/edits/asset" && ["GET", "HEAD"].includes(request.method)) {
+      const key = url.searchParams.get("key") ?? "";
+      const expires = Number(url.searchParams.get("expires"));
+      const supplied = url.searchParams.get("signature") ?? "";
+      const now = Math.floor(Date.now() / 1000);
+      if (!validEditsServiceKey(key) || key.startsWith("edits/") && !key.includes("/t_") ||
+          !Number.isSafeInteger(expires) || expires < now || expires > now + 630 ||
+          !constantTimeEqual(supplied, await hmac(env, `${key}\n${expires}`))) {
+        return json({ error: "Edit media link expired or invalid." }, 403);
+      }
+      const head = await env.MEDIA_BUCKET.head(key);
+      if (!head) return json({ error: "Not found." }, 404);
+      const headers = new Headers(CORS);
+      headers.set("content-type", head.httpMetadata?.contentType ?? "application/octet-stream");
+      headers.set("accept-ranges", "bytes");
+      headers.set("cache-control", "private, max-age=60");
+      if (request.method === "HEAD") {
+        headers.set("content-length", String(head.size));
+        return new Response(null, { headers });
+      }
+      const range = request.headers.get("range");
+      if (range) {
+        const match = /^bytes=(\d+)-(\d*)$/.exec(range);
+        if (!match) return new Response(null, { status: 416, headers: { "content-range": `bytes */${head.size}` } });
+        const start = Number(match[1]);
+        const end = match[2] ? Math.min(Number(match[2]), head.size - 1) : head.size - 1;
+        if (start >= head.size || end < start) {
+          return new Response(null, { status: 416, headers: { "content-range": `bytes */${head.size}` } });
+        }
+        const object = await env.MEDIA_BUCKET.get(key, { range: { offset: start, length: end - start + 1 } });
+        if (!object) return json({ error: "Not found." }, 404);
+        headers.set("content-length", String(end - start + 1));
+        headers.set("content-range", `bytes ${start}-${end}/${head.size}`);
+        return new Response(request.method === "HEAD" ? null : object.body, { status: 206, headers });
+      }
+      const object = await env.MEDIA_BUCKET.get(key);
+      if (!object) return json({ error: "Not found." }, 404);
+      headers.set("content-length", String(object.size));
+      return new Response(request.method === "HEAD" ? null : object.body, { headers });
+    }
+
+    // Authenticated Edits source upload. The object key is derived from the
+    // creator-owned Firestore document; callers cannot choose arbitrary R2 keys.
+    if (url.pathname.startsWith("/edits/upload/") && ["PUT", "DELETE"].includes(request.method)) {
+      const uid = await authenticate(request, env.FIREBASE_PROJECT_ID);
+      if (!uid) return json({ error: "Authentication required." }, 401);
+      const editId = url.pathname.split("/").filter(Boolean)[2] ?? "";
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(editId)) return json({ error: "Invalid edit id." }, 400);
+      const token = request.headers.get("authorization") ?? "";
+      const documentUrl = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/edits/${encodeURIComponent(editId)}`;
+      const response = await fetch(documentUrl, { headers: { Authorization: token } });
+      if (!response.ok) return json({ error: "Edit upload not found or not permitted." }, 403);
+      const doc = await response.json() as { fields?: Record<string, any> };
+      const fields = doc.fields ?? {};
+      const key = `edits/${uid}/${editId}.mp4`;
+      if (fields.creatorId?.stringValue !== uid || fields.mediaBackend?.stringValue !== "r2" ||
+          fields.status?.stringValue !== "uploading" ||
+          (fields.originalStoragePath?.stringValue ?? fields.videoPath?.stringValue) !== key) {
+        return json({ error: "This Edit upload is not available." }, 403);
+      }
+      if (request.method === "DELETE") {
+        await env.MEDIA_BUCKET.delete(key);
+        return new Response(null, { status: 204, headers: CORS });
+      }
+      const size = Number(request.headers.get("content-length"));
+      if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
+          size > 100 * 1024 * 1024 || request.headers.get("content-type") !== "video/mp4") {
+        return json({ error: "Invalid Edit video upload." }, 400);
+      }
+      const inspected = await inspectAndRestoreBody(request.body);
+      if (!validFileSignature("reels", "video/mp4", inspected.prefix)) {
+        return json({ error: "The uploaded file is not a valid MP4 video." }, 415);
+      }
+      // Recheck the owner-controlled state immediately before and after the
+      // R2 write. This closes the cancellation/delete race: a stream that was
+      // already accepted cannot recreate a source after the draft is deleted.
+      const currentResponse = await fetch(documentUrl, { headers: { Authorization: token } });
+      if (!currentResponse.ok) return json({ error: "Edit upload was cancelled." }, 409);
+      const currentDoc = await currentResponse.json() as { fields?: Record<string, any> };
+      if (currentDoc.fields?.creatorId?.stringValue !== uid ||
+          currentDoc.fields?.mediaBackend?.stringValue !== "r2" ||
+          currentDoc.fields?.status?.stringValue !== "uploading" ||
+          (currentDoc.fields?.originalStoragePath?.stringValue ??
+            currentDoc.fields?.videoPath?.stringValue) !== key) {
+        return json({ error: "Edit upload was cancelled." }, 409);
+      }
+      await env.MEDIA_BUCKET.put(key, inspected.stream, {
+        httpMetadata: { contentType: "video/mp4", cacheControl: "private, no-store" },
+        customMetadata: { uploadedBy: uid, editId, mediaKind: "edit-source" },
+      });
+      const finalResponse = await fetch(documentUrl, { headers: { Authorization: token } });
+      if (!finalResponse.ok) {
+        await env.MEDIA_BUCKET.delete(key);
+        return json({ error: "Edit upload was cancelled." }, 409);
+      }
+      const finalDoc = await finalResponse.json() as { fields?: Record<string, any> };
+      if (finalDoc.fields?.status?.stringValue !== "uploading" ||
+          finalDoc.fields?.creatorId?.stringValue !== uid ||
+          finalDoc.fields?.mediaBackend?.stringValue !== "r2" ||
+          (finalDoc.fields?.originalStoragePath?.stringValue ??
+            finalDoc.fields?.videoPath?.stringValue) !== key) {
+        await env.MEDIA_BUCKET.delete(key);
+        return json({ error: "Edit upload was cancelled." }, 409);
+      }
+      return json({ key, sizeBytes: size }, 201);
+    }
+
+    
     // Private service-to-service R2 bridge for the Kirari FFmpeg pipeline.
     // This route never accepts Firebase user tokens and is not exposed to app clients.
     if (url.pathname === "/_internal/kirari/sign" && request.method === "POST") {

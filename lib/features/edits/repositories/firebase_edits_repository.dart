@@ -1,11 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_storage/firebase_storage.dart';
+import '../data/edit_r2_uploader.dart';
+import '../data/edit_media_resolver.dart';
+import '../data/edit_storage_put.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/errors/retry.dart';
-import '../data/edit_storage_put.dart';
 import '../models/edit_models.dart';
 import 'edits_repository.dart';
 
@@ -124,6 +126,7 @@ class FirebaseEditsRepository
   final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
   final bool _reels;
+  String? _activeEditId;
   UploadTask? _activeUpload;
 
   String get _collection => _reels ? 'reels' : 'edits';
@@ -136,13 +139,6 @@ class FirebaseEditsRepository
     return (data['reelId'] ?? data['editId']) as String;
   }
 
-  Map<String, String> _uploadMetadata({String? fileName, int? sizeBytes}) {
-    final metadata = <String, String>{};
-    final name = fileName;
-    if (name != null) metadata['fileName'] = name;
-    if (sizeBytes != null) metadata['clientSize'] = '$sizeBytes';
-    return metadata;
-  }
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
@@ -182,7 +178,16 @@ class FirebaseEditsRepository
         status: 'processing',
       );
     }
-    return Edit.fromMap(snap.data()!, id: editId);
+    return _resolveEditMedia(Edit.fromMap(snap.data()!, id: editId));
+  }
+
+  Future<Edit> _resolveEditMedia(Edit edit) async {
+    if (!edit.isPublished || edit.mediaBackend != 'r2') return edit;
+    final resolved = await Future.wait<String>([
+      resolveEditMediaUrl(edit.videoUrl),
+      resolveEditMediaUrl(edit.thumbnailUrl),
+    ]);
+    return edit.copyWith(videoUrl: resolved[0], thumbnailUrl: resolved[1]);
   }
 
   @override
@@ -204,6 +209,7 @@ class FirebaseEditsRepository
   }) => _guard(() async {
     late final String path;
     late final String editId;
+    late final bool legacyResume;
     final resumeId = resumeEditId?.trim();
     final resumePath = resumeVideoPath?.trim();
     if (resumeId != null &&
@@ -212,6 +218,15 @@ class FirebaseEditsRepository
         resumePath.isNotEmpty) {
       editId = resumeId;
       path = resumePath;
+      final existing = await _firestore.collection(_collection).doc(editId).get();
+      if (!existing.exists || existing.data() == null) {
+        throw StateError('The saved Reel upload no longer exists.');
+      }
+      final existingData = existing.data()!;
+      if (existingData['status'] != 'uploading') {
+        return _resolveEditMedia(Edit.fromMap(existingData, id: editId));
+      }
+      legacyResume = existingData['mediaBackend'] != 'r2';
     } else {
       final startPayload = <String, dynamic>{
         'caption': caption,
@@ -242,43 +257,56 @@ class FirebaseEditsRepository
           .call(startPayload);
       path = start.data['videoPath'] as String;
       editId = _returnedId(start.data);
-    }
-    // Always force exact video/mp4 — Storage rules reject codec-suffixed types.
-    final task = putEditVideo(
-      _storage.ref(path),
-      source,
-      SettableMetadata(
-        contentType: 'video/mp4',
-        customMetadata: _uploadMetadata(
-          fileName: fileName,
-          sizeBytes: sizeBytes,
-        ),
-      ),
-    );
-    onStarted?.call(editId, path);
-    _activeUpload = task;
-    task.snapshotEvents.listen((snapshot) {
-      if (snapshot.totalBytes > 0) {
-        onProgress?.call(snapshot.bytesTransferred / snapshot.totalBytes);
+      final started = await _firestore.collection(_collection).doc(editId).get();
+      final startedData = started.data();
+      if (startedData != null && startedData['status'] != 'uploading') {
+        return _resolveEditMedia(Edit.fromMap(startedData, id: editId));
       }
-    });
-    await task;
-    _activeUpload = null;
+      legacyResume = startedData != null && startedData['mediaBackend'] != 'r2';
+    }
+    onStarted?.call(editId, path);
+    _activeEditId = editId;
+    if (legacyResume) {
+      final task = putEditVideo(
+        _storage.ref(path),
+        source,
+        SettableMetadata(contentType: 'video/mp4'),
+      );
+      _activeUpload = task;
+      task.snapshotEvents.listen((snapshot) {
+        if (snapshot.totalBytes > 0) {
+          onProgress?.call(snapshot.bytesTransferred / snapshot.totalBytes);
+        }
+      });
+      await task;
+      _activeUpload = null;
+    } else {
+      await uploadEditVideoToR2(
+        editId: editId,
+        source: source,
+        // Preserve the Edit upload API's MP4-only contract.
+        contentType: 'video/mp4',
+        onProgress: onProgress,
+      );
+    }
     onProgress?.call(1);
 
     // Explicit finalize — recovers when Storage finalize trigger is delayed/missed.
     final finalized = await finalizeEditUpload(editId);
     if (finalized.isSuccess) {
+      _activeEditId = null;
       return finalized.valueOrNull!;
     }
     // Upload itself succeeded; surface server state even if finalize soft-fails.
-    return _readEdit(
+    final readBack = await _readEdit(
       editId,
       caption: caption,
       animeTag: animeTag,
       hashtags: hashtags,
       characterTags: characterTags,
     );
+    _activeEditId = null;
+    return readBack;
   });
 
   @override
@@ -291,22 +319,27 @@ class FirebaseEditsRepository
 
   @override
   Future<Result<void>> cancelUpload() async {
-    final task = _activeUpload;
-    if (task == null) return const Success<void>(null);
-    await task.cancel();
+    final editId = _activeEditId;
+    if (editId == null) return const Success<void>(null);
+    await _activeUpload?.cancel();
     _activeUpload = null;
+    await cancelEditVideoUpload();
+    await _functions.httpsCallable(_callable('deleteEdit')).call({
+      'editId': editId,
+    });
+    _activeEditId = null;
     return const Success<void>(null);
   }
 
   @override
   Stream<Result<Edit>> watchEdit(String editId) {
-    return _firestore.collection(_collection).doc(editId).snapshots().map((
+    return _firestore.collection(_collection).doc(editId).snapshots().asyncMap((
       snap,
-    ) {
+    ) async {
       if (!snap.exists || snap.data() == null) {
         return const FailureResult<Edit>(NotFoundError('Reel not found.'));
       }
-      return Success(Edit.fromMap(snap.data()!, id: snap.id));
+      return Success(await _resolveEditMedia(Edit.fromMap(snap.data()!, id: snap.id)));
     });
   }
 
@@ -357,7 +390,8 @@ class FirebaseEditsRepository
                 .where((edit) => edit.id.isNotEmpty)
                 .toList(growable: false);
             if (items.isNotEmpty) {
-              return EditPage(items, hasMore: result.data['hasMore'] == true);
+              final resolvedItems = await Future.wait(items.map(_resolveEditMedia));
+              return EditPage(resolvedItems, hasMore: result.data['hasMore'] == true);
             }
           }
         } on Object {
@@ -443,7 +477,7 @@ class FirebaseEditsRepository
       }
       query = query.startAfterDocument(docs.last);
     }
-    final page = matches.take(limit).toList(growable: false);
+    final page = await Future.wait(matches.take(limit).map(_resolveEditMedia));
     // Honest paging: if we filled the page and the source still had documents
     // left to scan, there is likely more.
     final hasMore = !sourceExhausted || matches.length > limit;
@@ -464,9 +498,8 @@ class FirebaseEditsRepository
         .orderBy(FieldPath.documentId, descending: true)
         .limit(limit)
         .get();
-    return snapshot.docs
-        .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
-        .toList(growable: false);
+    return Future.wait(snapshot.docs
+        .map((doc) => _resolveEditMedia(Edit.fromMap(doc.data(), id: doc.id))));
   });
 
   /// Equality-only query on the stored `audioId`, so no composite index is
@@ -503,9 +536,9 @@ class FirebaseEditsRepository
     return _publishedNewestFirst(snapshot.docs);
   });
 
-  List<Edit> _publishedNewestFirst(
+  Future<List<Edit>> _publishedNewestFirst(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-  ) {
+  ) async {
     final items =
         docs
             .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
@@ -519,7 +552,7 @@ class FirebaseEditsRepository
             if (right == null) return -1;
             return right.compareTo(left);
           });
-    return items;
+    return Future.wait(items.map(_resolveEditMedia));
   }
 
   @override
@@ -539,9 +572,8 @@ class FirebaseEditsRepository
         .orderBy(FieldPath.documentId, descending: true)
         .limit(limit.clamp(1, 24))
         .get();
-    return snapshot.docs
-        .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
-        .toList(growable: false);
+    return Future.wait(snapshot.docs
+        .map((doc) => _resolveEditMedia(Edit.fromMap(doc.data(), id: doc.id))));
   });
 
   @override
@@ -561,9 +593,8 @@ class FirebaseEditsRepository
         .orderBy(FieldPath.documentId, descending: true)
         .limit(limit.clamp(1, 24))
         .get();
-    return snapshot.docs
-        .map((doc) => Edit.fromMap(doc.data(), id: doc.id))
-        .toList(growable: false);
+    return Future.wait(snapshot.docs
+        .map((doc) => _resolveEditMedia(Edit.fromMap(doc.data(), id: doc.id))));
   });
 
   @override
@@ -572,7 +603,7 @@ class FirebaseEditsRepository
     if (!doc.exists || doc.data() == null) {
       throw const NotFoundError('Reel not found.');
     }
-    return Edit.fromMap(doc.data()!, id: doc.id);
+    return _resolveEditMedia(Edit.fromMap(doc.data()!, id: doc.id));
   });
 
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
@@ -735,6 +766,7 @@ class FirebaseEditsRepository
             ))
         .where((edit) => edit.id.isNotEmpty)
         .toList(growable: false);
-    return SavedReelsPage(items, hasMore: data['hasMore'] == true);
+    final resolvedItems = await Future.wait(items.map(_resolveEditMedia));
+    return SavedReelsPage(resolvedItems, hasMore: data['hasMore'] == true);
   });
 }

@@ -3,6 +3,7 @@ import worker, { type Env } from "./index.ts";
 
 const ORIGIN = "https://pubget-media.pubget.workers.dev";
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const MP4 = new TextEncoder().encode("\u0000\u0000\u0000\u0018ftypisom0000");
 
 function base64Url(value: Uint8Array | string): string {
   const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
@@ -227,4 +228,113 @@ describe("shared R2 media route lifecycle", () => {
     expect(uploaded.status).toBe(415);
     expect(bucket.puts).toEqual([]);
   });
+  it("uploads Edits source bytes only for the owning R2 draft and checks MP4 contents", async () => {
+    const editKey = "edits/test-user/edit-1.mp4";
+    let fields: Record<string, { stringValue?: string }> = {
+      creatorId: { stringValue: "test-user" },
+      mediaBackend: { stringValue: "r2" },
+      status: { stringValue: "uploading" },
+      originalStoragePath: { stringValue: editKey },
+    };
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://www.googleapis.com/service_accounts/")) {
+        return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
+      }
+      if (url.includes("/documents/edits/edit-1")) {
+        return new Response(JSON.stringify({ fields }), { status: 200 });
+      }
+      throw new Error(`Unexpected Edits route request: ${url}`);
+    });
+    const uploaded = await worker.fetch(request("/edits/upload/edit-1", {
+      method: "PUT",
+      headers: { "content-type": "video/mp4", "content-length": String(MP4.length) },
+      body: MP4,
+    }, token), env);
+    expect(uploaded.status).toBe(201);
+    expect(bucket.puts).toEqual([editKey]);
+
+    fields = { ...fields, creatorId: { stringValue: "someone-else" } };
+    const denied = await worker.fetch(request("/edits/upload/edit-1", {
+      method: "PUT",
+      headers: { "content-type": "video/mp4", "content-length": String(MP4.length) },
+      body: MP4,
+    }, token), env);
+    expect(denied.status).toBe(403);
+    expect(bucket.puts).toEqual([editKey]);
+  });
+
+  it("rejects invalid MP4 bytes and removes an upload if its draft is cancelled mid-write", async () => {
+    const editKey = "edits/test-user/edit-2.mp4";
+    let readCount = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://www.googleapis.com/service_accounts/")) {
+        return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
+      }
+      if (url.includes("/documents/edits/edit-2")) {
+        readCount++;
+        const status = readCount >= 3 ? "deleting" : "uploading";
+        return new Response(JSON.stringify({ fields: {
+          creatorId: { stringValue: "test-user" },
+          mediaBackend: { stringValue: "r2" },
+          status: { stringValue: status },
+          originalStoragePath: { stringValue: editKey },
+        } }), { status: 200 });
+      }
+      throw new Error(`Unexpected Edits route request: ${url}`);
+    });
+    const invalid = await worker.fetch(request("/edits/upload/edit-2", {
+      method: "PUT",
+      headers: { "content-type": "video/mp4", "content-length": String(PNG.length) },
+      body: PNG,
+    }, token), env);
+    expect(invalid.status).toBe(415);
+    expect(bucket.puts).toEqual([]);
+
+    readCount = 0;
+    const cancelled = await worker.fetch(request("/edits/upload/edit-2", {
+      method: "PUT",
+      headers: { "content-type": "video/mp4", "content-length": String(MP4.length) },
+      body: MP4,
+    }, token), env);
+    expect(cancelled.status).toBe(409);
+    expect(bucket.puts).toEqual([editKey]);
+    expect(bucket.deletes).toEqual([editKey]);
+  });
+
+  it("resolves only approved published R2 Edits and serves byte ranges", async () => {
+    const editKey = "edits-processed/test-user/edit-3.mp4";
+    const editBytes = MP4;
+    bucket.objects.set(editKey, { bytes: editBytes, contentType: "video/mp4" });
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://www.googleapis.com/service_accounts/")) {
+        return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
+      }
+      if (url.includes("/documents/edits/edit-3")) {
+        return new Response(JSON.stringify({ fields: {
+          creatorId: { stringValue: "test-user" },
+          mediaBackend: { stringValue: "r2" },
+          status: { stringValue: "published" },
+          moderationStatus: { stringValue: "approved" },
+          processedStoragePath: { stringValue: editKey },
+        } }), { status: 200 });
+      }
+      throw new Error(`Unexpected Edits resolve request: ${url}`);
+    });
+    const resolved = await worker.fetch(request(
+      `/edits/resolve?key=${encodeURIComponent(editKey)}`, {}, token,
+    ), env);
+    expect(resolved.status).toBe(200);
+    const link = await resolved.json() as { url: string };
+    const assetPath = new URL(link.url).pathname + new URL(link.url).search;
+    const range = await worker.fetch(request(assetPath, {
+      headers: { range: "bytes=0-3" },
+    }), env);
+    expect(range.status).toBe(206);
+    expect(range.headers.get("content-range")).toBe(`bytes 0-3/${editBytes.length}`);
+    expect(new Uint8Array(await range.arrayBuffer())).toEqual(editBytes.slice(0, 4));
+  });
+
 });

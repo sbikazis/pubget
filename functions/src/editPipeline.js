@@ -349,6 +349,7 @@ function decideEditPublication(editData, processingFields, watermarkScan) {
 function createEditPipeline({
   db,
   bucket,
+  r2Bucket,
   economy,
   achievements,
   notifications,
@@ -427,7 +428,27 @@ function createEditPipeline({
     const edit = await ref.get();
     if (!edit.exists || edit.data()?.creatorId !== creatorId ||
         !["processing", "uploading"].includes(edit.data()?.status)) return null;
-    await ref.update({ status: "processing", processingStartedAt: new Date() });
+    const editData = edit.data() || {};
+    const mediaBucket = editData.mediaBackend === "r2" ? r2Bucket : bucket;
+    if (!mediaBucket) throw new Error("The selected media backend is unavailable.");
+    if (editData.mediaBackend === "r2") {
+      const claimed = await db.runTransaction(async (transaction) => {
+        const latest = await transaction.get(ref);
+        const latestData = latest.data() || {};
+        if (!latest.exists || latestData.creatorId !== creatorId ||
+            latestData.mediaBackend !== "r2" ||
+            !["processing", "uploading"].includes(latestData.status) ||
+            latestData.processingStartedAt) return false;
+        transaction.update(ref, {
+          status: "processing",
+          processingStartedAt: new Date(),
+        });
+        return true;
+      });
+      if (!claimed) return null;
+    } else {
+      await ref.update({ status: "processing", processingStartedAt: new Date() });
+    }
     if (!(String(object.contentType || "").startsWith("video/mp4")) ||
         Number(object.size || 0) > config.maxBytes) {
       await ref.update({ status: "failed", failureReason: "invalid-video" });
@@ -444,7 +465,7 @@ function createEditPipeline({
     const thumbnail = path.join(dir, "thumbnail.jpg");
     const processed = path.join(dir, "processed.mp4");
     try {
-      await bucket.file(object.name).download({ destination: source });
+      await mediaBucket.file(object.name).download({ destination: source });
       const ffmpeg = ffmpegBinary();
       const probed = await probe(ffmpeg, source);
       const durationSeconds = probed.durationSeconds;
@@ -509,7 +530,7 @@ function createEditPipeline({
           rendition,
           isPrimary,
         );
-        await bucket.upload(destination, {
+        await mediaBucket.upload(destination, {
           destination: destinationPath, resumable: false,
           metadata: {
             contentType: "video/mp4",
@@ -541,7 +562,7 @@ function createEditPipeline({
         "-q:v", "4", "-y", thumbnail,
       ]);
       const thumbnailPath = `${storagePrefix}/${creatorId}/t_${editId}.jpg`;
-      await bucket.upload(thumbnail, {
+      await mediaBucket.upload(thumbnail, {
         destination: thumbnailPath, resumable: false,
         metadata: {
           contentType: "image/jpeg",
@@ -585,12 +606,33 @@ function createEditPipeline({
       if (decision.publish) {
         decision.update.publishedAt = new Date();
       }
-      await ref.update(decision.update);
+      if (editData.mediaBackend === "r2") {
+        const applied = await db.runTransaction(async (transaction) => {
+          const latest = await transaction.get(ref);
+          if (!latest.exists || latest.data()?.status !== "processing") return false;
+          transaction.update(ref, decision.update);
+          return true;
+        });
+        if (!applied) {
+          const partialOutputs = [
+            `${processedPrefix}/${creatorId}/${editId}.mp4`,
+            `${processedPrefix}/${creatorId}/${editId}_720.mp4`,
+            `${processedPrefix}/${creatorId}/${editId}_480.mp4`,
+            `${storagePrefix}/${creatorId}/t_${editId}.jpg`,
+          ];
+          await Promise.allSettled(partialOutputs.map((key) =>
+            mediaBucket.file(key).delete({ ignoreNotFound: true }),
+          ));
+          return null;
+        }
+      } else {
+        await ref.update(decision.update);
+      }
       // §15.18 — publish the bytes. Until this receipt exists the Storage
       // rules refuse to serve the transcoded renditions, because nothing has
       // authorised them. Without it a correctly published Reel would render a
       // black frame, so the flip has to happen exactly here and not earlier.
-      if (decision.publish) {
+      if (decision.publish && editData.mediaBackend !== "r2") {
         await setMediaVisible({
           db,
           bucket,
@@ -651,14 +693,37 @@ function createEditPipeline({
       }
       await notifyCreator({ creatorId, editId, kind: "published" });
     } catch (error) {
-      await ref.update({ status: "failed", failureReason: "processing-failed" });
+      if (editData.mediaBackend === "r2" && mediaBucket) {
+        const partialOutputs = [
+          `${processedPrefix}/${creatorId}/${editId}.mp4`,
+          `${processedPrefix}/${creatorId}/${editId}_720.mp4`,
+          `${processedPrefix}/${creatorId}/${editId}_480.mp4`,
+          `${storagePrefix}/${creatorId}/t_${editId}.jpg`,
+        ];
+        await Promise.allSettled(partialOutputs.map((key) =>
+          mediaBucket.file(key).delete({ ignoreNotFound: true }),
+        ));
+      }
+      let failureRecorded = true;
+      if (editData.mediaBackend === "r2") {
+        failureRecorded = await db.runTransaction(async (transaction) => {
+          const latest = await transaction.get(ref);
+          if (!latest.exists || latest.data()?.status !== "processing") return false;
+          transaction.update(ref, { status: "failed", failureReason: "processing-failed" });
+          return true;
+        });
+      } else {
+        await ref.update({ status: "failed", failureReason: "processing-failed" });
+      }
       console.error("Edit processing failed", { editId, error: error.message });
-      await notifyCreator({
-        creatorId,
-        editId,
-        kind: "failed",
-        reason: "We could not finish processing your Reel. Open the app to retry.",
-      });
+      if (failureRecorded) {
+        await notifyCreator({
+          creatorId,
+          editId,
+          kind: "failed",
+          reason: "We could not finish processing your Reel. Open the app to retry.",
+        });
+      }
     } finally {
       await fsp.rm(dir, { recursive: true, force: true });
     }
