@@ -196,6 +196,9 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
           headers: {'Authorization': 'Bearer $token'},
         )
         .timeout(const Duration(seconds: 30));
+    if (response.statusCode == 404) {
+      throw const NotFoundError("R2 object is not migrated yet.");
+    }
     if (response.statusCode != 200) {
       throw _mapWorkerError(response);
     }
