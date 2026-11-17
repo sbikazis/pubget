@@ -319,7 +319,10 @@ async function reinitAdmin() {
   db = admin.firestore();
   FieldValue = admin.firestore.FieldValue;
   bucket = admin.storage().bucket(BUCKET);
-  processEdit = createEditPipeline({ db, bucket });
+  // The emulator bucket is the in-memory R2 adapter for this lifecycle suite.
+  // New uploads are R2-backed; inject it explicitly rather than failing closed
+  // because this fixture only configured the legacy Firebase Storage bucket.
+  processEdit = createEditPipeline({ db, bucket, r2Bucket: bucket });
 }
 
 test.before(async () => {
