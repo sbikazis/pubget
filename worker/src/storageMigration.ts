@@ -312,17 +312,18 @@ async function releaseLease(base:string,bearer:string,lease:string):Promise<void
  }catch(error){console.error("Migration lease release failed",error);}
 }
 
-export function isVerifiedManifestRecord(key:string,data:Record<string,unknown>):boolean{
+export function isVerifiedManifestRecord(key:string,data:Record<string,unknown>,generation?:string,size?:number):boolean{
  return data.sourcePath===key&&data.status==="verified"&&
-  typeof data.sourceGeneration==="string"&&typeof data.destinationSha256==="string"&&
-  data.destinationSha256.length===64;
+  typeof data.sourceGeneration==="string"&&(!generation||data.sourceGeneration===generation)&&
+  (size===undefined||Number(data.sizeBytes)===size)&&
+  typeof data.destinationSha256==="string"&&data.destinationSha256.length===64;
 }
-export async function isVerifiedMigratedObject(key:string,env:StorageMigrationEnv):Promise<boolean>{
+export async function isVerifiedMigratedObject(key:string,env:StorageMigrationEnv,generation?:string,size?:number):Promise<boolean>{
  try{
   const id=await hashText(key);
   const bearer=await token(env,[DATASTORE]);
   const doc=await readDoc(fsBase(env.FIREBASE_PROJECT_ID),MANIFEST+"/"+id,bearer);
-  return isVerifiedManifestRecord(key,plain(doc));
+  return isVerifiedManifestRecord(key,plain(doc),generation,size);
  }catch{return false;}
 }
 
