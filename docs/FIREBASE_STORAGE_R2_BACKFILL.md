@@ -110,8 +110,9 @@ endpoint is intentionally bounded.
 
 ## Limits and operational caveats
 
-- Objects larger than 500 MiB are marked failed and require a separate
-  multipart/server-side migration design.
+- Objects outside the Worker-authorized media key namespaces are marked
+  `unsupported` and remain on the legacy Firebase reader. Objects larger than
+  500 MiB are marked failed and require a separate multipart/server-side design.
 - A single request processes one inventory page or one copy record;
   operators should monitor Worker execution limits and resume between calls.
 - Source inventory requires GCS list/get IAM. Without that manual grant, the
