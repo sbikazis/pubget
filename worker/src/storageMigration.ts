@@ -250,6 +250,42 @@ async function authorizeAdmin(request:Request,env:StorageMigrationEnv){
  return auth?.claims.email_verified===true&&auth.claims.admin===true&&typeof auth.claims.auth_time==="number"&&now-auth.claims.auth_time<=300;
 }
 
+
+async function acquireLease(base:string,bearer:string):Promise<string>{
+ const start=await fsFetch(base+":beginTransaction",bearer,{method:"POST",body:JSON.stringify({options:{readWrite:{}}})});
+ if(!start.ok)throw new Error("Could not start migration lease transaction.");
+ const transaction=(await start.json() as {transaction?:string}).transaction;
+ if(!transaction)throw new Error("Firestore returned no transaction.");
+ const read=await fsFetch(base+"/"+CONTROL+"?transaction="+encodeURIComponent(transaction),bearer);
+ const doc=read.status===404?null:read.ok?await read.json() as FsDocument:null;
+ if(read.status!==404&&!read.ok)throw new Error("Could not read migration lease.");
+ const data=plain(doc),until=Date.parse(String(data.leaseUntil??""));
+ if(Number.isFinite(until)&&until>Date.now()){
+  await fsFetch(base+":rollback",bearer,{method:"POST",body:JSON.stringify({transaction})});
+  throw new Error("Another migration request currently holds the lease.");
+ }
+ const lease=crypto.randomUUID(),fields={...data,leaseToken:lease,leaseUntil:new Date(Date.now()+90000).toISOString()};
+ const write:Record<string,unknown>={update:{name:base+"/"+CONTROL,fields:Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,encode(v)]))}};
+ if(!doc)write.currentDocument={exists:false};
+ const committed=await fsFetch(base+":commit",bearer,{method:"POST",body:JSON.stringify({transaction,writes:[write]})});
+ if(!committed.ok)throw new Error("Migration lease acquisition conflicted.");
+ return lease;
+}
+async function releaseLease(base:string,bearer:string,lease:string):Promise<void>{
+ try{
+  const start=await fsFetch(base+":beginTransaction",bearer,{method:"POST",body:JSON.stringify({options:{readWrite:{}}})});
+  if(!start.ok)return;
+  const transaction=(await start.json() as {transaction?:string}).transaction;if(!transaction)return;
+  const read=await fsFetch(base+"/"+CONTROL+"?transaction="+encodeURIComponent(transaction),bearer);
+  if(!read.ok)return;
+  const doc=await read.json() as FsDocument,data=plain(doc);
+  if(data.leaseToken!==lease){await fsFetch(base+":rollback",bearer,{method:"POST",body:JSON.stringify({transaction})});return;}
+  const fields={...data,leaseToken:"",leaseUntil:""};
+  const committed=await fsFetch(base+":commit",bearer,{method:"POST",body:JSON.stringify({transaction,writes:[{update:{name:base+"/"+CONTROL,fields:Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,encode(v)]))}}]})});
+  if(!committed.ok)console.error("Migration lease release failed",committed.status);
+ }catch(error){console.error("Migration lease release failed",error);}
+}
+
 export async function isVerifiedMigratedObject(key:string,env:StorageMigrationEnv):Promise<boolean>{
  try{
   const id=await hashText(key);
@@ -279,6 +315,10 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
  if(request.method!=="POST")return reply({error:"Method not allowed."},405);
  let body:Record<string,unknown>;try{body=await request.json() as Record<string,unknown>;}catch{return reply({error:"Invalid JSON."},400);}
  const dryRun=body.dryRun===true;
+ const mutating=["/_admin/storage-migration/inventory","/_admin/storage-migration/copy","/_admin/storage-migration/retry","/_admin/storage-migration/reset-copy-cursor"].includes(url.pathname);
+ let lease="";
+ if(mutating&&!dryRun){try{lease=await acquireLease(base,fsToken);}catch(e){return reply({error:e instanceof Error?e.message:"Migration is locked."},409);}}
+ try{
  if(url.pathname==="/_admin/storage-migration/inventory"){
   try{
    const control=plain(await readDoc(base,CONTROL,fsToken));
@@ -308,5 +348,6 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
   catch{return reply({error:"Could not reset cursor."},503);}
  }
  return reply({error:"Unknown migration operation."},404);
+ } finally { if(lease) await releaseLease(base,fsToken,lease); }
 }
 export const storageMigrationTestHooks={Sha256,hashBody,validPath,metadataMap,MAX_RETRIES};
