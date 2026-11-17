@@ -88,7 +88,7 @@ String? firebaseStorageObjectPath(String reference) {
 
 Future<String?> _resolveR2Key(String key) async {
   final config = resolveMediaBackendConfig();
-  if (!config.isConfigured) return null;
+  if (!config.isConfigured) throw const NotFoundError("R2 media is not configured; use the legacy Firebase object.");
   final provider = R2MediaStorageProvider(
     workerUrl: config.workerUrl,
     idTokenProvider: () async =>
