@@ -322,7 +322,8 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
  if(url.pathname==="/_admin/storage-migration/inventory"){
   try{
    const control=plain(await readDoc(base,CONTROL,fsToken));
-   const page=await gcsList(env.FIREBASE_STORAGE_BUCKET,gcsToken,String(control.inventoryPageToken??"")||null,Math.max(1,Math.min(MAX_PAGE,Number(body.pageSize)||MAX_PAGE)));
+   const selectedPageToken=dryRun?String(body.pageToken??"")||null:String(control.inventoryPageToken??"")||null;
+   const page=await gcsList(env.FIREBASE_STORAGE_BUCKET,gcsToken,selectedPageToken,Math.max(1,Math.min(MAX_PAGE,Number(body.pageSize)||MAX_PAGE)));
    const count=dryRun?0:await upsertPage(base,fsToken,env.FIREBASE_STORAGE_BUCKET,page.items);
    if(!dryRun)await writeDoc(base,CONTROL,fsToken,{...control,inventoryPageToken:page.next,inventoryComplete:!page.next,lastInventoryAt:new Date().toISOString(),lastInventoryPageCount:page.items.length,inventoriedObjectCount:Number(control.inventoriedObjectCount??0)+count});
    return reply({dryRun,pageCount:page.items.length,manifestUpserts:count,inventoryComplete:!page.next,nextPageToken:dryRun?page.next:undefined,sample:page.items.slice(0,10).map(x=>({name:x.name,size:Number(x.size),contentType:x.contentType??"application/octet-stream"}))});
@@ -347,13 +348,20 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
      }
     }
    }
-   const query:Record<string,unknown>={from:[{collectionId:MANIFEST}],where:{fieldFilter:{field:{fieldPath:"status"},op:"EQUAL",value:{stringValue:retry?"failed":"pending"}}},orderBy:[{field:{fieldPath:"__name__"},direction:"ASCENDING"}],limit};
+   const query:Record<string,unknown>={from:[{collectionId:MANIFEST}],where:{fieldFilter:{field:{fieldPath:"status"},op:"EQUAL",value:{stringValue:retry?"failed":"pending"}}},orderBy:[{field:{fieldPath:"__name__"},direction:"ASCENDING"}],limit:retry?limit*10:limit};
    if(!retry&&control.copyCursor)query.startAt={values:[{referenceValue:String(control.copyCursor)}],before:false};
    const q=await fsFetch(base+":runQuery",fsToken,{method:"POST",body:JSON.stringify({structuredQuery:query})});
    if(!q.ok)throw new Error("Manifest query failed ("+q.status+").");
-   const rows=await q.json() as Array<{document?:FsDocument}>,docs=rows.flatMap(x=>x.document?[x.document]:[]).filter(doc=>!retry||Number(plain(doc).attempts??0)<MAX_RETRIES);
+   const rows=await q.json() as Array<{document?:FsDocument}>,docs=rows.flatMap(x=>x.document?[x.document]:[]).filter(doc=>!retry||Number(plain(doc).attempts??0)<MAX_RETRIES).slice(0,limit);
    const results=[];
-   for(const doc of docs)results.push(await copyObject(env,base,fsToken,gcsToken,doc,dryRun));
+   for(const doc of docs){
+    try{results.push(await copyObject(env,base,fsToken,gcsToken,doc,dryRun));}
+    catch(error){
+     const data=plain(doc),id=doc.name.split("/").pop()??"",attempts=Number(data.attempts??0)+1;
+     if(!dryRun)await patchManifest(base,fsToken,id,{status:"failed",attempts,lastError:"Copy attempt failed; retry is bounded."});
+     results.push({path:data.sourcePath,status:"failed",reason:"copy-attempt-failed",attempts});
+    }
+   }
    if(!dryRun&&docs.length&&!retry)await writeDoc(base,CONTROL,fsToken,{...control,copyCursor:docs[docs.length-1].name,lastCopyAt:new Date().toISOString()});
    return reply({dryRun,operation:retry?"retry":"copy",processed:results.length,verified:results.filter(x=>x.status==="verified").length,failed:results.filter(x=>x.status==="failed").length,conflicts:results.filter(x=>x.status==="conflict").length,results});
   }catch(e){return reply({error:e instanceof Error?e.message:"Copy failed."},503);}
