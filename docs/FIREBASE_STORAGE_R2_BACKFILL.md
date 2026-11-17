@@ -113,7 +113,7 @@ endpoint is intentionally bounded.
 
 - Objects larger than 500 MiB are marked failed and require a separate
   multipart/server-side migration design.
-- A single request processes one inventory page or at most eight copy records;
+- A single request processes one inventory page or one copy record;
   operators should monitor Worker execution limits and resume between calls.
 - Source inventory requires GCS list/get IAM. Without that manual grant, the
   API returns a permission error and no inventory progress is committed.
