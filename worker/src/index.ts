@@ -872,7 +872,8 @@ export default {
       const object = await env.MEDIA_BUCKET.head(key);
       if (!object) return json({ error: "Media not found." }, 404);
       if (object.customMetadata?.migrationSource === "firebase-storage" &&
-          !await isVerifiedMigratedObject(key, env, object.customMetadata?.migrationSourceGeneration, object.size)) {
+          (!object.customMetadata?.migrationSourceGeneration ||
+           !await isVerifiedMigratedObject(key, env, object.customMetadata?.migrationSourceGeneration, object.size))) {
         return json({ error: "Legacy media is not verified in R2 yet." }, 404);
       }
       if (scoped) {
