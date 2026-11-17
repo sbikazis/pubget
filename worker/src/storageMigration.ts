@@ -286,22 +286,24 @@ async function releaseLease(base:string,bearer:string,lease:string):Promise<void
  }catch(error){console.error("Migration lease release failed",error);}
 }
 
+export function isVerifiedManifestRecord(key:string,data:Record<string,unknown>):boolean{
+ return data.sourcePath===key&&data.status==="verified"&&
+  typeof data.sourceGeneration==="string"&&typeof data.destinationSha256==="string"&&
+  data.destinationSha256.length===64;
+}
 export async function isVerifiedMigratedObject(key:string,env:StorageMigrationEnv):Promise<boolean>{
  try{
   const id=await hashText(key);
   const bearer=await token(env,[DATASTORE]);
   const doc=await readDoc(fsBase(env.FIREBASE_PROJECT_ID),MANIFEST+"/"+id,bearer);
-  const data=plain(doc);
-  return data.sourcePath===key&&data.status==="verified"&&
-   typeof data.sourceGeneration==="string"&&typeof data.destinationSha256==="string"&&
-   data.destinationSha256.length===64;
+  return isVerifiedManifestRecord(key,plain(doc));
  }catch{return false;}
 }
 
 export async function handleStorageMigrationRequest(request:Request,env:StorageMigrationEnv):Promise<Response|null>{
  const url=new URL(request.url);
  if(!url.pathname.startsWith("/_admin/storage-migration"))return null;
- if(request.method==="OPTIONS")return reply({ok:true},204);
+ if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-methods":"GET, POST, OPTIONS","access-control-allow-headers":"Authorization, Content-Type"}});
  if(!await authorizeAdmin(request,env))return reply({error:"Recent verified administrator authentication required."},403);
  if(!env.FIREBASE_STORAGE_BUCKET)return reply({error:"FIREBASE_STORAGE_BUCKET is not configured."},503);
  const base=fsBase(env.FIREBASE_PROJECT_ID);
@@ -373,4 +375,4 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
  return reply({error:"Unknown migration operation."},404);
  } finally { if(lease) await releaseLease(base,fsToken,lease); }
 }
-export const storageMigrationTestHooks={Sha256,hashBody,validPath,metadataMap,MAX_RETRIES};
+export const storageMigrationTestHooks={Sha256,hashBody,validPath,metadataMap,MAX_RETRIES,copyObject,isVerifiedManifestRecord};
