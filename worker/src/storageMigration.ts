@@ -16,7 +16,7 @@ type GcsObject = {
 };
 type FsValue = Record<string, unknown>;
 type FsDocument = { name: string; fields?: Record<string, FsValue> };
-type Status = "pending" | "copying" | "verified" | "failed" | "conflict";
+type Status = "pending" | "copying" | "verified" | "failed" | "conflict" | "unsupported";
 const DATASTORE = "https://www.googleapis.com/auth/datastore";
 const GCS_READ = "https://www.googleapis.com/auth/devstorage.read_only";
 const MANIFEST = "storageMigrationManifest";
@@ -98,6 +98,15 @@ async function hashText(value: string): Promise<string> {
 function validPath(path: string): boolean {
   return path.length > 0 && path.length <= 1024;
 }
+
+// Only copy object namespaces that the authenticated Worker can resolve and
+// authorize. Other Firebase Storage namespaces remain on the legacy reader.
+function isSupportedMediaPath(path: string): boolean {
+  const uid = "[A-Za-z0-9_-]{1,128}";
+  const file = "[A-Za-z0-9_-]{1,80}\\.(?:jpg|jpeg|png|webp|gif|mp4|webm|mov|mp3|aac|ogg|m4a)";
+  return new RegExp("^(?:(?:images|reels|audio)/" + uid + "/" + file +
+    "|(?:groups|privateChats)/[A-Za-z0-9_:-]{1,320}/" + uid + "/" + file + ")$").test(path);
+}
 function metadataMap(input?: Record<string,string>): Record<string,string> {
   const out: Record<string,string> = {};
   for (const [key,value] of Object.entries(input ?? {})) {
@@ -165,7 +174,7 @@ async function upsertPage(base:string,bearer:string,bucket:string,items:GcsObjec
       sourceMd5:item.md5Hash ?? "",sourceCrc32c:item.crc32c ?? "",
       sourceUpdatedAt:item.updated ?? item.timeCreated ?? "",
       sourceMetadata:metadataMap(item.metadata),contentMetadata:httpMeta(item),
-      status:verified?"verified":same&&old?.status==="failed"&&Number(old?.attempts??0)>=MAX_RETRIES?"failed":"pending",attempts:same?Number(old?.attempts ?? 0):0,
+      status:!isSupportedMediaPath(item.name)?"unsupported":verified?"verified":same&&old?.status==="failed"&&Number(old?.attempts??0)>=MAX_RETRIES?"failed":"pending",attempts:same?Number(old?.attempts ?? 0):0,
       sourceSha256:verified?old?.sourceSha256 ?? "":"",
       destinationSha256:verified?old?.destinationSha256 ?? "":"",
       verifiedAt:verified?old?.verifiedAt ?? "":"",
@@ -329,10 +338,12 @@ async function releaseLease(base:string,bearer:string,lease:string):Promise<void
 }
 
 export function isVerifiedManifestRecord(key:string,data:Record<string,unknown>,generation?:string,size?:number):boolean{
+ const sourceHash=typeof data.sourceSha256==="string"?data.sourceSha256:"";
+ const destinationHash=typeof data.destinationSha256==="string"?data.destinationSha256:"";
  return data.sourcePath===key&&data.status==="verified"&&
   typeof data.sourceGeneration==="string"&&(!generation||data.sourceGeneration===generation)&&
   (size===undefined||Number(data.sizeBytes)===size)&&
-  typeof data.destinationSha256==="string"&&data.destinationSha256.length===64;
+  /^[a-f0-9]{64}$/.test(sourceHash)&&sourceHash===destinationHash;
 }
 export async function isVerifiedMigratedObject(key:string,env:StorageMigrationEnv,generation?:string,size?:number):Promise<boolean>{
  try{
@@ -425,4 +436,4 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
  return reply({error:"Unknown migration operation."},404);
  } finally { if(lease) await releaseLease(base,fsToken,lease); }
 }
-export const storageMigrationTestHooks={Sha256,hashBody,digestBody,validPath,metadataMap,r2CustomMetadata,MAX_RETRIES,copyObject,isVerifiedManifestRecord,gcsList,acquireLease};
+export const storageMigrationTestHooks={Sha256,hashBody,digestBody,validPath,isSupportedMediaPath,metadataMap,r2CustomMetadata,MAX_RETRIES,copyObject,isVerifiedManifestRecord,gcsList,acquireLease};
