@@ -105,6 +105,24 @@ function metadataMap(input?: Record<string,string>): Record<string,string> {
   }
   return out;
 }
+function r2CustomMetadata(path:string,input:Record<string,string>|undefined,generation:string,bucket:string):Record<string,string>{
+ const source=metadataMap(input),parts=path.split("/");
+ const inferred=parts.length===3&&["images","reels","audio"].includes(parts[0])?parts[1]:
+  parts.length===4&&["groups","privateChats"].includes(parts[0])?parts[2]:"";
+ const result:Record<string,string>={
+  ...(source.uploadedBy?{uploadedBy:source.uploadedBy}:inferred?{uploadedBy:inferred}:{}),
+  migrationSource:"firebase-storage",
+  migrationSourceGeneration:generation,
+  migrationSourceBucket:bucket,
+ };
+ let bytes=Object.entries(result).reduce((n,[k,v])=>n+k.length+v.length,0);
+ for(const [key,value] of Object.entries(source)){
+  if(key in result)continue;
+  if(bytes+key.length+value.length>1500)continue;
+  result[key]=value;bytes+=key.length+value.length;
+ }
+ return result;
+}
 function httpMeta(item: GcsObject): Record<string,string> {
   const out: Record<string,string> = {};
   for (const key of ["contentType","cacheControl","contentDisposition","contentEncoding","contentLanguage"] as const) {
@@ -230,13 +248,13 @@ async function copyObject(env:StorageMigrationEnv,base:string,fsToken:string,gcs
   return {path,status:"failed",reason:"source-http-"+source.status};
  }
  const sourceHash=hashBody(source.body);
- const custom=metadataMap(d.sourceMetadata as Record<string,string>);
+ const custom=r2CustomMetadata(path,d.sourceMetadata as Record<string,string>,generation,String(d.sourceBucket));
  await env.MEDIA_BUCKET.put(path,sourceHash.stream,{
   httpMetadata:{
    contentType:String(d.contentType??"application/octet-stream"),
    ...(d.contentMetadata as Record<string,string>??{}),
   },
-  customMetadata:{...custom,migrationSource:"firebase-storage",migrationSourceGeneration:generation,migrationSourceBucket:String(d.sourceBucket)},
+  customMetadata:custom,
  });
  const src=await sourceHash.result;
  const object=await env.MEDIA_BUCKET.get(path);
@@ -383,4 +401,4 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
  return reply({error:"Unknown migration operation."},404);
  } finally { if(lease) await releaseLease(base,fsToken,lease); }
 }
-export const storageMigrationTestHooks={Sha256,hashBody,digestBody,validPath,metadataMap,MAX_RETRIES,copyObject,isVerifiedManifestRecord,gcsList,acquireLease};
+export const storageMigrationTestHooks={Sha256,hashBody,digestBody,validPath,metadataMap,r2CustomMetadata,MAX_RETRIES,copyObject,isVerifiedManifestRecord,gcsList,acquireLease};
