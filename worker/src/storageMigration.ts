@@ -313,7 +313,6 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
  if(!url.pathname.startsWith("/_admin/storage-migration"))return null;
  if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-methods":"GET, POST, OPTIONS","access-control-allow-headers":"Authorization, Content-Type"}});
  if(!await authorizeAdmin(request,env))return reply({error:"Recent verified administrator authentication required."},403);
- if(!env.FIREBASE_STORAGE_BUCKET)return reply({error:"FIREBASE_STORAGE_BUCKET is not configured."},503);
  const base=fsBase(env.FIREBASE_PROJECT_ID);
  let fsToken:string,gcsToken:string;
  try{[fsToken,gcsToken]=await Promise.all([token(env,[DATASTORE]),token(env,[GCS_READ])]);}
@@ -329,6 +328,7 @@ export async function handleStorageMigrationRequest(request:Request,env:StorageM
  let lease="";
  if(mutating&&!dryRun){try{lease=await acquireLease(base,fsToken);}catch(e){return reply({error:e instanceof Error?e.message:"Migration is locked."},409);}}
  try{
+ if(!env.FIREBASE_STORAGE_BUCKET)return reply({error:"FIREBASE_STORAGE_BUCKET is not configured."},503);
  if(url.pathname==="/_admin/storage-migration/inventory"){
   try{
    const control=plain(await readDoc(base,CONTROL,fsToken));
