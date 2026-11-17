@@ -96,8 +96,7 @@ async function hashText(value: string): Promise<string> {
   return Array.from(bytes, b => b.toString(16).padStart(2,"0")).join("");
 }
 function validPath(path: string): boolean {
-  return path.length > 0 && path.length <= 1024 && !path.startsWith("/") && !path.includes("\\") &&
-    !path.split("/").some(p => p === "" || p === "." || p === "..");
+  return path.length > 0 && path.length <= 1024;
 }
 function metadataMap(input?: Record<string,string>): Record<string,string> {
   const out: Record<string,string> = {};
@@ -120,7 +119,7 @@ async function gcsList(bucket: string, bearer: string, pageToken: string | null,
   const r = await fetch(url,{headers:{Authorization:"Bearer "+bearer}});
   if (!r.ok) throw new Error("GCS inventory failed ("+r.status+").");
   const body = await r.json() as {items?:GcsObject[];nextPageToken?:string};
-  return {items:(body.items ?? []).filter(x => validPath(x.name)),next:body.nextPageToken ?? ""};
+  return {items:(body.items ?? []).filter(x => typeof x.name === "string" && x.name.length > 0 && x.name.length <= 1024),next:body.nextPageToken ?? ""};
 }
 async function batchGet(base: string, bearer: string, items: GcsObject[]) {
   const ids = await Promise.all(items.map(x => hashText(x.name)));
@@ -184,18 +183,21 @@ class Sha256 {
 }
 function hashBody(body:ReadableStream<Uint8Array>){
  const hash=new Sha256();let size=0;
- const stream=body.pipeThrough(new TransformStream<Uint8Array,Uint8Array>({
+ const [pass,hashInput]=body.tee();
+ const hashed=hashInput.pipeThrough(new TransformStream<Uint8Array,Uint8Array>({
   transform(chunk,controller){size+=chunk.length;hash.update(chunk);controller.enqueue(chunk);}
  }));
- return {stream,result:(async()=>{await stream.pipeTo(new WritableStream({write(){}}));return {size,sha256:hash.finish()};})()};
+ const result=(async()=>{await hashed.pipeTo(new WritableStream({write(){}}));return {size,sha256:hash.finish()};})();
+ return {stream:pass,result};
 }
 async function copyObject(env:StorageMigrationEnv,base:string,fsToken:string,gcsToken:string,doc:FsDocument,dryRun:boolean){
  const d=plain(doc),path=String(d.sourcePath??""),generation=String(d.sourceGeneration??""),size=Number(d.sizeBytes),id=doc.name.split("/").pop()??"";
- if(!validPath(path)||!generation||!Number.isSafeInteger(size)||size<=0||size>MAX_BYTES){
+ if(!validPath(path)||!generation||!Number.isSafeInteger(size)||size<0||size>MAX_BYTES){
   if(!dryRun)await patchManifest(base,fsToken,id,{status:"failed",lastError:"Unsupported object metadata.",attempts:Number(d.attempts??0)+1});
   return {path,status:"failed",reason:"unsupported-metadata"};
  }
  if(dryRun)return {path,status:"would-copy",sizeBytes:size};
+ if(Number(d.attempts??0)>=MAX_RETRIES)return {path,status:"failed",reason:"retry-limit-reached"};
  const latest=await getGcsObject(String(d.sourceBucket),path,gcsToken);
  if(latest.generation!==generation||Number(latest.size)!==size){
   await patchManifest(base,fsToken,id,{status:"failed",lastError:"Source generation changed; run inventory again.",attempts:Number(d.attempts??0)+1});
@@ -206,7 +208,11 @@ async function copyObject(env:StorageMigrationEnv,base:string,fsToken:string,gcs
   await patchManifest(base,fsToken,id,{status:"conflict",lastError:"R2 key already exists and is not owned by this migration."});
   return {path,status:"conflict",reason:"destination-exists"};
  }
- await patchManifest(base,fsToken,id,{status:"copying",lastError:""});
+ if(existing && d.status==="verified" && existing.size===size && d.destinationSha256){
+  const already=await env.MEDIA_BUCKET.get(path);
+  if(already){const checked=hashBody(already.body),digest=await checked.result;if(digest.sha256===d.destinationSha256&&digest.size===size)return {path,status:"verified",skipped:true,sizeBytes:size,sha256:digest.sha256};}
+ }
+ await patchManifest(base,fsToken,id,{status:"copying",lastAttemptAt:new Date().toISOString(),lastError:""});
  const url=new URL("https://storage.googleapis.com/storage/v1/b/"+encodeURIComponent(String(d.sourceBucket))+"/o/"+encodeURIComponent(path));
  url.searchParams.set("alt","media");url.searchParams.set("ifGenerationMatch",generation);
  const source=await fetch(url,{headers:{Authorization:"Bearer "+gcsToken}});
