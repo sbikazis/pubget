@@ -394,7 +394,7 @@ export function validEditsServiceKey(key: string): boolean {
   return /^(?:edits\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\.mp4|edits-processed\/[A-Za-z0-9_-]{1,128}\/(?![A-Za-z0-9_-]{1,128}_360\.mp4$)[A-Za-z0-9_-]{1,128}(?:_(?:720|480))?\.mp4|edits\/[A-Za-z0-9_-]{1,128}\/t_[A-Za-z0-9_-]{1,128}\.jpg)$/.test(key);
 }
 
-function validKirariServiceKey(key: string): boolean {
+export function validKirariServiceKey(key: string): boolean {
   return /^(?:kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:source\.mp4|cover-source\.jpg)|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:360|540|720)\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/cover\.jpg|kirari-audio\/[A-Za-z0-9_-]{1,128}\/audio\.(?:mp3|m4a|aac|ogg))$/.test(key);
 }
 
