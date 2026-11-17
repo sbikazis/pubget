@@ -249,6 +249,19 @@ async function authorizeAdmin(request:Request,env:StorageMigrationEnv){
  const auth=await verifyFirebaseIdToken(m[1],env.FIREBASE_PROJECT_ID,fetch,now,300);
  return auth?.claims.email_verified===true&&auth.claims.admin===true&&typeof auth.claims.auth_time==="number"&&now-auth.claims.auth_time<=300;
 }
+
+export async function isVerifiedMigratedObject(key:string,env:StorageMigrationEnv):Promise<boolean>{
+ try{
+  const id=await hashText(key);
+  const bearer=await token(env,[DATASTORE]);
+  const doc=await readDoc(fsBase(env.FIREBASE_PROJECT_ID),MANIFEST+"/"+id,bearer);
+  const data=plain(doc);
+  return data.sourcePath===key&&data.status==="verified"&&
+   typeof data.sourceGeneration==="string"&&typeof data.destinationSha256==="string"&&
+   data.destinationSha256.length===64;
+ }catch{return false;}
+}
+
 export async function handleStorageMigrationRequest(request:Request,env:StorageMigrationEnv):Promise<Response|null>{
  const url=new URL(request.url);
  if(!url.pathname.startsWith("/_admin/storage-migration"))return null;
