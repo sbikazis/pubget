@@ -182,6 +182,7 @@ function createEditsDomain({
   achievements,
   processEdit,
   bucket,
+  r2Bucket,
   collectionName = "edits",
   uploadKeyCollection = "editUploadKeys",
   quotaCollectionName = "editUploadQuota",
@@ -328,6 +329,7 @@ function createEditsDomain({
     const videoPath = `${storagePrefix}/${creatorId}/${editId}.mp4`;
     const payload = {
       creatorId,
+      mediaBackend: "r2",
       videoUrl: "",
       thumbnailUrl: "",
       videoPath,
@@ -502,35 +504,67 @@ function createEditsDomain({
     }
     if (data.status === "deleted") return { ok: true, alreadyDeleted: true };
 
-    const deletedAt = new Date();
-    await ref.update({
-      status: "deleted",
-      moderationStatus: "removed",
-      moderationReason: "creator_deleted",
-      deletedAt,
-      // §15.18 — the links must not keep resolving to a playable Reel.
-      videoUrl: null,
-      processedStoragePath: null,
-      originalStoragePath: null,
-      thumbnailUrl: null,
-      thumbnailStoragePath: null,
-      renditions: null,
-    });
-
-    // §15.18 — revoke the bytes. Flipping `status` alone left the raw upload
-    // and every transcoded rung readable to any signed-in account forever,
-    // because the Storage rules only checked for a caller.
-    await setMediaVisible({
-      db,
-      bucket,
-      creatorId,
-      editId: id,
-      visible: false,
-      storagePrefix,
-      processedPrefix,
-      collectionName,
-      FieldValue,
-    });
+    const deletedAt = data.deletedAt || new Date();
+    if (data.mediaBackend === "r2") {
+      if (!r2Bucket) {
+        throw new HttpsError("unavailable", "R2 media cleanup is temporarily unavailable. Retry deletion.");
+      }
+      // Persist the exact cleanup manifest before deleting anything. If one
+      // object delete fails, the document stays non-published and a retry can
+      // finish from this manifest instead of losing the object keys.
+      const keys = [...new Set([
+        ...(Array.isArray(data.mediaCleanupKeys) ? data.mediaCleanupKeys : []),
+        data.originalStoragePath,
+        data.processedStoragePath,
+        data.thumbnailStoragePath,
+        ...Object.values(data.renditions || {}).map((item) => item && item.path),
+      ].filter((key) => typeof key === "string" && key.length > 0))];
+      await ref.update({
+        status: "deleting",
+        moderationStatus: "removed",
+        moderationReason: "creator_deleted",
+        deletedAt,
+        videoUrl: null,
+        thumbnailUrl: null,
+        mediaCleanupKeys: keys,
+      });
+      await Promise.all(keys.map((key) =>
+        r2Bucket.file(key).delete({ ignoreNotFound: true }),
+      ));
+      await ref.update({
+        status: "deleted",
+        originalStoragePath: null,
+        processedStoragePath: null,
+        thumbnailStoragePath: null,
+        renditions: null,
+        mediaCleanupKeys: FieldValue.delete(),
+      });
+    } else {
+      await ref.update({
+        status: "deleted",
+        moderationStatus: "removed",
+        moderationReason: "creator_deleted",
+        deletedAt,
+        // Legacy Firebase Storage media remains protected by its visibility receipt.
+        videoUrl: null,
+        processedStoragePath: null,
+        originalStoragePath: null,
+        thumbnailUrl: null,
+        thumbnailStoragePath: null,
+        renditions: null,
+      });
+      await setMediaVisible({
+        db,
+        bucket,
+        creatorId,
+        editId: id,
+        visible: false,
+        storagePrefix,
+        processedPrefix,
+        collectionName,
+        FieldValue,
+      });
+    }
 
     // Saved-Reel snapshots are denormalized copies that kept the old
     // `videoUrl`, so a deleted Reel stayed playable from someone else's saved
@@ -912,6 +946,9 @@ function createEditsDomain({
       creatorId: editData.creatorId || "",
       videoUrl: editData.videoUrl || "",
       thumbnailUrl: editData.thumbnailUrl || "",
+      mediaBackend: editData.mediaBackend || "firebase",
+      status: editData.status || "published",
+      moderationStatus: editData.moderationStatus || "approved",
       caption: editData.caption || "",
       durationSeconds: Number(editData.durationSeconds) || 0,
       likesCount: Number(editData.likesCount) || 0,
@@ -1386,11 +1423,13 @@ function createEditsDomain({
     };
   }
 
-  async function resolveSourceObject(videoPath) {
-    if (!bucket || !videoPath) {
-      return { contentType: "video/mp4", size: config.maxBytes, exists: true };
+  async function resolveSourceObject(videoPath, editData = {}) {
+    if (!videoPath) {
+      return { contentType: "video/mp4", size: 0, exists: false };
     }
-    const file = bucket.file(videoPath);
+    const selectedBucket = editData.mediaBackend === "r2" ? r2Bucket : bucket;
+    if (!selectedBucket) return { contentType: "video/mp4", size: 0, exists: false };
+    const file = selectedBucket.file(videoPath);
     const [exists] = await file.exists();
     if (!exists) {
       return { contentType: "video/mp4", size: 0, exists: false };
@@ -1404,7 +1443,7 @@ function createEditsDomain({
   }
 
   async function kickProcessing(ref, data, videoPath, { awaitProcessing = false } = {}) {
-    const source = await resolveSourceObject(videoPath);
+    const source = await resolveSourceObject(videoPath, data);
     if (!source.exists) {
       throw new HttpsError(
         "failed-precondition",
@@ -1426,9 +1465,9 @@ function createEditsDomain({
       status: "processing",
       failureReason: null,
       moderationReason: null,
-      processingStartedAt: FieldValue.serverTimestamp(),
+      processingStartedAt: data.mediaBackend === "r2" ? null : FieldValue.serverTimestamp(),
     });
-    if (typeof processEdit === "function") {
+    if (data.mediaBackend !== "r2" && typeof processEdit === "function") {
       const job = processEdit({
         data: {
           name: videoPath,
@@ -1474,7 +1513,10 @@ function createEditsDomain({
     if (data.status === "rejected") {
       return { ok: true, status: "rejected", reason: data.moderationReason || null };
     }
-    if (!["uploading", "processing", "failed"].includes(data.status)) {
+    if (data.status === "processing") {
+      return { ok: true, status: "processing", videoPath: data.processedStoragePath || null };
+    }
+    if (!["uploading", "failed"].includes(data.status)) {
       throw new HttpsError("failed-precondition", "This Reel cannot be finalized.");
     }
     const videoPath = data.originalStoragePath || data.videoPath;
@@ -1501,6 +1543,9 @@ function createEditsDomain({
     }
     if (data.status === "published") {
       return { ok: true, videoPath: data.processedStoragePath || null, status: "published" };
+    }
+    if (data.status === "processing") {
+      await ref.update({ status: "failed", failureReason: "retry-requested" });
     }
     const videoPath = data.originalStoragePath || data.videoPath;
     if (!videoPath) {
