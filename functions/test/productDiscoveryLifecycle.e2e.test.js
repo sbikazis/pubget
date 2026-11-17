@@ -72,7 +72,7 @@ function auth(uid) {
 }
 
 function edits() {
-  return createEditsDomain({ db, FieldValue, HttpsError: TestHttpsError });
+  return createEditsDomain({ db, FieldValue, HttpsError: TestHttpsError, bucket, r2Bucket: bucket, processEdit });
 }
 
 function recs() {
