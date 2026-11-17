@@ -94,3 +94,31 @@ npx wrangler deploy --config worker/wrangler.toml
 - Existing Firebase Storage objects are legacy data. Keep legacy readers and
   retention paths intact; do not delete or bulk-migrate source objects in this
   phase.
+
+
+## Firebase Storage legacy backfill
+
+The separately documented migration runner is implemented in
+`src/storageMigration.ts`. It uses Firestore as its durable manifest and
+cursor store; it does not require KV. The R2 bucket remains private.
+
+Admin routes (Firebase ID token with verified email, `admin: true` custom
+claim, and reauthentication within five minutes):
+
+- `GET /_admin/storage-migration/status`
+- `POST /_admin/storage-migration/inventory`
+- `POST /_admin/storage-migration/copy`
+- `POST /_admin/storage-migration/retry`
+- `POST /_admin/storage-migration/reset-copy-cursor`
+
+Set `FIREBASE_STORAGE_BUCKET` to the verified bucket name only after review.
+The Worker service account needs bucket-scoped read-only GCS list/get
+permissions. See [the backfill runbook](../docs/FIREBASE_STORAGE_R2_BACKFILL.md)
+for IAM setup, dry-run, resume, verification, rollback, and manual gates.
+
+The runner copies each GCS generation to the same key in R2, hashes the source
+and R2 destination with streaming SHA-256, and marks the Firestore manifest
+`verified` only after exact size/hash equality. It never deletes or modifies
+Firebase Storage source objects. Existing R2 keys without the migration marker
+are conflicts and are never overwritten. Firebase download-token metadata is
+not copied into R2.
