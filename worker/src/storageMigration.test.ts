@@ -129,3 +129,136 @@ describe("Firebase Storage migration primitives", () => {
     await expect(hooks.acquireLease(base, "service-token")).rejects.toThrow(/lease/i);
   });
 });
+
+
+describe("verified GCS to R2 copy lifecycle", () => {
+  function setup(corruptDestination = false) {
+    const sourceBytes = encoder.encode("legacy-media");
+    let destinationBytes: Uint8Array | null = null;
+    let destinationMetadata: Record<string,string> = {};
+    let manifestFields: Record<string,unknown> = {
+      sourcePath: "fan_works/alice/work/cover.jpg",
+      sourceBucket: "pubget-aaf27.firebasestorage.app",
+      sourceGeneration: "77",
+      sourceMetageneration: "3",
+      sizeBytes: sourceBytes.length,
+      contentType: "image/jpeg",
+      sourceMetadata: { uploadedBy: "alice" },
+      contentMetadata: { contentType: "image/jpeg", cacheControl: "private" },
+      status: "pending",
+      attempts: 0,
+    };
+    const firestoreFields = (values: Record<string,unknown>) =>
+      Object.fromEntries(Object.entries(values).map(([key,value]) => {
+        if (typeof value === "string") return [key,{stringValue:value}];
+        if (typeof value === "number") return [key,{integerValue:String(value)}];
+        if (typeof value === "boolean") return [key,{booleanValue:value}];
+        if (value && typeof value === "object") {
+          const nested = value as Record<string,unknown>;
+          return [key,{mapValue:{fields:firestoreFields(nested)}}];
+        }
+        return [key,{nullValue:null}];
+      }));
+    const bucket = {
+      async head() {
+        return destinationBytes ? {
+          size: destinationBytes.length,
+          customMetadata: destinationMetadata,
+        } : null;
+      },
+      async put(_key:string, stream:ReadableStream<Uint8Array>, options: {customMetadata:Record<string,string>}) {
+        destinationBytes = new Uint8Array(await new Response(stream).arrayBuffer());
+        destinationMetadata = options.customMetadata;
+      },
+      async get() {
+        if (!destinationBytes) return null;
+        const bytes = corruptDestination
+          ? Uint8Array.from(destinationBytes, (value,index) => index === 0 ? value ^ 1 : value)
+          : destinationBytes;
+        return { body: new Response(bytes).body };
+      },
+      async delete() { destinationBytes = null; },
+    };
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input:RequestInfo|URL, init?:RequestInit) => {
+      const url = new URL(String(input));
+      requests.push(url.href);
+      if (url.hostname === "storage.googleapis.com") {
+        if (url.searchParams.get("alt") === "media") {
+          return new Response(sourceBytes, {status:200});
+        }
+        return new Response(JSON.stringify({
+          name: "fan_works/alice/work/cover.jpg",
+          size: String(sourceBytes.length),
+          generation: "77",
+          metageneration: "3",
+          contentType: "image/jpeg",
+        }), {status:200});
+      }
+      if (url.hostname === "firestore.googleapis.com" && init?.method === "PATCH") {
+        const payload = JSON.parse(String(init.body)) as {fields:Record<string,unknown>};
+        manifestFields = payload.fields;
+        return new Response("{}",{status:200});
+      }
+      if (url.hostname === "firestore.googleapis.com") {
+        return new Response(JSON.stringify({
+          name: String(input),
+          fields: firestoreFields(manifestFields),
+        }),{status:200});
+      }
+      throw new Error("Unexpected fetch " + url.href);
+    }));
+    const doc = {
+      name: "projects/pubget-aaf27/databases/(default)/documents/storageMigrationManifest/test",
+      fields: {
+        sourcePath: {stringValue:"fan_works/alice/work/cover.jpg"},
+        sourceBucket: {stringValue:"pubget-aaf27.firebasestorage.app"},
+        sourceGeneration: {stringValue:"77"},
+        sourceMetageneration: {stringValue:"3"},
+        sizeBytes: {integerValue:String(sourceBytes.length)},
+        contentType: {stringValue:"image/jpeg"},
+        sourceMetadata: {mapValue:{fields:{uploadedBy:{stringValue:"alice"}}}},
+        contentMetadata: {mapValue:{fields:{contentType:{stringValue:"image/jpeg"},cacheControl:{stringValue:"private"}}}},
+        status: {stringValue:"pending"},
+        attempts: {integerValue:"0"},
+      },
+    };
+    return {bucket,doc,requests,getDestination:()=>destinationBytes,manifest:()=>manifestFields};
+  }
+
+  it("copies and marks verified only after matching source/destination SHA-256 and size", async () => {
+    const state = setup();
+    const result = await hooks.copyObject(
+      {MEDIA_BUCKET:state.bucket} as never,
+      "https://firestore.googleapis.com/v1/projects/pubget-aaf27/databases/(default)/documents",
+      "firestore-token","gcs-token",state.doc,false,
+    );
+    expect(result).toMatchObject({status:"verified",sizeBytes:12});
+    expect(state.manifest()).toMatchObject({
+      status:{stringValue:"verified"},
+      sourceSha256:{stringValue:expect.any(String)},
+      destinationSha256:{stringValue:expect.any(String)},
+      verifiedAt:{stringValue:expect.any(String)},
+    });
+    expect(state.manifest().sourceSha256).toEqual(state.manifest().destinationSha256);
+    expect(state.getDestination()).not.toBeNull();
+    expect(state.requests.some(url=>url.includes("alt=media"))).toBe(true);
+    expect(state.requests.some(url=>url.includes("DELETE"))).toBe(false);
+  });
+
+  it("deletes a corrupt partial R2 copy and leaves the Firebase source untouched", async () => {
+    const state = setup(true);
+    const result = await hooks.copyObject(
+      {MEDIA_BUCKET:state.bucket} as never,
+      "https://firestore.googleapis.com/v1/projects/pubget-aaf27/databases/(default)/documents",
+      "firestore-token","gcs-token",state.doc,false,
+    );
+    expect(result).toMatchObject({status:"failed",reason:"verification-mismatch"});
+    expect(state.getDestination()).toBeNull();
+    expect(state.manifest()).toMatchObject({
+      status:{stringValue:"failed"},
+      lastError:{stringValue:expect.stringContaining("verification failed")},
+    });
+    expect(state.requests.some(url=>url.includes("alt=media"))).toBe(true);
+  });
+});
