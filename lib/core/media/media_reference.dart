@@ -4,6 +4,9 @@
 library;
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+
+import '../errors/failure.dart';
 
 import 'media_storage_provider.dart';
 import 'r2_media_storage_provider.dart';
@@ -62,14 +65,28 @@ bool isR2MediaKey(String reference) {
       audioExt.hasMatch(parts[3]);
 }
 
-/// Resolves an R2 object key to a short-lived, access-controlled URL.
-/// Full URLs are returned unchanged; unsupported/legacy bare paths fail closed.
-Future<String?> resolveMediaDownloadUrl(String reference) async {
-  final value = reference.trim();
-  if (value.isEmpty || isOpaqueMediaReference(value)) return null;
-  if (isRemoteMediaUrl(value)) return value;
-  if (!isR2MediaKey(value)) return null;
+/// Extracts a legacy Firebase Storage object path from a canonical download URL.
+/// Only this project's known Firebase bucket is eligible for R2-first resolution.
+String? firebaseStorageObjectPath(String reference) {
+  final uri = Uri.tryParse(reference.trim());
+  if (uri == null ||
+      uri.scheme != 'https' ||
+      uri.host != 'firebasestorage.googleapis.com') {
+    return null;
+  }
+  final segments = uri.pathSegments;
+  if (segments.length < 5 ||
+      segments[0] != 'v0' ||
+      segments[1] != 'b' ||
+      segments[2] != 'pubget-aaf27.firebasestorage.app' ||
+      segments[3] != 'o') {
+    return null;
+  }
+  final objectPath = segments.skip(4).join('/');
+  return objectPath.isEmpty ? null : objectPath;
+}
 
+Future<String?> _resolveR2Key(String key) async {
   final config = resolveMediaBackendConfig();
   if (!config.isConfigured) return null;
   final provider = R2MediaStorageProvider(
@@ -78,13 +95,52 @@ Future<String?> resolveMediaDownloadUrl(String reference) async {
         await FirebaseAuth.instance.currentUser?.getIdToken(),
   );
   try {
-    return await provider.resolveUrl(value);
+    return await provider.resolveUrl(key);
+  } finally {
+    provider.close();
+  }
+}
+
+/// Resolves R2 first for current keys and legacy Firebase download URLs.
+/// A 404 means the source has not been verified in R2 yet, so the original
+/// Firebase object remains the fallback. Authorization/network errors fail
+/// closed rather than bypassing the Worker with a Firebase URL.
+Future<String?> resolveMediaDownloadUrl(String reference) async {
+  final value = reference.trim();
+  if (value.isEmpty || isOpaqueMediaReference(value)) return null;
+
+  if (isRemoteMediaUrl(value)) {
+    final legacyKey = firebaseStorageObjectPath(value);
+    if (legacyKey == null || !isR2MediaKey(legacyKey)) return value;
+    try {
+      return await _resolveR2Key(legacyKey);
+    } on NotFoundError {
+      return value;
+    } on Object {
+      return null;
+    }
+  }
+
+  if (isR2MediaKey(value)) {
+    try {
+      return await _resolveR2Key(value);
+    } on NotFoundError {
+      // Keep the original Firebase object readable until its R2 copy verifies.
+    } on Object {
+      return null;
+    }
+  }
+
+  // Legacy Firebase object paths outside the current R2 key grammar remain
+  // readable. Firebase Storage Rules enforce signed-in access on this path.
+  if (value.startsWith('/') || value.contains('..') ||
+      value.contains('\\') || value.contains('?') || value.length > 1024) {
+    return null;
+  }
+  try {
+    return await FirebaseStorage.instance.ref(value).getDownloadURL();
   } on Object {
     return null;
-  } finally {
-    // AppImageLoader resolves every R2 image through this one-shot provider.
-    // Close its HTTP client so a long feed does not accumulate idle pools.
-    provider.close();
   }
 }
 
