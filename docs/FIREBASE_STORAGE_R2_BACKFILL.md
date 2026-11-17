@@ -68,7 +68,7 @@ credential is never returned.
 - Inventory dry-run: send `{"dryRun":true,"pageSize":1000}`. Follow the
   returned `nextPageToken` in the next dry-run request's `pageToken`.
   Dry-run does not write manifest or progress state.
-- `POST /_admin/storage-migration/copy` — processes up to eight pending
+- `POST /_admin/storage-migration/copy` — processes one pending
   records per call; repeat until `processed: 0`.
 - Copy dry-run: `{"dryRun":true,"limit":8}`.
 - `POST /_admin/storage-migration/retry` — retries failed records only while
