@@ -137,28 +137,17 @@ describe("verified GCS to R2 copy lifecycle", () => {
     let destinationBytes: Uint8Array | null = null;
     let destinationMetadata: Record<string,string> = {};
     let manifestFields: Record<string,unknown> = {
-      sourcePath: "fan_works/alice/work/cover.jpg",
-      sourceBucket: "pubget-aaf27.firebasestorage.app",
-      sourceGeneration: "77",
-      sourceMetageneration: "3",
-      sizeBytes: sourceBytes.length,
-      contentType: "image/jpeg",
-      sourceMetadata: { uploadedBy: "alice" },
-      contentMetadata: { contentType: "image/jpeg", cacheControl: "private" },
-      status: "pending",
-      attempts: 0,
+      sourcePath: {stringValue:"fan_works/alice/work/cover.jpg"},
+      sourceBucket: {stringValue:"pubget-aaf27.firebasestorage.app"},
+      sourceGeneration: {stringValue:"77"},
+      sourceMetageneration: {stringValue:"3"},
+      sizeBytes: {integerValue:String(sourceBytes.length)},
+      contentType: {stringValue:"image/jpeg"},
+      sourceMetadata: {mapValue:{fields:{uploadedBy:{stringValue:"alice"}}}},
+      contentMetadata: {mapValue:{fields:{contentType:{stringValue:"image/jpeg"},cacheControl:{stringValue:"private"}}}},
+      status: {stringValue:"pending"},
+      attempts: {integerValue:"0"},
     };
-    const firestoreFields = (values: Record<string,unknown>) =>
-      Object.fromEntries(Object.entries(values).map(([key,value]) => {
-        if (typeof value === "string") return [key,{stringValue:value}];
-        if (typeof value === "number") return [key,{integerValue:String(value)}];
-        if (typeof value === "boolean") return [key,{booleanValue:value}];
-        if (value && typeof value === "object") {
-          const nested = value as Record<string,unknown>;
-          return [key,{mapValue:{fields:firestoreFields(nested)}}];
-        }
-        return [key,{nullValue:null}];
-      }));
     const bucket = {
       async head() {
         return destinationBytes ? {
@@ -203,7 +192,7 @@ describe("verified GCS to R2 copy lifecycle", () => {
       if (url.hostname === "firestore.googleapis.com") {
         return new Response(JSON.stringify({
           name: String(input),
-          fields: firestoreFields(manifestFields),
+          fields: manifestFields,
         }),{status:200});
       }
       throw new Error("Unexpected fetch " + url.href);
