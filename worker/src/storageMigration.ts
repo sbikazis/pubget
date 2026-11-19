@@ -118,8 +118,10 @@ function r2CustomMetadata(path:string,input:Record<string,string>|undefined,gene
  const source=metadataMap(input),parts=path.split("/");
  const inferred=parts.length===3&&["images","reels","audio"].includes(parts[0])?parts[1]:
   parts.length===4&&["groups","privateChats"].includes(parts[0])?parts[2]:"";
+ const scoped=parts.length===4&&["groups","privateChats"].includes(parts[0]);
  const result:Record<string,string>={
   ...(source.uploadedBy?{uploadedBy:source.uploadedBy}:inferred?{uploadedBy:inferred}:{}),
+  ...(scoped?{scopeType:parts[0],scopeId:parts[1]}:{}),
   migrationSource:"firebase-storage",
   migrationSourceGeneration:generation,
   migrationSourceBucket:bucket,
