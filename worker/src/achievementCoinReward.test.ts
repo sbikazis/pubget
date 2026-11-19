@@ -157,6 +157,27 @@ describe("achievement coin reward delivery", () => {
     });
   });
 
+
+  it("uses the server catalog value for higher-rarity achievements", async () => {
+    const fake = fakeFirestore({ "users/user-1": user });
+    const higherReward = effect({
+      id: "achievement_user-1_dragon_of_legacy_coin_reward",
+      eventId: "achievement_user-1_dragon_of_legacy",
+      achievementId: "dragon_of_legacy",
+      payload: {
+        type: "earn_achievement",
+        referenceId: "dragon_of_legacy",
+        amount: 100,
+        source: "achievement",
+      },
+    });
+    const result = await createDelivery(fake)(higherReward);
+    expect(result).toMatchObject({ applied: true, amount: 100, balanceAfter: 120 });
+    expect(fake.get("users/user-1")?.coinsBalance).toBe(120);
+    expect(fake.get("economyTransactions/earn_achievement_user-1_dragon_of_legacy"))
+      .toMatchObject({ amount: 100, metadata: { amountOverride: 100 } });
+  });
+
   it("treats a replay as a successful delivery without crediting twice", async () => {
     const fake = fakeFirestore({ "users/user-1": user });
     const deliver = createDelivery(fake);
