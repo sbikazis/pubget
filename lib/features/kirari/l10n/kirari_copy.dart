@@ -155,4 +155,7 @@ final class KirariCopy {
   String get analyticsScope => _strings.pick('Based on the latest published reels', 'بناءً على آخر الريلز المنشورة');
   String get analyticsScopeTruncated => _strings.pick('Showing the most recent reels only', 'عرض الريلز الأحدث فقط');
   String get analyticsNotTracked => _strings.pick('Not tracked yet: unique viewers, replies, new fans, respect, profile visits, traffic sources and retention.', 'غير متاحة بعد: المشاهدون الفريدون، الردود، المعجبون الجدد، الاحترام، زيارات الملف، مصادر الزيارة ومنحنى الاحتفاظ.');
+  String get pinnedComment => _strings.pick('Pinned', 'مثبّت');
+  String get pinComment => _strings.pick('Pin comment', 'تثبيت التعليق');
+  String get unpinComment => _strings.pick('Unpin comment', 'إلغاء تثبيت التعليق');
 }
