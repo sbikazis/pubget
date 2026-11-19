@@ -113,7 +113,7 @@ describe("achievement FCM delivery", () => {
     };
     const scopes: string[] = [];
     const deliver = createAchievementFcmPushDelivery(env, {
-      fetcher, getAccessToken: async (scope) => { scopes.push(scope); return "token"; },
+      fetcher, getAccessToken: async (scope) => { scopes.push(scope.join(" ")); return "token"; },
     });
     await expect(deliver(effect("fcm_push"))).resolves.toEqual({ sent: 1, noTokens: false });
     expect(scopes).toEqual(["https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging"]);
