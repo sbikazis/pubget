@@ -109,6 +109,10 @@ void main() {
   testWidgets('loading another page does not duplicate a comment', (
     tester,
   ) async {
+    // The load-more row sits after 30 tiles; give the sheet enough height for
+    // the lazy ListView to build it without manual scrolling.
+    await tester.binding.setSurfaceSize(const Size(800, 4000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     final firstPage = List<Map<String, dynamic>>.generate(
       30,
       (index) => _comment('c$index'),
