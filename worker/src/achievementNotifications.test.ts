@@ -54,7 +54,7 @@ describe("achievement in-app notification delivery", () => {
     };
     const scopes: string[] = [];
     const deliver = createAchievementNotificationDelivery(env, {
-      fetcher, getAccessToken: async (scope) => { scopes.push(scope); return "token"; },
+      fetcher, getAccessToken: async (scope) => { scopes.push(scope.join(" ")); return "token"; },
     });
     await expect(deliver(effect("in_app_notification"))).resolves.toEqual({ created: true });
     const commit = calls.find((call) => call.url.endsWith(":commit"))?.body;
