@@ -78,6 +78,15 @@ describe("achievement outbox state machine", () => {
     expect(complete.completedAt).toBe(104);
   });
 
+
+  it("rejects stale workers after their lease expires", () => {
+    const claimed = claimAchievementEffect(event().effects[0], "worker-a", 100, 10)!;
+    expect(() => completeAchievementEffect(claimed, "worker-a", 110))
+      .toThrow("Outbox lease is not owned by this worker.");
+    expect(() => retryAchievementEffect(claimed, "worker-a", 110, "late"))
+      .toThrow("Outbox lease is not owned by this worker.");
+  });
+
   it("omits the coin effect for a zero-coin achievement", () => {
     const noReward = createAchievementOutboxEvent({
       userId: "user-1", achievementId: "keeper_of_time", rewardCoins: 0,
