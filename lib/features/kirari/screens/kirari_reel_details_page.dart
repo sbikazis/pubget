@@ -10,6 +10,7 @@ import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/widgets/app_image_loader.dart';
+import '../../authentication/providers/auth_provider.dart';
 import '../data/kirari_repository.dart';
 import '../l10n/kirari_copy.dart';
 import 'kirari_feed_page.dart';
@@ -300,7 +301,11 @@ class _KirariReelDetailsPageState extends State<KirariReelDetailsPage> {
                             OutlinedButton.icon(
                               onPressed: () => showModalBottomSheet<void>(
                                 context: context, isScrollControlled: true,
-                                builder: (_) => KirariCommentsSheet(reel: reel, repository: context.read<KirariRepository>()),
+                                builder: (_) => KirariCommentsSheet(
+                                  reel: reel,
+                                  repository: context.read<KirariRepository>(),
+                                  currentUserId: context.read<AuthProvider>().currentUser?.id ?? '',
+                                ),
                               ),
                               icon: const Icon(Icons.mode_comment_outlined), label: Text('${reel.commentsCount}'),
                             ),

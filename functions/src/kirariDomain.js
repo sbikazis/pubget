@@ -21,6 +21,8 @@ const KIRARI = Object.freeze({
   explorationRatio: 0.2,
 });
 
+const PINNED_COMMENT_LIMIT = 3;
+
 const TERMINAL = new Set(["published", "failed", "rejected", "deleted"]);
 const TRANSITIONS = Object.freeze({
   uploading: new Set(["processing", "failed", "rejected", "deleted"]),
@@ -824,7 +826,7 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
     const reelId = inputString(request.data?.reelId, 128, "reelId");
     const commentId = inputId(request.data?.commentId, "commentId");
     const kind = request.data?.kind;
-    if (!["like", "unlike", "delete", "pin", "report"].includes(kind)) {
+    if (!["like", "unlike", "delete", "pin", "unpin", "report"].includes(kind)) {
       fail("invalid-argument", "Unsupported comment action.");
     }
     const ref = reelRef(reelId);
@@ -849,9 +851,16 @@ function createKirariDomain({ db, FieldValue, HttpsError, bucket, processVideo }
           tx.update(commentRef, { status: "deleted", deletedAt: FieldValue.serverTimestamp() });
           tx.update(ref, { commentsCount: FieldValue.increment(-1), "counters.comments": FieldValue.increment(-1) });
         }
-      } else if (kind === "pin") {
-        if (reel.data().creatorId !== uid) fail("permission-denied", "Only the creator can pin a comment.");
-        tx.update(commentRef, { pinned: true, pinnedAt: FieldValue.serverTimestamp() });
+      } else if (kind === "pin" || kind === "unpin") {
+        if (reel.data().creatorId !== uid) {
+          fail("permission-denied", `Only the creator can ${kind} a comment.`);
+        }
+        if (kind === "pin") {
+          tx.update(commentRef, { pinned: true, pinnedAt: FieldValue.serverTimestamp() });
+        } else if (data.pinned === true) {
+          // Idempotent: an already-unpinned comment is left untouched.
+          tx.update(commentRef, { pinned: false, unpinnedAt: FieldValue.serverTimestamp() });
+        }
       } else if (kind === "report") {
         const reportRef = commentRef.collection("reports").doc(uid);
         const report = await tx.get(reportRef);
@@ -1524,16 +1533,33 @@ async function getSavedReels(request) {
       }
       query = query.startAfter(before);
     }
+    // Pinned comments must surface even when they are old. The bounded
+    // single-field `pinned` query is read on every page so an old pinned
+    // comment is never duplicated further down the chronological stream.
+    const pinnedSnap = await ref.collection("comments")
+      .where("pinned", "==", true)
+      .limit(limit + PINNED_COMMENT_LIMIT)
+      .get();
+    const pinnedDocs = pinnedSnap.docs
+      .filter((doc) => doc.data()?.status === "published")
+      .sort((left, right) =>
+        (right.data()?.pinnedAt?.toMillis?.() || 0) -
+        (left.data()?.pinnedAt?.toMillis?.() || 0));
+    const pinnedIds = new Set(pinnedDocs.map((doc) => doc.id));
     const snap = await query.get();
     const docs = snap.docs.slice(0, limit);
-    const items = await Promise.all(docs.map(async (doc) => {
-      const like = await doc.ref.collection("likes").doc(uid).get();
-      return {
-        id: doc.id,
-        ...doc.data(),
-        viewerLiked: like.exists,
-      };
-    }));
+    const projectedPinned = request.data?.before ? [] : pinnedDocs.slice(0, PINNED_COMMENT_LIMIT);
+    const items = await Promise.all(
+      [...projectedPinned, ...docs.filter((doc) => !pinnedIds.has(doc.id))]
+        .map(async (doc) => {
+          const like = await doc.ref.collection("likes").doc(uid).get();
+          return {
+            id: doc.id,
+            ...doc.data(),
+            viewerLiked: like.exists,
+          };
+        }),
+    );
     return {
       items,
       hasMore: snap.docs.length > limit,

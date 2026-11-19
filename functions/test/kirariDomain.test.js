@@ -1095,3 +1095,156 @@ test("creator analytics bounds the scan and reports truncation", async () => {
   assert.equal(result.scope.truncated, true);
   assert.equal(result.items.length, 200);
 });
+
+test("only the reel creator can pin or unpin a comment, and unpin is idempotent", async () => {
+  const comment = {
+    status: "published", authorId: "viewer", text: "hello",
+    pinned: false, likesCount: 0,
+  };
+  const values = new Map([
+    ["kirari/reel-1", { status: "published", moderationStatus: "approved", creatorId: "creator" }],
+    ["kirari/reel-1/comments/c1", comment],
+  ]);
+  const writes = [];
+  const makeRef = (path) => ({
+    path,
+    id: path.split("/").pop(),
+    async get() {
+      const value = values.get(path);
+      return { exists: value != null, data: () => value ? { ...value } : undefined };
+    },
+    collection(name) {
+      return { doc: (id) => makeRef(`${path}/${name}/${id}`) };
+    },
+  });
+  const db = {
+    collection(name) { return { doc: (id) => makeRef(`${name}/${id}`) }; },
+    async runTransaction(work) {
+      return work({
+        async get(ref) {
+          const value = values.get(ref.path);
+          return { exists: value != null, data: () => value ? { ...value } : undefined };
+        },
+        update(ref, patch) {
+          writes.push({ path: ref.path, patch });
+          Object.assign(comment, patch);
+        },
+        create() { writes.push({ kind: "create" }); },
+        delete() { writes.push({ kind: "delete" }); },
+      });
+    },
+  };
+  const domain = createKirariDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now", increment: (value) => value },
+    HttpsError: TestHttpsError,
+    bucket: {},
+  });
+  const act = (uid, kind) => domain.commentAction({
+    auth: { uid }, data: { reelId: "reel-1", commentId: "c1", kind },
+  });
+
+  await assert.rejects(act("viewer", "pin"), (error) => error.code === "permission-denied");
+  await assert.rejects(act("viewer", "unpin"), (error) => error.code === "permission-denied");
+  assert.equal(writes.length, 0, "a non-creator must not write pin state");
+
+  await act("creator", "pin");
+  assert.equal(comment.pinned, true);
+  assert.equal(writes.at(-1).patch.pinnedAt, "now");
+
+  await act("creator", "unpin");
+  assert.equal(comment.pinned, false);
+  assert.equal(writes.at(-1).patch.unpinnedAt, "now");
+
+  const countAfterUnpin = writes.length;
+  await act("creator", "unpin");
+  assert.equal(writes.length, countAfterUnpin, "repeated unpin must not write again");
+});
+
+test("getComments projects pinned comments first without duplicating them in later pages", async () => {
+  const docs = [
+    {
+      id: "new",
+      data: () => ({ status: "published", authorId: "viewer", text: "new", createdAt: { toMillis: () => 200 } }),
+    },
+    {
+      id: "old-pinned",
+      data: () => ({
+        status: "published", authorId: "viewer", text: "pinned",
+        createdAt: { toMillis: () => 100 }, pinned: true, pinnedAt: { toMillis: () => 10 },
+      }),
+    },
+    {
+      id: "middle",
+      data: () => ({ status: "published", authorId: "viewer", text: "middle", createdAt: { toMillis: () => 150 } }),
+    },
+  ].map((doc) => ({
+    ...doc,
+    ref: {
+      collection: () => ({ doc: () => ({ get: async () => ({ exists: false }) }) }),
+    },
+  }));
+  let pinnedQueries = 0;
+  const makeCommentsQuery = () => {
+    const filters = [];
+    let cursorAt = null;
+    return {
+      where(...args) { filters.push(args); return this; },
+      orderBy(...args) { filters.push(args); return this; },
+      limit() { return this; },
+      startAfter(snapshot) {
+        cursorAt = snapshot.data()?.createdAt?.toMillis?.() ?? 0;
+        return this;
+      },
+      doc: (id) => ({
+        get: async () => {
+          const found = docs.find((doc) => doc.id === id);
+          return { exists: Boolean(found), data: () => found ? found.data() : undefined };
+        },
+      }),
+      async get() {
+        const wantsPinned = filters.some(([field, , value]) => field === "pinned" && value === true);
+        if (wantsPinned) pinnedQueries++;
+        const chronological = cursorAt === null
+          ? docs
+          : docs.filter((doc) => (doc.data().createdAt?.toMillis?.() || 0) < cursorAt);
+        return { docs: wantsPinned ? docs.filter((doc) => doc.data().pinned === true) : chronological };
+      },
+    };
+  };
+  const makeRef = (path) => ({
+    path,
+    id: path.split("/").pop(),
+    async get() {
+      if (path === "kirari/reel-1") {
+        return {
+          exists: true,
+          data: () => ({ status: "published", moderationStatus: "approved", creatorId: "creator" }),
+        };
+      }
+      return { exists: false, data: () => ({}) };
+    },
+    collection(name) {
+      if (name === "comments") return makeCommentsQuery();
+      return { doc: (id) => makeRef(`${path}/${name}/${id}`) };
+    },
+  });
+  const domain = createKirariDomain({
+    db: { collection: (name) => ({ doc: (id) => makeRef(`${name}/${id}`) }) },
+    FieldValue: {},
+    HttpsError: TestHttpsError,
+    bucket: {},
+  });
+
+  const first = await domain.getComments({ auth: { uid: "viewer" }, data: { reelId: "reel-1" } });
+  assert.equal(pinnedQueries, 1);
+  assert.deepEqual(first.items.map((item) => item.id), ["old-pinned", "new", "middle"]);
+  assert.equal(first.items[0].pinned, true);
+  assert.equal(first.nextCursor, "middle", "the cursor must remain the last chronological item");
+
+  const second = await domain.getComments({
+    auth: { uid: "viewer" }, data: { reelId: "reel-1", before: "middle" },
+  });
+  assert.equal(pinnedQueries, 2, "later pages still exclude the pinned set from the chronological stream");
+  assert.ok(!second.items.some((item) => item.id === "old-pinned"));
+});

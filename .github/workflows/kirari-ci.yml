@@ -102,6 +102,8 @@ jobs:
         run: flutter test test/features/kirari/r2_kirari_source_uploader_test.dart
       - name: Kirari creator analytics tests
         run: flutter test test/features/kirari/kirari_analytics_page_test.dart
+      - name: Kirari pinned comment tests
+        run: flutter test test/features/kirari/kirari_pinned_comments_test.dart
       - name: Android debug build
         run: flutter build apk --debug --verbose
       - name: Full Flutter test suite (repository baseline; bounded)

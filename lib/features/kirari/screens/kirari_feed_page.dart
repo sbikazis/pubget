@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../../../core/widgets/pubget_states.dart';
 import '../../../app/app_router.dart';
 import '../../../core/links/pubget_links.dart';
+import '../../authentication/providers/auth_provider.dart';
 
 import '../data/kirari_repository.dart';
 import '../data/kirari_video_cache.dart';
@@ -632,7 +633,11 @@ class _KirariFeedPageState extends State<KirariFeedPage>
                     tooltip: copy.comments,
                     onPressed: () => showModalBottomSheet<void>(
                       context: context, isScrollControlled: true,
-                      builder: (_) => KirariCommentsSheet(reel: reel, repository: _repository),
+                      builder: (_) => KirariCommentsSheet(
+                        reel: reel,
+                        repository: _repository,
+                        currentUserId: context.read<AuthProvider>().currentUser?.id ?? '',
+                      ),
                     ),
                     icon: const Icon(Icons.mode_comment_outlined, size: 26),
                   ),
@@ -696,9 +701,10 @@ class _KirariFeedPageState extends State<KirariFeedPage>
 }
 
 class KirariCommentsSheet extends StatefulWidget {
-  const KirariCommentsSheet({required this.reel, required this.repository, super.key});
+  const KirariCommentsSheet({required this.reel, required this.repository, required this.currentUserId, super.key});
   final KirariReel reel;
   final KirariRepository repository;
+  final String currentUserId;
 
   @override
   State<KirariCommentsSheet> createState() => _KirariCommentsSheetState();
@@ -715,6 +721,8 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
   String? _error;
   String? _replyToId;
   String? _replyToAuthor;
+
+  bool get _isReelCreator => widget.currentUserId.isNotEmpty && widget.currentUserId == widget.reel.creatorId;
 
   @override
   void initState() {
@@ -754,7 +762,8 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
       );
       if (!mounted) return;
       setState(() {
-        _comments = [..._comments, ...page];
+        final knownIds = _comments.map((item) => item['id']).toSet();
+        _comments = [..._comments, ...page.where((item) => !knownIds.contains(item['id']))];
         _nextCursor = page.isEmpty ? null : page.last['id'] as String?;
         _hasMore = page.length >= 30;
         _error = null;
@@ -836,6 +845,11 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                                   crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
                                     Text('@$authorId'),
+                                    if (item['pinned'] == true)
+                                      Chip(
+                                        visualDensity: VisualDensity.compact,
+                                        label: Text(copy.pinnedComment),
+                                      ),
                                     if (item['creatorComment'] == true)
                                       const Chip(
                                         visualDensity: VisualDensity.compact,
@@ -889,11 +903,20 @@ class _KirariCommentsSheetState extends State<KirariCommentsSheet> {
                                     ),
                                     PopupMenuButton<String>(
                                       onSelected: (kind) async {
-                                        await widget.repository.commentAction(widget.reel.id, commentId, kind);
-                                        await _load();
+                                        try {
+                                          await widget.repository.commentAction(widget.reel.id, commentId, kind);
+                                          await _load();
+                                        } catch (_) {
+                                          if (mounted) setState(() => _error = 'Could not update comment. Please retry.');
+                                        }
                                       },
-                                      itemBuilder: (_) => const [
-                                        PopupMenuItem(value: 'report', child: Text('Report comment')),
+                                      itemBuilder: (_) => [
+                                        if (_isReelCreator)
+                                          PopupMenuItem(
+                                            value: item['pinned'] == true ? 'unpin' : 'pin',
+                                            child: Text(item['pinned'] == true ? copy.unpinComment : copy.pinComment),
+                                          ),
+                                        const PopupMenuItem(value: 'report', child: Text('Report comment')),
                                       ],
                                     ),
                                   ],
