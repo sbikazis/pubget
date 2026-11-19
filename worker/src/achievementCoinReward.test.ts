@@ -192,6 +192,21 @@ describe("achievement coin reward delivery", () => {
     });
   });
 
+
+  it("honours the legacy per-reference transaction guard", async () => {
+    const fake = fakeFirestore({
+      "users/user-1": user,
+      "users/user-1/transactions/the_threshold": {
+        transactionId: "legacy-achievement-record",
+        amount: 5,
+      },
+    });
+    const result = await createDelivery(fake)(effect());
+    expect(result).toMatchObject({ applied: false, reason: "duplicate" });
+    expect(fake.get("users/user-1")?.coinsBalance).toBe(20);
+    expect(fake.count("economyTransactions/")).toBe(0);
+  });
+
   it("serializes concurrent duplicate deliveries to one credit", async () => {
     const fake = fakeFirestore({ "users/user-1": user });
     const deliver = createDelivery(fake);
