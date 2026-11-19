@@ -99,8 +99,8 @@ export function createAchievementNotificationDelivery(
   return async (effect) => {
     const { notificationId, userId, achievementId } = validateNotification(effect);
     const accessToken = await token();
-    const notificationPath = `users/${userId}/notifications/${notificationId}`;
-    const userPath = `users/${userId}`;
+    const notificationPath = `users/${encodeURIComponent(userId)}/notifications/${encodeURIComponent(notificationId)}`;
+    const userPath = `users/${encodeURIComponent(userId)}`;
     const transactionResponse = await request(`${base}:beginTransaction`, accessToken, {
       method: "POST", body: JSON.stringify({ options: { readWrite: {} } }),
     });
