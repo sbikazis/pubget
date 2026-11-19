@@ -465,7 +465,7 @@ function createAchievementsDomain({
         kind: "fcm_push",
         status: "pending",
         attempts: 0,
-        payload: { notificationId },
+        payload: { notificationId, title: "Achievement unlocked", body: spec.nameEn },
       });
       transaction.create(outboxRef, {
         eventId: outboxId,
