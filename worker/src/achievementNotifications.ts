@@ -184,7 +184,7 @@ export function createAchievementFcmPushDelivery(
     return getGoogleAccessToken(
       env.FIRESTORE_SERVICE_ACCOUNT_EMAIL,
       env.FIRESTORE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, "\n"),
-      [FCM_SCOPE], fetcher,
+      [DATASTORE_SCOPE, FCM_SCOPE], fetcher,
     );
   }
   return async (effect) => {
