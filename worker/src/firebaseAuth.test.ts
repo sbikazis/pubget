@@ -113,6 +113,14 @@ describe("Google service-account OAuth", () => {
     expect(first).toBe("test-access-token");
     expect(second).toBe(first);
     expect(calls).toBe(1);
+    const fcmToken = await getGoogleAccessToken(
+      "worker-test@example.iam.gserviceaccount.com",
+      pem,
+      ["https://www.googleapis.com/auth/firebase.messaging"],
+      fetcher as typeof fetch,
+    );
+    expect(fcmToken).toBe("test-access-token");
+    expect(calls).toBe(2);
   });
 
   it("rejects broader unapproved OAuth scopes", async () => {
