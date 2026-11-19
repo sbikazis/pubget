@@ -358,7 +358,7 @@ export async function runAchievementOutboxBatch(input: {
   deliver: (effect: AchievementEffect) => Promise<void>;
 }): Promise<AchievementOutboxBatchResult> {
   const now = input.now ?? Date.now;
-  // A fresh identity per invocation prevents overlapping runs from sharing lease ownership.
+  // Default to a fresh identity per invocation; fixed IDs are reserved for controlled tests.
   const workerId = input.workerId ?? crypto.randomUUID();
   const batchSize = input.batchSize ?? 25;
   const leaseMs = input.leaseMs ?? 120_000;
