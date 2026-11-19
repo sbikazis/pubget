@@ -234,8 +234,8 @@ describe("achievement outbox recovery and fault matrix", () => {
         await durable.deliverIdempotently(effect);
       },
     });
-    expect(first.skipped).toBe(1);
-    expect(durable.event().effects[0].status).toBe("processing");
+    expect(first.retried).toBe(1);
+    expect(durable.event().effects[0].status).toBe("retry");
 
     durable.setNow(121_000);
     const recovered = await runAchievementOutboxBatch({
