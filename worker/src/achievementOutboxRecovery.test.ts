@@ -210,6 +210,60 @@ describe("achievement outbox recovery and fault matrix", () => {
     expect([...durable.businessEffects].filter((key) => key === "notification:user-1:the_threshold")).toHaveLength(1);
   });
 
+
+  it("recovers when the side effect succeeds but the Firestore acknowledgement fails", async () => {
+    const durable = durableStore(seededEvent());
+    let sideEffectCount = 0;
+    let failAck = true;
+    const flakyStore: AchievementOutboxStore = {
+      ...durable.store,
+      markDelivered: async (path, effectId, workerId, at) => {
+        if (failAck) {
+          failAck = false;
+          throw new Error("Firestore acknowledgement response lost");
+        }
+        await durable.store.markDelivered(path, effectId, workerId, at);
+      },
+    };
+    const first = await runAchievementOutboxBatch({
+      store: flakyStore,
+      workerId: "worker-before-crash",
+      now: durable.now,
+      deliver: async (effect) => {
+        sideEffectCount += 1;
+        await durable.deliverIdempotently(effect);
+      },
+    });
+    expect(first.skipped).toBe(1);
+    expect(durable.event().effects[0].status).toBe("processing");
+
+    durable.setNow(121_000);
+    const recovered = await runAchievementOutboxBatch({
+      store: durable.store,
+      workerId: "worker-after-restart",
+      now: durable.now,
+      deliver: async (effect) => {
+        sideEffectCount += 1;
+        await durable.deliverIdempotently(effect);
+      },
+    });
+    expect(recovered.delivered).toBe(1);
+    expect(sideEffectCount).toBe(2);
+    expect(durable.businessEffects.has("coin:user-1:the_threshold")).toBe(true);
+    expect(durable.event().effects[0].status).toBe("delivered");
+  });
+
+  it("allows only one concurrent claim across independent worker invocations", async () => {
+    const durable = durableStore(seededEvent());
+    const claims = await Promise.all([
+      durable.store.claimNextEffect("event", "worker-a", 1_000, 60_000),
+      durable.store.claimNextEffect("event", "worker-b", 1_000, 60_000),
+      durable.store.claimNextEffect("event", "worker-c", 1_000, 60_000),
+    ]);
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    expect(durable.event().effects[0].attempts).toBe(1);
+  });
+
   it("does not mark a reward or notification effect delivered when the downstream handler fails", async () => {
     const durable = durableStore(seededEvent());
     const result = await runAchievementOutboxBatch({
