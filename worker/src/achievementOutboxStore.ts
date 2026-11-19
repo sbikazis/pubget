@@ -120,7 +120,8 @@ export function createFirestoreAchievementOutboxStore(
 ): AchievementOutboxStore {
   const fetcher = dependencies.fetcher ?? fetch;
   const transactionAttempts = dependencies.maxTransactionAttempts ?? DEFAULT_TRANSACTION_ATTEMPTS;
-  const base = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents`;
+  const resourcePrefix = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/`;
+  const base = `https://firestore.googleapis.com/v1/${resourcePrefix.slice(0, -1)}`;
 
   async function accessToken(): Promise<string> {
     if (dependencies.getAccessToken) return dependencies.getAccessToken(env);
@@ -177,7 +178,7 @@ export function createFirestoreAchievementOutboxStore(
         transaction,
         writes: [{
           update: {
-            name: `${base}/${path}`,
+            name: `${resourcePrefix}${path}`,
             fields: Object.fromEntries(
               Object.entries(fields).map(([key, item]) => [key, encode(item)]),
             ),
@@ -239,9 +240,8 @@ export function createFirestoreAchievementOutboxStore(
         const event = decodeDocument(document);
         if (event.status !== "completed" && event.effects.some((effect) =>
           effect.status !== "delivered")) {
-          const prefix = `${base}/`;
-          const relativePath = document.name.startsWith(prefix)
-            ? document.name.slice(prefix.length)
+          const relativePath = document.name.startsWith(resourcePrefix)
+            ? document.name.slice(resourcePrefix.length)
             : "";
           if (!relativePath) continue;
           paths.push(relativePath);
