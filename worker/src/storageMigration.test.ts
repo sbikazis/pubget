@@ -65,7 +65,15 @@ describe("Firebase Storage migration primitives", () => {
       "legacy-bucket",
     );
     expect(metadata.uploadedBy).toBe("alice");
+    expect(metadata.scopeType).toBe("groups");
+    expect(metadata.scopeId).toBe("group-1");
     expect(metadata.migrationSourceGeneration).toBe("generation-1");
+    const privateChat = hooks.r2CustomMetadata(
+      "privateChats/chat-1/alice/voice.m4a", {}, "generation-2", "legacy-bucket",
+    );
+    expect(privateChat).toMatchObject({
+      uploadedBy: "alice", scopeType: "privateChats", scopeId: "chat-1",
+    });
     expect(metadata.firebaseStorageDownloadTokens).toBeUndefined();
     expect(Object.entries(metadata).reduce((n,[k,v])=>n+k.length+v.length,0)).toBeLessThanOrEqual(1500);
   });
