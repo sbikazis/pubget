@@ -177,7 +177,7 @@ export function createFirestoreAchievementOutboxStore(
         transaction,
         writes: [{
           update: {
-            name: path,
+            name: `${base}/${path}`,
             fields: Object.fromEntries(
               Object.entries(fields).map(([key, item]) => [key, encode(item)]),
             ),
@@ -239,7 +239,12 @@ export function createFirestoreAchievementOutboxStore(
         const event = decodeDocument(document);
         if (event.status !== "completed" && event.effects.some((effect) =>
           effect.status !== "delivered")) {
-          paths.push(document.name);
+          const prefix = `${base}/`;
+          const relativePath = document.name.startsWith(prefix)
+            ? document.name.slice(prefix.length)
+            : "";
+          if (!relativePath) continue;
+          paths.push(relativePath);
           if (paths.length >= limit) break;
         }
       }
