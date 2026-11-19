@@ -55,6 +55,7 @@ const { createFanWorksDomain } = require("./src/fanWorksDomain");
 const { createFanWorksSigner } = require("./src/fanWorksStorage");
 const { createEconomyDomain } = require("./src/economyDomain");
 const { createAchievementsDomain } = require("./src/achievementsDomain");
+const { createAchievementEventProcessor } = require("./src/achievementEvents");
 const { createHomeSections } = require("./src/homeSectionsDomain");
 const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
 const { createModerationDomain } = require("./src/moderationDomain");
@@ -162,6 +163,11 @@ const achievementsDomain = createAchievementsDomain({
   HttpsError,
   economy: economyDomain,
   notificationBuilder,
+});
+const achievementEventProcessor = createAchievementEventProcessor({
+  db: lazyFirestore,
+  achievements: achievementsDomain,
+  FieldValue,
 });
 const groupChat = createGroupChat({
   db: lazyFirestore,
@@ -1175,6 +1181,10 @@ exports.unregisterFcmToken = onCall(
 exports.onNewGroupMessage = onDocumentCreated(
   "groups/{groupId}/messages/{messageId}",
   notificationTriggers.groupMessage,
+);
+exports.onAchievementEvent = onDocumentCreated(
+  "achievementEvents/{eventId}",
+  achievementEventProcessor.handleEvent,
 );
 exports.onJoinRequest = onDocumentCreated(
   "groups/{groupId}/requests/{requestId}",

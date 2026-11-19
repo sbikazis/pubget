@@ -637,6 +637,9 @@ final class GroupJoinPayload {
 
 DateTime? _date(dynamic value) {
   if (value is DateTime) return value;
+  // The Worker returns Firestore REST timestamps as ISO-8601 strings; the
+  // Firestore SDK returns Timestamp objects. Both must produce the same model.
+  if (value is String) return DateTime.tryParse(value);
   try {
     return value?.toDate() as DateTime?;
   } catch (_) {

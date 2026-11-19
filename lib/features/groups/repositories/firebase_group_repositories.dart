@@ -9,6 +9,7 @@ import '../models/group_authority.dart';
 import '../models/group_models.dart';
 import 'group_members_repository.dart';
 import 'group_repository.dart';
+import 'group_worker_client.dart';
 import 'roleplay_repository.dart';
 
 final class FirebaseGroupRepository
@@ -19,20 +20,40 @@ final class FirebaseGroupRepository
   FirebaseGroupRepository({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+    GroupWorkerClient? workerClient,
+  }) : _firestoreOverride = firestore,
+       _functionsOverride = functions,
+       _workerClient = workerClient ?? HttpGroupWorkerClient.forFirebase();
 
-  final FirebaseFirestore _firestore;
-  final FirebaseFunctions _functions;
+  // Resolved lazily so injecting a Worker client in tests never requires a
+  // live Firebase app just to construct the repository.
+  final FirebaseFirestore? _firestoreOverride;
+  final FirebaseFunctions? _functionsOverride;
+  FirebaseFirestore get _firestore => _firestoreOverride ?? FirebaseFirestore.instance;
+  FirebaseFunctions get _functions =>
+      _functionsOverride ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+  final GroupWorkerClient _workerClient;
 
   @override
   Future<Result<Group>> createGroup(GroupDraft draft) =>
-      _guard(() => _callGroup('createGroup', draft.toMap()));
+      _guard(() => _createGroup(draft));
+
+  Future<Group> _createGroup(GroupDraft draft) async {
+    final payload = await _workerClient.post('/groups/create', draft.toMap());
+    final group = payload['group'];
+    final groupId = payload['groupId'] as String?;
+    if (group is! Map || groupId == null || groupId.isEmpty) {
+      throw const FormatException('Unexpected group creation response.');
+    }
+    return Group.fromMap(
+      Map<String, dynamic>.from(group),
+      id: groupId,
+    );
+  }
 
   @override
   Future<Result<GroupEntitlements>> createGroupEntitlements() => _guard(() async {
-    final data = await _callGroupData('createGroupEntitlements', <String, dynamic>{});
+    final data = await _workerClient.post('/groups/entitlements', const <String, dynamic>{});
     final maxMembers = (data['maxMembers'] as num?)?.toInt();
     return GroupEntitlements(
       maxMembers: maxMembers == null || maxMembers < 2
@@ -257,15 +278,6 @@ final class FirebaseGroupRepository
   Future<Result<void>> promoteGroup(String groupId) => _guard(() async {
     await _callVoid('promoteGroup', <String, dynamic>{'groupId': groupId});
   });
-
-  Future<Group> _callGroup(String name, Map<String, dynamic> data) async {
-    final payload = await _callGroupData(name, data);
-    final group = payload['group'] as Map<dynamic, dynamic>;
-    return Group.fromMap(
-      Map<String, dynamic>.from(group),
-      id: payload['groupId'] as String,
-    );
-  }
 
   Future<Map<String, dynamic>> _callGroupData(
     String name,
@@ -693,6 +705,20 @@ DateTime? _memberDate(Object? value) {
 }
 
 Failure _groupFailure(Object error) {
+  if (error is GroupWorkerException) {
+    // A backend status never proves the device is offline. Only genuine
+    // transport failures (handled below by mapFirebaseFailure) may be shown
+    // as a network error — issue #200's false `chat_network` diagnosis.
+    return switch (error.statusCode) {
+      400 => ValidationError(error.message),
+      401 || 403 => PermissionError(error.message),
+      404 => NotFoundError(error.message),
+      409 => TransactionConflictError(error.message),
+      429 => RateLimitedError(error.message),
+      >= 500 => UnavailableError(error.message),
+      _ => UnknownError(error.message),
+    };
+  }
   if (error is FirebaseFunctionsException) {
     return switch (error.code) {
       'unauthenticated' || 'permission-denied' => PermissionError(
