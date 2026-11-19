@@ -20,7 +20,7 @@ function effect(kind: "in_app_notification" | "fcm_push"): AchievementEffect {
     userId, achievementId, kind, status: "processing", attempts: 1,
     leaseOwner: "worker", leaseUntil: 99_000,
     payload: kind === "fcm_push"
-      ? { notificationId }
+      ? { notificationId, title: "Achievement unlocked", body: "The Threshold" }
       : {
           id: notificationId, recipientIds: [userId], type: "achievement_unlocked",
           actorId: userId, targetId: achievementId, action: "unlocked",
@@ -128,6 +128,8 @@ describe("achievement FCM delivery", () => {
         type: "achievement_unlocked",
         targetId: "the_threshold",
         notificationId: "achievement-user_1-the_threshold",
+      },
+      notification: { title: "Achievement unlocked", body: "The Threshold" },
       },
     });
   });
