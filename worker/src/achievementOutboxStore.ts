@@ -345,9 +345,10 @@ export interface AchievementOutboxBatchResult {
 }
 
 /**
- * The dispatcher is deliberately injected. Reward, in-app notification and
- * FCM handlers are implemented in separate rollout steps; this batch runner
- * only owns durable claiming, leases, completion and retry bookkeeping.
+ * The dispatcher is deliberately injected. Achievement coin rewards now
+ * have a transactional Firestore delivery adapter; in-app notification and
+ * FCM handlers remain separate rollout steps. This runner owns durable
+ * claiming, leases, completion and retry bookkeeping.
  */
 export async function runAchievementOutboxBatch(input: {
   store: AchievementOutboxStore;
