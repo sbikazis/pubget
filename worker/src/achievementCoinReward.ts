@@ -28,7 +28,19 @@ type FirestoreValue = Record<string, unknown>;
 type FirestoreDocument = { name: string; fields?: Record<string, FirestoreValue> };
 
 const REWARD_TYPE = "earn_achievement";
-const REWARD_AMOUNT = 5;
+// Server-owned mirror of the achievement catalog reward values.
+const ACHIEVEMENT_REWARDS: Readonly<Record<string, number>> = Object.freeze({
+  the_threshold: 5,
+  keeper_of_time: 15,
+  shogun_of_the_realm: 25,
+  thread_of_souls: 20,
+  worldsmith: 20,
+  arena_sovereign: 20,
+  master_of_festivities: 20,
+  crownbearer: 40,
+  legend_of_the_gate: 60,
+  dragon_of_legacy: 100,
+});
 const MAX_GRANT = 1_000;
 const MAX_BALANCE = 1_000_000_000;
 const MAX_ID = 128;
@@ -168,13 +180,15 @@ export function createAchievementCoinRewardDelivery(
   }
 
   return async (effect: AchievementEffect): Promise<AchievementCoinRewardResult> => {
+    const rewardAmount = ACHIEVEMENT_REWARDS[effect.achievementId];
     if (effect.kind !== "coin_reward" || !validId(effect.userId) ||
-        !validId(effect.achievementId) || effect.payload.type !== REWARD_TYPE ||
+        !validId(effect.achievementId) || rewardAmount === undefined ||
+        effect.payload.type !== REWARD_TYPE ||
         effect.payload.referenceId !== effect.achievementId ||
-        effect.payload.amount !== REWARD_AMOUNT) {
+        effect.payload.amount !== rewardAmount) {
       throw new Error("ACHIEVEMENT_REWARD_INVALID_EFFECT");
     }
-    if (REWARD_AMOUNT <= 0 || REWARD_AMOUNT > MAX_GRANT) {
+    if (rewardAmount <= 0 || rewardAmount > MAX_GRANT) {
       throw new Error("ACHIEVEMENT_REWARD_CONFIGURATION_INVALID");
     }
 
@@ -225,7 +239,7 @@ export function createAchievementCoinRewardDelivery(
         await rollback(accessToken, transaction);
         return { applied: false, reason: "corrupt_balance" };
       }
-      const balanceAfter = balanceBefore + REWARD_AMOUNT;
+      const balanceAfter = balanceBefore + rewardAmount;
       if (balanceAfter > MAX_BALANCE) {
         await rollback(accessToken, transaction);
         return { applied: false, reason: "overflow" };
@@ -236,14 +250,14 @@ export function createAchievementCoinRewardDelivery(
         transactionId: txId,
         userId,
         type: REWARD_TYPE,
-        amount: REWARD_AMOUNT,
+        amount: rewardAmount,
         balanceBefore,
         balanceAfter,
         source: "achievement",
         referenceId,
         createdAt: timestamp,
         idempotencyKey: txId,
-        metadata: {},
+        metadata: { amountOverride: rewardAmount },
         schemaVersion: SCHEMA_VERSION,
       };
       const writes = [
@@ -291,7 +305,7 @@ export function createAchievementCoinRewardDelivery(
         await commit(accessToken, transaction, writes);
         return {
           applied: true,
-          amount: REWARD_AMOUNT,
+          amount: rewardAmount,
           balanceAfter,
           transactionId: txId,
           version,
