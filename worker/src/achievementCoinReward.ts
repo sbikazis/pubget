@@ -12,6 +12,7 @@ export interface AchievementCoinRewardResult {
   reason?: string;
   amount?: number;
   balanceAfter?: number;
+  balance?: number;
   transactionId?: string;
   version?: number;
 }
@@ -282,6 +283,7 @@ export function createAchievementCoinRewardDelivery(
             },
           },
           updateMask: { fieldPaths: ["count", "date", "lastUpdate"] },
+          currentDocument: { exists: Boolean(dailyDoc) },
         },
       ];
 
