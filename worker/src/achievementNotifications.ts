@@ -8,7 +8,7 @@ export interface AchievementNotificationEnv {
 }
 interface Dependencies {
   fetcher?: typeof fetch;
-  getAccessToken?: (scope: string) => Promise<string>;
+  getAccessToken?: (scopes: string[]) => Promise<string>;
 }
 type FsValue = Record<string, unknown>;
 type FsDocument = { name: string; fields?: Record<string, FsValue> };
@@ -82,7 +82,7 @@ export function createAchievementNotificationDelivery(
   const prefix = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/`;
   const base = baseUrl(env.FIREBASE_PROJECT_ID);
   async function token(): Promise<string> {
-    if (dependencies.getAccessToken) return dependencies.getAccessToken(DATASTORE_SCOPE);
+    if (dependencies.getAccessToken) return dependencies.getAccessToken([DATASTORE_SCOPE]);
     return getGoogleAccessToken(
       env.FIRESTORE_SERVICE_ACCOUNT_EMAIL,
       env.FIRESTORE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, "\n"),
@@ -180,7 +180,7 @@ export function createAchievementFcmPushDelivery(
   const fetcher = dependencies.fetcher ?? fetch;
   const base = baseUrl(env.FIREBASE_PROJECT_ID);
   async function token(): Promise<string> {
-    if (dependencies.getAccessToken) return dependencies.getAccessToken(FCM_SCOPE);
+    if (dependencies.getAccessToken) return dependencies.getAccessToken([DATASTORE_SCOPE, FCM_SCOPE]);
     return getGoogleAccessToken(
       env.FIRESTORE_SERVICE_ACCOUNT_EMAIL,
       env.FIRESTORE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, "\n"),
