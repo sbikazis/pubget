@@ -64,3 +64,53 @@ These writes must remain atomic. The Worker must verify the Firebase ID token si
 ## Release boundary
 
 This branch is isolated from `main`. No Worker deployment, Firebase deployment, production data mutation, Firebase billing upgrade, Firebase Storage deletion, or relaxation of Firestore rules is part of this audit.
+
+## Achievement delivery design (required before Worker cutover)
+
+### What the existing evaluator actually does
+
+For `group_created`, `achievements.evaluate` runs these effects in order:
+
+1. `ensureAccountCreated(uid)` writes `user_achievement_stats/{uid}.accountCreatedAt` when absent.
+2. `evaluateThreshold(uid, "group_created")` sets first-action progress and may unlock `the_threshold`.
+3. `evaluateKeeper(uid)` marks the current UTC day active, updates keeper progress, and may unlock `keeper_of_time`.
+4. `evaluateShogun(uid, metadata)` updates Shogun progress. The createGroup caller currently supplies only `groupId`, so it does not establish the 50-member, age, message, or seven-day conditions.
+5. `evaluateCrown(uid, metadata)` updates Crown progress from existing stats; group creation itself does not prove the 90-day conditions.
+
+The unlock document is protected by a Firestore transaction and an existing unlock is not re-awarded in the normal sequential path. However, the evaluator as a whole is **not an exactly-once event processor**: progress/stats writes happen separately, and reward/notification side effects occur after the unlock transaction. Therefore a generic retry-safe outbox cannot be claimed merely because unlock documents are deduplicated.
+
+### Required outbox contract
+
+The group transaction must atomically create all of the following:
+- the group, founder membership, canonical roles, and optional character reservation;
+- the caller's idempotency-key record;
+- one immutable outbox event at `group_creation_events/{eventId}`, where `eventId` is deterministically derived from the authenticated UID and idempotency key (never from caller-supplied UID).
+
+The event payload is versioned and contains only server-derived identity plus the committed `groupId`, event type `group_created`, and creation timestamp. It must not contain client-controlled entitlement values or claim achievement eligibility.
+
+### Delivery and retry semantics
+
+- Delivery is at-least-once, not exactly-once. A lease/claim with expiry permits recovery after Worker termination.
+- A stable event receipt must be written before acknowledging completion. The receipt key is the deterministic event ID.
+- Each achievement operation must be safe under replay. The existing threshold and active-day logic are based on monotonic/absolute state, but unlock reward delivery needs a separate durable idempotency key (for example `achievement:{uid}:{achievementId}`) enforced by the economy ledger, not just by an in-memory flag.
+- Notifications must use their stable notification ID and verify that the notification builder treats repeated IDs as idempotent.
+- A crash between the unlock document and economy reward must be recoverable: the reward ledger needs its own deterministic reference and a retryable pending/completed state. Swallowing reward errors, as the current evaluator does, is not sufficient evidence of durable delivery.
+- The event may be marked complete only after all required effects are either completed or durably handed to independently retryable effect records.
+- Poison events need bounded retries and a visible dead-letter/error state; never silently delete them.
+
+### Migration decision
+
+Do not call the current Firebase Admin `achievements.evaluate` from a Worker by inventing an HTTP bridge, and do not port a partial evaluator that silently omits economy, notifications, or composite achievements. Before switching the Flutter client, implement and test the outbox consumer plus idempotent effect ledger (or retain a verified server-side consumer that can run on the current Firebase plan). Until then, keep the existing callable path as the rollback path and keep the Worker route unexposed to the client.
+
+### Required tests for this contract
+
+- group transaction rollback leaves no group, membership, roles, character reservation, idempotency record, or outbox event;
+- same-key retry returns the original group and does not enqueue a second event;
+- concurrent same-key requests create one group and one event;
+- event delivery retry after a simulated crash does not duplicate threshold progress, active-day count, achievement unlock, reward, or notification;
+- crash after each individual side effect resumes from durable state;
+- expired lease is reclaimable; active lease is not concurrently claimed;
+- poison event remains inspectable and cannot block unrelated events;
+- event acknowledgement cannot occur before all effects are durably complete.
+
+Status: this section is a source-based design contract, **not an implementation or test-pass claim**.
