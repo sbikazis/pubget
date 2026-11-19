@@ -133,6 +133,7 @@ export async function getGoogleAccessToken(
   const allowedScopes = new Set([
     "https://www.googleapis.com/auth/datastore",
     "https://www.googleapis.com/auth/devstorage.read_only",
+    "https://www.googleapis.com/auth/firebase.messaging",
   ]);
   if (!serviceAccountEmail.includes("@") || !privateKeyPem ||
       scopes.length === 0 || scopes.some((scope) => !allowedScopes.has(scope))) {
