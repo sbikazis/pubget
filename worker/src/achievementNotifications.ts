@@ -45,8 +45,8 @@ function encode(value: unknown): FsValue {
   throw new Error("ACHIEVEMENT_NOTIFICATION_INVALID_VALUE");
 }
 function validId(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && value.length <= 128 &&
-    /^[A-Za-z0-9_-]+$/.test(value);
+  return typeof value === "string" && value.trim().length > 0 && value.length <= 128 &&
+    !value.includes("/");
 }
 function baseUrl(projectId: string): string {
   return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
