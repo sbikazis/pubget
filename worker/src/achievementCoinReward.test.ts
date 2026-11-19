@@ -218,6 +218,29 @@ describe("achievement coin reward delivery", () => {
     expect(fake.count("economyTransactions/")).toBe(1);
   });
 
+
+  it("does not lose balance or daily-count updates for concurrent distinct achievements", async () => {
+    const fake = fakeFirestore({ "users/user-1": user });
+    const deliver = createDelivery(fake);
+    const second = effect({
+      id: "achievement_user-1_keeper_of_time_coin_reward",
+      eventId: "achievement_user-1_keeper_of_time",
+      achievementId: "keeper_of_time",
+      payload: {
+        type: "earn_achievement",
+        referenceId: "keeper_of_time",
+        amount: 15,
+        source: "achievement",
+      },
+    });
+    const results = await Promise.all([deliver(effect()), deliver(second)]);
+    expect(results.every((item) => item.applied)).toBe(true);
+    expect(fake.get("users/user-1")?.coinsBalance).toBe(40);
+    expect(fake.get("users/user-1")?.economyVersion).toBe(5);
+    expect(fake.get("users/user-1/daily_rewards/achievement_2026-11-19")?.count).toBe(2);
+    expect(fake.count("economyTransactions/")).toBe(2);
+  });
+
   it("does not trust an altered reward amount or identity", async () => {
     const fake = fakeFirestore({ "users/user-1": user });
     const deliver = createDelivery(fake);
