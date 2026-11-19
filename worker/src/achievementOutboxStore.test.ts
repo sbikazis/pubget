@@ -151,6 +151,27 @@ describe("Firestore achievement outbox store", () => {
     expect(recovered?.attempts).toBe(2);
   });
 
+
+  it("allows only one concurrent worker to own the same pending effect", async () => {
+    const fake = fakeFirestore(seedEvent("pending", "pending"));
+    const storeA = createFirestoreAchievementOutboxStore(env, {
+      fetcher: fake.fetcher,
+      getAccessToken: async () => "test-token",
+    });
+    const storeB = createFirestoreAchievementOutboxStore(env, {
+      fetcher: fake.fetcher,
+      getAccessToken: async () => "test-token",
+    });
+    const claims = await Promise.all([
+      storeA.claimNextEffect(fake.path, "worker-a", 1_000, 60_000),
+      storeB.claimNextEffect(fake.path, "worker-b", 1_000, 60_000),
+    ]);
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    expect(["worker-a", "worker-b"]).toContain(
+      (fake.read().effects as Array<Record<string, unknown>>)[0].leaseOwner,
+    );
+  });
+
   it("honours retry backoff and allows the effect at its retry time", async () => {
     const fake = fakeFirestore(seedEvent("retry", "retry", {
       nextAttemptAt: 9_000, attempts: 2,
