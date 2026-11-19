@@ -345,10 +345,11 @@ export interface AchievementOutboxBatchResult {
 }
 
 /**
- * The dispatcher is deliberately injected. Achievement coin rewards now
- * have a transactional Firestore delivery adapter; in-app notification and
- * FCM handlers remain separate rollout steps. This runner owns durable
- * claiming, leases, completion and retry bookkeeping.
+ * The dispatcher is deliberately injected. Coin rewards and in-app
+ * notifications have idempotent Firestore delivery adapters; FCM remains
+ * at-least-once because a crash after remote acceptance but before ack can
+ * cause a duplicate. This runner owns durable claims, leases, completion
+ * and retry bookkeeping.
  */
 export async function runAchievementOutboxBatch(input: {
   store: AchievementOutboxStore;
