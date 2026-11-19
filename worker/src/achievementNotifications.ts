@@ -204,7 +204,9 @@ export function createAchievementFcmPushDelivery(
     if (effect.kind !== "fcm_push" ||
         effect.eventId !== achievementEventId(userId, achievementId) ||
         effect.id !== achievementEffectId(userId, achievementId, "fcm_push") ||
-        effect.payload.notificationId !== `achievement-${userId}-${achievementId}`) {
+        effect.payload.notificationId !== `achievement-${userId}-${achievementId}` ||
+        typeof effect.payload.title !== "string" || effect.payload.title.length > 100 ||
+        typeof effect.payload.body !== "string" || effect.payload.body.length > 200) {
       throw new Error("ACHIEVEMENT_FCM_INVALID_EFFECT");
     }
     const accessToken = await token();
@@ -241,8 +243,8 @@ export function createAchievementFcmPushDelivery(
             message: {
               token: deviceToken,
               notification: {
-                title: "Achievement unlocked",
-                body: achievementId,
+                title: effect.payload.title as string,
+                body: effect.payload.body as string,
               },
               data: {
                 type: "achievement_unlocked",
