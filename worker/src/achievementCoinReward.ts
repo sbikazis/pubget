@@ -330,3 +330,20 @@ export async function deliverAchievementCoinReward(
   if (result.applied || result.reason === "duplicate") return result;
   throw new Error(`ACHIEVEMENT_REWARD_${result.reason ?? "failed"}`);
 }
+
+/**
+ * Batch-runner adapter for this rollout step. Non-coin effects are deliberately
+ * rejected until their independent handlers are added.
+ */
+export function createAchievementCoinRewardEffectHandler(
+  env: AchievementCoinRewardEnv,
+  dependencies: Dependencies = {},
+): (effect: AchievementEffect) => Promise<void> {
+  const deliver = createAchievementCoinRewardDelivery(env, dependencies);
+  return async (effect) => {
+    if (effect.kind !== "coin_reward") {
+      throw new Error("OUTBOX_EFFECT_HANDLER_NOT_CONFIGURED");
+    }
+    await deliverAchievementCoinReward(deliver, effect);
+  };
+}
