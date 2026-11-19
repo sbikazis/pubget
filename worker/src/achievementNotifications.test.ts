@@ -116,7 +116,7 @@ describe("achievement FCM delivery", () => {
       fetcher, getAccessToken: async (scope) => { scopes.push(scope); return "token"; },
     });
     await expect(deliver(effect("fcm_push"))).resolves.toEqual({ sent: 1, noTokens: false });
-    expect(scopes).toEqual(["https://www.googleapis.com/auth/firebase.messaging"]);
+    expect(scopes).toEqual(["https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging"]);
     const query = calls.find((call) => call.url.endsWith(":runQuery"))?.body;
     expect(query.structuredQuery.from[0]).toMatchObject({
       collectionId: "fcmTokens", allDescendants: true,
