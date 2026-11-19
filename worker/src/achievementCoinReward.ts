@@ -267,7 +267,7 @@ export function createAchievementCoinRewardDelivery(
             fields: {
               coinsBalance: encode(balanceAfter),
               economyVersion: encode(version),
-              economyUpdatedAt: encode(timestamp),
+              economyUpdatedAt: { timestampValue: timestamp },
             },
           },
           updateMask: { fieldPaths: ["coinsBalance", "economyVersion", "economyUpdatedAt"] },
@@ -276,7 +276,9 @@ export function createAchievementCoinRewardDelivery(
         {
           update: {
             name: `${resourcePrefix}${ledgerPath}`,
-            fields: Object.fromEntries(Object.entries(record).map(([key, value]) => [key, encode(value)])),
+            fields: Object.fromEntries(Object.entries(record).map(([key, value]) => [
+            key, key === "createdAt" ? { timestampValue: timestamp } : encode(value),
+          ])),
           },
           currentDocument: { exists: false },
         },
@@ -293,7 +295,7 @@ export function createAchievementCoinRewardDelivery(
             fields: {
               count: encode(dailyCount + 1),
               date: encode(date),
-              lastUpdate: encode(timestamp),
+              lastUpdate: { timestampValue: timestamp },
             },
           },
           updateMask: { fieldPaths: ["count", "date", "lastUpdate"] },
