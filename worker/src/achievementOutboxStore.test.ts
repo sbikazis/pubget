@@ -121,6 +121,18 @@ const env = {
 };
 
 describe("Firestore achievement outbox store", () => {
+
+  it("lists pending event document paths using Firestore resource names", async () => {
+    const fake = fakeFirestore(seedEvent("pending", "pending"));
+    const store = createFirestoreAchievementOutboxStore(env, {
+      fetcher: fake.fetcher,
+      getAccessToken: async () => "test-token",
+    });
+    await expect(store.listCandidateEvents(25)).resolves.toEqual([
+      "achievement_outbox/event-1",
+    ]);
+  });
+
   it("claims a pending effect atomically and persists its lease", async () => {
     const fake = fakeFirestore(seedEvent("pending", "pending"));
     const store = createFirestoreAchievementOutboxStore(env, {
