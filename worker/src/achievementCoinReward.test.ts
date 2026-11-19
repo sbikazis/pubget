@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createAchievementCoinRewardDelivery,
   deliverAchievementCoinReward,
+  createAchievementCoinRewardEffectHandler,
 } from "./achievementCoinReward";
 import { AchievementEffect } from "./achievementOutbox";
 
@@ -247,6 +248,20 @@ describe("achievement coin reward delivery", () => {
 
     const overflow = fakeFirestore({ "users/user-1": { coinsBalance: 1_000_000_000, economyVersion: 1 } });
     await expect(createDelivery(overflow)(effect())).resolves.toMatchObject({ reason: "overflow" });
+  });
+
+
+  it("provides a batch handler for coin effects only", async () => {
+    const fake = fakeFirestore({ "users/user-1": user });
+    const handler = createAchievementCoinRewardEffectHandler(env, {
+      fetcher: fake.fetcher,
+      getAccessToken: async () => "test-token",
+      now: () => new Date("2026-11-19T12:00:00.000Z"),
+    });
+    await handler(effect());
+    expect(fake.get("users/user-1")?.coinsBalance).toBe(25);
+    await expect(handler(effect({ kind: "in_app_notification" })))
+      .rejects.toThrow("OUTBOX_EFFECT_HANDLER_NOT_CONFIGURED");
   });
 
   it("rejects non-coin outbox effects", async () => {
