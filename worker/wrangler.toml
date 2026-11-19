@@ -15,3 +15,6 @@ KIRARI_R2_SERVICE_AUDIENCE = "https://pubget-media.pubget.workers.dev"
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
 bucket_name = "pubget-media"
+
+[triggers]
+crons = ["*/1 * * * *"]
