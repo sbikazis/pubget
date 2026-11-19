@@ -56,6 +56,25 @@ void main() {
       },
     );
 
+    test('extracts only canonical object paths from this Firebase bucket', () {
+      expect(
+        firebaseStorageObjectPath(
+          'https://firebasestorage.googleapis.com/v0/b/pubget-aaf27.firebasestorage.app/o/images%2Falice%2Favatar.jpg?alt=media&token=legacy-token',
+        ),
+        'images/alice/avatar.jpg',
+      );
+      expect(
+        firebaseStorageObjectPath('https://cdn.example.com/images/alice/avatar.jpg'),
+        isNull,
+      );
+      expect(
+        firebaseStorageObjectPath(
+          'https://firebasestorage.googleapis.com/v0/b/other-bucket/o/images%2Falice%2Fa.jpg',
+        ),
+        isNull,
+      );
+    });
+
     test('resolver fails closed and leaves full URLs alone', () async {
       expect(await resolveMediaDownloadUrl(''), isNull);
       expect(await resolveMediaDownloadUrl('gs://pubget-media/a.jpg'), isNull);
