@@ -2,6 +2,12 @@ import { authenticateKirariService } from "./kirariServiceAuth.cjs";
 import { verifyFirebaseIdToken } from "./firebaseAuth";
 import { handleIdentityRequest } from "./identity";
 import { handleStorageMigrationRequest, isVerifiedMigratedObject } from "./storageMigration";
+import { createAchievementCoinRewardEffectHandler } from "./achievementCoinReward";
+import { createFirestoreAchievementOutboxStore, runAchievementOutboxBatch } from "./achievementOutboxStore";
+import {
+  createAchievementFcmPushDelivery,
+  createAchievementNotificationDelivery,
+} from "./achievementNotifications";
 
 export interface Env {
   MEDIA_BUCKET: R2Bucket;
@@ -410,6 +416,31 @@ function constantTimeEqual(left: string, right: string): boolean {
 }
 
 export default {
+  async scheduled(_controller: unknown, env: Env): Promise<void> {
+    const store = createFirestoreAchievementOutboxStore(env);
+    const deliverCoins = createAchievementCoinRewardEffectHandler(env);
+    const deliverNotification = createAchievementNotificationDelivery(env);
+    const deliverPush = createAchievementFcmPushDelivery(env);
+    const result = await runAchievementOutboxBatch({
+      store,
+      batchSize: 25,
+      leaseMs: 120_000,
+      deliver: async (effect) => {
+        if (effect.kind === "coin_reward") return deliverCoins(effect);
+        if (effect.kind === "in_app_notification") {
+          await deliverNotification(effect);
+          return;
+        }
+        if (effect.kind === "fcm_push") {
+          await deliverPush(effect);
+          return;
+        }
+        throw new Error("OUTBOX_EFFECT_KIND_UNSUPPORTED");
+      },
+    });
+    console.log("Achievement outbox batch completed", result);
+  },
+
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
