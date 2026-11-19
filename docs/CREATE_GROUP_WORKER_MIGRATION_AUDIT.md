@@ -115,3 +115,16 @@ Do not call the current Firebase Admin `achievements.evaluate` from a Worker by 
 - event acknowledgement cannot occur before all effects are durably complete.
 
 Status: this section is a source-based design contract, **not an implementation or test-pass claim**.
+
+## Additional failure-window findings from source review
+
+Two earlier assumptions need a stricter qualification:
+
+- `notificationBuilder.build` is idempotent for the in-app notification document and unread counters, but it sends FCM only to recipients whose notification document was newly created. If a process crashes after the notification transaction commits but before FCM delivery, a retry sees the existing document and does not retry the push. Thus the notification document is durable, but push delivery is not independently retryable yet.
+- `achievementsDomain.unlock` currently catches and suppresses both economy reward and notification errors. It returns `already_unlocked` on a later evaluation without re-running those side effects. The deterministic economy ledger protects against duplicate grants, but it does not repair a grant that failed after the unlock document committed. The stable notification document ID similarly prevents duplicate in-app records, but does not repair the FCM failure window.
+
+Consequently, the consumer cannot safely call the current evaluator and mark the event complete. Before enabling outbox delivery, unlock side effects need explicit durable effect records (or a reconciler) with independent states such as pending/processing/completed, and retries must treat the economy ledger duplicate as success. FCM must be dispatched from its own durable pending record after the in-app notification commit; it must not be inferred from the notification's existence.
+
+A second constraint is deployment/runtime ownership: the achievements evaluator and its Admin SDK dependencies currently live in Firebase Functions. A Worker-side consumer cannot import that runtime module. The implementation must choose and verify an executable consumer location that does not require a Firebase billing-plan upgrade. Do not assume that adding a new Firebase Firestore trigger is deployable on the current project plan. If the existing deployed callable environment cannot host the consumer, keep the new group Worker route disabled and do not switch Flutter.
+
+These are source-verified failure windows and deployment constraints, not completed implementation.
