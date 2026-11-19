@@ -351,13 +351,15 @@ export interface AchievementOutboxBatchResult {
  */
 export async function runAchievementOutboxBatch(input: {
   store: AchievementOutboxStore;
-  workerId: string;
+  workerId?: string;
   now?: () => number;
   batchSize?: number;
   leaseMs?: number;
   deliver: (effect: AchievementEffect) => Promise<void>;
 }): Promise<AchievementOutboxBatchResult> {
   const now = input.now ?? Date.now;
+  // A fresh identity per invocation prevents overlapping runs from sharing lease ownership.
+  const workerId = input.workerId ?? crypto.randomUUID();
   const batchSize = input.batchSize ?? 25;
   const leaseMs = input.leaseMs ?? 120_000;
   const paths = await input.store.listCandidateEvents(batchSize);
@@ -367,7 +369,7 @@ export async function runAchievementOutboxBatch(input: {
 
   for (const path of paths) {
     const claimedAt = now();
-    const effect = await input.store.claimNextEffect(path, input.workerId, claimedAt, leaseMs);
+    const effect = await input.store.claimNextEffect(path, workerId, claimedAt, leaseMs);
     if (!effect) {
       result.skipped += 1;
       continue;
@@ -375,12 +377,12 @@ export async function runAchievementOutboxBatch(input: {
     result.claimed += 1;
     try {
       await input.deliver(effect);
-      await input.store.markDelivered(path, effect.id, input.workerId, now());
+      await input.store.markDelivered(path, effect.id, workerId, now());
       result.delivered += 1;
     } catch (error) {
       const code = error instanceof Error ? error.name || "delivery_error" : "delivery_error";
       try {
-        await input.store.markRetry(path, effect.id, input.workerId, now(), code);
+        await input.store.markRetry(path, effect.id, workerId, now(), code);
         result.retried += 1;
       } catch {
         // If the lease expired or Firestore is unavailable, leave it processing.
