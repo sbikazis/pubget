@@ -42,7 +42,8 @@ function decode(value: FsValue): unknown {
 function fakeFirestore(initial: Record<string, unknown>) {
   const project = "demo-outbox";
   const base = `https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents`;
-  const path = `${base}/achievement_outbox/event-1`;
+  const path = "achievement_outbox/event-1";
+  const fullPath = `${base}/${path}`;
   let version = 1;
   let transactionNumber = 0;
   const transactionVersions = new Map<string, number>();
@@ -59,13 +60,13 @@ function fakeFirestore(initial: Record<string, unknown>) {
     }
     if (url.includes("/achievement_outbox?") || url.endsWith("/achievement_outbox")) {
       return Response.json({
-        documents: [{ name: path, fields: document }],
+        documents: [{ name: fullPath, fields: document }],
       });
     }
-    if (url.startsWith(path + "?transaction=")) {
+    if (url.startsWith(fullPath + "?transaction=")) {
       const transaction = new URL(url).searchParams.get("transaction")!;
       transactionVersions.set(transaction, version);
-      return Response.json({ name: path, fields: document });
+      return Response.json({ name: fullPath, fields: document });
     }
     if (url.endsWith(":commit")) {
       const body = JSON.parse(String(init.body)) as {
