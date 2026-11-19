@@ -275,6 +275,8 @@ test("achievement unlock atomically enqueues reward, in-app notification, and pu
   assert.equal(event.effects[0].payload.amount, 5);
   assert.equal(event.effects[1].payload.id, "achievement-u-outbox-the_threshold");
   assert.equal(event.effects[2].payload.notificationId, "achievement-u-outbox-the_threshold");
+  assert.equal(event.effects[2].payload.title, "Achievement unlocked");
+  assert.equal(event.effects[2].payload.body, "The Threshold");
 
   // Unlock side effects are now delivered only by the outbox consumer.
   assert.equal(rewardCalls, 0);
