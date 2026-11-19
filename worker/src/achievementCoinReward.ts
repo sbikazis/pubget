@@ -1,5 +1,5 @@
 import { getGoogleAccessToken } from "./firebaseAuth";
-import { AchievementEffect } from "./achievementOutbox";
+import { AchievementEffect, achievementEffectId, achievementEventId } from "./achievementOutbox";
 
 export interface AchievementCoinRewardEnv {
   FIREBASE_PROJECT_ID: string;
@@ -183,9 +183,12 @@ export function createAchievementCoinRewardDelivery(
     const rewardAmount = ACHIEVEMENT_REWARDS[effect.achievementId];
     if (effect.kind !== "coin_reward" || !validId(effect.userId) ||
         !validId(effect.achievementId) || rewardAmount === undefined ||
+        effect.eventId !== achievementEventId(effect.userId, effect.achievementId) ||
+        effect.id !== achievementEffectId(effect.userId, effect.achievementId, "coin_reward") ||
         effect.payload.type !== REWARD_TYPE ||
         effect.payload.referenceId !== effect.achievementId ||
-        effect.payload.amount !== rewardAmount) {
+        effect.payload.amount !== rewardAmount ||
+        effect.payload.source !== "achievement") {
       throw new Error("ACHIEVEMENT_REWARD_INVALID_EFFECT");
     }
     if (rewardAmount <= 0 || rewardAmount > MAX_GRANT) {
