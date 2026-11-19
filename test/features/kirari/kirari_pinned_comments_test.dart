@@ -109,26 +109,28 @@ void main() {
   testWidgets('loading another page does not duplicate a comment', (
     tester,
   ) async {
-    // The load-more row sits after 30 tiles; give the sheet enough height for
-    // the lazy ListView to build it without manual scrolling.
-    await tester.binding.setSurfaceSize(const Size(800, 4000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final firstPage = List<Map<String, dynamic>>.generate(
       30,
       (index) => _comment('c$index'),
     );
     final repository = _FakeCommentsRepository(
       firstPage,
-      nextPage: [_comment('c0')],
+      nextPage: [_comment('c29')],
     );
 
     await _pump(tester, repository);
+    await tester.scrollUntilVisible(
+      find.text('Load more comments'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Load more comments'), findsOneWidget);
 
     await tester.tap(find.text('Load more comments'));
     await tester.pumpAndSettle();
 
     expect(repository.calls, 2);
-    expect(find.text('text-c0'), findsOneWidget);
+    expect(find.text('text-c29'), findsOneWidget);
   });
 }
