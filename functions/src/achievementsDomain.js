@@ -380,6 +380,8 @@ function createAchievementsDomain({
     }
     const ref = unlockedRef(db, userId, achievementId);
     const legacy = legacyItemRef(db, userId, achievementId);
+    const outboxId = `achievement_${userId}_${achievementId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 700);
+    const outboxRef = db.collection("achievement_outbox").doc(outboxId);
     let created = false;
     await db.runTransaction(async (transaction) => {
       const existing = await transaction.get(ref);
@@ -420,33 +422,61 @@ function createAchievementsDomain({
       };
       transaction.create(ref, payload);
       transaction.set(legacy, payload, { merge: true });
+
+      // The durable event and every independent effect are committed atomically
+      // with the unlock. No network side effect runs in this request path.
+      const notificationId = `achievement-${userId}-${achievementId}`;
+      const effects = [];
+      if (spec.rewardCoins > 0) {
+        effects.push({
+          id: `${outboxId}_coin_reward`,
+          kind: "coin_reward",
+          status: "pending",
+          attempts: 0,
+          payload: {
+            type: "earn_achievement",
+            referenceId: achievementId,
+            amount: spec.rewardCoins,
+            source: "achievement",
+          },
+        });
+      }
+      effects.push({
+        id: `${outboxId}_in_app_notification`,
+        kind: "in_app_notification",
+        status: "pending",
+        attempts: 0,
+        payload: {
+          id: notificationId,
+          recipientIds: [userId],
+          type: "achievement_unlocked",
+          actorId: userId,
+          targetId: achievementId,
+          action: "unlocked",
+          destination: `/achievements?id=${achievementId}`,
+          metadata: { achievementId, celebration: true },
+          title: "Achievement unlocked",
+          body: spec.nameEn,
+          pushWorthy: true,
+        },
+      });
+      effects.push({
+        id: `${outboxId}_fcm_push`,
+        kind: "fcm_push",
+        status: "pending",
+        attempts: 0,
+        payload: { notificationId },
+      });
+      transaction.create(outboxRef, {
+        eventId: outboxId,
+        userId,
+        achievementId,
+        status: "pending",
+        effects,
+        createdAt: FieldValue.serverTimestamp(),
+      });
     });
     if (!created) return { unlocked: false, reason: "already_unlocked", achievementId };
-
-    if (economy && typeof economy.applyReward === "function" && spec.rewardCoins > 0) {
-      await economy.applyReward({
-        userId,
-        type: "earn_achievement",
-        referenceId: achievementId,
-        source: "achievement",
-        metadata: { achievementId },
-      }).catch(() => {});
-    }
-    if (notificationBuilder && typeof notificationBuilder.build === "function") {
-      await notificationBuilder.build({
-        id: `achievement-${userId}-${achievementId}`,
-        recipientIds: [userId],
-        type: "achievement_unlocked",
-        actorId: userId,
-        targetId: achievementId,
-        action: "unlocked",
-        destination: `/achievements?id=${achievementId}`,
-        metadata: { achievementId, celebration: true },
-        title: "Achievement unlocked",
-        body: spec.nameEn,
-        pushWorthy: true,
-      }).catch(() => {});
-    }
     // Re-evaluate composites after every new unlock.
     await evaluateComposites(userId);
     return { unlocked: true, achievementId };
