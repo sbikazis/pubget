@@ -35,7 +35,7 @@ export interface AchievementOutboxEvent {
  * reward, notification record, or push-delivery record.
  */
 export function achievementEventId(userId: string, achievementId: string): string {
-  return `achievement_${userId}_${achievementId}`;
+  return `achievement_${userId}_${achievementId}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 700);
 }
 
 export function achievementEffectId(
