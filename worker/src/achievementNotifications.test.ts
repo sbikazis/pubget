@@ -130,7 +130,6 @@ describe("achievement FCM delivery", () => {
         notificationId: "achievement-user_1-the_threshold",
       },
       notification: { title: "Achievement unlocked", body: "The Threshold" },
-      },
     });
   });
 
