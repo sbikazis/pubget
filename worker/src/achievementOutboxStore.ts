@@ -166,6 +166,13 @@ export function createFirestoreAchievementOutboxStore(
     return await response.json() as FsDocument;
   }
 
+  async function rollback(token: string, transaction: string): Promise<void> {
+    await request(`${base}:rollback`, token, {
+      method: "POST",
+      body: JSON.stringify({ transaction }),
+    });
+  }
+
   async function commit(
     token: string,
     transaction: string,
@@ -204,10 +211,16 @@ export function createFirestoreAchievementOutboxStore(
     for (let attempt = 0; attempt < transactionAttempts; attempt += 1) {
       const transaction = await begin(token);
       const document = await readInTransaction(path, token, transaction);
-      if (!document) return null;
+      if (!document) {
+        await rollback(token, transaction);
+        return null;
+      }
       const event = decodeDocument(document);
       const change = update(event);
-      if (!change) return null;
+      if (!change) {
+        await rollback(token, transaction);
+        return null;
+      }
       try {
         await commit(token, transaction, path, change.fields);
         return change.result;
