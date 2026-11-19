@@ -123,7 +123,8 @@ export function completeAchievementEffect(
   workerId: string,
   now: number,
 ): AchievementEffect {
-  if (effect.status !== "processing" || effect.leaseOwner !== workerId) {
+  if (effect.status !== "processing" || effect.leaseOwner !== workerId ||
+      (effect.leaseUntil ?? 0) <= now) {
     throw new Error("Outbox lease is not owned by this worker.");
   }
   return {
@@ -145,7 +146,8 @@ export function retryAchievementEffect(
   baseDelayMs = 5_000,
   maxDelayMs = 6 * 60 * 60 * 1000,
 ): AchievementEffect {
-  if (effect.status !== "processing" || effect.leaseOwner !== workerId) {
+  if (effect.status !== "processing" || effect.leaseOwner !== workerId ||
+      (effect.leaseUntil ?? 0) <= now) {
     throw new Error("Outbox lease is not owned by this worker.");
   }
   const exponent = Math.min(Math.max(effect.attempts - 1, 0), 20);
