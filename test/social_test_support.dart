@@ -73,6 +73,7 @@ final class FakeProfileRepository implements ProfileRepository {
       whoCanMessageMe: update.whoCanMessageMe,
       sectionPrivacy: update.sectionPrivacy,
       coverUrl: update.coverUrl,
+      avatarUrl: update.avatarUrl,
     );
     return Success<PubgetUser>(ownProfile);
   }

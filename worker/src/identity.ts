@@ -118,6 +118,22 @@ function usernameDocument(base: string, username: string): string {
   return `${base}/usernames/${encodeURIComponent(username)}`;
 }
 
+function isSafeProfileMediaReference(
+  value: unknown,
+  uid: string,
+  maxLength: number,
+): boolean {
+  if (value === undefined || value === null || value === "") return true;
+  if (typeof value !== "string" || value.length > maxLength) return false;
+  const reference = value.trim();
+  if (/^https?:\/\//.test(reference)) return true;
+  if (uid.length === 0) return false;
+  const parts = reference.split("/");
+  return parts.length === 3 &&
+    parts[0] === "images" && parts[1] === uid &&
+    /^[A-Za-z0-9_-]{1,80}\.(jpg|jpeg|png|webp|gif)$/.test(parts[2]);
+}
+
 export function validateProfile(input: Record<string, unknown>, uid = ''): string | null {
   const allowed = new Set([
     "bio", "favoriteAnimeIds", "favoriteAnimes", "profileVisibility",
@@ -135,18 +151,8 @@ export function validateProfile(input: Record<string, unknown>, uid = ''): strin
       return "invalid-profile";
     }
   }
-  if (input.avatarUrl !== undefined && input.avatarUrl !== null &&
-      (typeof input.avatarUrl !== "string" || input.avatarUrl.length > 2048)) return "invalid-profile";
-  if (input.coverUrl !== undefined && input.coverUrl !== null) {
-    if (typeof input.coverUrl !== "string" || input.coverUrl.length > 1024) return "invalid-profile";
-    const cover = input.coverUrl.trim();
-    const isUrl = /^https?:\/\//.test(cover);
-    const parts = cover.split("/");
-    const isOwnedR2Key = uid.length > 0 && parts.length === 3 &&
-      parts[0] === "images" && parts[1] === uid &&
-      /^[A-Za-z0-9_-]{1,80}\.(jpg|jpeg|png|webp|gif)$/.test(parts[2]);
-    if (cover !== "" && !isUrl && !isOwnedR2Key) return "invalid-profile";
-  }
+  if (!isSafeProfileMediaReference(input.avatarUrl, uid, 2048) ||
+      !isSafeProfileMediaReference(input.coverUrl, uid, 1024)) return "invalid-profile";
   for (const key of ["favoriteAnimeIds", "favoriteAnimes"]) {
     const item = input[key];
     if (item !== undefined && (!Array.isArray(item) || item.length > 50 ||

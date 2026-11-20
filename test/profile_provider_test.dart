@@ -53,4 +53,19 @@ void main() {
     ]);
     expect(provider.ownProfile?.profileVisibility, 'private');
   });
+
+  test('keeps the uploaded avatar key through profile readback', () async {
+    final repository = FakeProfileRepository();
+    final provider = ProfileProvider(repository: repository);
+    addTearDown(provider.dispose);
+    await provider.load(viewerId: 'user-1', profileId: 'user-1');
+
+    await provider.update(
+      'user-1',
+      const ProfileUpdate(avatarUrl: 'images/user-1/avatar.jpg'),
+    );
+
+    expect(repository.lastUpdate?.toMap().keys, <String>['avatarUrl']);
+    expect(provider.ownProfile?.avatarUrl, 'images/user-1/avatar.jpg');
+  });
 }

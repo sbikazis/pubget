@@ -32,23 +32,8 @@ final class FirebaseProfileRepository implements ProfileRepository {
   final IdentityWorkerClient _identityClient;
   MediaUrlUploader? _mediaUploader;
 
-  MediaUrlUploader get _uploader => _mediaUploader ??= RepositoryMediaUrlUploader(
-    repository: createMediaRepository(),
-  );
-
-  Failure _mapIdentityFailure(Object error, String message) {
-    if (error is IdentityWorkerException) {
-      return switch (error.statusCode) {
-        400 || 409 || 412 => ValidationError(
-          error.statusCode == 409 ? 'This username is already taken.' : error.message,
-        ),
-        401 || 403 => const PermissionError('You do not have permission to update this profile.'),
-        404 => const NotFoundError('Profile not found.'),
-        _ => const NetworkError('Check your connection and try again.'),
-      };
-    }
-    return mapFirebaseFailure(error, message: message);
-  }
+  MediaUrlUploader get _uploader => _mediaUploader ??=
+      RepositoryMediaUrlUploader(repository: createMediaRepository());
 
   @override
   Future<Result<PublicProfile>> getPublicProfile(String userId) async {
@@ -97,13 +82,13 @@ final class FirebaseProfileRepository implements ProfileRepository {
     ProfileUpdate update,
   ) async {
     try {
-      await _identityClient.post(
-        '/identity/profile/update', <String, dynamic>{...update.toMap()},
-      );
+      await _identityClient.post('/identity/profile/update', <String, dynamic>{
+        ...update.toMap(),
+      });
       return await getOwnProfile(userId);
     } on Object catch (error) {
       return FailureResult<PubgetUser>(
-        _mapIdentityFailure(error, 'Could not update your profile.'),
+        mapIdentityWorkerFailure(error, 'Could not update your profile.'),
       );
     }
   }
@@ -119,12 +104,24 @@ final class FirebaseProfileRepository implements ProfileRepository {
         ValidationError('Choose a valid profile photo.'),
       );
     }
-    return _uploader.uploadImage(
+    final uploaded = await _uploader.uploadImage(
       ownerUid: userId,
       bytes: bytes,
       claimedContentType: contentType,
       fileName: 'avatar.jpg',
     );
+    final key = uploaded.valueOrNull;
+    if (key == null) return uploaded;
+    try {
+      await _identityClient.post('/identity/profile/update', <String, dynamic>{
+        'avatarUrl': key,
+      });
+      return Success<String>(key);
+    } on Object catch (error) {
+      return FailureResult<String>(
+        mapIdentityWorkerFailure(error, 'Could not save your profile photo.'),
+      );
+    }
   }
 
   @override
@@ -147,14 +144,38 @@ final class FirebaseProfileRepository implements ProfileRepository {
     final key = uploaded.valueOrNull;
     if (key == null) return uploaded;
     try {
-      await _identityClient.post(
-        '/identity/profile/update', <String, dynamic>{'coverUrl': key},
-      );
+      await _identityClient.post('/identity/profile/update', <String, dynamic>{
+        'coverUrl': key,
+      });
       return Success<String>(key);
     } on Object catch (error) {
       return FailureResult<String>(
-        _mapIdentityFailure(error, 'Could not save your cover photo.'),
+        mapIdentityWorkerFailure(error, 'Could not save your cover photo.'),
       );
     }
   }
+}
+
+/// Maps Worker status codes without claiming the device is offline.
+///
+/// Only a real transport failure (handled by [mapFirebaseFailure]) may become
+/// [NetworkError]. Server pressure and 5xx responses mean the service is
+/// unavailable, not that connectivity was lost.
+Failure mapIdentityWorkerFailure(Object error, String message) {
+  if (error is! IdentityWorkerException) {
+    return mapFirebaseFailure(error, message: message);
+  }
+  return switch (error.statusCode) {
+    400 || 412 => ValidationError(error.message),
+    409 => const ValidationError('This username is already taken.'),
+    401 || 403 => const PermissionError(
+      'You do not have permission to update this profile.',
+    ),
+    404 => const NotFoundError('Profile not found.'),
+    429 => const RateLimitedError(
+      'Too many requests. Please wait a moment and try again.',
+    ),
+    >= 500 => UnavailableError(message),
+    _ => UnknownError(message),
+  };
 }
