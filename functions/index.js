@@ -1127,7 +1127,7 @@ exports.getTikTokConnectionStatus = onCall(
   tiktokOAuth.getTikTokConnectionStatus,
 );
 exports.disconnectTikTok = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: [TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, TIKTOK_TOKEN_ENCRYPTION_KEY] },
   tiktokOAuth.disconnectTikTok,
 );
 exports.tiktokOAuthCallback = onRequest(
