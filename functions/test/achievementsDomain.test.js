@@ -288,11 +288,19 @@ test("achievement unlock atomically enqueues reward, in-app notification, and pu
 });
 
 test("zero-reward achievement enqueues notification effects without a coin grant", async () => {
-  const db = createFakeDb();
-  const domain = domainOf(db);
-  await domain.unlock("u-outbox", "keeper_of_time", { source: "test" });
-  const event = db.store.get("achievement_outbox/achievement_u-outbox_keeper_of_time");
-  assert.deepEqual(event.effects.map((effect) => effect.kind), [
-    "in_app_notification", "fcm_push",
-  ]);
+  const spec = CATALOG.find((item) => item.id === "keeper_of_time");
+  assert.ok(spec);
+  const originalReward = spec.rewardCoins;
+  spec.rewardCoins = 0;
+  try {
+    const db = createFakeDb();
+    const domain = domainOf(db);
+    await domain.unlock("u-outbox", "keeper_of_time", { source: "test" });
+    const event = db.store.get("achievement_outbox/achievement_u-outbox_keeper_of_time");
+    assert.deepEqual(event.effects.map((effect) => effect.kind), [
+      "in_app_notification", "fcm_push",
+    ]);
+  } finally {
+    spec.rewardCoins = originalReward;
+  }
 });
