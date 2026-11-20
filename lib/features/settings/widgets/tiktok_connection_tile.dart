@@ -170,6 +170,14 @@ class _TikTokConnectionTileState extends State<TikTokConnectionTile>
                     child: Text(copy.pick('Refresh status', 'تحديث الحالة')),
                   ),
                 ),
+                if (_needsReconnect)
+                  Expanded(
+                    child: PubgetTextButton(
+                      onPressed: _working ? null : _connect,
+                      semanticLabel: copy.pick('Reconnect TikTok', 'إعادة ربط TikTok'),
+                      child: Text(copy.pick('Reconnect', 'إعادة الربط')),
+                    ),
+                  ),
                 Expanded(
                   child: PubgetTextButton(
                     onPressed: _working ? null : _disconnect,
