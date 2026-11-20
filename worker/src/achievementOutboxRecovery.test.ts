@@ -37,6 +37,11 @@ function singleEffectEvent(kind: AchievementEffect["kind"]): AchievementOutboxEv
   return { ...event, effects };
 }
 
+function singleEffectEvent(kind: AchievementEffect["kind"]): AchievementOutboxEvent {
+  const event = seededEvent();
+  return { ...event, effects: event.effects.filter((effect) => effect.kind === kind) };
+}
+
 function durableStore(seed: AchievementOutboxEvent) {
   let event = structuredClone(seed);
   const deliveredBusinessKeys = new Set<string>();
