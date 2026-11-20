@@ -65,13 +65,11 @@ function createTikTokOAuth({ db, HttpsError, clientKey, clientSecret, encryption
   }
 
   async function fetchProfile(accessToken) {
-    const response = await fetch(USER_INFO_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json; charset=UTF-8",
-      },
-      body: JSON.stringify({ fields: ["open_id", "display_name", "avatar_url"] }),
+    const url = new URL(USER_INFO_URL);
+    url.searchParams.set("fields", "open_id,display_name,avatar_url");
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
     const payload = await response.json();
     if (!response.ok || payload.error?.code && payload.error.code !== "ok") {
