@@ -8,6 +8,7 @@ import {
   createAchievementFcmPushDelivery,
   createAchievementNotificationDelivery,
 } from "./achievementNotifications";
+import { handleGroupsRequest } from "./groups";
 
 export interface Env {
   MEDIA_BUCKET: R2Bucket;
@@ -465,6 +466,17 @@ export default {
           return json({ error: "Username reservation changed concurrently. Please retry." }, 409);
         }
         return json({ error: "Identity operation failed." }, 503);
+      }
+    }
+
+    // Privileged group creation moved off the Firebase callable so a cold or
+    // misconfigured callable can no longer surface as a false offline error.
+    if (url.pathname.startsWith("/groups/")) {
+      try {
+        const groupsResponse = await handleGroupsRequest(request, env);
+        if (groupsResponse) return groupsResponse;
+      } catch {
+        return json({ error: "Group operation failed." }, 503);
       }
     }
 
