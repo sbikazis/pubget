@@ -166,12 +166,14 @@ class _TikTokConnectionTileState extends State<TikTokConnectionTile>
                 Expanded(
                   child: PubgetTextButton(
                     onPressed: _working ? null : _loadStatus,
+                    semanticLabel: copy.pick('Refresh TikTok status', 'تحديث حالة TikTok'),
                     child: Text(copy.pick('Refresh status', 'تحديث الحالة')),
                   ),
                 ),
                 Expanded(
                   child: PubgetTextButton(
                     onPressed: _working ? null : _disconnect,
+                    semanticLabel: copy.pick('Disconnect TikTok', 'فصل TikTok'),
                     child: Text(copy.pick('Disconnect', 'فصل الحساب')),
                   ),
                 ),
@@ -180,9 +182,9 @@ class _TikTokConnectionTileState extends State<TikTokConnectionTile>
           else
             PubgetPrimaryButton(
               onPressed: _working ? null : _connect,
-              child: Text(_working
-                  ? copy.pick('Opening TikTok…', 'جارٍ فتح TikTok…')
-                  : copy.pick('Connect TikTok', 'ربط TikTok')),
+              semanticLabel: copy.pick('Connect TikTok account', 'ربط حساب TikTok'),
+              loading: _working,
+              child: Text(copy.pick('Connect TikTok', 'ربط TikTok')),
             ),
         ],
       ),
