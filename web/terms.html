@@ -1,269 +1,104 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<!-- Playables SDK -->
-<script>// Playables SDK v1.0.0
-// Game lifecycle bridge: rAF-based game-ready detection + event communication
-(function() {
-  'use strict';
-
-  // Idempotency: skip if already initialized (e.g., server-side injection
-  // followed by client-side inject-javascript via the Bloks webview component).
-  if (window.playablesSDK) return;
-
-  var HANDLER_NAME = 'playablesGameEventHandler';
-  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
-  var RAF_FRAME_THRESHOLD = 3;
-
-  var gameReadySent = false;
-  var firstInteractionSent = false;
-  var errorSent = false;
-  var frameCount = 0;
-  var originalRAF = window.requestAnimationFrame;
-
-  // --- Transport Layer ---
-
-  function hasIOSBridge() {
-    return !!(window.webkit &&
-              window.webkit.messageHandlers &&
-              window.webkit.messageHandlers[HANDLER_NAME]);
-  }
-
-  function hasAndroidBridge() {
-    return !!(window[ANDROID_BRIDGE_NAME] &&
-              typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
-  }
-
-  function isInIframe() {
-    return !!(window.parent && window.parent !== window);
-  }
-
-  function sendEvent(eventName, payload) {
-    var message = {
-      type: eventName,
-      payload: payload || {},
-      timestamp: Date.now()
-    };
-
-    if (hasIOSBridge()) {
-      try {
-        window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
-      } catch (e) { /* ignore */ }
-      return;
-    }
-
-    if (hasAndroidBridge()) {
-    try {
-      var p = payload || {};
-      p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
-      p.timestamp = message.timestamp;
-      window[ANDROID_BRIDGE_NAME].postEvent(
-        eventName,
-        JSON.stringify(p)
-      );
-    } catch (e) { /* ignore */ }
-    return;
-  }
-
-    if (isInIframe()) {
-      try {
-        window.parent.postMessage(message, '*');
-      } catch (e) { /* ignore */ }
-      return;
-    }
-  }
-
-  // --- rAF Game-Ready Detection ---
-
-  function onFrame() {
-    if (gameReadySent) return;
-
-    frameCount++;
-    if (frameCount >= RAF_FRAME_THRESHOLD) {
-      gameReadySent = true;
-      sendEvent('game_ready', {
-        frame_count: frameCount,
-        detected_at: Date.now()
-      });
-      return;
-    }
-
-    originalRAF.call(window, onFrame);
-  }
-
-  if (originalRAF) {
-    window.requestAnimationFrame = function(callback) {
-      if (!gameReadySent) {
-        return originalRAF.call(window, function(timestamp) {
-          frameCount++;
-          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
-            gameReadySent = true;
-            sendEvent('game_ready', {
-              frame_count: frameCount,
-              detected_at: Date.now()
-            });
-          }
-          callback(timestamp);
-        });
-      }
-      return originalRAF.call(window, callback);
-    };
-  }
-
-  // --- First User Interaction Detection ---
-
-  function setupFirstInteractionDetection() {
-    var events = ['touchstart', 'mousedown', 'keydown'];
-
-    function onFirstInteraction() {
-      if (firstInteractionSent) return;
-      firstInteractionSent = true;
-      sendEvent('user_interaction_start', null);
-
-      for (var i = 0; i < events.length; i++) {
-        document.removeEventListener(events[i], onFirstInteraction, true);
-      }
-    }
-
-    for (var i = 0; i < events.length; i++) {
-      document.addEventListener(events[i], onFirstInteraction, true);
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
-  } else {
-    setupFirstInteractionDetection();
-  }
-
-  // --- Auto Error Capture ---
-
-  window.addEventListener('error', function(event) {
-    if (errorSent) return;
-    errorSent = true;
-    sendEvent('error', {
-      message: event.message || 'Unknown error',
-      source: event.filename || '',
-      lineno: event.lineno || 0,
-      colno: event.colno || 0,
-      auto_captured: true
-    });
-  });
-
-  window.addEventListener('unhandledrejection', function(event) {
-    if (errorSent) return;
-    errorSent = true;
-    var reason = event.reason;
-    sendEvent('error', {
-      message: (reason instanceof Error) ? reason.message : String(reason),
-      type: 'unhandled_promise_rejection',
-      auto_captured: true
-    });
-  });
-
-  // --- Public API ---
-
-  window.playablesSDK = {
-    complete: function(score) {
-      sendEvent('game_ended', {
-        score: score,
-        completed: true
-      });
-    },
-
-    error: function(message) {
-      if (errorSent) return;
-      errorSent = true;
-      sendEvent('error', {
-        message: message || 'Unknown error',
-        auto_captured: false
-      });
-    },
-
-    sendEvent: function(eventName, payload) {
-      if (!eventName || typeof eventName !== 'string') return;
-      sendEvent(eventName, payload);
-    }
-  };
-
-  // Kick off rAF detection in case no game code calls rAF immediately
-  if (originalRAF) {
-    originalRAF.call(window, onFrame);
-  }
-})();</script>
-<!-- PLAYABLE_TOUCH_PATCH_V1 --><script>
-(function() {
-  if (window.__playableTouchPatchInstalled) return;
-  window.__playableTouchPatchInstalled = true;
-  var origAdd = EventTarget.prototype.addEventListener;
-  var blockedTypes = { touchstart: 1, touchmove: 1, wheel: 1 };
-  EventTarget.prototype.addEventListener = function(type, listener, options) {
-    if (blockedTypes[type]) {
-      if (options === undefined || options === null) {
-        options = { passive: true };
-      } else if (typeof options === 'boolean') {
-        options = { capture: options, passive: true };
-      } else {
-        options = Object.assign({}, options, { passive: true });
-      }
-    }
-    return origAdd.call(this, type, listener, options);
-  };
-})();
-</script><script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pubget – شروط الاستخدام</title>
-<style>
-body{font-family:'Cairo',system-ui,Arial,sans-serif;background:#fff;color:#111;line-height:1.8;margin:0}
-.container{max-width:820px;margin:auto;padding:32px 20px}
-h1{font-size:28px}
-h2{font-size:20px;margin-top:28px;border-bottom:1px solid #eee;padding-bottom:6px}
-.sub{color:#666;font-size:14px}
-ul{padding-right:20px}
-.note{background:#f7f7f9;padding:12px;border-radius:8px;font-size:14px;margin-top:24px}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="شروط استخدام Pubget، بما في ذلك مشاركة المحتوى مع TikTok عند تفعيل الميزة.">
+  <title>Pubget – شروط الاستخدام</title>
+  <style>
+    :root{color-scheme:light;--ink:#171522;--muted:#625f70;--line:#e8e5ef;--accent:#6841d9;--soft:#f7f5fc}
+    *{box-sizing:border-box}body{margin:0;background:#fff;color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;line-height:1.9}
+    main{max-width:900px;margin:auto;padding:36px 22px 64px}h1{font-size:2rem;line-height:1.4;margin:0 0 8px}h2{font-size:1.2rem;margin:30px 0 8px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+    p,li{font-size:1rem}li{margin:6px 0}.muted{color:var(--muted);font-size:.92rem}.notice{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:16px;margin:22px 0}
+    a{color:var(--accent);overflow-wrap:anywhere}.lang{direction:ltr;text-align:left;border-top:1px solid var(--line);margin-top:42px;padding-top:24px}
+    footer{margin-top:42px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem}
+  </style>
 </head>
 <body>
-<div class="container">
-<h1>Pubget – شروط الاستخدام</h1>
-<div class="sub">Terms of Service | آخر تحديث: 29 مايو 2026</div>
+<main>
+  <h1>Pubget – شروط الاستخدام</h1>
+  <p class="muted">آخر تحديث: 20 نوفمبر 2026 | الجهة المشغّلة: Pubget | التواصل: <a href="mailto:zakariasbika253@gmail.com">zakariasbika253@gmail.com</a></p>
 
-<p>مرحباً بك في Pubget. باستخدامك التطبيق، أنت توافق على هذه الشروط. المشغّل الحالي: Zakaria Sbika :zakariasbika253@gmail.com</p>
+  <div class="notice"><strong>حالة تكامل TikTok:</strong> في تاريخ آخر تحديث هذه الشروط، ميزة ربط TikTok والنشر منه داخل Pubget لم تُفعّل بعد. تنطبق الأحكام الخاصة بها فقط عندما تصبح الميزة متاحة، وبعد منحك التفويض والموافقة على عملية النشر.</div>
 
-<h2>1. الأهلية</h2>
-<p>يجب أن يكون عمرك 13 سنة أو أكثر. باستخدامك Pubget، تؤكد أنك تستوفي هذا الشرط وأنك تملك إذن ولي الأمر إذا كان مطلوباً قانوناً في بلدك.</p>
+  <h2>1. قبول الشروط والأهلية</h2>
+  <p>باستخدام Pubget، فإنك توافق على هذه الشروط وسياسة الخصوصية. يجب أن يكون عمرك 13 سنة على الأقل، وأن تستوفي أي متطلبات عمر إضافية يفرضها القانون المحلي أو TikTok. لا تستخدم ميزات الخدمة إذا لم تكن مؤهلاً لها.</p>
 
-<h2>2. الحساب</h2>
-<ul>
-<li>تسجّل باسمك وبريدك الحقيقي.</li>
-<li>أنت مسؤول عن نشاط حسابك والحفاظ على سريته.</li>
-<li>يحق لنا تعليق الحسابات المسيئة أو المزيفة.</li>
-</ul>
+  <h2>2. الحساب وأمنه</h2>
+  <ul>
+    <li>قدّم معلومات صحيحة وحافظ على سرية بيانات تسجيل الدخول الخاصة بك.</li>
+    <li>أنت مسؤول عن الأنشطة التي تتم من خلال حسابك، ما لم يفرض القانون خلاف ذلك.</li>
+    <li>لا تطلب من Pubget أو أي شخص آخر كلمة مرور حساب TikTok؛ تتم المصادقة عبر آلية التفويض الرسمية لدى TikTok.</li>
+    <li>يجوز تقييد الحساب أو تعليق الوصول عند وجود إساءة استخدام أو مخالفة لهذه الشروط.</li>
+  </ul>
 
-<h2>3. المحتوى والمجتمعات</h2>
-<ul>
-<li>Pubget منصة لمجتمعات الأنمي: مجموعات، Roleplay، وفيديوهات قصيرة.</li>
-<li>أنت تملك المحتوى الذي تنشره، وتمنح Pubget ترخيصاً غير حصري لعرضه داخل التطبيق فقط.</li>
-<li>ممنوع: محتوى إباحي، كراهية، تحريض، انتحال شخصيات حقيقية، أو انتهاك حقوق نشر.</li>
-<li><strong>حقوق الأنمي:</strong> الشخصيات (Luffy, Demon Slayer...) مملوكة لأصحابها. نحن لا ندّعي ملكيتها. يُمنع رفع صور رسمية محمية بحقوق نشر في المتجر أو التسويق.</li>
-</ul>
+  <h2>3. المحتوى وحقوق الملكية</h2>
+  <ul>
+    <li>تحتفظ بملكية المحتوى الذي تنشئه أو ترفعه، مع مراعاة حقوق الغير.</li>
+    <li>تمنح Pubget ترخيصاً محدوداً وغير حصري لمعالجة المحتوى واستضافته وعرضه داخل الخدمة، وبالقدر اللازم لتنفيذ الوظائف التي تطلبها.</li>
+    <li>لا ترفع أو تشارك محتوى لا تملك حقوقه أو إذن استخدامه، بما في ذلك الموسيقى والمقاطع والصور المحمية.</li>
+    <li>يحظر المحتوى غير القانوني أو الاستغلالي أو التهديدي أو الذي ينتهك حقوق الآخرين أو سياسات المنصات المتصلة.</li>
+  </ul>
 
-<h2>4. العملات والمتجر</h2>
-<ul>
-<li>النظام الحالي يستخدم عملات داخلية (مثلاً 200 عملة للتوسعة). هذه العملات لا قيمة نقدية خارج التطبيق.</li>
-<li>بسبب عدم توفر Google Play Billing في المغرب حالياً، لا توجد مدفوعات حقيقية في النسخة التجريبية. عند تفعيل الدفع، ستُطبق سياسات الاسترجاع الخاصة بالمتجر.</li>
-<li>Premium في البيتا هو للاختبار فقط.</li>
-</ul>
+  <h2>4. مشاركة المحتوى مع TikTok</h2>
+  <ul>
+    <li>عند إطلاق ميزة TikTok، يمكنك اختيار محتوى من Pubget وطلب إرساله إلى حساب TikTok الذي تفوّضه.</li>
+    <li>لن يبدأ Pubget عملية نشر نيابة عنك دون إجراء واضح منك وموافقة على تفاصيل النشر المعروضة، بما فيها إعدادات الخصوصية المتاحة.</li>
+    <li>قد تتضمن البيانات المرسلة المحتوى الذي اخترته، والتعليق أو الوصف الذي أدخلته، وإعدادات الجمهور، والبيانات التقنية اللازمة لإتمام طلب النشر.</li>
+    <li>أنت مسؤول عن امتلاك الحقوق والأذونات اللازمة للمحتوى، وعن مراجعة الجمهور والخصوصية قبل تأكيد النشر.</li>
+    <li>بعد إرسال المحتوى إلى TikTok، يخضع تخزينه وعرضه وإدارته وإزالته لشروط TikTok وسياساته. لا يضمن Pubget قبول TikTok للنشر أو بقاء المنشور متاحاً.</li>
+    <li>لا يبيع Pubget محتواك إلى TikTok. تتم المشاركة لتنفيذ طلب النشر الذي تختاره، وفق التفويض الذي تمنحه.</li>
+  </ul>
 
-<h2>5. السلوك داخل Roleplay</h2>
-<p>حجز الشخصية مؤقت ويرتبط بعضويتك في المجموعة. عند المغادرة تُحرَّر الشخصية تلقائياً. لا يُسمح ببيع أو تداول الشخصيات خارج النظام.</p>
+  <h2>5. العملات والميزات المدفوعة</h2>
+  <p>أي عملات أو عناصر افتراضية داخل Pubget مخصصة للاستخدام داخل الخدمة ولا تمثل نقوداً قابلة للاسترداد أو التحويل، ما لم يُذكر خلاف ذلك صراحةً وبما يتوافق مع القانون وسياسات المتجر. تخضع المشتريات المستقبلية لشروط المتجر المعني.</p>
 
-<h2>6. الإنهاء</h2>
-<p>يمكنك حذف حسابك في أي وقت عبر الإعدادات أو عبر البريد. نحتفظ بالحق في إنهاء الوصول عند خرق الشروط.</p>
+  <h2>6. السلوك والاستخدام المقبول</h2>
+  <p>يجب عدم استخدام Pubget لنشر الرسائل المزعجة أو الاحتيال أو انتحال الهوية أو التحايل على قيود TikTok أو حقوق النشر أو إعدادات الخصوصية. يجوز لنا إزالة المحتوى أو تقييد الوظائف عند الضرورة لحماية المستخدمين أو الامتثال للقانون.</p>
 
-<h2>7. حدود المسؤولية</h2>
-<p>إلى أقصى حد يسمح به القانون المغربي، Pubget غير مسؤول عن أضرار غير مباشرة أو فقدان أرباح ناتجة عن استخدامك للتطبيق.</p>
+  <h2>7. إلغاء ربط TikTok وإنهاء الاستخدام</h2>
+  <p>عند إتاحة الربط، يمكنك إلغاء تفويض Pubget من إعدادات الأمان أو التطبيقات المتصلة في حساب TikTok. ويمكنك أيضاً التواصل معنا على البريد أدناه لطلب المساعدة في حذف بيانات التكامل التي نحتفظ بها. إلغاء الربط لا يحذف تلقائياً المحتوى الذي سبق نشره على TikTok؛ يجب إدارة ذلك من حساب TikTok.</p>
 
-<h2>8. التواصل</h2>
-<p>للاستفسارات القانونية أو طلبات الحذف: zakariasbika253@gmail.com</p>
+  <h2>8. إيقاف الحساب وحذف البيانات</h2>
+  <p>يمكنك طلب حذف حساب Pubget وبياناته عبر الوظائف المتاحة في التطبيق أو بمراسلتنا. قد نحتفظ ببعض السجلات عندما يلزم ذلك لأسباب قانونية أو أمنية مشروعة، مع تقييد استخدامها.</p>
+
+  <h2>9. الخدمات الخارجية</h2>
+  <p>قد يعتمد Pubget على خدمات أطراف ثالثة، بما فيها Google/Firebase وGoogle Play وAdMob، وعند تفعيل التكامل، TikTok. يخضع استخدامك لخدمات تلك الجهات لشروطها وسياسات الخصوصية الخاصة بها. لا يتحكم Pubget في قرارات أو ممارسات الأطراف الخارجية.</p>
+
+  <h2>10. إخلاء المسؤولية وحدودها</h2>
+  <p>تُقدّم الخدمة وفق ما هو متاح، مع بذل جهود معقولة للحفاظ على عملها وأمنها. لا نضمن توافراً متواصلاً أو قبول أي محتوى لدى منصة خارجية. لا تستبعد هذه الشروط أي مسؤولية لا يسمح القانون باستبعادها.</p>
+
+  <h2>11. التغييرات والقانون والتواصل</h2>
+  <p>قد نحدّث هذه الشروط عند تغير الخدمة أو المتطلبات القانونية. سننشر النسخة الجديدة هنا مع تاريخ تحديثها. للاستفسارات أو طلبات الخصوصية والحذف: <a href="mailto:zakariasbika253@gmail.com">zakariasbika253@gmail.com</a>.</p>
+
+  <section class="lang" lang="en" dir="ltr">
+    <h1>Pubget – Terms of Service</h1>
+    <p class="muted">Last updated: 20 November 2026 | Contact: <a href="mailto:zakariasbika253@gmail.com">zakariasbika253@gmail.com</a></p>
+    <div class="notice"><strong>TikTok integration status:</strong> As of this update, TikTok account linking and publishing from Pubget are not yet enabled. The provisions below apply only if and when the feature is launched and you authorize it.</div>
+    <h2>1. Acceptance and eligibility</h2>
+    <p>By using Pubget, you agree to these Terms and our Privacy Policy. You must be at least 13 and meet any higher age requirements imposed by local law or TikTok.</p>
+    <h2>2. Accounts and security</h2>
+    <ul><li>Provide accurate information and protect your sign-in credentials.</li><li>You are responsible for activity through your account, subject to applicable law.</li><li>Pubget will not ask you for your TikTok password. Authentication is intended to use TikTok's official authorization flow.</li></ul>
+    <h2>3. Content and intellectual property</h2>
+    <ul><li>You retain ownership of content you create or upload, subject to third-party rights.</li><li>You grant Pubget a limited, non-exclusive license to process, host and display content as needed to provide the service and the features you request.</li><li>Do not upload or share content unless you own it or have the necessary permissions, including rights to music, clips and images.</li><li>Illegal, exploitative, threatening, infringing or otherwise prohibited content is not allowed.</li></ul>
+    <h2>4. Sharing content to TikTok</h2>
+    <ul><li>If and when the TikTok feature launches, you may select Pubget content and request that it be sent to the TikTok account you authorize.</li><li>Pubget will not initiate a publishing action on your behalf without a clear action from you and confirmation of the displayed publishing details, including available audience settings.</li><li>Information sent may include the content you select, your caption, audience settings and technical information needed to process the publishing request.</li><li>You are responsible for having the necessary rights and for reviewing the audience and privacy settings before confirming.</li><li>Once sent to TikTok, content is subject to TikTok's terms and policies. Pubget cannot guarantee that TikTok will accept or keep a post available.</li><li>Pubget does not sell your content to TikTok; sharing is for the publishing action you request and authorize.</li></ul>
+    <h2>5. Virtual items and paid features</h2>
+    <p>Virtual currencies or items are for use within Pubget and are not redeemable or transferable cash unless expressly stated in compliance with applicable law and store policies. Future purchases are subject to the relevant app store terms.</p>
+    <h2>6. Acceptable use</h2>
+    <p>Do not use Pubget for spam, fraud, impersonation, or to bypass TikTok restrictions, copyright rules or privacy settings. We may remove content or restrict features when reasonably necessary to protect users or comply with law.</p>
+    <h2>7. Disconnecting TikTok</h2>
+    <p>When account linking becomes available, you can revoke Pubget's authorization in TikTok account security or connected-app settings. You may also contact us for help deleting integration data we hold. Revoking access does not automatically remove posts already published to TikTok; manage those through TikTok.</p>
+    <h2>8. Account closure and deletion</h2>
+    <p>You may request deletion of your Pubget account and data through available in-app controls or by contacting us. We may retain limited records where required for legal or legitimate security purposes.</p>
+    <h2>9. Third-party services</h2>
+    <p>Pubget may rely on third-party services, including Google/Firebase, Google Play and AdMob, and TikTok if the integration is enabled. Their own terms and privacy policies apply. Pubget does not control external providers.</p>
+    <h2>10. Disclaimers and liability</h2>
+    <p>The service is provided on an as-available basis. We make reasonable efforts to maintain it but do not guarantee uninterrupted availability or acceptance of content by an external platform. Nothing excludes liability that cannot legally be excluded.</p>
+    <h2>11. Changes and contact</h2>
+    <p>We may update these Terms as the service or legal requirements change. The revised version and date will be posted here. Contact: <a href="mailto:zakariasbika253@gmail.com">zakariasbika253@gmail.com</a>.</p>
+  </section>
+  <footer>© 2026 Pubget</footer>
+</main>
+</body>
+</html>
