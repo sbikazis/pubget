@@ -31,6 +31,7 @@ const {
 } = require("./src/publicProfile");
 const { createSocialGraph } = require("./src/socialGraph");
 const { createGroupsDomain } = require("./src/groupsDomain");
+const { createGroupCreationOutboxHandler } = require("./src/groupCreationOutbox");
 const { createGroupChat } = require("./src/groupChat");
 const { createPrivateChat } = require("./src/privateChat");
 const { createGroupMediaPipeline } = require("./src/groupMediaPipeline");
@@ -189,6 +190,22 @@ const groupsDomain = createGroupsDomain({
   achievements: achievementsDomain,
   catalog: animeCatalog,
 });
+
+// Group creation commits this durable event in the same Firestore transaction
+// as the group. Trigger retries are safe because achievement unlocks and their
+// effect outbox entries use deterministic Firestore identities.
+exports.processGroupCreationOutbox = onDocumentCreated(
+  {
+    document: "group_creation_outbox/{eventId}",
+    region: "us-central1",
+    retry: true,
+  },
+  createGroupCreationOutboxHandler({
+    db: lazyFirestore,
+    achievements: achievementsDomain,
+    FieldValue,
+  }),
+);
 const eventsDomain = createEventsDomain({
   db: lazyFirestore,
   FieldValue,

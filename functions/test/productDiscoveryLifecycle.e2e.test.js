@@ -11,6 +11,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const os = require("node:os");
@@ -261,6 +262,7 @@ async function createSearchableGroup(uid, name) {
   return groups().createGroup({
     ...auth(uid),
     data: {
+      idempotencyKey: `discovery-e2e-${randomUUID()}`,
       name,
       description: "Straw hat sailors talk strategy every week here",
       type: "public",

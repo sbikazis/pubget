@@ -207,20 +207,50 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
     const uid = authUid(request, HttpsError);
     const data = groupInput(request, HttpsError);
     const idempotencyKey = typeof data.idempotencyKey === "string" &&
-      validString(data.idempotencyKey, 80) ? data.idempotencyKey.trim() : null;
-    const lockRef = idempotencyKey ?
-      db.collection("users").doc(uid).collection("groupCreateKeys").doc(idempotencyKey) :
-      null;
+      /^[A-Za-z0-9_-]{1,80}$/.test(data.idempotencyKey.trim())
+      ? data.idempotencyKey.trim()
+      : null;
+    if (!idempotencyKey) {
+      throw new HttpsError(
+        "invalid-argument",
+        "A valid idempotencyKey is required to create a group safely.",
+      );
+    }
+    const lockRef = db.collection("users").doc(uid)
+      .collection("groupCreateKeys").doc(idempotencyKey);
     let groupRef = db.collection("groups").doc();
-    let reused = false;
     await db.runTransaction(async (transaction) => {
-      if (lockRef) {
-        const lock = await transaction.get(lockRef);
-        if (lock.exists && validString((lock.data() || {}).groupId, 128)) {
-          groupRef = db.collection("groups").doc(lock.data().groupId);
-          reused = true;
-          return;
+      const lock = await transaction.get(lockRef);
+      if (lock.exists) {
+        const existingGroupId = (lock.data() || {}).groupId;
+        if (!validString(existingGroupId, 128)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "The group creation key is already reserved but has no valid group.",
+          );
         }
+        groupRef = db.collection("groups").doc(existingGroupId);
+        const existingGroup = await transaction.get(groupRef);
+        if (!existingGroup.exists) {
+          throw new HttpsError(
+            "failed-precondition",
+            "The idempotency key points to a group that no longer exists.",
+          );
+        }
+        const existingEventRef = db.collection("group_creation_outbox").doc(existingGroupId);
+        const existingEvent = await transaction.get(existingEventRef);
+        if (!existingEvent.exists) {
+          transaction.create(existingEventRef, {
+            eventId: existingGroupId,
+            type: "group_created",
+            userId: uid,
+            groupId: existingGroupId,
+            status: "pending",
+            attempts: 0,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+        }
+        return;
       }
       const userSnap = await transaction.get(db.collection("users").doc(uid));
       const maxMembers = resolveMaxMembers(
@@ -272,21 +302,30 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
       for (const role of ROLES) {
         transaction.create(rolePath(db, groupRef.id, role), roleDefinition(role));
       }
-      if (lockRef) {
-        transaction.create(lockRef, {
+      transaction.create(lockRef, {
+        groupId: groupRef.id,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      // The durable domain event is committed atomically with the group,
+      // founder membership, roleplay reservation, roles, and idempotency lock.
+      // Its Firestore trigger evaluates achievements independently and safely
+      // retries without creating the group or rewards a second time.
+      transaction.create(
+        db.collection("group_creation_outbox").doc(groupRef.id),
+        {
+          eventId: groupRef.id,
+          type: "group_created",
+          userId: uid,
           groupId: groupRef.id,
+          status: "pending",
+          attempts: 0,
           createdAt: FieldValue.serverTimestamp(),
-        });
-      }
+        },
+      );
     });
     const created = await groupRef.get();
-    if (achievements && typeof achievements.evaluate === "function") {
-      await achievements.evaluate({
-        type: "group_created",
-        userId: uid,
-        source: "group",
-        metadata: { groupId: groupRef.id },
-      });
+    if (!created.exists) {
+      throw new HttpsError("failed-precondition", "The idempotent group record is missing.");
     }
     return { ok: true, groupId: groupRef.id, group: created.data() };
   }

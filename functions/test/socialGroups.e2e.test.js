@@ -6,6 +6,7 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const { randomUUID } = require("node:crypto");
 
 process.env.FIRESTORE_EMULATOR_HOST =
   process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080";
@@ -51,6 +52,7 @@ async function createGroup(founder, type) {
   const result = await domain.createGroup({
     auth: { uid: founder },
     data: {
+      idempotencyKey: `social-e2e-${randomUUID()}`,
       name: `Group ${type}`,
       description: "",
       type,

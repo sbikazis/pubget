@@ -329,6 +329,7 @@ test("createGroup persists welcomeMessage and chatBackgroundUrl", async () => {
   const result = await domain.createGroup({
     auth: { uid: "alice" },
     data: {
+      idempotencyKey: "create-knights-1",
       name: "Knights",
       description: "",
       type: "public",
@@ -346,6 +347,88 @@ test("createGroup persists welcomeMessage and chatBackgroundUrl", async () => {
   assert.equal(group.chatBackgroundUrl, "https://cdn.example.com/bg.jpg");
   assert.equal(group.membersCount, 1);
   assert.ok(store[`groups/${result.groupId}/members/alice`]);
+  const outbox = store[`group_creation_outbox/${result.groupId}`];
+  assert.equal(outbox.type, "group_created");
+  assert.equal(outbox.userId, "alice");
+  assert.equal(outbox.groupId, result.groupId);
+  assert.equal(outbox.status, "pending");
+});
+
+test("createGroup requires a safe idempotency key before database access", async () => {
+  await assert.rejects(
+    handlers().createGroup({
+      auth: { uid: "alice" },
+      data: {
+        name: "Knights",
+        description: "",
+        type: "public",
+        joinPolicy: "open",
+        isSearchable: true,
+        rules: "",
+      },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    handlers().createGroup({
+      auth: { uid: "alice" },
+      data: {
+        name: "Knights",
+        description: "",
+        type: "public",
+        joinPolicy: "open",
+        isSearchable: true,
+        rules: "",
+        idempotencyKey: "unsafe/key",
+      },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});
+
+test("createGroup retry reuses the same group and does not create another event", async () => {
+  const store = { "users/alice": {} };
+  const db = fakeDb(store);
+  let achievementCalls = 0;
+  const domain = createGroupsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "SERVER_TIMESTAMP" },
+    HttpsError: TestHttpsError,
+    randomUUID: () => "id",
+    achievements: { evaluate: async () => { achievementCalls += 1; } },
+  });
+  const request = {
+    auth: { uid: "alice" },
+    data: {
+      idempotencyKey: "same-request-key",
+      name: "Retry Safe",
+      description: "",
+      type: "public",
+      animeId: null,
+      joinPolicy: "open",
+      isSearchable: true,
+      rules: "",
+    },
+  };
+
+  const first = await domain.createGroup(request);
+  const firstRoleCount = Object.keys(store).filter((key) =>
+    key.startsWith(`groups/${first.groupId}/roles/`),
+  ).length;
+  const second = await domain.createGroup(request);
+
+  assert.equal(second.groupId, first.groupId);
+  assert.equal(Object.keys(store).filter((key) => /^groups\/[^/]+$/.test(key)).length, 1);
+  assert.equal(
+    Object.keys(store).filter((key) => key.startsWith("group_creation_outbox/")).length,
+    1,
+  );
+  const roleCount = Object.keys(store).filter((key) =>
+    key.startsWith(`groups/${first.groupId}/roles/`),
+  ).length;
+  assert.ok(roleCount > 0);
+  assert.equal(roleCount, firstRoleCount);
+  assert.equal(achievementCalls, 0);
 });
 
 test("createGroup validates welcome fields before database access", async () => {
