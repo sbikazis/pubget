@@ -936,7 +936,16 @@ service cloud.firestore {
         // be forged by clients.
         allow create, update, delete: if false;
       }
-      match /media/{mediaId} {
+      // TikTok OAuth state and credentials are server-only. Admin SDK bypasses
+    // these rules; no mobile/web client may read or mutate either collection.
+    match /tiktok_oauth_states/{stateId} {
+      allow read, write: if false;
+    }
+    match /tiktok_private_accounts/{uid} {
+      allow read, write: if false;
+    }
+
+    match /media/{mediaId} {
         allow read: if groupMember(groupId);
         allow create, update, delete: if false;
       }
