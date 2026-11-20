@@ -10,6 +10,7 @@ import '../../authentication/providers/auth_provider.dart';
 import '../../authentication/providers/onboarding_provider.dart';
 import '../settings_provider.dart';
 import '../widgets/language_picker.dart';
+import '../widgets/tiktok_connection_tile.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({this.appVersion = '1.0.2+18', super.key});
@@ -72,6 +73,8 @@ class SettingsPage extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: AppSpacing.md),
+          const TikTokConnectionTile(),
           const SizedBox(height: AppSpacing.xl),
           Text(copy.language, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.sm),
