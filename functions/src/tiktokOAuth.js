@@ -4,6 +4,7 @@ const CALLBACK_URI = "https://pubget-aaf27.web.app/api/tiktok/oauth/callback";
 const AUTHORIZE_URL = "https://www.tiktok.com/v2/auth/authorize/";
 const TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/";
 const USER_INFO_URL = "https://open.tiktokapis.com/v2/user/info/";
+const REVOKE_URL = "https://open.tiktokapis.com/v2/oauth/revoke/";
 const STATE_TTL_MS = 10 * 60 * 1000;
 const ACCESS_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 
@@ -152,7 +153,34 @@ function createTikTokOAuth({ db, HttpsError, clientKey, clientSecret, encryption
   async function disconnectTikTok(request) {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
-    await accountCollection().doc(uid).delete();
+    const accountRef = accountCollection().doc(uid);
+    const snapshot = await accountRef.get();
+    if (snapshot.exists) {
+      try {
+        const account = snapshot.data();
+        const accessToken = decrypt(account.accessToken, keyBytes());
+        const body = new URLSearchParams({
+          client_key: secret(clientKey),
+          client_secret: secret(clientSecret),
+          token: accessToken,
+        });
+        const response = await fetch(REVOKE_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.error) {
+          throw new Error("TikTok token revocation failed.");
+        }
+      } catch (_) {
+        throw new HttpsError(
+          "unavailable",
+          "TikTok could not confirm disconnection. Please try again.",
+        );
+      }
+    }
+    await accountRef.delete();
     return { disconnected: true };
   }
 
@@ -211,7 +239,7 @@ function callbackPage(success) {
   const message = success
     ? "Your TikTok account is securely connected. Return to Pubget."
     : "Pubget could not complete the TikTok connection. Return to Pubget and try again.";
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:system-ui;max-width:34rem;margin:15vh auto;padding:1.5rem;line-height:1.6"><h1>${title}</h1><p>${message}</p><a href="pubget://">Open Pubget</a></body></html>`;
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:system-ui;max-width:34rem;margin:15vh auto;padding:1.5rem;line-height:1.6"><h1>${title}</h1><p>${message}</p><a href="pubget://group">Open Pubget</a></body></html>`;
 }
 
 module.exports = { createTikTokOAuth, CALLBACK_URI };
