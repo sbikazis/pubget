@@ -10,7 +10,8 @@ const {
   onDocumentWritten,
 } = require("firebase-functions/v2/firestore");
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
@@ -58,6 +59,11 @@ const { createAchievementsDomain } = require("./src/achievementsDomain");
 const { createHomeSections } = require("./src/homeSectionsDomain");
 const { createMafiaDomain } = require("./src/mafia/mafiaDomain");
 const { createModerationDomain } = require("./src/moderationDomain");
+const { createTikTokOAuth } = require("./src/tiktokOAuth");
+
+const TIKTOK_CLIENT_KEY = defineSecret("TIKTOK_CLIENT_KEY");
+const TIKTOK_CLIENT_SECRET = defineSecret("TIKTOK_CLIENT_SECRET");
+const TIKTOK_TOKEN_ENCRYPTION_KEY = defineSecret("TIKTOK_TOKEN_ENCRYPTION_KEY");
 
 // The project's Storage bucket is the modern `{project}.firebasestorage.app`
 // (a `{project}.appspot.com` bucket does not exist for it). Do not rely on the
@@ -1103,6 +1109,30 @@ exports.listModerationAppeals = onCall(
 exports.reviewModerationAppeal = onCall(
   { region: "us-central1" },
   moderationDomain.reviewAppeal,
+);
+
+const tiktokOAuth = createTikTokOAuth({
+  db: lazyFirestore,
+  HttpsError,
+  clientKey: TIKTOK_CLIENT_KEY,
+  clientSecret: TIKTOK_CLIENT_SECRET,
+  encryptionKey: TIKTOK_TOKEN_ENCRYPTION_KEY,
+});
+exports.beginTikTokOAuth = onCall(
+  { region: "us-central1", secrets: [TIKTOK_CLIENT_KEY] },
+  tiktokOAuth.beginTikTokOAuth,
+);
+exports.getTikTokConnectionStatus = onCall(
+  { region: "us-central1", secrets: [TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, TIKTOK_TOKEN_ENCRYPTION_KEY] },
+  tiktokOAuth.getTikTokConnectionStatus,
+);
+exports.disconnectTikTok = onCall(
+  { region: "us-central1" },
+  tiktokOAuth.disconnectTikTok,
+);
+exports.tiktokOAuthCallback = onRequest(
+  { region: "us-central1", secrets: [TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, TIKTOK_TOKEN_ENCRYPTION_KEY] },
+  tiktokOAuth.tiktokOAuthCallback,
 );
 
 exports.processEventLifecycle = onSchedule(
