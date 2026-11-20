@@ -250,3 +250,57 @@ test("client-facing catalog shogun lists separate conditions", () => {
     ["members_50", "member_age_3d", "member_message_1", "stable_7d"],
   );
 });
+
+
+test("achievement unlock atomically enqueues reward, in-app notification, and push effects", async () => {
+  const db = createFakeDb();
+  let rewardCalls = 0;
+  let notificationCalls = 0;
+  const domain = domainOf(db, {
+    economy: { applyReward: async () => { rewardCalls += 1; } },
+    notificationBuilder: { build: async () => { notificationCalls += 1; } },
+  });
+
+  const first = await domain.unlock("u-outbox", "the_threshold", { source: "test" });
+  assert.equal(first.unlocked, true);
+  const events = [...db.store.entries()].filter(([path]) => path.startsWith("achievement_outbox/"));
+  assert.equal(events.length, 1);
+  const [path, event] = events[0];
+  assert.equal(path, "achievement_outbox/achievement_u-outbox_the_threshold");
+  assert.equal(event.status, "pending");
+  assert.deepEqual(event.effects.map((effect) => effect.kind), [
+    "coin_reward", "in_app_notification", "fcm_push",
+  ]);
+  assert.ok(event.effects.every((effect) => effect.status === "pending"));
+  assert.equal(event.effects[0].payload.amount, 5);
+  assert.equal(event.effects[1].payload.id, "achievement-u-outbox-the_threshold");
+  assert.equal(event.effects[2].payload.notificationId, "achievement-u-outbox-the_threshold");
+  assert.equal(event.effects[2].payload.title, "Achievement unlocked");
+  assert.equal(event.effects[2].payload.body, "The Threshold");
+
+  // Unlock side effects are now delivered only by the outbox consumer.
+  assert.equal(rewardCalls, 0);
+  assert.equal(notificationCalls, 0);
+
+  const second = await domain.unlock("u-outbox", "the_threshold", { source: "retry" });
+  assert.equal(second.reason, "already_unlocked");
+  assert.equal([...db.store.keys()].filter((key) => key.startsWith("achievement_outbox/")).length, 1);
+});
+
+test("zero-reward achievement enqueues notification effects without a coin grant", async () => {
+  const spec = CATALOG.find((item) => item.id === "keeper_of_time");
+  assert.ok(spec);
+  const originalReward = spec.rewardCoins;
+  spec.rewardCoins = 0;
+  try {
+    const db = createFakeDb();
+    const domain = domainOf(db);
+    await domain.unlock("u-outbox", "keeper_of_time", { source: "test" });
+    const event = db.store.get("achievement_outbox/achievement_u-outbox_keeper_of_time");
+    assert.deepEqual(event.effects.map((effect) => effect.kind), [
+      "in_app_notification", "fcm_push",
+    ]);
+  } finally {
+    spec.rewardCoins = originalReward;
+  }
+});

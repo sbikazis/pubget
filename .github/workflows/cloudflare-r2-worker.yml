@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - feat/cloudflare-r2-media-backend
+      - fix/create-group-worker
     paths:
       - "worker/**"
       - ".github/workflows/cloudflare-r2-worker.yml"
@@ -25,7 +26,7 @@ jobs:
         with:
           node-version: "20"
       - name: Test media signature validation
-        run: npx --yes vitest@3.2.4 run worker/src/index.test.ts worker/src/index.routes.test.ts worker/src/index.kirari.test.ts worker/src/firebaseAuth.test.ts worker/src/identity.test.ts worker/src/storageMigration.test.ts
+        run: npx --yes vitest@3.2.4 run worker/src/index.test.ts worker/src/index.routes.test.ts worker/src/index.kirari.test.ts worker/src/firebaseAuth.test.ts worker/src/identity.test.ts worker/src/storageMigration.test.ts worker/src/achievementOutbox.test.ts worker/src/achievementOutboxStore.test.ts worker/src/achievementCoinReward.test.ts worker/src/achievementNotifications.test.ts worker/src/achievementOutboxRecovery.test.ts
 
       - name: Validate Worker bundle
         run: npx --yes wrangler@4 deploy --dry-run --config worker/wrangler.toml
