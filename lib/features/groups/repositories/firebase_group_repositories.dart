@@ -279,18 +279,6 @@ final class FirebaseGroupRepository
     await _callVoid('promoteGroup', <String, dynamic>{'groupId': groupId});
   });
 
-  Future<Map<String, dynamic>> _callGroupData(
-    String name,
-    Map<String, dynamic> data,
-  ) async {
-    final result = await _functions.httpsCallable(name).call(data);
-    final payload = result.data;
-    if (payload is! Map) {
-      throw const FormatException('Unexpected group response.');
-    }
-    return Map<String, dynamic>.from(payload);
-  }
-
   Future<void> _callVoid(String name, Map<String, dynamic> data) async {
     await _functions.httpsCallable(name).call(data);
   }
