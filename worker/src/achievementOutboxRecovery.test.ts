@@ -33,12 +33,6 @@ function seededEvent(): AchievementOutboxEvent {
  */
 function singleEffectEvent(kind: AchievementEffect["kind"]): AchievementOutboxEvent {
   const event = seededEvent();
-  const effects = event.effects.filter((effect) => effect.kind === kind);
-  return { ...event, effects };
-}
-
-function singleEffectEvent(kind: AchievementEffect["kind"]): AchievementOutboxEvent {
-  const event = seededEvent();
   return { ...event, effects: event.effects.filter((effect) => effect.kind === kind) };
 }
 
