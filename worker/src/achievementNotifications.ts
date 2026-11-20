@@ -116,13 +116,14 @@ export function createAchievementNotificationDelivery(
     let existing: FsDocument | null;
     let user: FsDocument | null;
     try {
-      [existing, user] = await Promise.all([read(notificationPath), read(userPath)]);
+      existing = await read(notificationPath);
       if (existing) {
         await request(`${base}:rollback`, accessToken, {
           method: "POST", body: JSON.stringify({ transaction }),
         });
         return { created: false };
       }
+      user = await read(userPath);
       if (!user) throw new Error("ACHIEVEMENT_NOTIFICATION_USER_MISSING");
       const p = effect.payload;
       const metadata = p.metadata && typeof p.metadata === "object" ? p.metadata : { achievementId };
