@@ -31,6 +31,12 @@ function seededEvent(): AchievementOutboxEvent {
  * survives worker/runner recreation so tests exercise restart recovery rather
  * than relying on process-local state.
  */
+function singleEffectEvent(kind: AchievementEffect["kind"]): AchievementOutboxEvent {
+  const event = seededEvent();
+  const effects = event.effects.filter((effect) => effect.kind === kind);
+  return { ...event, effects };
+}
+
 function durableStore(seed: AchievementOutboxEvent) {
   let event = structuredClone(seed);
   const deliveredBusinessKeys = new Set<string>();
@@ -109,7 +115,7 @@ describe("achievement outbox recovery and fault matrix", () => {
   });
 
   it("retries a transient delivery failure after persisted backoff and completes on a later invocation", async () => {
-    const durable = durableStore(seededEvent());
+    const durable = durableStore(singleEffectEvent("coin_reward"));
     let failFirst = true;
     const first = await runAchievementOutboxBatch({
       store: durable.store,
@@ -142,7 +148,7 @@ describe("achievement outbox recovery and fault matrix", () => {
   });
 
   it("recovers a worker crash after claim but before delivery once the lease expires", async () => {
-    const durable = durableStore(seededEvent());
+    const durable = durableStore(singleEffectEvent("coin_reward"));
     const claimed = await durable.store.claimNextEffect("event", "crashed-worker", 1_000, 10_000);
     expect(claimed?.status).toBe("processing");
     expect(durable.event().effects[0].leaseOwner).toBe("crashed-worker");
@@ -254,7 +260,7 @@ describe("achievement outbox recovery and fault matrix", () => {
   });
 
   it("allows only one concurrent claim across independent worker invocations", async () => {
-    const durable = durableStore(seededEvent());
+    const durable = durableStore(singleEffectEvent("coin_reward"));
     const claims = await Promise.all([
       durable.store.claimNextEffect("event", "worker-a", 1_000, 60_000),
       durable.store.claimNextEffect("event", "worker-b", 1_000, 60_000),
