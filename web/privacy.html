@@ -1,314 +1,124 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<!-- Playables SDK -->
-<script>// Playables SDK v1.0.0
-// Game lifecycle bridge: rAF-based game-ready detection + event communication
-(function() {
-  'use strict';
-
-  // Idempotency: skip if already initialized (e.g., server-side injection
-  // followed by client-side inject-javascript via the Bloks webview component).
-  if (window.playablesSDK) return;
-
-  var HANDLER_NAME = 'playablesGameEventHandler';
-  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
-  var RAF_FRAME_THRESHOLD = 3;
-
-  var gameReadySent = false;
-  var firstInteractionSent = false;
-  var errorSent = false;
-  var frameCount = 0;
-  var originalRAF = window.requestAnimationFrame;
-
-  // --- Transport Layer ---
-
-  function hasIOSBridge() {
-    return !!(window.webkit &&
-              window.webkit.messageHandlers &&
-              window.webkit.messageHandlers[HANDLER_NAME]);
-  }
-
-  function hasAndroidBridge() {
-    return !!(window[ANDROID_BRIDGE_NAME] &&
-              typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
-  }
-
-  function isInIframe() {
-    return !!(window.parent && window.parent !== window);
-  }
-
-  function sendEvent(eventName, payload) {
-    var message = {
-      type: eventName,
-      payload: payload || {},
-      timestamp: Date.now()
-    };
-
-    if (hasIOSBridge()) {
-      try {
-        window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
-      } catch (e) { /* ignore */ }
-      return;
-    }
-
-    if (hasAndroidBridge()) {
-    try {
-      var p = payload || {};
-      p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
-      p.timestamp = message.timestamp;
-      window[ANDROID_BRIDGE_NAME].postEvent(
-        eventName,
-        JSON.stringify(p)
-      );
-    } catch (e) { /* ignore */ }
-    return;
-  }
-
-    if (isInIframe()) {
-      try {
-        window.parent.postMessage(message, '*');
-      } catch (e) { /* ignore */ }
-      return;
-    }
-  }
-
-  // --- rAF Game-Ready Detection ---
-
-  function onFrame() {
-    if (gameReadySent) return;
-
-    frameCount++;
-    if (frameCount >= RAF_FRAME_THRESHOLD) {
-      gameReadySent = true;
-      sendEvent('game_ready', {
-        frame_count: frameCount,
-        detected_at: Date.now()
-      });
-      return;
-    }
-
-    originalRAF.call(window, onFrame);
-  }
-
-  if (originalRAF) {
-    window.requestAnimationFrame = function(callback) {
-      if (!gameReadySent) {
-        return originalRAF.call(window, function(timestamp) {
-          frameCount++;
-          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
-            gameReadySent = true;
-            sendEvent('game_ready', {
-              frame_count: frameCount,
-              detected_at: Date.now()
-            });
-          }
-          callback(timestamp);
-        });
-      }
-      return originalRAF.call(window, callback);
-    };
-  }
-
-  // --- First User Interaction Detection ---
-
-  function setupFirstInteractionDetection() {
-    var events = ['touchstart', 'mousedown', 'keydown'];
-
-    function onFirstInteraction() {
-      if (firstInteractionSent) return;
-      firstInteractionSent = true;
-      sendEvent('user_interaction_start', null);
-
-      for (var i = 0; i < events.length; i++) {
-        document.removeEventListener(events[i], onFirstInteraction, true);
-      }
-    }
-
-    for (var i = 0; i < events.length; i++) {
-      document.addEventListener(events[i], onFirstInteraction, true);
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
-  } else {
-    setupFirstInteractionDetection();
-  }
-
-  // --- Auto Error Capture ---
-
-  window.addEventListener('error', function(event) {
-    if (errorSent) return;
-    errorSent = true;
-    sendEvent('error', {
-      message: event.message || 'Unknown error',
-      source: event.filename || '',
-      lineno: event.lineno || 0,
-      colno: event.colno || 0,
-      auto_captured: true
-    });
-  });
-
-  window.addEventListener('unhandledrejection', function(event) {
-    if (errorSent) return;
-    errorSent = true;
-    var reason = event.reason;
-    sendEvent('error', {
-      message: (reason instanceof Error) ? reason.message : String(reason),
-      type: 'unhandled_promise_rejection',
-      auto_captured: true
-    });
-  });
-
-  // --- Public API ---
-
-  window.playablesSDK = {
-    complete: function(score) {
-      sendEvent('game_ended', {
-        score: score,
-        completed: true
-      });
-    },
-
-    error: function(message) {
-      if (errorSent) return;
-      errorSent = true;
-      sendEvent('error', {
-        message: message || 'Unknown error',
-        auto_captured: false
-      });
-    },
-
-    sendEvent: function(eventName, payload) {
-      if (!eventName || typeof eventName !== 'string') return;
-      sendEvent(eventName, payload);
-    }
-  };
-
-  // Kick off rAF detection in case no game code calls rAF immediately
-  if (originalRAF) {
-    originalRAF.call(window, onFrame);
-  }
-})();</script>
-<!-- PLAYABLE_TOUCH_PATCH_V1 --><script>
-(function() {
-  if (window.__playableTouchPatchInstalled) return;
-  window.__playableTouchPatchInstalled = true;
-  var origAdd = EventTarget.prototype.addEventListener;
-  var blockedTypes = { touchstart: 1, touchmove: 1, wheel: 1 };
-  EventTarget.prototype.addEventListener = function(type, listener, options) {
-    if (blockedTypes[type]) {
-      if (options === undefined || options === null) {
-        options = { passive: true };
-      } else if (typeof options === 'boolean') {
-        options = { capture: options, passive: true };
-      } else {
-        options = Object.assign({}, options, { passive: true });
-      }
-    }
-    return origAdd.call(this, type, listener, options);
-  };
-})();
-</script><script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pubget – سياسة الخصوصية</title>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-body{font-family:'Cairo',system-ui,Arial,sans-serif;background:#fff;color:#111;line-height:1.9;margin:0;padding:0}
-.container{max-width:820px;margin:auto;padding:32px 20px}
-h1{font-size:28px;margin-bottom:8px;font-weight:700}
-h2{font-size:20px;margin-top:32px;border-bottom:1px solid #eee;padding-bottom:6px;font-weight:600}
-h3{font-size:17px;margin:18px 0 8px;color:#333}
-.sub{color:#666;font-size:14px;margin-bottom:20px}
-ul{padding-right:20px}
-li{margin-bottom:6px}
-a{color:#0b57d0;text-decoration:none}
-a:hover{text-decoration:underline}
-.note{background:#f7f7f9;padding:14px;border-radius:8px;font-size:14px;margin-top:28px}
-footer{margin-top:48px;font-size:13px;color:#777;text-align:center}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="سياسة خصوصية Pubget، بما في ذلك البيانات المرتبطة بتكامل TikTok عند تفعيله.">
+  <title>Pubget – سياسة الخصوصية</title>
+  <style>
+    :root{color-scheme:light;--ink:#171522;--muted:#625f70;--line:#e8e5ef;--accent:#6841d9;--soft:#f7f5fc}
+    *{box-sizing:border-box}body{margin:0;background:#fff;color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;line-height:1.9}
+    main{max-width:900px;margin:auto;padding:36px 22px 64px}h1{font-size:2rem;line-height:1.4;margin:0 0 8px}h2{font-size:1.2rem;margin:30px 0 8px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+    p,li{font-size:1rem}li{margin:6px 0}.muted{color:var(--muted);font-size:.92rem}.notice{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:16px;margin:22px 0}
+    a{color:var(--accent);overflow-wrap:anywhere}.lang{direction:ltr;text-align:left;border-top:1px solid var(--line);margin-top:42px;padding-top:24px}
+    footer{margin-top:42px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem}
+  </style>
 </head>
 <body>
-<div class="container">
-<h1>Pubget – سياسة الخصوصية</h1>
-<div class="sub">Privacy Policy | آخر تحديث: 30 مايو 2026</div>
+<main>
+  <h1>Pubget – سياسة الخصوصية</h1>
+  <p class="muted">آخر تحديث: 20 نوفمبر 2026 | للاستفسارات وطلبات الخصوصية: <a href="mailto:zakariasbika253@gmail.com">zakariasbika253@gmail.com</a></p>
 
-<p>مرحباً بك في <strong>Pubget</strong>. خصوصيتك مهمة بالنسبة لنا. توضح سياسة الخصوصية هذه كيف نجمع معلوماتك ونستخدمها ونحميها عند استخدامك لتطبيقنا.</p>
+  <div class="notice"><strong>حالة تكامل TikTok:</strong> في تاريخ آخر تحديث، لم يتم تفعيل ربط حساب TikTok أو النشر منه داخل Pubget بعد. يوضح هذا القسم البيانات التي ستُعالج إذا أُطلقت الميزة. لن يبدأ هذا المعالجة قبل تفعيلها ومنح المستخدم التفويض.</div>
 
-<h2>1. المعلومات التي نجمعها</h2>
-<h3>أ) معلومات تقدمها أنت:</h3>
-<ul>
-<li>عنوان البريد الإلكتروني</li>
-<li>اسم المستخدم</li>
-<li>العمر (اختياري)</li>
-<li>معلومات الملف الشخصي: النبذة التعريفية (Bio)، الأنمي المفضل، صورة الملف الشخصي، البلد</li>
-</ul>
+  <h2>1. من نحن ونطاق السياسة</h2>
+  <p>Pubget منصة اجتماعية لمجتمعات الأنمي والمحتوى الذي ينشئه المستخدمون. تشرح هذه السياسة فئات البيانات التي نعالجها، وأغراض استخدامها، والجهات التي قد تتلقاها، والخيارات المتاحة لك.</p>
 
-<h3>ب) بيانات تُجمع تلقائياً:</h3>
-<ul>
-<li>معلومات الجهاز (الموديل، إصدار نظام التشغيل)</li>
-<li>بيانات استخدام التطبيق وتقارير الأعطال</li>
-<li>معرّف الإعلانات في أندرويد (AAID)</li>
-<li>عنوان IP</li>
-</ul>
+  <h2>2. البيانات التي قد نجمعها</h2>
+  <ul>
+    <li><strong>بيانات الحساب:</strong> البريد الإلكتروني، اسم المستخدم، ومعرّف الحساب.</li>
+    <li><strong>بيانات الملف الشخصي:</strong> النبذة، الأنمي المفضل، صورة الملف الشخصي والبلد، بحسب ما تختار تقديمه.</li>
+    <li><strong>المحتوى والنشاط:</strong> المنشورات والصور والفيديوهات والرسائل والتفاعلات والبيانات اللازمة لتشغيل ميزات المجموعات والمجتمع.</li>
+    <li><strong>بيانات الجهاز والتشغيل:</strong> طراز الجهاز وإصدار نظام التشغيل ومعرّف الإعلانات على Android عند توفره، وسجلات الاستخدام والأعطال وعنوان IP أو بيانات اتصال مشابهة.</li>
+  </ul>
 
-<h2>2. كيف نستخدم معلوماتك</h2>
-<ul>
-<li>إنشاء حسابك وإدارته</li>
-<li>تفعيل الدردشة والمجموعات</li>
-<li>تخصيص تجربتك داخل التطبيق</li>
-<li>تحسين أداء التطبيق وإصلاح المشاكل</li>
-<li>عرض الإعلانات للحفاظ على التطبيق مجانياً</li>
-<li>منع الاحتيال وإساءة الاستخدام</li>
-</ul>
+  <h2>3. كيف نستخدم البيانات</h2>
+  <ul>
+    <li>إنشاء الحسابات وتسجيل الدخول وتشغيل ميزات Pubget.</li>
+    <li>عرض المحتوى والرسائل والمجموعات وإدارة التفاعلات.</li>
+    <li>حماية الخدمة ومنع الاحتيال وإساءة الاستخدام ومعالجة الأعطال.</li>
+    <li>تحليل الأداء وتحسين التجربة.</li>
+    <li>عرض الإعلانات عبر Google AdMob وفق إعداداتك والقوانين وسياسات Google.</li>
+    <li>عند تفعيل تكامل TikTok: تنفيذ طلب ربط الحساب أو نشر المحتوى الذي تختاره وتأكيده.</li>
+  </ul>
 
-<h2>3. الإعلانات</h2>
-<p>يستخدم Pubget خدمة <strong>Google AdMob</strong> لعرض الإعلانات.</p>
-<p>قد تجمع AdMob:</p>
-<ul>
-<li>معرّف الإعلانات (Android Advertising ID)</li>
-<li>معلومات الجهاز</li>
-<li>تفاعلك مع الإعلانات</li>
-<li>الموقع التقريبي</li>
-</ul>
-<p>يمكنك إيقاف تخصيص الإعلانات من إعدادات أندرويد: <br>الإعدادات → Google → الإعلانات → إلغاء الاشتراك في تخصيص الإعلانات.</p>
-<p>سياسة خصوصية Google: <a href="https://policies.google.com/privacy" target="_blank">https://policies.google.com/privacy</a></p>
+  <h2>4. تكامل TikTok والبيانات ذات الصلة</h2>
+  <p>هذا التكامل غير مفعّل حالياً. إذا أُطلق مستقبلاً، فسيتم استخدام آلية التفويض الرسمية لدى TikTok، ولن نطلب منك كلمة مرور TikTok أو نخزنها.</p>
+  <p>بحسب الوظائف والصلاحيات التي توافق عليها TikTok، قد نعالج الفئات التالية:</p>
+  <ul>
+    <li><strong>بيانات التفويض:</strong> رموز وصول أو تجديد صادرة عن TikTok ومعرّف الحساب أو المنشئ اللازم لربط التفويض بطلبك. تُحفظ هذه البيانات في بيئة خادمية محمية، وتُستخدم فقط للوظائف التي منحتها الإذن بها.</li>
+    <li><strong>بيانات النشر:</strong> الفيديو أو الصورة التي تختارها، والوصف أو التعليق، وإعدادات الجمهور والخصوصية التي تحددها، والبيانات التقنية اللازمة لرفع المحتوى.</li>
+    <li><strong>نتيجة العملية:</strong> معرّف النشر أو حالة الرفع والنشر وأي رسائل خطأ لازمة لعرض النتيجة وتشخيص المشكلة.</li>
+    <li><strong>بيانات الحساب التي تعيدها TikTok:</strong> قد تتم معالجة الحد الأدنى من معلومات الحساب التي تتطلبها واجهة TikTok للتحقق من الحساب أو عرض خيارات النشر.</li>
+  </ul>
+  <p>تُرسل إلى TikTok فقط البيانات اللازمة لتنفيذ العملية التي تطلبها، ووفق الصلاحيات المعتمدة وإعدادات الخصوصية المتاحة. لا ينشر Pubget المحتوى تلقائياً دون إجراء واضح منك. بعد وصول المحتوى إلى TikTok، تخضع معالجته وسياسات الاحتفاظ به لدى TikTok لسياسة TikTok الخاصة.</p>
 
-<h2>4. خدمات الطرف الثالث</h2>
-<ul>
-<li>Google Firebase (المصادقة، Firestore، التخزين، Analytics)</li>
-<li>Google Play Services</li>
-<li>Google AdMob</li>
-</ul>
+  <h2>5. مشاركة البيانات ومقدمو الخدمات</h2>
+  <ul>
+    <li><strong>Google/Firebase:</strong> قد تُستخدم خدمات المصادقة وقاعدة البيانات والتخزين والتحليلات وتشغيل التطبيق.</li>
+    <li><strong>Google Play Services وGoogle AdMob:</strong> لتشغيل وظائف Android وعرض الإعلانات.</li>
+    <li><strong>TikTok:</strong> فقط عند إطلاق التكامل، وبعد تفويضك، ولإتمام طلبات الربط أو النشر التي تبدأها.</li>
+    <li>قد نفصح عن بيانات محدودة إذا ألزمنا القانون بذلك أو لحماية المستخدمين والخدمة من إساءة الاستخدام.</li>
+  </ul>
+  <p>لا نبيع معلوماتك الشخصية. وقد يعالج مقدمو الخدمات البيانات في بلدان أخرى وفق ترتيباتهم وسياساتهم وشروطهم.</p>
 
-<h2>5. مشاركة البيانات</h2>
-<p>نحن لا نبيع بياناتك. تتم مشاركة البيانات فقط مع خدمات Google المذكورة أعلاه لتوفير وظائف التطبيق والإعلانات.</p>
+  <h2>6. ملفات تعريف الارتباط والإعلانات</h2>
+  <p>قد تستخدم صفحات الويب أو خدمات الطرف الثالث تقنيات مماثلة لملفات تعريف الارتباط. يستخدم Pubget Google AdMob لعرض الإعلانات، وقد تعالج Google معرّف الإعلان ومعلومات الجهاز والتفاعل مع الإعلانات وفق إعدادات Android وسياسات Google. للمزيد: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">سياسة خصوصية Google</a>.</p>
 
-<h2>6. أمان البيانات</h2>
-<p>نستخدم مصادقة Firebase الآمنة ونقل البيانات بشكل مشفّر (HTTPS) لحماية معلوماتك.</p>
+  <h2>7. الاحتفاظ بالبيانات والأمان</h2>
+  <p>نحتفظ بالبيانات للمدة اللازمة لتشغيل الخدمة وتحقيق الأغراض الموضحة، أو للمدة التي يفرضها القانون. نستخدم تدابير حماية تقنية وتنظيمية معقولة، مثل الاتصالات المشفرة وضوابط الوصول. لا توجد وسيلة نقل أو تخزين تضمن أماناً مطلقاً.</p>
+  <p>عند إطلاق تكامل TikTok، يُفترض الاحتفاظ ببيانات التفويض فقط ما دام الربط أو تنفيذ الخدمة يتطلبها، ثم إبطالها أو حذفها عند إلغاء التفويض أو انتهاء الحاجة إليها، مع مراعاة السجلات التي يلزم الاحتفاظ بها لأسباب أمنية أو قانونية.</p>
 
-<h2>7. حقوقك</h2>
-<p>يمكنك الوصول إلى بياناتك أو تعديلها أو حذفها في أي وقت من داخل التطبيق، أو عبر مراسلتنا على البريد الإلكتروني.</p>
+  <h2>8. خياراتك وحقوقك</h2>
+  <ul>
+    <li>يمكنك طلب الوصول إلى بياناتك أو تصحيحها أو حذفها، وفق القانون والقيود المشروعة.</li>
+    <li>يمكنك طلب حذف حساب Pubget عبر الوظائف المتاحة في التطبيق أو عبر البريد الإلكتروني.</li>
+    <li>عند إتاحة ربط TikTok، يمكنك إلغاء التفويض من إعدادات الأمان أو التطبيقات المتصلة في TikTok، كما يمكنك التواصل معنا لطلب حذف بيانات التكامل التي نحتفظ بها.</li>
+    <li>إلغاء تفويض Pubget لا يحذف تلقائياً منشورات سبق إرسالها إلى TikTok؛ احذف تلك المنشورات من TikTok مباشرة.</li>
+  </ul>
 
-<h2>8. خصوصية الأطفال</h2>
-<p>تطبيق Pubget غير مخصص للأطفال دون سن <strong>13 سنة</strong>. لا نجمع عمداً بيانات من هم أقل من 13.</p>
+  <h2>9. الأطفال</h2>
+  <p>Pubget غير مخصص للأطفال دون 13 عاماً، ولا نجمع عن علم بيانات شخصية من أطفال دون هذا العمر. إذا علمت أن طفلاً قد زودنا ببياناته، تواصل معنا لطلب مراجعتها وحذفها.</p>
 
-<h2>9. التغييرات على السياسة</h2>
-<p>قد نقوم بتحديث هذه الصفحة عند الحاجة. سيتم عرض تاريخ "آخر تحديث" في الأعلى.</p>
+  <h2>10. خدمات وروابط الأطراف الأخرى</h2>
+  <p>قد تتضمن الخدمة روابط أو تكاملات مع جهات خارجية. تخضع البيانات التي تجمعها تلك الجهات لسياساتها الخاصة، ولا يتحكم Pubget في ممارساتها. راجع سياسة TikTok قبل تفويض حسابك أو إرسال محتوى إليها.</p>
 
-<h2>10. تواصل معنا</h2>
-<p>لأي استفسار حول الخصوصية: <a href="mailto:zakariasbika253@gmail.com">zakariasbika253@gmail.com</a></p>
+  <h2>11. تحديثات السياسة والتواصل</h2>
+  <p>قد نحدّث هذه السياسة عند إطلاق ميزات جديدة أو تغير ممارسات البيانات أو المتطلبات القانونية. سننشر تاريخ آخر تحديث هنا. للاستفسارات أو طلبات الخصوصية والحذف: <a href="mailto:zakariasbika253@gmail.com">zakariasbika253@gmail.com</a>.</p>
 
-<h2>11. الموافقة</h2>
-<p>باستخدامك لتطبيق Pubget، فإنك توافق على هذه السياسة، بما في ذلك معالجة البيانات المتعلقة بالإعلانات.</p>
-
-<div class="note">
-<strong>ملاحظة:</strong> هذه الصفحة مطابقة للنص الذي ستقدمه لـ Google Play Console في قسم "Privacy Policy".
-</div>
-
-<footer>© 2026 Pubget</footer>
-</div>
+  <section class="lang" lang="en" dir="ltr">
+    <h1>Pubget – Privacy Policy</h1>
+    <p class="muted">Last updated: 20 November 2026 | Privacy requests: <a href="mailto:zakariasbika253@gmail.com">zakariasbika253@gmail.com</a></p>
+    <div class="notice"><strong>TikTok integration status:</strong> TikTok account linking and publishing from Pubget are not enabled as of this update. This section describes the categories of data that may be processed if the feature is launched. Such processing will not begin before the feature is enabled and the user authorizes it.</div>
+    <h2>1. About this policy</h2>
+    <p>Pubget is a social platform for anime communities and user-created content. This policy explains the categories of information we process, why we use it, who may receive it and the choices available to you.</p>
+    <h2>2. Information we may collect</h2>
+    <ul><li><strong>Account information:</strong> email address, username and account identifier.</li><li><strong>Profile information:</strong> bio, favorite anime, profile photo and country, depending on what you provide.</li><li><strong>Content and activity:</strong> posts, photos, videos, messages, interactions and information needed to operate community features.</li><li><strong>Device and diagnostics:</strong> device model, operating-system version, Android advertising identifier where available, usage and crash logs, IP address and similar connection data.</li></ul>
+    <h2>3. How we use information</h2>
+    <ul><li>Create accounts, authenticate users and operate Pubget features.</li><li>Display content, messages and groups and manage interactions.</li><li>Protect the service, prevent abuse and fraud, and troubleshoot issues.</li><li>Analyze performance and improve the experience.</li><li>Show ads through Google AdMob, subject to your settings, applicable law and Google's policies.</li><li>If TikTok integration is launched, carry out account-linking or content-publishing requests that you select and confirm.</li></ul>
+    <h2>4. TikTok integration</h2>
+    <p>The integration is not currently enabled. If launched, it is intended to use TikTok's official authorization flow. We will not ask for or store your TikTok password.</p>
+    <p>Depending on the TikTok features and permissions approved for the integration, we may process:</p>
+    <ul><li><strong>Authorization data:</strong> access or refresh tokens issued by TikTok and an account or creator identifier needed to associate authorization with your request. These are intended to be stored in a protected server environment and used only for authorized functions.</li><li><strong>Publishing data:</strong> the video or photo you select, your caption, audience and privacy settings, and technical data required to upload the content.</li><li><strong>Operation results:</strong> a post identifier, upload or publishing status, and error information needed to show the result and troubleshoot.</li><li><strong>Account data returned by TikTok:</strong> the minimum account information required by TikTok's API to verify the account or present publishing options.</li></ul>
+    <p>Only information needed for the action you request will be sent to TikTok, subject to approved permissions and available privacy settings. Pubget will not publish automatically without a clear action from you. Once content reaches TikTok, TikTok's own privacy policy and retention practices apply.</p>
+    <h2>5. Sharing and service providers</h2>
+    <ul><li><strong>Google/Firebase:</strong> authentication, database, storage, analytics and app operations.</li><li><strong>Google Play Services and Google AdMob:</strong> Android functionality and advertising.</li><li><strong>TikTok:</strong> only if the integration launches, after you authorize it, and to complete linking or publishing requests you initiate.</li><li>We may disclose limited information if required by law or to protect users and the service from abuse.</li></ul>
+    <p>We do not sell personal information. Service providers may process data in other countries under their own terms and policies.</p>
+    <h2>6. Cookies and advertising</h2>
+    <p>Web pages or third-party services may use cookies or similar technologies. Pubget uses Google AdMob for advertising. Google may process advertising identifiers, device information and ad interactions subject to Android settings and Google's policies. See <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google's Privacy Policy</a>.</p>
+    <h2>7. Retention and security</h2>
+    <p>We retain information for as long as needed to operate the service and fulfill the purposes described, or as required by law. We use reasonable technical and organizational safeguards, including encrypted connections and access controls. No method of transmission or storage is completely secure.</p>
+    <p>If TikTok integration launches, authorization data is intended to be retained only while linking or providing the requested service requires it, then revoked or deleted when authorization is withdrawn or the data is no longer needed, subject to limited legal or security retention.</p>
+    <h2>8. Your choices and rights</h2>
+    <ul><li>You may request access to, correction of or deletion of your information, subject to applicable law and legitimate restrictions.</li><li>You may request deletion of your Pubget account through available in-app controls or by email.</li><li>When TikTok linking becomes available, you can revoke authorization in TikTok's security or connected-app settings and contact us to request deletion of integration data we hold.</li><li>Revoking Pubget's authorization does not automatically delete posts already sent to TikTok; remove those directly through TikTok.</li></ul>
+    <h2>9. Children</h2>
+    <p>Pubget is not intended for children under 13, and we do not knowingly collect personal information from children under that age. Contact us if you believe a child has provided information so we can review and delete it.</p>
+    <h2>10. Third-party services and links</h2>
+    <p>The service may include links or integrations with third parties. Information collected by those parties is governed by their own policies, and Pubget does not control their practices. Review TikTok's policy before authorizing your account or sending content to TikTok.</p>
+    <h2>11. Changes and contact</h2>
+    <p>We may update this policy when features launch, data practices change or legal requirements evolve. The latest revision date will appear here. Privacy requests: <a href="mailto:zakariasbika253@gmail.com">zakariasbika253@gmail.com</a>.</p>
+  </section>
+  <footer>© 2026 Pubget</footer>
+</main>
 </body>
 </html>
