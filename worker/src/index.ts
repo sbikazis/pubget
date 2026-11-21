@@ -38,7 +38,9 @@ const LIMITS = {
     types: { mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime" },
   },
   audio: {
-    max: 50 * 1024 * 1024,
+    // Chat voice notes are capped at 60s/10MB by the processing contract.
+    // Service-side audio pipelines do not use this client capability path.
+    max: 10 * 1024 * 1024,
     types: { mp3: "audio/mpeg", aac: "audio/aac", ogg: "audio/ogg", m4a: "audio/mp4" },
   },
 } as const;
@@ -750,6 +752,78 @@ export default {
         return json({ key }, 201);
       }
       if (request.method === "DELETE") {
+        await env.MEDIA_BUCKET.delete(key);
+        return new Response(null, { status: 204, headers: CORS });
+      }
+      return json({ error: "Method not allowed." }, 405);
+    }
+
+    // Private R2 bridge for Firestore-triggered chat media derivatives.
+    // Only the verified Functions runtime identity can read/write these keys;
+    // originals stay client-owned through the signed capability routes.
+    if (url.pathname.startsWith("/_internal/chat/objects/")) {
+      if (!await authenticateKirariService(request, {
+        audience: env.KIRARI_R2_SERVICE_AUDIENCE,
+        serviceAccountEmail: env.KIRARI_R2_SERVICE_ACCOUNT_EMAIL,
+      })) return json({ error: "Service authentication required." }, 401);
+      let key: string;
+      try {
+        key = decodeURIComponent(url.pathname.slice("/_internal/chat/objects/".length));
+      } catch {
+        return json({ error: "Invalid object key." }, 400);
+      }
+      const parts = key.split("/");
+      if (!isSafeMediaKey(key) || parts.length !== 4 ||
+          !["groups", "privateChats"].includes(parts[0])) {
+        return json({ error: "Invalid chat media key." }, 400);
+      }
+      const isDerivative = /_(?:thumb|medium)\.jpg$/.test(parts[3]);
+      if (request.method === "HEAD") {
+        const object = await env.MEDIA_BUCKET.head(key);
+        if (!object) return json({ error: "Not found." }, 404);
+        return new Response(null, { headers: {
+          ...CORS,
+          "content-length": String(object.size),
+          "content-type": object.httpMetadata?.contentType ?? "application/octet-stream",
+        } });
+      }
+      if (request.method === "GET") {
+        const object = await env.MEDIA_BUCKET.get(key);
+        if (!object) return json({ error: "Not found." }, 404);
+        const headers = new Headers(CORS);
+        object.writeHttpMetadata(headers);
+        headers.set("content-length", String(object.size));
+        headers.set("cache-control", "private, no-store");
+        return new Response(object.body, { headers });
+      }
+      if (request.method === "PUT") {
+        // A pipeline may only create derived renditions. Letting it replace an
+        // original would let a service-side bug overwrite client-owned bytes.
+        if (!isDerivative) {
+          return json({ error: "Only derivative objects can be written by the pipeline." }, 403);
+        }
+        const size = Number(request.headers.get("content-length"));
+        const contentType = request.headers.get("content-type") ?? "";
+        if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
+            size > 25 * 1024 * 1024 || contentType !== "image/jpeg") {
+          return json({ error: "Invalid chat derivative upload." }, 400);
+        }
+        await env.MEDIA_BUCKET.put(key, request.body, {
+          httpMetadata: { contentType, cacheControl: "private, no-store" },
+          customMetadata: {
+            uploadedBy: parts[2],
+            scopeType: parts[0],
+            scopeId: parts[1],
+            mediaKind: "image",
+            pipeline: "chat-derivatives-v1",
+          },
+        });
+        return json({ key }, 201);
+      }
+      if (request.method === "DELETE") {
+        if (!isDerivative) {
+          return json({ error: "Only derivative objects can be deleted by the pipeline." }, 403);
+        }
         await env.MEDIA_BUCKET.delete(key);
         return new Response(null, { status: 204, headers: CORS });
       }
