@@ -381,6 +381,16 @@ test("users create accepts the full self-owned presentation payload", async () =
     ...base, username: "newbie5", displayName: "Newbie 5",
     avatarUrl: "images/newbie5/avatar.jpg", totalRespect: 5,
   }));
+  await seedUsername("newbie6", "newbie6");
+  await assertFails(db("newbie6").doc("users/newbie6").set({
+    ...base, username: "newbie6", displayName: "Newbie 6",
+    avatarUrl: "images/bob/avatar.jpg",
+  }));
+  await seedUsername("newbie7", "newbie7");
+  await assertFails(db("newbie7").doc("users/newbie7").set({
+    ...base, username: "newbie7", displayName: "Newbie 7",
+    avatarUrl: "images/newbie7/avatar.jpg", coverUrl: "images/bob/cover.jpg",
+  }));
 });
 
 test("usernames registry is signed-in readable but never client-writable", async () => {

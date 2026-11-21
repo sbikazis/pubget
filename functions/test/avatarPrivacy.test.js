@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
-  avatarDownloadUrl,
+  isOwnedImageReference,
   createAvatarPrivacySync,
   createUpdateSocialProfile,
 } = require("../src/avatarPrivacy");
@@ -124,8 +124,10 @@ test("profile callable rotates the old token before making profile private", asy
   assert.equal(order[1][1].avatarUrl, null);
 });
 
-test("making a profile public publishes a newly rotated avatar token", async () => {
+test("making a profile public does not mint a permanent Firebase avatar URL", async () => {
   const userUpdates = [];
+  let metadataCalls = 0;
+  let existsCalls = 0;
   const handler = createAvatarPrivacySync({
     db: {
       collection: () => ({
@@ -135,8 +137,8 @@ test("making a profile public publishes a newly rotated avatar token", async () 
     bucket: {
       name: "demo.appspot.com",
       file: () => ({
-        exists: async () => [true],
-        setMetadata: async () => {},
+        exists: async () => { existsCalls++; return [true]; },
+        setMetadata: async () => { metadataCalls++; },
       }),
     },
     randomUUID: () => "new-token",
@@ -150,13 +152,19 @@ test("making a profile public publishes a newly rotated avatar token", async () 
     },
   });
 
-  assert.deepEqual(userUpdates, [{
-    avatarUrl: avatarDownloadUrl(
-      "demo.appspot.com",
-      "users/alice/avatar.jpg",
-      "new-token",
-    ),
-  }]);
+  assert.deepEqual(userUpdates, []);
+  assert.equal(metadataCalls, 0);
+  assert.equal(existsCalls, 0);
+});
+
+test("profile image references accept owned R2 keys and reject foreign keys", () => {
+  assert.equal(isOwnedImageReference("images/alice/avatar-1.jpg", "alice", 2048), true);
+  assert.equal(isOwnedImageReference("images/alice/cover.webp", "alice", 1024), true);
+  assert.equal(isOwnedImageReference("https://example.test/avatar.png", "alice", 2048), true);
+  assert.equal(isOwnedImageReference(null, "alice", 2048), true);
+  assert.equal(isOwnedImageReference("images/bob/avatar-1.jpg", "alice", 2048), false);
+  assert.equal(isOwnedImageReference("javascript:alert(1)", "alice", 2048), false);
+  assert.equal(isOwnedImageReference("../images/alice/avatar.jpg", "alice", 2048), false);
 });
 
 // Username validation helper reused by the callable and the client validator.
@@ -217,6 +225,34 @@ function profileHandler({ reservations = [], releases = [], updateError = null }
     },
   };
 }
+
+test("profile callable accepts owned R2 image keys and rejects foreign keys", async () => {
+  const { handler, updates } = profileHandler({});
+  await handler({
+    auth: { uid: "alice" },
+    data: {
+      avatarUrl: "images/alice/avatar-new.jpg",
+      coverUrl: "images/alice/cover-new.png",
+    },
+  });
+  assert.equal(updates[0].avatarUrl, "images/alice/avatar-new.jpg");
+  assert.equal(updates[0].coverUrl, "images/alice/cover-new.png");
+
+  await assert.rejects(
+    () => handler({
+      auth: { uid: "alice" },
+      data: { avatarUrl: "images/bob/avatar-new.jpg" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    () => handler({
+      auth: { uid: "alice" },
+      data: { coverUrl: "images/bob/cover-new.jpg" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});
 
 test("profile callable completes identity only with a reserved username and required fields", async () => {
   const updates = [];

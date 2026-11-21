@@ -414,14 +414,25 @@ service cloud.firestore {
         (data[field] is string && data[field].size() <= max);
     }
 
-    function optionalHttpUrl(data, field) {
+    // Profile images are legacy http(s) URLs or an R2 key owned by the user.
+    // The owner segment is mandatory: a profile must not expose another
+    // user's private object key. Mirrors Worker validateProfile and the
+    // updateSocialProfile callable.
+    function validProfileImageReference(value, uid, max) {
+      return value is string &&
+        value.size() > 0 &&
+        value.size() <= max &&
+        (value.matches('https://.*') ||
+         value.matches('http://.*') ||
+         value.matches('^images/' + uid +
+           '/[A-Za-z0-9_-]{1,80}[.](jpg|jpeg|png|webp|gif)$'));
+    }
+
+    function optionalProfileImageReference(data, field, uid, max) {
       return !data.keys().hasAny([field]) ||
         data[field] == null ||
-        (data[field] is string &&
-         data[field].size() <= 1024 &&
-         (data[field] == '' ||
-          data[field].matches('https://.*') ||
-          data[field].matches('http://.*')));
+        data[field] == '' ||
+        validProfileImageReference(data[field], uid, max);
     }
 
     // Security rules cannot iterate list elements, so only the aggregate
@@ -455,10 +466,10 @@ service cloud.firestore {
          data.sectionPrivacy.lists is bool);
     }
 
-    function validSelfProfilePresentation(data) {
+    function validSelfProfilePresentation(data, uid) {
       return optionalShortString(data, 'favoriteQuote', 200) &&
         optionalShortString(data, 'animeTwin', 80) &&
-        optionalHttpUrl(data, 'coverUrl') &&
+        optionalProfileImageReference(data, 'coverUrl', uid, 1024) &&
         optionalSocialLinks(data) &&
         optionalSectionPrivacy(data);
     }
@@ -499,9 +510,7 @@ service cloud.firestore {
         request.resource.data.displayName is string &&
         request.resource.data.displayName.size() > 0 &&
         request.resource.data.displayName.size() <= 80 &&
-        request.resource.data.avatarUrl is string &&
-        request.resource.data.avatarUrl.size() > 0 &&
-        request.resource.data.avatarUrl.size() <= 2048 &&
+        validProfileImageReference(request.resource.data.avatarUrl, uid, 2048) &&
         (!request.resource.data.keys().hasAny(['age']) ||
          request.resource.data.age == null ||
          (request.resource.data.age is int &&
@@ -532,7 +541,7 @@ service cloud.firestore {
          request.resource.data.displayName == null ||
          (request.resource.data.displayName is string &&
           request.resource.data.displayName.size() <= 80)) &&
-        validSelfProfilePresentation(request.resource.data);
+        validSelfProfilePresentation(request.resource.data, uid);
       // Currency, subscription/limits, moderation, referral and social counters
       // are service-owned.  Clients can change only presentation/profile data.
       allow update: if self(uid) &&
@@ -549,9 +558,7 @@ service cloud.firestore {
             request.resource.data.displayName.size() > 0 &&
             request.resource.data.displayName.size() <= 80)) &&
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['avatarUrl']) ||
-           (request.resource.data.avatarUrl is string &&
-            request.resource.data.avatarUrl.size() > 0 &&
-            request.resource.data.avatarUrl.size() <= 2048)) &&
+           validProfileImageReference(request.resource.data.avatarUrl, uid, 2048)) &&
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['age']) ||
            request.resource.data.age == null ||
            (request.resource.data.age is int &&
@@ -570,8 +577,7 @@ service cloud.firestore {
             usernameReservedBy(uid, request.resource.data.username) &&
             request.resource.data.displayName is string &&
             request.resource.data.displayName.size() > 0 &&
-            request.resource.data.avatarUrl is string &&
-            request.resource.data.avatarUrl.size() > 0)) &&
+            validProfileImageReference(request.resource.data.avatarUrl, uid, 2048))) &&
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hasSkippedOnboarding']) ||
            request.resource.data.hasSkippedOnboarding == false) &&
           (!request.resource.data.keys().hasAny(['language']) ||
@@ -589,7 +595,7 @@ service cloud.firestore {
             in ['public','private'] &&
           request.resource.data.get('whoCanMessageMe', 'related')
             in ['related','friends'] &&
-          validSelfProfilePresentation(request.resource.data)) ||
+          validSelfProfilePresentation(request.resource.data, uid)) ||
          false);
       allow delete: if false;
 

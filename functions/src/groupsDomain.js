@@ -47,6 +47,19 @@ function optionalUrl(value, max) {
   return /^https?:\/\//i.test(trimmed) && !/\s/.test(trimmed);
 }
 
+// Keep the legacy callable in step with the Worker: group images may be
+// legacy http(s) URLs or an R2 key owned by the caller.
+function ownedImageReference(value, uid, max) {
+  if (value === undefined || value === null || value === "") return true;
+  if (typeof value !== "string" || value.length > max) return false;
+  const reference = value.trim();
+  if (/^https?:\/\//i.test(reference) && !/\s/.test(reference)) return true;
+  if (!uid) return false;
+  const parts = reference.split("/");
+  return parts.length === 3 && parts[0] === "images" && parts[1] === uid &&
+    /^[A-Za-z0-9_-]{1,80}\.(?:jpg|jpeg|png|webp|gif)$/.test(parts[2]);
+}
+
 function parseCharacter(raw, HttpsError) {
   if (raw === undefined || raw === null || raw === "") return null;
   if (!raw.character && raw.characterKey === undefined) return null;
@@ -73,7 +86,7 @@ function parseInvitedBy(value) {
   return trimmed.length === 0 || trimmed.length > 80 ? null : trimmed;
 }
 
-function groupInput(request, HttpsError) {
+function groupInput(request, HttpsError, uid = "") {
   const data = request.data || {};
   if (!validString(data.name, 80) || typeof data.description !== "string" ||
       data.description.length > 500 || !GROUP_TYPES.includes(data.type) ||
@@ -82,7 +95,8 @@ function groupInput(request, HttpsError) {
       data.rules.length > 4000 ||
       (data.animeId !== null && data.animeId !== undefined &&
        !validString(data.animeId, 128)) ||
-      !optionalUrl(data.imageUrl, 500) || !optionalUrl(data.coverUrl, 500) ||
+      !ownedImageReference(data.imageUrl, uid, 500) ||
+      !ownedImageReference(data.coverUrl, uid, 500) ||
       !optionalUrl(data.chatBackgroundUrl, 500) ||
       (data.welcomeMessage !== undefined && data.welcomeMessage !== null &&
        (typeof data.welcomeMessage !== "string" ||
@@ -205,7 +219,7 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
 
   async function createGroup(request) {
     const uid = authUid(request, HttpsError);
-    const data = groupInput(request, HttpsError);
+    const data = groupInput(request, HttpsError, uid);
     const idempotencyKey = typeof data.idempotencyKey === "string" &&
       validString(data.idempotencyKey, 80) ? data.idempotencyKey.trim() : null;
     const lockRef = idempotencyKey ?
@@ -232,9 +246,9 @@ function createGroupsDomain({ db, FieldValue, HttpsError, randomUUID, achievemen
         name: data.name.trim(),
         searchName: data.name.trim().toLowerCase(),
         description: data.description.trim(),
-        imageUrl: typeof data.imageUrl === "string" && optionalUrl(data.imageUrl, 500)
+        imageUrl: typeof data.imageUrl === "string" && ownedImageReference(data.imageUrl, uid, 500)
           ? data.imageUrl.trim() : "",
-        coverUrl: typeof data.coverUrl === "string" && optionalUrl(data.coverUrl, 500)
+        coverUrl: typeof data.coverUrl === "string" && ownedImageReference(data.coverUrl, uid, 500)
           ? data.coverUrl.trim() : "",
         type: data.type,
         animeId: data.animeId || null,
