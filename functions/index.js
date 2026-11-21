@@ -33,7 +33,10 @@ const { createSocialGraph } = require("./src/socialGraph");
 const { createGroupsDomain } = require("./src/groupsDomain");
 const { createGroupChat } = require("./src/groupChat");
 const { createPrivateChat } = require("./src/privateChat");
-const { createGroupMediaPipeline } = require("./src/groupMediaPipeline");
+const {
+  createChatMediaDocumentProcessor,
+} = require("./src/groupMediaPipeline");
+const { createR2ChatMediaStorage } = require("./src/r2ChatMediaStorage");
 const { createNotificationBuilder } = require("./src/notificationBuilder");
 const { createNotificationCallables } = require("./src/notificationCallables");
 const { createNotificationTriggers } = require("./src/notificationTriggers");
@@ -1115,13 +1118,32 @@ exports.processEventLifecycle = onSchedule(
   { region: "us-central1", schedule: "every 1 minutes" },
   eventsDomain.processEventLifecycle,
 );
-exports.processGroupChatMedia = onObjectFinalized(
-  { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
-  createGroupMediaPipeline({
-    db: lazyFirestore,
-    bucket: lazyStorageBucket,
-    randomUUID,
-  }),
+// Chat originals are uploaded to R2 by the client. These Firestore triggers
+// enrich the ready media document with R2 derivatives; Firebase Storage's
+// onObjectFinalized path is no longer used for new chat media.
+const chatMediaBucket = createR2ChatMediaStorage();
+const processChatMediaDocument = createChatMediaDocumentProcessor({
+  db: lazyFirestore,
+  bucket: chatMediaBucket,
+  randomUUID,
+});
+exports.processGroupChatMediaDoc = onDocumentCreated(
+  {
+    document: "groups/{groupId}/media/{mediaId}",
+    region: "europe-west3",
+    memory: "1GiB",
+    timeoutSeconds: 300,
+  },
+  processChatMediaDocument,
+);
+exports.processPrivateChatMediaDoc = onDocumentCreated(
+  {
+    document: "privateChats/{chatId}/media/{mediaId}",
+    region: "europe-west3",
+    memory: "1GiB",
+    timeoutSeconds: 300,
+  },
+  processChatMediaDocument,
 );
 exports.recalculateInviteRanks = onDocumentUpdated(
   "groups/{groupId}/invites/{inviteId}",

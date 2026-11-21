@@ -18,6 +18,21 @@ const ORIGINAL_PATTERN =
 const THUMBNAIL_MAX_EDGE = 640;
 const MEDIUM_MAX_EDGE = 1600;
 
+// R2 chat originals are capability-issued scoped keys, not GCS object names.
+const CHAT_R2_ORIGINAL =
+  /^(groups|privateChats)\/([^/]+)\/([A-Za-z0-9_-]{1,128})\/([A-Za-z0-9_-]{1,80})\.(jpg|jpeg|png|webp|gif|mp4|webm|mov|mp3|aac|ogg|m4a)$/;
+
+function isChatR2Original(key) {
+  return typeof key === "string" && CHAT_R2_ORIGINAL.test(key) &&
+    !/_(?:thumb|medium)\.jpg$/.test(key);
+}
+
+function chatDerivativeKey(originalPath, suffix) {
+  const match = CHAT_R2_ORIGINAL.exec(originalPath || "");
+  if (!match) return null;
+  return `${match[1]}/${match[2]}/${match[3]}/${match[4]}_${suffix}.jpg`;
+}
+
 function runFfmpeg(binary, args) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { stdio: "ignore" });
@@ -39,12 +54,16 @@ async function readDimensions(file) {
   return { width, height };
 }
 
-function createGroupMediaPipeline({ db, bucket, randomUUID }) {
+function createGroupMediaPipeline({ db, bucket, randomUUID, preserveReadyStatus = false }) {
   return async function processGroupMedia(event) {
     const object = event.data || {};
     const match = ORIGINAL_PATTERN.exec(object.name || "");
-    if (!match) return null;
-    const [, collection, ownerId, mediaId] = match;
+    const r2Original = !match && isChatR2Original(object.name);
+    if (!match && !r2Original) return null;
+    const collection = match ? match[1] : event.collection;
+    const ownerId = match ? match[2] : event.ownerId;
+    const mediaId = match ? match[3] : event.mediaId;
+    if (!collection || !ownerId || !mediaId) return null;
     const contentType = object.contentType || "";
     const isImage = contentType.startsWith("image/");
     const isVideo = contentType.startsWith("video/");
@@ -52,12 +71,17 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
     if (!isImage && !isVideo && !isAudio) return null;
 
     const sourcePath = object.name;
+    const extension = match ? match[4] : sourcePath.split(".").pop();
     const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "pubget-chat-"));
-    const sourceFile = path.join(workDir, `source.${match[4]}`);
+    const sourceFile = path.join(workDir, `source.${extension}`);
     const thumbnailFile = path.join(workDir, "thumbnail.jpg");
     const mediumFile = path.join(workDir, "medium.jpg");
-    const thumbPath = `${collection}/${ownerId}/media/${mediaId}_thumb.jpg`;
-    const mediumPath = `${collection}/${ownerId}/media/${mediaId}_medium.jpg`;
+    const thumbPath = r2Original
+      ? chatDerivativeKey(sourcePath, "thumb")
+      : `${collection}/${ownerId}/media/${mediaId}_thumb.jpg`;
+    const mediumPath = r2Original
+      ? chatDerivativeKey(sourcePath, "medium")
+      : `${collection}/${ownerId}/media/${mediaId}_medium.jpg`;
     const mediaRef = db.collection(collection).doc(ownerId)
       .collection("media").doc(mediaId);
 
@@ -66,8 +90,7 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
       uploaderId: object.metadata && object.metadata.uploadedBy || null,
       mediaType: isImage ? "image" : isVideo ? "video" : "audio",
       originalPath: sourcePath,
-      status: "processing",
-      createdAt: new Date(),
+      ...(preserveReadyStatus ? {} : { status: "processing", createdAt: new Date() }),
     }, { merge: true });
 
     // Voice notes: 60s / 10MB client contract. Storage allows 25MB; reject
@@ -75,7 +98,10 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
     if (isAudio) {
       const size = Number(object.size) || 0;
       if (size > 10 * 1024 * 1024) {
-        await mediaRef.set({
+        await mediaRef.set(preserveReadyStatus ? {
+          processingError: "audio-too-large",
+          failedAt: new Date(),
+        } : {
           status: "failed",
           errorCode: "audio-too-large",
           failedAt: new Date(),
@@ -83,7 +109,7 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
         return null;
       }
       await mediaRef.set({
-        status: "ready",
+        ...(preserveReadyStatus ? {} : { status: "ready" }),
         thumbnailPath: null,
         mediumPath: null,
         processedAt: new Date(),
@@ -167,7 +193,10 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
       }));
       if (!messages.empty) await batch.commit();
     } catch (error) {
-      await mediaRef.set({
+      await mediaRef.set(preserveReadyStatus ? {
+        processingError: "processing-failed",
+        failedAt: new Date(),
+      } : {
         status: "failed",
         errorCode: "processing-failed",
         failedAt: new Date(),
@@ -186,7 +215,51 @@ function createGroupMediaPipeline({ db, bucket, randomUUID }) {
   };
 }
 
+/**
+ * Firestore-triggered entry point for R2-backed chat media. The client has
+ * already uploaded the original and written a ready media document, so the
+ * trigger only enriches it with real derivatives; it never delays sending by
+ * flipping the status back to `processing`.
+ */
+function createChatMediaDocumentProcessor({ db, bucket, randomUUID }) {
+  const process = createGroupMediaPipeline({
+    db,
+    bucket,
+    randomUUID,
+    preserveReadyStatus: true,
+  });
+  return async function processChatMediaDocument(event) {
+    const data = event && event.data && typeof event.data.data === "function"
+      ? event.data.data() || {}
+      : {};
+    if (data.mediaBackend !== "r2") return null;
+    const groupId = event && event.params && event.params.groupId;
+    const chatId = event && event.params && event.params.chatId;
+    const mediaId = event && event.params && event.params.mediaId;
+    if (!mediaId || (!groupId && !chatId)) return null;
+    const originalPath = data.originalPath;
+    if (!isChatR2Original(originalPath)) return null;
+    if (originalPath.split("/")[2] !== data.uploaderId) return null;
+    const contentType = typeof data.contentType === "string" ? data.contentType : "";
+    if (!/^(?:image|video|audio)\//.test(contentType)) return null;
+    return process({
+      data: {
+        name: originalPath,
+        contentType,
+        size: Number(data.sizeBytes) || 0,
+        metadata: { uploadedBy: data.uploaderId },
+      },
+      collection: groupId ? "groups" : "privateChats",
+      ownerId: groupId || chatId,
+      mediaId,
+    });
+  };
+}
+
 module.exports = {
   ORIGINAL_PATTERN,
   createGroupMediaPipeline,
+  createChatMediaDocumentProcessor,
+  isChatR2Original,
+  chatDerivativeKey,
 };

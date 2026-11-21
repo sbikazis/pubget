@@ -287,6 +287,7 @@ final class FirebaseChatRepository implements ChatRepository {
       'thumbnailPath': type == ChatMessageType.image ? path : null,
       'mediumPath': type == ChatMessageType.image ? path : null,
       'status': 'ready',
+      'mediaBackend': 'r2',
       'contentType': contentType,
       'sizeBytes': bytes.length,
       'createdAt': FieldValue.serverTimestamp(),
