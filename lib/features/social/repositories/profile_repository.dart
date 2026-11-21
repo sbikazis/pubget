@@ -24,6 +24,7 @@ final class ProfileUpdate {
     this.whoCanMessageMe,
     this.sectionPrivacy,
     this.coverUrl,
+    this.avatarUrl,
   });
 
   final String? username;
@@ -42,6 +43,7 @@ final class ProfileUpdate {
   final String? whoCanMessageMe;
   final ProfileSectionPrivacy? sectionPrivacy;
   final String? coverUrl;
+  final String? avatarUrl;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
     if (username != null) 'username': username!.trim(),
@@ -60,6 +62,7 @@ final class ProfileUpdate {
     if (whoCanMessageMe != null) 'whoCanMessageMe': whoCanMessageMe,
     if (sectionPrivacy != null) 'sectionPrivacy': sectionPrivacy!.toMap(),
     if (coverUrl != null) 'coverUrl': coverUrl,
+    if (avatarUrl != null) 'avatarUrl': avatarUrl,
   };
 }
 

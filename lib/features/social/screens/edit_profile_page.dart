@@ -432,6 +432,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     if (requiredError != null) return;
 
     final provider = context.read<ProfileProvider>();
+    String? avatarUrl;
     if (_avatarBytes != null) {
       final avatarResult = await provider.uploadAvatar(
         userId: userId,
@@ -439,6 +440,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         contentType: _avatarContentType,
       );
       if (!avatarResult.isSuccess || !mounted) return;
+      avatarUrl = avatarResult.valueOrNull;
     }
     String? coverUrl;
     if (_coverBytes != null) {
@@ -477,6 +479,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         whoCanMessageMe: _whoCanMessageMe,
         sectionPrivacy: _sectionPrivacy,
         coverUrl: coverUrl,
+        avatarUrl: avatarUrl,
       ),
     );
     if (mounted && result.isSuccess) {

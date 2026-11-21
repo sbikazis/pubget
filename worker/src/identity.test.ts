@@ -48,6 +48,11 @@ describe("profile patch validation", () => {
   it("preserves the nullable avatar and cover contracts", () => {
     expect(validateProfile({ avatarUrl: null })).toBeNull();
     expect(validateProfile({ coverUrl: null })).toBeNull();
+    expect(validateProfile({ avatarUrl: "javascript:alert(1)" })).toBe("invalid-profile");
+    expect(validateProfile({ avatarUrl: "images/alice/avatar.jpg" }, "alice")).toBeNull();
+    expect(validateProfile({ avatarUrl: "images/bob/avatar.jpg" }, "alice")).toBe("invalid-profile");
+    expect(validateProfile({ avatarUrl: "a".repeat(2049) }, "alice")).toBe("invalid-profile");
+    expect(validateProfile({ avatarUrl: "https://cdn.example.test/legacy.jpg" })).toBeNull();
     expect(validateProfile({ coverUrl: "javascript:alert(1)" })).toBe("invalid-profile");
     expect(validateProfile({ coverUrl: "images/alice/cover_123.jpg" }, "alice")).toBeNull();
     expect(validateProfile({ coverUrl: "images/bob/cover_123.jpg" }, "alice")).toBe("invalid-profile");
