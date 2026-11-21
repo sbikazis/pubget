@@ -128,6 +128,27 @@ describe("group input contract", () => {
     expect(input.idempotencyKey).toBe("wizard-1");
   });
 
+  it("accepts R2 group images owned by the creator", () => {
+    const input = validateGroupInput({
+      ...publicDraft,
+      imageUrl: "images/founder-1/group-a1.jpg",
+      coverUrl: "images/founder-1/group-b2.webp",
+    }, "founder-1");
+    expect(input.imageUrl).toBe("images/founder-1/group-a1.jpg");
+    expect(input.coverUrl).toBe("images/founder-1/group-b2.webp");
+  });
+
+  it("rejects another user's R2 image key", () => {
+    expect(() => validateGroupInput({
+      ...publicDraft,
+      imageUrl: "images/someone-else/group-a1.jpg",
+    }, "founder-1")).toThrow(GroupInputError);
+    expect(() => validateGroupInput({
+      ...publicDraft,
+      coverUrl: "javascript:alert(1)",
+    }, "founder-1")).toThrow(GroupInputError);
+  });
+
   it("requires an animeId for anime roleplay and a character for roleplay", () => {
     expect(() => validateGroupInput({
       ...publicDraft,

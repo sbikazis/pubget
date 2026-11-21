@@ -613,3 +613,58 @@ test("the reserved roster reveals keys only, never who holds them", async () => 
   assert.deepEqual(answer.reservedKeys, ["hero", "rival"]);
   assert.equal(Object.keys(answer).length, 1);
 });
+
+test("createGroup persists owned R2 image keys", async () => {
+  const store = { "users/alice": {} };
+  const domain = createGroupsDomain({
+    db: fakeDb(store),
+    FieldValue: { serverTimestamp: () => "SERVER_TIMESTAMP" },
+    HttpsError: TestHttpsError,
+    randomUUID: () => "id",
+  });
+  const result = await domain.createGroup({
+    auth: { uid: "alice" },
+    data: {
+      name: "Images",
+      description: "",
+      type: "public",
+      animeId: null,
+      joinPolicy: "open",
+      isSearchable: true,
+      rules: "",
+      maxMembers: 100,
+      imageUrl: "images/alice/group-a1.jpg",
+      coverUrl: "images/alice/group-b2.webp",
+    },
+  });
+  const group = store[`groups/${result.groupId}`];
+  assert.equal(group.imageUrl, "images/alice/group-a1.jpg");
+  assert.equal(group.coverUrl, "images/alice/group-b2.webp");
+});
+
+test("createGroup rejects another user's R2 image key", async () => {
+  const base = {
+    name: "Images",
+    description: "",
+    type: "public",
+    animeId: null,
+    joinPolicy: "open",
+    isSearchable: true,
+    rules: "",
+    maxMembers: 100,
+  };
+  await assert.rejects(
+    handlers().createGroup({
+      auth: { uid: "alice" },
+      data: { ...base, imageUrl: "images/bob/group-a1.jpg" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+  await assert.rejects(
+    handlers().createGroup({
+      auth: { uid: "alice" },
+      data: { ...base, coverUrl: "javascript:alert(1)" },
+    }),
+    (error) => error.code === "invalid-argument",
+  );
+});

@@ -1,9 +1,19 @@
 "use strict";
 
-function avatarDownloadUrl(bucketName, filePath, token) {
-  return "https://firebasestorage.googleapis.com/v0/b/" +
-    `${bucketName}/o/${encodeURIComponent(filePath)}` +
-    `?alt=media&token=${token}`;
+/**
+ * Profile images are either legacy http(s) URLs or an owned R2 key. A key is
+ * accepted only when its owner segment matches the authenticated user, so a
+ * profile cannot point at another user's private object.
+ */
+function isOwnedImageReference(value, uid, max) {
+  if (value === null || value === undefined || value === "") return true;
+  if (typeof value !== "string" || value.length > max) return false;
+  const reference = value.trim();
+  if (/^https?:\/\//i.test(reference) && !/\s/.test(reference)) return true;
+  if (!uid) return false;
+  const parts = reference.split("/");
+  return parts.length === 3 && parts[0] === "images" && parts[1] === uid &&
+    /^[A-Za-z0-9_-]{1,80}\.(?:jpg|jpeg|png|webp|gif)$/.test(parts[2]);
 }
 
 function isLegacyFirebaseAvatar(value, uid) {
@@ -42,30 +52,14 @@ function createAvatarPrivacySync({ db, bucket, randomUUID }) {
       return;
     }
 
-    if (!isPrivate && visibilityChanged && !data.avatarUrl) {
-      const [exists] = await file.exists();
-      if (!exists) return;
-      const token = randomUUID();
-      await file.setMetadata({
-        metadata: { firebaseStorageDownloadTokens: token },
-      });
-      await db.collection("users").doc(uid).update({
-        avatarUrl: avatarDownloadUrl(bucket.name, filePath, token),
-      });
-    }
+    // A legacy Firebase avatar stays hidden after the profile becomes public:
+    // re-publishing it would require minting a permanent bearer URL. Users
+    // who want a public photo upload a fresh image to R2 instead.
   };
 }
 
 function optionalString(value, max) {
   return typeof value === "string" && value.length <= max;
-}
-
-function optionalUrl(value, max) {
-  if (value === null) return true;
-  if (typeof value !== "string") return false;
-  const trimmed = value.trim();
-  return trimmed.length <= max &&
-    (trimmed === "" || trimmed.startsWith("https://") || trimmed.startsWith("http://"));
 }
 
 function validSocialLinks(value) {
@@ -163,9 +157,7 @@ function createUpdateSocialProfile({
         !["female", "male", "other", "prefer_not_to_say"].includes(input.gender)) {
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
     }
-    if (input.avatarUrl !== undefined &&
-        input.avatarUrl !== null &&
-        !optionalString(input.avatarUrl, 2048)) {
+    if (!isOwnedImageReference(input.avatarUrl, uid, 2048)) {
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
     }
     if (input.isProfileCompleted !== undefined &&
@@ -194,7 +186,7 @@ function createUpdateSocialProfile({
         !validSectionPrivacy(input.sectionPrivacy)) {
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
     }
-    if (input.coverUrl !== undefined && !optionalUrl(input.coverUrl, 1024)) {
+    if (!isOwnedImageReference(input.coverUrl, uid, 1024)) {
       throw new HttpsError("invalid-argument", "Profile update is invalid.");
     }
     if (input.language !== undefined &&
@@ -346,19 +338,10 @@ function createUpdateSocialProfile({
           input.avatarUrl === current.avatarUrl) {
         update.avatarUrl = null;
       }
-    } else if (profileVisibility === "public" &&
-               current.profileVisibility === "private" &&
-               !current.avatarUrl &&
-               (input.avatarUrl === undefined || input.avatarUrl === null)) {
-      const [exists] = await file.exists();
-      if (exists) {
-        const token = randomUUID();
-        await file.setMetadata({
-          metadata: { firebaseStorageDownloadTokens: token },
-        });
-        update.avatarUrl = avatarDownloadUrl(bucket.name, filePath, token);
-      }
     }
+    // Making a profile public no longer mints a permanent Firebase Storage
+    // bearer URL. A legacy hidden avatar stays hidden until the user uploads
+    // a fresh R2 image and supplies its owned key.
 
     // Username uniqueness (spec §3.2). Reserve the new name before writing,
     // release the previous reservation only after the write succeeds, and
@@ -391,7 +374,7 @@ function createUpdateSocialProfile({
 }
 
 module.exports = {
-  avatarDownloadUrl,
+  isOwnedImageReference,
   isLegacyFirebaseAvatar,
   createAvatarPrivacySync,
   createUpdateSocialProfile,

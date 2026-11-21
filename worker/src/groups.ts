@@ -101,6 +101,18 @@ function optionalUrl(value: unknown, max: number): boolean {
   return /^https?:\/\//i.test(trimmed) && !/\s/.test(trimmed);
 }
 
+/** Legacy http(s) URLs or an R2 key owned by the group creator. */
+function ownedImageReference(value: unknown, uid: string, max: number): boolean {
+  if (value === undefined || value === null || value === "") return true;
+  if (typeof value !== "string" || value.length > max) return false;
+  const reference = value.trim();
+  if (/^https?:\/\//i.test(reference) && !/\s/.test(reference)) return true;
+  if (!uid) return false;
+  const parts = reference.split("/");
+  return parts.length === 3 && parts[0] === "images" && parts[1] === uid &&
+    /^[A-Za-z0-9_-]{1,80}\.(?:jpg|jpeg|png|webp|gif)$/.test(parts[2]);
+}
+
 function parseCharacter(raw: Record<string, unknown>): GroupCharacter | null {
   const value = raw.character;
   if (value === undefined || value === null || value === "") return null;
@@ -126,7 +138,7 @@ function parseCharacter(raw: Record<string, unknown>): GroupCharacter | null {
 }
 
 /** Same validation and normalization as functions/src/groupsDomain.js:groupInput. */
-export function validateGroupInput(input: unknown): NormalizedGroup {
+export function validateGroupInput(input: unknown, uid = ""): NormalizedGroup {
   const data = input && typeof input === "object" && !Array.isArray(input)
     ? input as Record<string, unknown>
     : {};
@@ -139,7 +151,8 @@ export function validateGroupInput(input: unknown): NormalizedGroup {
       data.rules.length > 4000 ||
       (data.animeId !== null && data.animeId !== undefined &&
        !validString(data.animeId, 128)) ||
-      !optionalUrl(data.imageUrl, 500) || !optionalUrl(data.coverUrl, 500) ||
+      !ownedImageReference(data.imageUrl, uid, 500) ||
+      !ownedImageReference(data.coverUrl, uid, 500) ||
       !optionalUrl(data.chatBackgroundUrl, 500) ||
       (data.welcomeMessage !== undefined && data.welcomeMessage !== null &&
        (typeof data.welcomeMessage !== "string" ||
@@ -168,10 +181,10 @@ export function validateGroupInput(input: unknown): NormalizedGroup {
     isSearchable: data.isSearchable as boolean,
     rules: data.rules.trim(),
     maxMembers: data.maxMembers,
-    imageUrl: typeof data.imageUrl === "string" && optionalUrl(data.imageUrl, 500)
+    imageUrl: typeof data.imageUrl === "string" && ownedImageReference(data.imageUrl, uid, 500)
       ? data.imageUrl.trim()
       : "",
-    coverUrl: typeof data.coverUrl === "string" && optionalUrl(data.coverUrl, 500)
+    coverUrl: typeof data.coverUrl === "string" && ownedImageReference(data.coverUrl, uid, 500)
       ? data.coverUrl.trim()
       : "",
     chatBackgroundUrl: typeof data.chatBackgroundUrl === "string"
@@ -552,7 +565,7 @@ export async function handleGroupsRequest(
   try { payload = await request.json(); }
   catch { return response({ error: "Invalid JSON." }, 400); }
   let input: NormalizedGroup;
-  try { input = validateGroupInput(payload); }
+  try { input = validateGroupInput(payload, uid); }
   catch (error) {
     return response({
       error: error instanceof Error ? error.message : "Group details are invalid.",
