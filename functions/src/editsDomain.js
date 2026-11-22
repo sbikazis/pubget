@@ -18,7 +18,6 @@ const {
   buildHiddenCreatorSet,
   applyVisibility,
 } = require("./reelVisibility");
-const { setMediaVisible } = require("./reelMediaAccess");
 const { enqueueModerationCase } = require("./moderationQueue");
 
 function string(value, max) {
@@ -180,8 +179,6 @@ function createEditsDomain({
   FieldValue,
   HttpsError,
   achievements,
-  processEdit,
-  bucket,
   r2Bucket,
   collectionName = "edits",
   uploadKeyCollection = "editUploadKeys",
@@ -190,7 +187,6 @@ function createEditsDomain({
   savedCollectionName = "savedReels",
   audioCollectionName = "reelAudios",
   storagePrefix = "edits",
-  processedPrefix = "edits-processed",
   config = EDITS_CONFIG,
 }) {
   function uid(request) {
@@ -505,66 +501,39 @@ function createEditsDomain({
     if (data.status === "deleted") return { ok: true, alreadyDeleted: true };
 
     const deletedAt = data.deletedAt || new Date();
-    if (data.mediaBackend === "r2") {
-      if (!r2Bucket) {
-        throw new HttpsError("unavailable", "R2 media cleanup is temporarily unavailable. Retry deletion.");
-      }
-      // Persist the exact cleanup manifest before deleting anything. If one
-      // object delete fails, the document stays non-published and a retry can
-      // finish from this manifest instead of losing the object keys.
-      const keys = [...new Set([
-        ...(Array.isArray(data.mediaCleanupKeys) ? data.mediaCleanupKeys : []),
-        data.originalStoragePath,
-        data.processedStoragePath,
-        data.thumbnailStoragePath,
-        ...Object.values(data.renditions || {}).map((item) => item && item.path),
-      ].filter((key) => typeof key === "string" && key.length > 0))];
-      await ref.update({
-        status: "deleting",
-        moderationStatus: "removed",
-        moderationReason: "creator_deleted",
-        deletedAt,
-        videoUrl: null,
-        thumbnailUrl: null,
-        mediaCleanupKeys: keys,
-      });
-      await Promise.all(keys.map((key) =>
-        r2Bucket.file(key).delete({ ignoreNotFound: true }),
-      ));
-      await ref.update({
-        status: "deleted",
-        originalStoragePath: null,
-        processedStoragePath: null,
-        thumbnailStoragePath: null,
-        renditions: null,
-        mediaCleanupKeys: FieldValue.delete(),
-      });
-    } else {
-      await ref.update({
-        status: "deleted",
-        moderationStatus: "removed",
-        moderationReason: "creator_deleted",
-        deletedAt,
-        // Legacy Firebase Storage media remains protected by its visibility receipt.
-        videoUrl: null,
-        processedStoragePath: null,
-        originalStoragePath: null,
-        thumbnailUrl: null,
-        thumbnailStoragePath: null,
-        renditions: null,
-      });
-      await setMediaVisible({
-        db,
-        bucket,
-        creatorId,
-        editId: id,
-        visible: false,
-        storagePrefix,
-        processedPrefix,
-        collectionName,
-        FieldValue,
-      });
+    if (!r2Bucket) {
+      throw new HttpsError("unavailable", "R2 media cleanup is temporarily unavailable. Retry deletion.");
     }
+    // Persist the exact cleanup manifest before deleting anything. If one
+    // object delete fails, the document stays non-published and a retry can
+    // finish from this manifest instead of losing the object keys.
+    const keys = [...new Set([
+      ...(Array.isArray(data.mediaCleanupKeys) ? data.mediaCleanupKeys : []),
+      data.originalStoragePath,
+      data.processedStoragePath,
+      data.thumbnailStoragePath,
+      ...Object.values(data.renditions || {}).map((item) => item && item.path),
+    ].filter((key) => typeof key === "string" && key.length > 0))];
+    await ref.update({
+      status: "deleting",
+      moderationStatus: "removed",
+      moderationReason: "creator_deleted",
+      deletedAt,
+      videoUrl: null,
+      thumbnailUrl: null,
+      mediaCleanupKeys: keys,
+    });
+    await Promise.all(keys.map((key) =>
+      r2Bucket.file(key).delete({ ignoreNotFound: true }),
+    ));
+    await ref.update({
+      status: "deleted",
+      originalStoragePath: null,
+      processedStoragePath: null,
+      thumbnailStoragePath: null,
+      renditions: null,
+      mediaCleanupKeys: FieldValue.delete(),
+    });
 
     // Saved-Reel snapshots are denormalized copies that kept the old
     // `videoUrl`, so a deleted Reel stayed playable from someone else's saved
@@ -1423,13 +1392,12 @@ function createEditsDomain({
     };
   }
 
-  async function resolveSourceObject(videoPath, editData = {}) {
+  async function resolveSourceObject(videoPath) {
     if (!videoPath) {
       return { contentType: "video/mp4", size: 0, exists: false };
     }
-    const selectedBucket = editData.mediaBackend === "r2" ? r2Bucket : bucket;
-    if (!selectedBucket) return { contentType: "video/mp4", size: 0, exists: false };
-    const file = selectedBucket.file(videoPath);
+    if (!r2Bucket) return { contentType: "video/mp4", size: 0, exists: false };
+    const file = r2Bucket.file(videoPath);
     const [exists] = await file.exists();
     if (!exists) {
       return { contentType: "video/mp4", size: 0, exists: false };
@@ -1442,8 +1410,14 @@ function createEditsDomain({
     };
   }
 
-  async function kickProcessing(ref, data, videoPath, { awaitProcessing = false } = {}) {
-    const source = await resolveSourceObject(videoPath, data);
+  async function kickProcessing(ref, data, videoPath) {
+    if (data.mediaBackend !== "r2") {
+      throw new HttpsError(
+        "failed-precondition",
+        "This Reel uses legacy storage. Re-upload it to process it.",
+      );
+    }
+    const source = await resolveSourceObject(videoPath);
     if (!source.exists) {
       throw new HttpsError(
         "failed-precondition",
@@ -1461,40 +1435,20 @@ function createEditsDomain({
         "This video is not a supported MP4, or it is too large.",
       );
     }
+    // A null lease lets the R2 Firestore transition trigger claim the job.
     await ref.update({
       status: "processing",
       failureReason: null,
       moderationReason: null,
-      processingStartedAt: data.mediaBackend === "r2" ? null : FieldValue.serverTimestamp(),
+      processingStartedAt: null,
     });
-    if (data.mediaBackend !== "r2" && typeof processEdit === "function") {
-      const job = processEdit({
-        data: {
-          name: videoPath,
-          contentType: "video/mp4",
-          size: source.size,
-        },
-      });
-      if (awaitProcessing) {
-        await job;
-      } else {
-        // Return immediately so the client is never blocked in the publish UI.
-        // Storage onObjectFinalized is the durable processor; this kick is best-effort.
-        Promise.resolve(job).catch((error) => {
-          console.error("Edit processing kick failed", {
-            videoPath,
-            error: error && error.message ? error.message : String(error),
-          });
-        });
-      }
-    }
     return { ok: true, videoPath, status: "processing" };
   }
 
   /**
-   * Client calls this after Storage upload succeeds. Idempotent for
-   * published / already-processing edits. Recovers when the Storage
-   * finalize trigger never fires (region mismatch, delay, etc.).
+   * Client calls this after the R2 upload succeeds. Idempotent for
+   * published / already-processing edits. Recovers when the Firestore
+   * transition trigger is delayed or missed.
    */
   async function finalizeUpload(request) {
     const creatorId = uid(request);
@@ -1523,7 +1477,7 @@ function createEditsDomain({
     if (!videoPath) {
       throw new HttpsError("failed-precondition", "The original video is missing.");
     }
-    return kickProcessing(ref, data, videoPath, { awaitProcessing: false });
+    return kickProcessing(ref, data, videoPath);
   }
 
   async function retryProcessing(request) {
@@ -1551,7 +1505,7 @@ function createEditsDomain({
     if (!videoPath) {
       throw new HttpsError("failed-precondition", "The original video is missing.");
     }
-    return kickProcessing(ref, data, videoPath, { awaitProcessing: true });
+    return kickProcessing(ref, data, videoPath);
   }
 
   return {

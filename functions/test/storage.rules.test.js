@@ -266,14 +266,14 @@ test("allows only Firestore private-chat participants", async (t) => {
   ));
 });
 
-test("enforces MIME and size ceilings", async () => {
+test("enforces MIME and size ceilings and denies legacy Edits writes", async () => {
   const alice = env.authenticatedContext("alice");
   const member = env.authenticatedContext("member");
   await assertFails(upload(alice, "avatars/alice.jpg", "video/mp4"));
   // NOTE: this assertion currently passes vacuously -- the guarded group path
   // denies locally whatever the MIME type, because the emulator cannot evaluate
   // isGroupMember(). The MIME/size coverage below therefore comes from the
-  // path-only rules (avatars, edits).
+  // path-only avatar rule; legacy Edits writes are now always denied.
   await assertFails(upload(
     member,
     "groups/group-owner/chat/bad.jpg",
@@ -287,14 +287,14 @@ test("enforces MIME and size ceilings", async () => {
     "video/mp4",
     250 * 1024 * 1024 + 1,
   ));
-  await assertSucceeds(upload(alice, "edits/alice/v_ok.mp4", "video/mp4", 32));
+  await assertFails(upload(alice, "edits/alice/v_ok.mp4", "video/mp4", 32));
 });
 
-test("edit video resumable updates are allowed for the owner", async () => {
+test("legacy Edits resumable writes are denied for every caller", async () => {
   const alice = env.authenticatedContext("alice");
-  await assertSucceeds(upload(alice, "edits/alice/editId123.mp4", "video/mp4", 32));
-  await assertSucceeds(upload(alice, "edits/alice/editId123.mp4", "video/mp4", 64));
-  await assertSucceeds(upload(
+  await assertFails(upload(alice, "edits/alice/editId123.mp4", "video/mp4", 32));
+  await assertFails(upload(alice, "edits/alice/editId123.mp4", "video/mp4", 64));
+  await assertFails(upload(
     alice,
     "edits/alice/editId123.mp4",
     "video/mp4; codecs=avc1.42E01E",
@@ -306,6 +306,7 @@ test("edit video resumable updates are allowed for the owner", async () => {
     "video/mp4",
     32,
   ));
+  await assertFails(alice.storage().ref("edits/alice/editId123.mp4").delete());
 });
 
 test("group staging images are owner-writable before a group exists", async () => {
@@ -510,25 +511,33 @@ test("event option images are owned by the creator and readable by users", async
   await assertSucceeds(alice.storage().ref("events/alice/evt-1/option-1.jpg").delete());
 });
 
-test("Kirari custom covers are JPEG-only, owner-scoped, and size-bounded", async () => {
+test("legacy Kirari custom covers are readable but no longer client-writable", async () => {
   const owner = env.authenticatedContext("alice");
   const outsider = env.authenticatedContext("mallory");
   const cover = "kirari/alice/reel-cover/cover-source.jpg";
-  await assertSucceeds(upload(owner, cover, "image/jpeg", 32, { uploadedBy: "kirari-client" }));
-  await assertFails(upload(owner, "kirari/alice/reel-cover/bad.jpg", "image/jpeg", 32, { uploadedBy: "other-client" }));
-  await assertFails(upload(owner, "kirari/alice/reel-cover/large.jpg", "image/jpeg", 5 * 1024 * 1024 + 1, { uploadedBy: "kirari-client" }));
-  await assertFails(upload(owner, "kirari/alice/reel-cover/not-image.jpg", "text/plain", 32, { uploadedBy: "kirari-client" }));
+  await assertFails(upload(owner, cover, "image/jpeg", 32, { uploadedBy: "kirari-client" }));
   await assertFails(upload(outsider, cover, "image/jpeg", 32, { uploadedBy: "kirari-client" }));
-  await assertSucceeds(owner.storage().ref(cover).delete());
+  await assertFails(owner.storage().ref(cover).delete());
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.storage().ref(cover).put(bytes(32), { contentType: "image/jpeg" });
+  });
+  await assertSucceeds(owner.storage().ref(cover).getDownloadURL());
+  await assertFails(outsider.storage().ref(cover).getDownloadURL());
 });
 
-test("Kirari source uploads are owner-only and processed renditions are server-write-only", async () => {
+test("legacy Kirari sources are readable but no longer client-writable", async () => {
   const owner = env.authenticatedContext("alice");
   const outsider = env.authenticatedContext("mallory");
   const source = "kirari/alice/reel-1/source.mp4";
-  await assertSucceeds(upload(owner, source, "video/mp4", 32));
+  await assertFails(upload(owner, source, "video/mp4", 32));
   await assertFails(upload(outsider, "kirari/alice/reel-2/source.mp4", "video/mp4", 32));
   await assertFails(upload(owner, "kirari/alice/reel-3/source.mp4", "image/jpeg", 32));
+  await assertFails(owner.storage().ref(source).delete());
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.storage().ref(source).put(bytes(32), { contentType: "video/mp4" });
+  });
+  await assertSucceeds(owner.storage().ref(source).getDownloadURL());
+  await assertFails(outsider.storage().ref(source).getDownloadURL());
   await assertFails(upload(owner, "kirari-processed/alice/reel-1/720.mp4", "video/mp4", 32));
   await env.withSecurityRulesDisabled(async (context) => {
     await context.firestore().doc("kirari/reel-1").set({
@@ -556,16 +565,16 @@ test("licensed Kirari audio is readable only after approval and writable only by
 });
 
 
-test("edits and reels resumable updates retain MIME and 100 MB limits", async () => {
+test("legacy edits and reels resumable updates are denied", async () => {
   const alice = env.authenticatedContext("alice");
   const editPath = "edits/alice/v_update-guard.mp4";
   const reelPath = "reels/alice/v_update-guard.mp4";
 
-  await assertSucceeds(upload(alice, editPath, "video/mp4", 32));
+  await assertFails(upload(alice, editPath, "video/mp4", 32));
   await assertFails(upload(alice, editPath, "application/pdf", 32));
   await assertFails(upload(alice, editPath, "video/mp4", 100 * 1024 * 1024 + 1));
 
-  await assertSucceeds(upload(alice, reelPath, "video/mp4", 32));
+  await assertFails(upload(alice, reelPath, "video/mp4", 32));
   await assertFails(upload(alice, reelPath, "application/pdf", 32));
   await assertFails(upload(alice, reelPath, "video/mp4", 100 * 1024 * 1024 + 1));
 });

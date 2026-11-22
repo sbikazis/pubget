@@ -7,7 +7,6 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { moderateEditCopy } = require("./contentFilter");
 const { EDITS_CONFIG, EDIT_RENDITIONS } = require("./editsConfig");
-const { setMediaVisible } = require("./reelMediaAccess");
 
 /** Target vertical canvas — same as TikTok / IG Reels / YouTube Shorts. */
 const TARGET_W = 1080;
@@ -348,12 +347,10 @@ function decideEditPublication(editData, processingFields, watermarkScan) {
 
 function createEditPipeline({
   db,
-  bucket,
   r2Bucket,
   economy,
   achievements,
   notifications,
-  FieldValue,
   collectionName = "edits",
   storagePrefix = "edits",
   processedPrefix = "edits-processed",
@@ -429,26 +426,22 @@ function createEditPipeline({
     if (!edit.exists || edit.data()?.creatorId !== creatorId ||
         !["processing", "uploading"].includes(edit.data()?.status)) return null;
     const editData = edit.data() || {};
-    const mediaBucket = editData.mediaBackend === "r2" ? r2Bucket : bucket;
-    if (!mediaBucket) throw new Error("The selected media backend is unavailable.");
-    if (editData.mediaBackend === "r2") {
-      const claimed = await db.runTransaction(async (transaction) => {
-        const latest = await transaction.get(ref);
-        const latestData = latest.data() || {};
-        if (!latest.exists || latestData.creatorId !== creatorId ||
-            latestData.mediaBackend !== "r2" ||
-            !["processing", "uploading"].includes(latestData.status) ||
-            latestData.processingStartedAt) return false;
-        transaction.update(ref, {
-          status: "processing",
-          processingStartedAt: new Date(),
-        });
-        return true;
+    const mediaBucket = r2Bucket;
+    if (!mediaBucket) throw new Error("R2 media storage is unavailable.");
+    const claimed = await db.runTransaction(async (transaction) => {
+      const latest = await transaction.get(ref);
+      const latestData = latest.data() || {};
+      if (!latest.exists || latestData.creatorId !== creatorId ||
+          latestData.mediaBackend !== "r2" ||
+          !["processing", "uploading"].includes(latestData.status) ||
+          latestData.processingStartedAt) return false;
+      transaction.update(ref, {
+        status: "processing",
+        processingStartedAt: new Date(),
       });
-      if (!claimed) return null;
-    } else {
-      await ref.update({ status: "processing", processingStartedAt: new Date() });
-    }
+      return true;
+    });
+    if (!claimed) return null;
     if (!(String(object.contentType || "").startsWith("video/mp4")) ||
         Number(object.size || 0) > config.maxBytes) {
       await ref.update({ status: "failed", failureReason: "invalid-video" });
@@ -606,50 +599,23 @@ function createEditPipeline({
       if (decision.publish) {
         decision.update.publishedAt = new Date();
       }
-      if (editData.mediaBackend === "r2") {
-        const applied = await db.runTransaction(async (transaction) => {
-          const latest = await transaction.get(ref);
-          if (!latest.exists || latest.data()?.status !== "processing") return false;
-          transaction.update(ref, decision.update);
-          return true;
-        });
-        if (!applied) {
-          const partialOutputs = [
-            `${processedPrefix}/${creatorId}/${editId}.mp4`,
-            `${processedPrefix}/${creatorId}/${editId}_720.mp4`,
-            `${processedPrefix}/${creatorId}/${editId}_480.mp4`,
-            `${storagePrefix}/${creatorId}/t_${editId}.jpg`,
-          ];
-          await Promise.allSettled(partialOutputs.map((key) =>
-            mediaBucket.file(key).delete({ ignoreNotFound: true }),
-          ));
-          return null;
-        }
-      } else {
-        await ref.update(decision.update);
-      }
-      // §15.18 — publish the bytes. Until this receipt exists the Storage
-      // rules refuse to serve the transcoded renditions, because nothing has
-      // authorised them. Without it a correctly published Reel would render a
-      // black frame, so the flip has to happen exactly here and not earlier.
-      if (decision.publish && editData.mediaBackend !== "r2") {
-        await setMediaVisible({
-          db,
-          bucket,
-          creatorId,
-          editId,
-          visible: true,
-          storagePrefix,
-          processedPrefix,
-          collectionName,
-          FieldValue,
-        }).catch((error) => {
-          console.error("Edit media publication failed", {
-            editId,
-            error: error.message,
-          });
-          throw error;
-        });
+      const applied = await db.runTransaction(async (transaction) => {
+        const latest = await transaction.get(ref);
+        if (!latest.exists || latest.data()?.status !== "processing") return false;
+        transaction.update(ref, decision.update);
+        return true;
+      });
+      if (!applied) {
+        const partialOutputs = [
+          `${processedPrefix}/${creatorId}/${editId}.mp4`,
+          `${processedPrefix}/${creatorId}/${editId}_720.mp4`,
+          `${processedPrefix}/${creatorId}/${editId}_480.mp4`,
+          `${storagePrefix}/${creatorId}/t_${editId}.jpg`,
+        ];
+        await Promise.allSettled(partialOutputs.map((key) =>
+          mediaBucket.file(key).delete({ ignoreNotFound: true }),
+        ));
+        return null;
       }
       if (!decision.publish) {
         const status = decision.update.status;
@@ -693,28 +659,21 @@ function createEditPipeline({
       }
       await notifyCreator({ creatorId, editId, kind: "published" });
     } catch (error) {
-      if (editData.mediaBackend === "r2" && mediaBucket) {
-        const partialOutputs = [
-          `${processedPrefix}/${creatorId}/${editId}.mp4`,
-          `${processedPrefix}/${creatorId}/${editId}_720.mp4`,
-          `${processedPrefix}/${creatorId}/${editId}_480.mp4`,
-          `${storagePrefix}/${creatorId}/t_${editId}.jpg`,
-        ];
-        await Promise.allSettled(partialOutputs.map((key) =>
-          mediaBucket.file(key).delete({ ignoreNotFound: true }),
-        ));
-      }
-      let failureRecorded = true;
-      if (editData.mediaBackend === "r2") {
-        failureRecorded = await db.runTransaction(async (transaction) => {
-          const latest = await transaction.get(ref);
-          if (!latest.exists || latest.data()?.status !== "processing") return false;
-          transaction.update(ref, { status: "failed", failureReason: "processing-failed" });
-          return true;
-        });
-      } else {
-        await ref.update({ status: "failed", failureReason: "processing-failed" });
-      }
+      const partialOutputs = [
+        `${processedPrefix}/${creatorId}/${editId}.mp4`,
+        `${processedPrefix}/${creatorId}/${editId}_720.mp4`,
+        `${processedPrefix}/${creatorId}/${editId}_480.mp4`,
+        `${storagePrefix}/${creatorId}/t_${editId}.jpg`,
+      ];
+      await Promise.allSettled(partialOutputs.map((key) =>
+        mediaBucket.file(key).delete({ ignoreNotFound: true }),
+      ));
+      const failureRecorded = await db.runTransaction(async (transaction) => {
+        const latest = await transaction.get(ref);
+        if (!latest.exists || latest.data()?.status !== "processing") return false;
+        transaction.update(ref, { status: "failed", failureReason: "processing-failed" });
+        return true;
+      });
       console.error("Edit processing failed", { editId, error: error.message });
       if (failureRecorded) {
         await notifyCreator({
