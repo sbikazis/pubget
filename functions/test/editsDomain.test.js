@@ -132,7 +132,7 @@ test("startUpload ignores client moderation fields and starts pending", async ()
   assert.equal(stored.counters.views, 0);
 });
 
-test("deleteEdit revokes media receipts instead of throwing", async () => {
+test("deleteEdit removes legacy records without Firebase Storage receipts", async () => {
   const db = createMutableDb({
     "edits/e1": {
       creatorId: "alice",
@@ -141,12 +141,19 @@ test("deleteEdit revokes media receipts instead of throwing", async () => {
       originalStoragePath: "edits/alice/e1.mp4",
     },
   });
+  const deleted = [];
   const domain = createEditsDomain({
     db,
-    FieldValue: { serverTimestamp: () => "now" },
+    FieldValue: {
+      serverTimestamp: () => "now",
+      delete: () => "__DELETE_FIELD__",
+    },
     HttpsError: TestHttpsError,
-    // Deleting the bytes is best-effort; the receipt flip is the enforcement.
-    bucket: { file: () => ({ delete: async () => {} }) },
+    r2Bucket: {
+      file(key) {
+        return { delete: async () => { deleted.push(key); } };
+      },
+    },
   });
 
   const result = await domain.deleteEdit({
@@ -156,11 +163,8 @@ test("deleteEdit revokes media receipts instead of throwing", async () => {
 
   assert.equal(result.ok, true);
   assert.equal(db.store.get("edits/e1").status, "deleted");
-  // §15.18 — this call used to throw a ReferenceError because `setMediaVisible`
-  // was never imported, leaving every object readable after a takedown.
-  const receipt = db.store.get("edits/alice/media/e1.mp4");
-  assert.ok(receipt, "expected a media receipt for the source object");
-  assert.equal(receipt.visible, false);
+  assert.ok(deleted.includes("edits/alice/e1.mp4"));
+  assert.equal(db.store.has("edits/alice/media/e1.mp4"), false);
 });
 
 test("R2 deletion keeps a retry manifest when object cleanup partially fails", async () => {
@@ -280,8 +284,8 @@ function createMutableDb(seed = {}) {
   let auto = 0;
   return withTransactions({
     store,
-    // Top-level document refs (by absolute path) and batched writes are used by
-    // the media-revocation receipt flip in deleteEdit.
+    // Top-level document refs (by absolute path) and batched writes are still
+    // used by saved-Reel cleanup in deleteEdit.
     doc(path) {
       return {
         id: path.split("/").pop(),
@@ -485,28 +489,21 @@ function createMutableDb(seed = {}) {
   });
 }
 
-test("finalizeUpload and retryProcessing recover stuck uploading/processing", async () => {
+test("finalizeUpload and retryProcessing clear the lease for the R2 trigger", async () => {
   const db = createMutableDb({
     "edits/e1": {
       creatorId: "alice",
+      mediaBackend: "r2",
       status: "uploading",
       originalStoragePath: "edits/alice/e1.mp4",
       videoPath: "edits/alice/e1.mp4",
     },
   });
-  const calls = [];
   const domain = createEditsDomain({
     db,
     FieldValue: { serverTimestamp: () => "now" },
     HttpsError: TestHttpsError,
-    processEdit: async (event) => {
-      calls.push(event.data.name);
-      db.store.set("edits/e1", {
-        ...db.store.get("edits/e1"),
-        status: "published",
-      });
-    },
-    bucket: {
+    r2Bucket: {
       file() {
         return {
           async exists() {
@@ -526,14 +523,13 @@ test("finalizeUpload and retryProcessing recover stuck uploading/processing", as
   });
   assert.equal(finalized.ok, true);
   assert.equal(finalized.status, "processing");
-  // Processing is kicked without awaiting — flush the microtask queue.
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(calls, ["edits/alice/e1.mp4"]);
-  assert.equal(db.store.get("edits/e1").status, "published");
+  assert.equal(db.store.get("edits/e1").processingStartedAt, null);
 
   db.store.set("edits/e1", {
     creatorId: "alice",
+    mediaBackend: "r2",
     status: "processing",
+    processingStartedAt: "stale-lease",
     originalStoragePath: "edits/alice/e1.mp4",
     videoPath: "edits/alice/e1.mp4",
   });
@@ -542,7 +538,32 @@ test("finalizeUpload and retryProcessing recover stuck uploading/processing", as
     data: { editId: "e1" },
   });
   assert.equal(retried.ok, true);
-  assert.equal(calls.length, 2);
+  assert.equal(db.store.get("edits/e1").processingStartedAt, null);
+});
+
+test("legacy Reels cannot be processed without an R2 re-upload", async () => {
+  const db = createMutableDb({
+    "edits/e-legacy": {
+      creatorId: "alice",
+      status: "failed",
+      originalStoragePath: "edits/alice/e-legacy.mp4",
+    },
+  });
+  const domain = createEditsDomain({
+    db,
+    FieldValue: { serverTimestamp: () => "now" },
+    HttpsError: TestHttpsError,
+    r2Bucket: { file: () => ({ exists: async () => [true] }) },
+  });
+
+  await assert.rejects(
+    domain.retryProcessing({
+      auth: { uid: "alice" },
+      data: { editId: "e-legacy" },
+    }),
+    (error) => error.code === "failed-precondition" &&
+      /legacy storage/i.test(error.message),
+  );
 });
 
 test("finalizeUpload rejects non-owners", async () => {

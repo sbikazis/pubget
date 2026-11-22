@@ -296,25 +296,11 @@ service firebase.storage {
     }
 
     match /edits/{userId}/{fileName} {
+      // Legacy objects stay readable until the M6 retention decision, but no
+      // new Edits bytes are accepted here. New uploads go to private R2.
       allow read: if signedIn() &&
           (isEditVideoName(fileName) || isEditThumbnailName(fileName));
-      // putData/putFile uses a resumable protocol that requires UPDATE
-      // after CREATE. Denying update produced "User is not authorized
-      // to perform the desired action" on every real video upload.
-      // Some clients also append codec parameters to contentType
-      // (e.g. video/mp4; codecs=...), so accept video/mp4* prefixes.
-      // These rules must be live in production via Deploy Storage Rules CI;
-      // shipping only in git leaves Edits uploads unauthorized forever.
-      allow create: if signedIn() && request.auth.uid == userId &&
-          isEditVideoName(fileName) &&
-          request.resource.contentType.matches('video/mp4.*') &&
-          request.resource.size <= 100 * 1024 * 1024;
-      allow update: if signedIn() && request.auth.uid == userId &&
-          isEditVideoName(fileName) &&
-          request.resource.contentType.matches('video/mp4.*') &&
-          request.resource.size <= 100 * 1024 * 1024;
-      allow delete: if signedIn() && request.auth.uid == userId &&
-          isEditVideoName(fileName);
+      allow create, update, delete: if false;
     }
 
     match /edits-processed/{userId}/{fileName} {
@@ -322,21 +308,11 @@ service firebase.storage {
       allow write: if false;
     }
 
-    // Reels use a separate namespace so migration cannot expose or overwrite
-    // legacy Edits media.
+    // Historical Reels namespace: read-only for legacy playback, no new writes.
     match /reels/{userId}/{fileName} {
       allow read: if signedIn() &&
           (isReelVideoName(fileName) || isReelThumbnailName(fileName));
-      allow create: if signedIn() && request.auth.uid == userId &&
-          isReelVideoName(fileName) &&
-          request.resource.contentType.matches('video/mp4.*') &&
-          request.resource.size <= 100 * 1024 * 1024;
-      allow update: if signedIn() && request.auth.uid == userId &&
-          isReelVideoName(fileName) &&
-          request.resource.contentType.matches('video/mp4.*') &&
-          request.resource.size <= 100 * 1024 * 1024;
-      allow delete: if signedIn() && request.auth.uid == userId &&
-          isReelVideoName(fileName);
+      allow create, update, delete: if false;
     }
 
     match /reels-processed/{userId}/{fileName} {
@@ -355,24 +331,16 @@ service firebase.storage {
     }
 
 
-    // Kirari source and custom cover uploads are owner-only and size-bounded.
-    // The backend alone can publish processed renditions.
+    // Legacy Kirari objects stay readable for old sessions, but source and
+    // cover uploads now use private R2 through authenticated Worker routes.
     match /kirari/{userId}/{reelId}/cover-source.jpg {
       allow read: if signedIn() && request.auth.uid == userId;
-      allow create, update: if signedIn() && request.auth.uid == userId &&
-        imageUpload(5 * 1024 * 1024) &&
-        request.resource.contentType == 'image/jpeg' &&
-        request.resource.metadata.uploadedBy == 'kirari-client';
-      allow delete: if signedIn() && request.auth.uid == userId;
+      allow create, update, delete: if false;
     }
 
     match /kirari/{userId}/{reelId}/source.mp4 {
       allow read: if signedIn() && request.auth.uid == userId;
-      allow create, update: if signedIn() &&
-        request.auth.uid == userId &&
-        request.resource.contentType.matches('video/mp4.*') &&
-        request.resource.size <= 500 * 1024 * 1024;
-      allow delete: if signedIn() && request.auth.uid == userId;
+      allow create, update, delete: if false;
     }
 
     // Event option images are creator-owned, bounded image assets.

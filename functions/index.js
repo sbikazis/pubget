@@ -9,7 +9,6 @@ const {
   onDocumentUpdated,
   onDocumentWritten,
 } = require("firebase-functions/v2/firestore");
-const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -271,12 +270,10 @@ const animeHubDomain = createAnimeHubDomain({
 const r2EditsBucket = createR2EditsBucket();
 const processEditVideo = createEditPipeline({
   db: lazyFirestore,
-  bucket: lazyStorageBucket,
   r2Bucket: r2EditsBucket,
   economy: economyDomain,
   achievements: achievementsDomain,
   notifications: notificationBuilder,
-  FieldValue,
 });
 // Kirari bytes live in Cloudflare R2. The adapter speaks the small
 // GCS-style surface the existing pipeline/domain already use, so a single
@@ -299,8 +296,6 @@ const editsDomain = createEditsDomain({
   FieldValue,
   HttpsError,
   achievements: achievementsDomain,
-  processEdit: processEditVideo,
-  bucket: lazyStorageBucket,
   r2Bucket: r2EditsBucket,
 });
 
@@ -584,7 +579,7 @@ exports.getEditFeed = onCall(
   { region: "us-central1" },
   editsDomain.getEditFeed,
 );
-// The retry path runs the *same* ffmpeg work as the finalize trigger: it
+// The retry path runs the *same* ffmpeg work as the R2 transition trigger: it
 // downloads the full source and walks the rendition ladder. It therefore needs
 // the trigger's budget. It used to run on the v2 defaults (256 MiB / 60 s),
 // so retrying a large Reel — precisely the case a retry exists for — OOM'd or
@@ -614,8 +609,8 @@ exports.getReelAudio = onCall({ region: "us-central1" }, audioDomain.getAudio);
 exports.useReelAudio = onCall({ region: "us-central1" }, audioDomain.useAudio);
 exports.removeReelAudio = onCall({ region: "us-central1" }, audioDomain.removeAudio);
 exports.searchReelAudios = onCall({ region: "us-central1" }, audioDomain.searchAudios);
-// Storage bucket pubget-aaf27.firebasestorage.app lives in europe-west3;
-// Gen2 object-finalize triggers must be in the same region as the bucket.
+// R2 has no object-finalize signal; a Firestore transition into `processing`
+// is the only wake-up for Edits processing.
 exports.processEditR2Video = onDocumentUpdated(
   { document: "edits/{editId}", region: "us-central1", memory: "1GiB", timeoutSeconds: 300 },
   async (event) => {
@@ -634,11 +629,6 @@ exports.processEditR2Video = onDocumentUpdated(
       size: Number(meta.size || 0),
     } });
   },
-);
-
-exports.processEditVideo = onObjectFinalized(
-  { region: "europe-west3", memory: "1GiB", timeoutSeconds: 300 },
-  processEditVideo,
 );
 
 exports.createGroup = onCall({ region: "us-central1" }, groupsDomain.createGroup);
