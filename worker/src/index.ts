@@ -405,6 +405,10 @@ export function validEditsServiceKey(key: string): boolean {
   return /^(?:edits\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\.mp4|edits-processed\/[A-Za-z0-9_-]{1,128}\/(?![A-Za-z0-9_-]{1,128}_360\.mp4$)[A-Za-z0-9_-]{1,128}(?:_(?:720|480))?\.mp4|edits\/[A-Za-z0-9_-]{1,128}\/t_[A-Za-z0-9_-]{1,128}\.jpg)$/.test(key);
 }
 
+export function validAudioServiceKey(key: string): boolean {
+  return /^(?:edits\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\.mp4|edits-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}(?:_(?:720|480))?\.mp4|reelAudios\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\.m4a)$/.test(key);
+}
+
 export function validKirariServiceKey(key: string): boolean {
   return /^(?:kirari\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:source\.mp4|cover-source\.jpg)|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/(?:360|540|720)\.mp4|kirari-processed\/[A-Za-z0-9_-]{1,128}\/[A-Za-z0-9_-]{1,128}\/cover\.jpg|kirari-audio\/[A-Za-z0-9_-]{1,128}\/audio\.(?:mp3|m4a|aac|ogg))$/.test(key);
 }
@@ -823,6 +827,71 @@ export default {
       if (request.method === "DELETE") {
         if (!isDerivative) {
           return json({ error: "Only derivative objects can be deleted by the pipeline." }, 403);
+        }
+        await env.MEDIA_BUCKET.delete(key);
+        return new Response(null, { status: 204, headers: CORS });
+      }
+      return json({ error: "Method not allowed." }, 405);
+    }
+
+    // Private R2 bridge for Reel audio extraction. The Functions runtime may
+    // read published Edit sources and write only server-owned reelAudios keys.
+    if (url.pathname.startsWith("/_internal/audio/objects/")) {
+      if (!await authenticateKirariService(request, {
+        audience: env.KIRARI_R2_SERVICE_AUDIENCE,
+        serviceAccountEmail: env.KIRARI_R2_SERVICE_ACCOUNT_EMAIL,
+      })) return json({ error: "Service authentication required." }, 401);
+      let key: string;
+      try {
+        key = decodeURIComponent(url.pathname.slice("/_internal/audio/objects/".length));
+      } catch {
+        return json({ error: "Invalid object key." }, 400);
+      }
+      if (!validAudioServiceKey(key)) return json({ error: "Invalid audio object key." }, 400);
+      const parts = key.split("/");
+      const isExtractedAudio = parts[0] === "reelAudios";
+      if (request.method === "HEAD") {
+        const object = await env.MEDIA_BUCKET.head(key);
+        if (!object) return json({ error: "Not found." }, 404);
+        return new Response(null, { headers: {
+          ...CORS,
+          "content-length": String(object.size),
+          "content-type": object.httpMetadata?.contentType ?? "application/octet-stream",
+        } });
+      }
+      if (request.method === "GET") {
+        const object = await env.MEDIA_BUCKET.get(key);
+        if (!object) return json({ error: "Not found." }, 404);
+        const headers = new Headers(CORS);
+        object.writeHttpMetadata(headers);
+        headers.set("content-length", String(object.size));
+        headers.set("cache-control", "private, no-store");
+        return new Response(object.body, { headers });
+      }
+      if (request.method === "PUT") {
+        if (!isExtractedAudio) {
+          return json({ error: "Only extracted audio objects can be written." }, 403);
+        }
+        const size = Number(request.headers.get("content-length"));
+        const contentType = request.headers.get("content-type") ?? "";
+        if (!request.body || !Number.isSafeInteger(size) || size <= 0 ||
+            size > 25 * 1024 * 1024 ||
+            !["audio/mp4", "audio/m4a"].includes(contentType)) {
+          return json({ error: "Invalid extracted-audio upload." }, 400);
+        }
+        await env.MEDIA_BUCKET.put(key, request.body, {
+          httpMetadata: { contentType, cacheControl: "private, no-store" },
+          customMetadata: {
+            uploadedBy: parts[1],
+            mediaKind: "audio",
+            pipeline: "audio-extractor-v1",
+          },
+        });
+        return json({ key }, 201);
+      }
+      if (request.method === "DELETE") {
+        if (!isExtractedAudio) {
+          return json({ error: "Only extracted audio objects can be deleted." }, 403);
         }
         await env.MEDIA_BUCKET.delete(key);
         return new Response(null, { status: 204, headers: CORS });

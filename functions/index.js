@@ -46,6 +46,7 @@ const { createAnimeHubDomain } = require("./src/animeHubDomain");
 const { createEditsDomain } = require("./src/editsDomain");
 const { createAudioDomain } = require("./src/audioDomain");
 const { createEditPipeline } = require("./src/editPipeline");
+const { createR2AudioBucket } = require("./src/r2AudioStorage");
 const { createR2EditsBucket } = require("./src/r2EditsStorage");
 const { createKirariDomain } = require("./src/kirariDomain");
 const { createKirariPipeline } = require("./src/kirariPipeline");
@@ -597,9 +598,10 @@ exports.finalizeEditUpload = onCall(
 // Axis 15 §15.8 — audio is reachable from the client, not just defined.
 // The domain is built on the same collection the Edit domain uses, so audio
 // attaches to real Reels instead of an empty parallel `reels` collection.
+const r2AudioBucket = createR2AudioBucket();
 const audioDomain = createAudioDomain({
   db: lazyFirestore,
-  bucket: lazyStorageBucket,
+  bucket: r2AudioBucket,
   FieldValue,
   HttpsError,
   reelCollection: "edits",
