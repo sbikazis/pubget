@@ -2,7 +2,6 @@
 
 const { HttpsError } = require("firebase-functions/v2/https");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
-const { getStorage } = require("firebase-admin/storage");
 const os = require("node:os");
 const path = require("node:path");
 const fsp = require("node:fs/promises");
