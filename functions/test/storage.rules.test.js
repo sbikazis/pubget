@@ -336,77 +336,32 @@ test("denies paths not explicitly supported", async () => {
   await assertFails(upload(env.authenticatedContext("owner"), "groups/group-owner.jpg", "image/jpeg"));
 });
 
-test("fan work media is owner-writable and public only when the work is published", async (t) => {
+test("legacy fan work media is readable but no longer client-writable", async (t) => {
   if (!crossServiceWorks) return t.skip(CROSS_SERVICE_UNSUPPORTED);
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
     await db.doc("fanWorks/w-public").set({
       creatorId: "alice", status: "published", moderationStatus: "approved",
     });
-    await db.doc("fanWorks/w-draft").set({
-      creatorId: "alice", status: "draft", moderationStatus: "pending",
-    });
   });
   const alice = env.authenticatedContext("alice");
   const bob = env.authenticatedContext("bob");
-  await assertSucceeds(upload(
-    alice,
-    "fan_works/alice/w-draft/cover.jpg",
-    "image/jpeg",
-    32,
-    uploaderMetadata("alice"),
-  ));
-  // Only the draft owner may write the media (see the resumable-upload note).
-  await assertFails(upload(
-    bob,
-    "fan_works/alice/w-draft/cover.jpg",
-    "image/jpeg",
-    32,
-    uploaderMetadata("bob"),
-  ));
-  await assertFails(upload(
-    alice,
-    "fan_works/alice/w-draft/cover.jpg",
-    "image/jpeg",
-    32,
-    uploaderMetadata("bob"),
-  ));
-  await assertFails(upload(
-    bob,
-    "fan_works/alice/w-draft/cover2.jpg",
-    "image/jpeg",
-    32,
-    uploaderMetadata("bob"),
-  ));
-  await assertFails(upload(
-    alice,
-    "fan_works/alice/w-draft/cover.gif",
-    "application/pdf",
-    32,
-    uploaderMetadata("alice"),
-  ));
-  await assertSucceeds(
-    alice.storage().ref("fan_works/alice/w-draft/cover.jpg").getDownloadURL(),
-  );
-  await assertFails(
-    bob.storage().ref("fan_works/alice/w-draft/cover.jpg").getDownloadURL(),
-  );
-  await assertFails(upload(
-    alice,
-    "fan_works/alice/w-public/page.jpg",
-    "image/jpeg",
-    32,
-    uploaderMetadata("alice"),
-  ));
+  const draft = "fan_works/alice/w-draft/cover.jpg";
+  await assertFails(upload(alice, draft, "image/jpeg", 32, uploaderMetadata("alice")));
+  await assertFails(upload(bob, draft, "image/jpeg", 32, uploaderMetadata("bob")));
+  await assertFails(alice.storage().ref(draft).delete());
   await env.withSecurityRulesDisabled(async (context) => {
-    await context.storage().ref("fan_works/alice/w-public/page.jpg").put(
-      bytes(32),
-      { contentType: "image/jpeg" },
-    );
+    await context.storage().ref(draft).put(bytes(32), { contentType: "image/jpeg" });
   });
-  await assertSucceeds(
-    bob.storage().ref("fan_works/alice/w-public/page.jpg").getDownloadURL(),
-  );
+  await assertSucceeds(alice.storage().ref(draft).getDownloadURL());
+  await assertFails(bob.storage().ref(draft).getDownloadURL());
+
+  const published = "fan_works/alice/w-public/page.jpg";
+  await assertFails(upload(alice, published, "image/jpeg", 32, uploaderMetadata("alice")));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await context.storage().ref(published).put(bytes(32), { contentType: "image/jpeg" });
+  });
+  await assertSucceeds(bob.storage().ref(published).getDownloadURL());
 });
 
 test("profile covers require owner writes and mirror avatar privacy on reads", async (t) => {

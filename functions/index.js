@@ -55,7 +55,7 @@ const { createEventsDomain } = require("./src/eventsDomain");
 const { createGamesDomain } = require("./src/gamesDomain");
 const { createAnimeCatalogDomain } = require("./src/animeCatalogDomain");
 const { createFanWorksDomain } = require("./src/fanWorksDomain");
-const { createFanWorksSigner } = require("./src/fanWorksStorage");
+const { createR2FanWorksSigner } = require("./src/r2FanWorksSigner");
 const { createEconomyDomain } = require("./src/economyDomain");
 const { createAchievementsDomain } = require("./src/achievementsDomain");
 const { createAchievementEventProcessor } = require("./src/achievementEvents");
@@ -227,16 +227,15 @@ const mafiaDomain = createMafiaDomain({
 // The signer is what turns "a client may upload here" into a short-lived,
 // scoped capability. It is created once and injected into the domain so the
 // callables never touch the bucket directly.
-const fanWorksSigner = createFanWorksSigner({
-  bucket: lazyStorageBucket,
-  HttpsError,
-});
+const fanWorksSigner = createR2FanWorksSigner();
 const fanWorksDomain = createFanWorksDomain({
   db: lazyFirestore,
   FieldValue,
   HttpsError,
   notificationBuilder,
-  storage: lazyStorageBucket,
+  // readMediaMetadata() calls storage.metadata(path); the R2 signer exposes
+  // that shape so confirmMedia keeps verifying real size and MIME.
+  storage: fanWorksSigner,
   signer: fanWorksSigner,
   economy: economyDomain,
   achievements: achievementsDomain,
