@@ -19,10 +19,8 @@ import 'media_validation.dart';
 /// Coarse upload phases for progress UIs.
 enum MediaUploadPhase { validating, compressing, uploading, done }
 
-typedef MediaUploadProgress = void Function(
-  MediaUploadPhase phase,
-  double fraction,
-);
+typedef MediaUploadProgress =
+    void Function(MediaUploadPhase phase, double fraction);
 
 /// Maps anything thrown during an upload into a [Failure] the UI already
 /// knows how to render.
@@ -50,10 +48,17 @@ Failure mapMediaException(Object error) {
     if (code == 'not-found') {
       return const NotFoundError('The file was not found.');
     }
-    if (code == 'network-request-failed' ||
-        code == 'retry-limit-exceeded' ||
-        code == 'unknown' ||
-        code == 'internal') {
+    if (code == 'unknown' ||
+        code == 'internal' ||
+        code == 'deadline-exceeded') {
+      // A server-side failure is not proof that the device is offline.
+      // Treating it as a NetworkError shows a false "check connection" banner
+      // and makes users retry the network instead of the operation.
+      return const UnavailableError(
+        'The upload service is temporarily unavailable. Please try again.',
+      );
+    }
+    if (code == 'network-request-failed' || code == 'retry-limit-exceeded') {
       return const NetworkError('Check your connection and try again.');
     }
     if (code == 'invalid-argument' || code == 'custom-object-metadata') {
@@ -64,7 +69,9 @@ Failure mapMediaException(Object error) {
     return const NetworkError('Check your connection and try again.');
   }
   return UnknownError(
-    error is FormatException ? 'This file could not be read.' : 'Upload failed.',
+    error is FormatException
+        ? 'This file could not be read.'
+        : 'Upload failed.',
   );
 }
 
@@ -84,11 +91,11 @@ final class MediaUploadService {
     Random? random,
     DateTime Function()? clock,
     Future<void> Function(Duration delay)? delay,
-  })  : _provider = provider,
-        _compressor = compressor,
-        _random = random ?? Random.secure(),
-        _clock = clock ?? DateTime.now,
-        _delay = delay ?? ((d) => Future<void>.delayed(d));
+  }) : _provider = provider,
+       _compressor = compressor,
+       _random = random ?? Random.secure(),
+       _clock = clock ?? DateTime.now,
+       _delay = delay ?? ((d) => Future<void>.delayed(d));
 
   final MediaStorageProvider _provider;
   final MediaCompressor _compressor;
@@ -117,9 +124,7 @@ final class MediaUploadService {
       onProgress?.call(MediaUploadPhase.validating, 0);
 
       if (ownerUid.trim().isEmpty) {
-        return const FailureResult(
-          PermissionError('Sign in to upload media.'),
-        );
+        return const FailureResult(PermissionError('Sign in to upload media.'));
       }
       if (cancelled()) return FailureResult(cancelledFailure()!);
 
@@ -185,10 +190,8 @@ final class MediaUploadService {
         contentType: contentType,
         extension: extension,
         isCancelled: cancelled,
-        onProgress: (p) => onProgress?.call(
-          MediaUploadPhase.uploading,
-          0.2 + 0.8 * p,
-        ),
+        onProgress: (p) =>
+            onProgress?.call(MediaUploadPhase.uploading, 0.2 + 0.8 * p),
       );
       if (cancelled()) {
         // The object is already stored: remove it so a canceled upload never
@@ -214,8 +217,7 @@ final class MediaUploadService {
           sizeBytes: uploadBytes.length,
           createdAt: now,
           status: MediaUploadStatus.uploaded,
-          durationSeconds:
-              kind == MediaKind.image ? null : duration?.inSeconds,
+          durationSeconds: kind == MediaKind.image ? null : duration?.inSeconds,
           width: width,
           height: height,
           originalFileName: fileName,
@@ -251,7 +253,8 @@ final class MediaUploadService {
         );
       } on Object catch (error) {
         final failure = mapMediaException(error);
-        final transient = failure is NetworkError ||
+        final transient =
+            failure is NetworkError ||
             failure is TimeoutError ||
             failure is UnavailableError ||
             failure is RateLimitedError;
@@ -259,7 +262,10 @@ final class MediaUploadService {
         await _delay(
           Duration(
             milliseconds:
-                _retryBackoffMs[(attempt - 1).clamp(0, _retryBackoffMs.length - 1)],
+                _retryBackoffMs[(attempt - 1).clamp(
+                  0,
+                  _retryBackoffMs.length - 1,
+                )],
           ),
         );
       }
