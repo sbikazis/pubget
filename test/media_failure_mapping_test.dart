@@ -38,10 +38,7 @@ void main() {
     });
 
     test('timeouts, quota and permissions keep their own types', () {
-      expect(
-        mapMediaException(const TimeoutException('late')),
-        isA<TimeoutError>(),
-      );
+      expect(mapMediaException(TimeoutException('late')), isA<TimeoutError>());
       expect(
         mapMediaException(_storageException('quota-exceeded')),
         isA<RateLimitedError>(),

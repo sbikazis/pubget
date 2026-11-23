@@ -108,8 +108,9 @@ class _AppImageLoaderState extends State<AppImageLoader> {
       future: _resolvedUrl,
       builder: (context, snapshot) {
         final url = snapshot.data;
-        if (snapshot.connectionState != ConnectionState.done)
+        if (snapshot.connectionState != ConnectionState.done) {
           return _clip(loading);
+        }
         if (url == null) {
           // Resolution finished empty (e.g. a transient Worker failure). Give
           // it a bounded second chance before showing the broken-image state.

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/media/media_kind.dart';
 import 'package:pubget/core/media/r2_media_storage_provider.dart';
 
