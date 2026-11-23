@@ -23,9 +23,9 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
     required Future<String?> Function() idTokenProvider,
     http.Client? client,
     this.directUploadMaxBytes = 2 * 1024 * 1024,
-  })  : _baseUrl = workerUrl.replaceAll(RegExp(r'/+$'), ''),
-        _idTokenProvider = idTokenProvider,
-        _client = client ?? http.Client();
+  }) : _baseUrl = workerUrl.replaceAll(RegExp(r'/+$'), ''),
+       _idTokenProvider = idTokenProvider,
+       _client = client ?? http.Client();
 
   final String _baseUrl;
   final Future<String?> Function() _idTokenProvider;
@@ -98,12 +98,17 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
       ..headers['Authorization'] = 'Bearer $token'
       ..fields.addAll(fields)
       ..files.add(
-        http.MultipartFile.fromBytes('file', bytes,
-            filename: 'upload.$extension', contentType: null),
+        http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: 'upload.$extension',
+          contentType: null,
+        ),
       );
 
-    final streamed =
-        await _client.send(request).timeout(const Duration(minutes: 5));
+    final streamed = await _client
+        .send(request)
+        .timeout(const Duration(minutes: 5));
     final response = await http.Response.fromStream(streamed);
     return _unwrapKey(response);
   }
@@ -135,13 +140,17 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
       throw _mapWorkerError(presignResponse);
     }
     final decoded =
-        jsonDecode(utf8.decode(presignResponse.bodyBytes)) as Map<String, dynamic>;
+        jsonDecode(utf8.decode(presignResponse.bodyBytes))
+            as Map<String, dynamic>;
     final uploadUrl = decoded['uploadUrl'] as String?;
     final key = decoded['key'] as String?;
-    final headers = (decoded['headers'] as Map<String, dynamic>?)
-        ?.map((k, v) => MapEntry(k, '$v'));
+    final headers = (decoded['headers'] as Map<String, dynamic>?)?.map(
+      (k, v) => MapEntry(k, '$v'),
+    );
     if (uploadUrl == null || key == null) {
-      throw const UnknownError('The upload service returned an invalid response.');
+      throw const UnknownError(
+        'The upload service returned an invalid response.',
+      );
     }
 
     final putRequest = http.Request('PUT', Uri.parse(uploadUrl))
@@ -158,12 +167,13 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
       if (lower == 'content-length' || lower == 'host') return;
       putRequest.headers[name] = value;
     });
-    final putResponse =
-        await _client.send(putRequest).timeout(const Duration(minutes: 10));
+    final putResponse = await _client
+        .send(putRequest)
+        .timeout(const Duration(minutes: 10));
     if (putResponse.statusCode < 200 || putResponse.statusCode >= 300) {
-      throw NetworkError(
-        'R2 rejected the upload (HTTP ${putResponse.statusCode}).',
-      );
+      // Use the same 429/5xx classification as the rest of the Worker API so
+      // a server outage is never reported to the user as a lost connection.
+      throw _mapStatusError(putResponse.statusCode, 'R2 rejected the upload.');
     }
     return key;
   }
@@ -180,15 +190,17 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
     if (response.statusCode == 204 || response.statusCode == 200) return;
     if (response.statusCode == 404) return;
     if (response.statusCode == 401 || response.statusCode == 403) {
-      throw const PermissionError(
-        'Sign in again to manage this media.',
-      );
+      throw const PermissionError('Sign in again to manage this media.');
     }
-    throw NetworkError('Could not delete this file (HTTP ${response.statusCode}).');
+    throw _mapStatusError(response.statusCode, 'Could not delete this file.');
   }
 
-  @override
-  Future<String> resolveUrl(String storageKey) async {
+  /// Resolves a signed download URL together with its expiry (epoch seconds).
+  /// Keeping the expiry lets callers cache the URL only until shortly before
+  /// it goes stale, instead of re-hitting the Worker on every widget rebuild.
+  Future<({String url, DateTime expiresAt})> resolveUrlWithExpiry(
+    String storageKey,
+  ) async {
     final token = await _requireToken();
     final response = await _client
         .get(
@@ -206,10 +218,23 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     final url = decoded['url'] as String?;
     if (url == null || !url.startsWith('https://')) {
-      throw const UnknownError('The media service returned an invalid media URL.');
+      throw const UnknownError(
+        'The media service returned an invalid media URL.',
+      );
     }
-    return url;
+    // `expiresAt` is epoch seconds from the Worker. An absent or malformed
+    // value yields an already-expiry-safe timestamp so callers never serve a
+    // signature past its real lifetime.
+    final rawExpiry = decoded['expiresAt'];
+    final expiresAt = rawExpiry is num
+        ? DateTime.fromMillisecondsSinceEpoch(rawExpiry.toInt() * 1000)
+        : DateTime.fromMillisecondsSinceEpoch(0);
+    return (url: url, expiresAt: expiresAt);
   }
+
+  @override
+  Future<String> resolveUrl(String storageKey) async =>
+      (await resolveUrlWithExpiry(storageKey)).url;
 
   Future<String> _requireToken() async {
     final token = await _idTokenProvider();
@@ -227,37 +252,45 @@ final class R2MediaStorageProvider implements MediaStorageProvider {
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
       final key = (decoded as Map<String, dynamic>)['key'] as String?;
       if (key != null) return key;
-      throw const UnknownError('The upload service returned an invalid response.');
+      throw const UnknownError(
+        'The upload service returned an invalid response.',
+      );
     }
     throw _mapWorkerError(response);
   }
 
   Failure _mapWorkerError(http.Response response) {
-    if (response.statusCode == 401 || response.statusCode == 403) {
+    var message = 'This file was rejected by the media service.';
+    try {
+      final decoded =
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final serverMessage = decoded['error'] as String?;
+      if (serverMessage != null && serverMessage.isNotEmpty) {
+        message = serverMessage;
+      }
+    } on Object {
+      // Keep the generic message when the body is not JSON.
+    }
+    return _mapStatusError(response.statusCode, message);
+  }
+
+  /// Shared classifier for every Worker status the app talks to, including
+  /// streamed PUT responses that have no JSON body. Only transport-level
+  /// failures are [NetworkError]; 429/5xx mean the service is reachable but
+  /// unable to serve the request right now.
+  Failure _mapStatusError(int status, String message) {
+    if (status == 401 || status == 403) {
       return const PermissionError('Sign in to upload media.');
     }
-    if (response.statusCode == 413 ||
-        response.statusCode == 400 ||
-        response.statusCode == 415) {
-      var message = 'This file was rejected by the media service.';
-      try {
-        final decoded =
-            jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-        final serverMessage = decoded['error'] as String?;
-        if (serverMessage != null && serverMessage.isNotEmpty) {
-          message = serverMessage;
-        }
-      } on Object {
-        // Keep the generic message when the body is not JSON.
-      }
+    if (status == 413 || status == 400 || status == 415) {
       return ValidationError(message);
     }
-    if (response.statusCode == 429) {
+    if (status == 429) {
       return const RateLimitedError('Too many uploads. Please wait a moment.');
     }
-    if (response.statusCode >= 500) {
+    if (status >= 500) {
       return const UnavailableError('The media service is unavailable.');
     }
-    return NetworkError('Upload failed (HTTP ${response.statusCode}).');
+    return NetworkError('$message (HTTP $status).');
   }
 }

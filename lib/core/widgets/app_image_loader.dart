@@ -17,6 +17,7 @@ class AppImageLoader extends StatefulWidget {
     this.borderRadius,
     this.placeholder,
     this.errorWidget,
+    this.urlResolver,
     super.key,
   });
 
@@ -30,13 +31,18 @@ class AppImageLoader extends StatefulWidget {
   final Widget? placeholder;
   final Widget? errorWidget;
 
+  /// Overridable in tests. Production uses the shared, cache-aware resolver.
+  final Future<String?> Function(String reference)? urlResolver;
+
   @override
   State<AppImageLoader> createState() => _AppImageLoaderState();
 }
 
 class _AppImageLoaderState extends State<AppImageLoader> {
+  static const int _maxRefreshAttempts = 2;
+
   late Future<String?> _resolvedUrl;
-  bool _refreshAttempted = false;
+  int _refreshAttempts = 0;
 
   @override
   void initState() {
@@ -50,25 +56,34 @@ class _AppImageLoaderState extends State<AppImageLoader> {
     if (oldWidget.imageUrl != widget.imageUrl) _resolve();
   }
 
+  Future<String?> _resolveUrl(String reference) =>
+      widget.urlResolver?.call(reference) ?? resolveMediaDownloadUrl(reference);
+
   void _resolve() {
-    _refreshAttempted = false;
-    _resolvedUrl = resolveMediaDownloadUrl(widget.imageUrl);
+    _refreshAttempts = 0;
+    _resolvedUrl = _resolveUrl(widget.imageUrl);
   }
 
-  void _refreshExpiredUrl() {
-    if (_refreshAttempted || !mounted) return;
-    _refreshAttempted = true;
+  /// A signed URL can be stale, and a transient resolution failure can leave
+  /// the first attempt empty. Retry a bounded number of times, dropping the
+  /// cached signature each time so the Worker is actually re-queried.
+  void _refreshUrl() {
+    if (!mounted || _refreshAttempts >= _maxRefreshAttempts) return;
+    _refreshAttempts++;
+    final reference = widget.imageUrl;
+    invalidateMediaUrl(reference);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || widget.imageUrl != reference) return;
       setState(() {
-        _resolvedUrl = resolveMediaDownloadUrl(widget.imageUrl);
+        _resolvedUrl = _resolveUrl(reference);
       });
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final fallback = widget.errorWidget ??
+    final fallback =
+        widget.errorWidget ??
         ColoredBox(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: const Center(child: Icon(Icons.broken_image_outlined)),
@@ -77,7 +92,8 @@ class _AppImageLoaderState extends State<AppImageLoader> {
     // schedules a frame forever, so `pumpAndSettle` in widget tests never
     // converges (it once produced a 140 MB CI log), and a short signed-URL
     // fetch spins a whole animation tree for nothing on real devices.
-    final loading = widget.placeholder ??
+    final loading =
+        widget.placeholder ??
         ColoredBox(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Center(
@@ -92,27 +108,39 @@ class _AppImageLoaderState extends State<AppImageLoader> {
       future: _resolvedUrl,
       builder: (context, snapshot) {
         final url = snapshot.data;
-        if (snapshot.connectionState != ConnectionState.done) return _clip(loading);
-        if (url == null) return _clip(fallback);
+        if (snapshot.connectionState != ConnectionState.done) {
+          return _clip(loading);
+        }
+        if (url == null) {
+          // Resolution finished empty (e.g. a transient Worker failure). Give
+          // it a bounded second chance before showing the broken-image state.
+          _refreshUrl();
+          return _clip(fallback);
+        }
 
         final child = LayoutBuilder(
           builder: (context, constraints) {
             final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
-            final logicalWidth = widget.width ??
+            final logicalWidth =
+                widget.width ??
                 (constraints.hasBoundedWidth ? constraints.maxWidth : null);
-            final logicalHeight = widget.height ??
+            final logicalHeight =
+                widget.height ??
                 (constraints.hasBoundedHeight ? constraints.maxHeight : null);
-            final cacheWidth = widget.memCacheWidth ??
-                (logicalWidth != null && logicalWidth.isFinite && logicalWidth > 0
+            final cacheWidth =
+                widget.memCacheWidth ??
+                (logicalWidth != null &&
+                        logicalWidth.isFinite &&
+                        logicalWidth > 0
                     ? (logicalWidth * dpr).ceil()
                     : null);
             final cacheHeight = cacheWidth == null
                 ? widget.memCacheHeight ??
-                    (logicalHeight != null &&
-                            logicalHeight.isFinite &&
-                            logicalHeight > 0
-                        ? (logicalHeight * dpr).ceil()
-                        : null)
+                      (logicalHeight != null &&
+                              logicalHeight.isFinite &&
+                              logicalHeight > 0
+                          ? (logicalHeight * dpr).ceil()
+                          : null)
                 : null;
             return Image.network(
               url,
@@ -128,7 +156,7 @@ class _AppImageLoaderState extends State<AppImageLoader> {
                 return loading;
               },
               errorBuilder: (_, _, _) {
-                _refreshExpiredUrl();
+                _refreshUrl();
                 return fallback;
               },
             );
@@ -141,7 +169,9 @@ class _AppImageLoaderState extends State<AppImageLoader> {
 
   Widget _clip(Widget child) {
     final radius = widget.borderRadius;
-    return radius == null ? child : ClipRRect(borderRadius: radius, child: child);
+    return radius == null
+        ? child
+        : ClipRRect(borderRadius: radius, child: child);
   }
 }
 

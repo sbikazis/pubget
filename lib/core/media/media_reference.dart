@@ -9,7 +9,13 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../errors/failure.dart';
 
 import 'media_storage_provider.dart';
+import 'media_url_cache.dart';
 import 'r2_media_storage_provider.dart';
+
+/// Shared cache for signed URLs resolved through the media Worker. Image
+/// widgets reuse it across rebuilds, and invalidate a reference when a URL
+/// fails to decode so the next attempt fetches a fresh signature.
+final MediaUrlCache mediaUrlCache = MediaUrlCache();
 
 bool isRemoteMediaUrl(String reference) {
   final value = reference.trim();
@@ -86,34 +92,52 @@ String? firebaseStorageObjectPath(String reference) {
   return objectPath.isEmpty ? null : objectPath;
 }
 
-Future<String?> _resolveR2Key(String key) async {
+Future<ResolvedMediaUrl> _resolveR2Key(String key) async {
   final config = resolveMediaBackendConfig();
-  if (!config.isConfigured) throw const NotFoundError("R2 media is not configured; use the legacy Firebase object.");
+  if (!config.isConfigured) {
+    throw const NotFoundError(
+      "R2 media is not configured; use the legacy Firebase object.",
+    );
+  }
   final provider = R2MediaStorageProvider(
     workerUrl: config.workerUrl,
     idTokenProvider: () async =>
         await FirebaseAuth.instance.currentUser?.getIdToken(),
   );
   try {
-    return await provider.resolveUrl(key);
+    final resolved = await provider.resolveUrlWithExpiry(key);
+    return ResolvedMediaUrl(url: resolved.url, expiresAt: resolved.expiresAt);
   } finally {
     provider.close();
   }
 }
 
+/// Drops any cached signature for [reference] so the next resolve call reaches
+/// the Worker again. Called when a previously cached URL fails to load.
+void invalidateMediaUrl(String reference, {MediaUrlCache? cache}) =>
+    (cache ?? mediaUrlCache).invalidate(reference.trim());
+
 /// Resolves R2 first for current keys and legacy Firebase download URLs.
 /// A 404 means the source has not been verified in R2 yet, so the original
 /// Firebase object remains the fallback. Authorization/network errors fail
 /// closed rather than bypassing the Worker with a Firebase URL.
-Future<String?> resolveMediaDownloadUrl(String reference) async {
+Future<String?> resolveMediaDownloadUrl(
+  String reference, {
+  MediaUrlCache? cache,
+}) async {
   final value = reference.trim();
   if (value.isEmpty || isOpaqueMediaReference(value)) return null;
+  final activeCache = cache ?? mediaUrlCache;
 
   if (isRemoteMediaUrl(value)) {
     final legacyKey = firebaseStorageObjectPath(value);
     if (legacyKey == null || !isR2MediaKey(legacyKey)) return value;
+    final cached = activeCache.read(legacyKey);
+    if (cached != null) return cached;
     try {
-      return await _resolveR2Key(legacyKey);
+      final resolved = await _resolveR2Key(legacyKey);
+      activeCache.write(legacyKey, resolved);
+      return resolved.url;
     } on NotFoundError {
       // Use the Firebase SDK fallback so Storage Rules still authorize the
       // caller; do not silently fall back to a long-lived bearer URL token.
@@ -128,8 +152,12 @@ Future<String?> resolveMediaDownloadUrl(String reference) async {
   }
 
   if (isR2MediaKey(value)) {
+    final cached = activeCache.read(value);
+    if (cached != null) return cached;
     try {
-      return await _resolveR2Key(value);
+      final resolved = await _resolveR2Key(value);
+      activeCache.write(value, resolved);
+      return resolved.url;
     } on NotFoundError {
       // Keep the original Firebase object readable until its R2 copy verifies.
     } on Object {
@@ -139,8 +167,11 @@ Future<String?> resolveMediaDownloadUrl(String reference) async {
 
   // Legacy Firebase object paths outside the current R2 key grammar remain
   // readable. Firebase Storage Rules enforce signed-in access on this path.
-  if (value.startsWith('/') || value.contains('..') ||
-      value.contains('\\') || value.contains('?') || value.length > 1024) {
+  if (value.startsWith('/') ||
+      value.contains('..') ||
+      value.contains('\\') ||
+      value.contains('?') ||
+      value.length > 1024) {
     return null;
   }
   try {
