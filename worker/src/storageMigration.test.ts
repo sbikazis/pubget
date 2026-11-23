@@ -45,6 +45,8 @@ describe("Firebase Storage migration primitives", () => {
     expect(hooks.isSupportedMediaPath("images/alice/avatar.jpg")).toBe(true);
     expect(hooks.isSupportedMediaPath("groups/group-1/alice/clip.mp4")).toBe(true);
     expect(hooks.isSupportedMediaPath("privateChats/chat-1/alice/voice.m4a")).toBe(true);
+    expect(hooks.isSupportedMediaPath("fan_works/alice/work/abc_cover.jpg")).toBe(true);
+    expect(hooks.isSupportedMediaPath("fan_works/alice/work/abc_doc.pdf")).toBe(true);
     expect(hooks.isSupportedMediaPath("fan_works/alice/work/cover.jpg")).toBe(false);
     expect(hooks.isSupportedMediaPath("reelAudios/alice/audio.m4a")).toBe(false);
     expect(hooks.isSupportedMediaPath("images/alice/../avatar.jpg")).toBe(false);
@@ -74,6 +76,9 @@ describe("Firebase Storage migration primitives", () => {
     expect(privateChat).toMatchObject({
       uploadedBy: "alice", scopeType: "privateChats", scopeId: "chat-1",
     });
+    expect(hooks.r2CustomMetadata(
+      "fan_works/alice/work/abc_cover.jpg", {}, "generation-3", "legacy-bucket",
+    ).uploadedBy).toBe("alice");
     expect(metadata.firebaseStorageDownloadTokens).toBeUndefined();
     expect(Object.entries(metadata).reduce((n,[k,v])=>n+k.length+v.length,0)).toBeLessThanOrEqual(1500);
   });

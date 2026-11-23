@@ -24,8 +24,8 @@ export interface Env {
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, HEAD, POST, PUT, DELETE, OPTIONS",
-  "access-control-allow-headers": "Authorization, Content-Type, Range, X-Kirari-Size",
-  "access-control-expose-headers": "Content-Length, Content-Type, ETag, Accept-Ranges, Content-Range",
+  "access-control-allow-headers": "Authorization, Content-Type, Range, Content-Range, X-Kirari-Size, X-Goog-Content-Length-Range",
+  "access-control-expose-headers": "Content-Length, Content-Type, ETag, Accept-Ranges, Content-Range, Range",
 };
 
 const LIMITS = {
@@ -219,6 +219,33 @@ export function isSafeMediaKey(key: string): boolean {
     /^[A-Za-z0-9_:-]{1,320}$/.test(scopeId) &&
     /^[A-Za-z0-9_-]{1,128}$/.test(uid) &&
     safeFileName(name, /^(jpg|jpeg|png|webp|gif|mp4|webm|mov|mp3|aac|ogg|m4a)$/);
+}
+
+/**
+ * Fan Works media keys: `fan_works/{uid}/{workId}/{nonce}_{mediaId}.{ext}`.
+ * The uid/workId/mediaId/nonce segments are the ones `buildMediaPath` in
+ * `functions/src/fanWorksStorage.js` has always minted, so existing documents
+ * keep their exact path shape when the backend flips to R2.
+ */
+export function isFanWorksKey(key: string): boolean {
+  const parts = key.split("/");
+  if (parts.length !== 4 || parts[0] !== "fan_works") return false;
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(parts[1])) return false;
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(parts[2])) return false;
+  return /^[A-Za-z0-9]{1,128}_[A-Za-z0-9_-]{1,128}\.(?:jpg|jpeg|png|webp|gif|pdf)$/.test(parts[3]);
+}
+
+/**
+ * Private state for an in-flight Fan Works resumable PDF upload.
+ *
+ * R2's multipart `complete()` needs every part's ETag. The Flutter client
+ * speaks the plain GCS Content-Range protocol and receives only a `Range`
+ * header, so the Worker has to remember the ETags itself. They live in a
+ * separate object outside the `fan_works/` namespace, which none of the
+ * public object routes can serve.
+ */
+export function fanWorksSessionStateKey(uploadId: string): string {
+  return `_fanworks-sessions/${encodeURIComponent(uploadId)}.json`;
 }
 
 function createKey(
@@ -897,6 +924,223 @@ export default {
         return new Response(null, { status: 204, headers: CORS });
       }
       return json({ error: "Method not allowed." }, 405);
+    }
+
+    // ---- Fan Works R2 media -------------------------------------------------
+    // Fan Works keeps the exact ticket contract the Flutter client already
+    // speaks: a resumable session URI for PDFs, a one-shot signed PUT for
+    // images, and a short-lived inline read URL for the reader. The bytes live
+    // in R2 instead of Firebase Storage, and every capability is HMAC-signed
+    // with the same MEDIA_SIGNING_SECRET used by the rest of this Worker.
+
+    // Internal bridge: the Functions signer opens sessions / mints read URLs
+    // using its Google service identity; no signing secret reaches Functions.
+    if (url.pathname === "/_internal/fanworks/sign" && request.method === "POST") {
+      if (!await authenticateKirariService(request, {
+        audience: env.KIRARI_R2_SERVICE_AUDIENCE,
+        serviceAccountEmail: env.KIRARI_R2_SERVICE_ACCOUNT_EMAIL,
+      })) return json({ error: "Service authentication required." }, 401);
+      let body: { op?: string; key?: string; contentType?: string; size?: number; disposition?: string };
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "Invalid request body." }, 400);
+      }
+      if (!body.key || !isFanWorksKey(body.key)) {
+        return json({ error: "Invalid Fan Works object key." }, 400);
+      }
+      if (body.op === "metadata") {
+        const object = await env.MEDIA_BUCKET.head(body.key);
+        if (!object) return json({ error: "Not found." }, 404);
+        return json({
+          size: object.size,
+          contentType: object.httpMetadata?.contentType ?? "application/octet-stream",
+        });
+      }
+      if (body.op === "read") {
+        // Reader URLs are inline for PDFs so a browser never offers to save
+        // the object; `nosniff` is added at serve time.
+        const expires = Math.floor(Date.now() / 1000) + 180;
+        const disposition = body.disposition === "attachment" ? "attachment" : "inline";
+        const signature = await hmac(env, [body.key, "read", expires, disposition].join("\n"));
+        const readerUrl = `${url.origin}/fanworks/read/${encodeURIComponent(body.key)}?expires=${expires}&disposition=${disposition}&signature=${signature}`;
+        return json({ url: readerUrl, expiresAt: expires * 1000 });
+      }
+      if (body.op === "upload") {
+        const size = Number(body.size);
+        const contentType = String(body.contentType ?? "");
+        const isPdf = body.key.endsWith(".pdf");
+        if (!Number.isSafeInteger(size) || size <= 0 ||
+            size > (isPdf ? 50 : 12) * 1024 * 1024) {
+          return json({ error: "Invalid Fan Works upload size." }, 400);
+        }
+        if (!isPdf && !/^image\/(jpeg|png|webp|gif)$/.test(contentType)) {
+          return json({ error: "Invalid Fan Works image type." }, 400);
+        }
+        if (isPdf && contentType !== "application/pdf") {
+          return json({ error: "Invalid Fan Works document type." }, 400);
+        }
+        const expires = Math.floor(Date.now() / 1000) + 900;
+        if (isPdf) {
+          // Multipart session for the resumable PDF protocol. The uploadId is
+          // signed into every chunk URL so a session cannot be hijacked.
+          const upload = await env.MEDIA_BUCKET.createMultipartUpload(body.key, {
+            httpMetadata: { contentType, cacheControl: "private, no-store" },
+            customMetadata: { mediaKind: "fan-work-document", pipeline: "fanworks-r2-v1" },
+          });
+          await env.MEDIA_BUCKET.put(fanWorksSessionStateKey(upload.uploadId), "[]", {
+            httpMetadata: { contentType: "application/json", cacheControl: "private, no-store" },
+          });
+          const signature = await hmac(env, [body.key, upload.uploadId, size, expires].join("\n"));
+          const sessionUrl = `${url.origin}/fanworks/session/${encodeURIComponent(body.key)}?uploadId=${encodeURIComponent(upload.uploadId)}&size=${size}&expires=${expires}&signature=${signature}`;
+          return json({ sessionUrl, expiresAt: expires * 1000 });
+        }
+        const signature = await hmac(env, [body.key, contentType, size, expires].join("\n"));
+        const uploadUrl = `${url.origin}/fanworks/upload/${encodeURIComponent(body.key)}?contentType=${encodeURIComponent(contentType)}&size=${size}&expires=${expires}&signature=${signature}`;
+        return json({ uploadUrl, expiresAt: expires * 1000 });
+      }
+      return json({ error: "Unsupported Fan Works operation." }, 400);
+    }
+
+    // One-shot signed PUT for Fan Works images.
+    if (url.pathname.startsWith("/fanworks/upload/") && request.method === "PUT") {
+      let key: string;
+      try {
+        key = decodeURIComponent(url.pathname.slice("/fanworks/upload/".length));
+      } catch {
+        return json({ error: "Invalid object key." }, 400);
+      }
+      const contentType = url.searchParams.get("contentType") ?? "";
+      const size = Number(url.searchParams.get("size"));
+      const expires = Number(url.searchParams.get("expires"));
+      const signature = url.searchParams.get("signature") ?? "";
+      const now = Math.floor(Date.now() / 1000);
+      if (!isFanWorksKey(key) || !/^image\/(jpeg|png|webp|gif)$/.test(contentType) ||
+          !Number.isSafeInteger(expires) || expires < now || expires > now + 930) {
+        return json({ error: "Invalid or expired upload authorization." }, 403);
+      }
+      const expected = await hmac(env, [key, contentType, size, expires].join("\n"));
+      const length = Number(request.headers.get("content-length"));
+      // `size` is the ticket's maxBytes, not the exact file size — the client
+      // picks the file after the ticket is minted. Enforce the signed ceiling.
+      if (signature !== expected || !Number.isSafeInteger(length) || length <= 0 ||
+          length > size || request.headers.get("content-type") !== contentType) {
+        return json({ error: "Upload signature or size mismatch." }, 403);
+      }
+      await env.MEDIA_BUCKET.put(key, request.body, {
+        httpMetadata: { contentType, cacheControl: "private, no-store" },
+        customMetadata: { mediaKind: "fan-work-image", pipeline: "fanworks-r2-v1" },
+      });
+      return json({ key }, 201);
+    }
+
+    // Resumable session for Fan Works PDFs. Each chunk carries a Content-Range
+    // header exactly like the GCS protocol the client already speaks.
+    if (url.pathname.startsWith("/fanworks/session/") && request.method === "PUT") {
+      let key: string;
+      try {
+        key = decodeURIComponent(url.pathname.slice("/fanworks/session/".length));
+      } catch {
+        return json({ error: "Invalid object key." }, 400);
+      }
+      const uploadId = url.searchParams.get("uploadId") ?? "";
+      const size = Number(url.searchParams.get("size"));
+      const expires = Number(url.searchParams.get("expires"));
+      const signature = url.searchParams.get("signature") ?? "";
+      const now = Math.floor(Date.now() / 1000);
+      if (!isFanWorksKey(key) || !uploadId ||
+          !Number.isSafeInteger(expires) || expires < now || expires > now + 930) {
+        return json({ error: "Invalid or expired upload session." }, 403);
+      }
+      const expected = await hmac(env, [key, uploadId, size, expires].join("\n"));
+      if (signature !== expected) {
+        return json({ error: "Invalid upload session signature." }, 403);
+      }
+      const range = /^bytes=(\d+)-(\d+)\/(\d+)$/.exec(request.headers.get("content-range") ?? "");
+      if (!range) return json({ error: "Invalid Content-Range." }, 400);
+      const start = Number(range[1]);
+      const end = Number(range[2]);
+      const total = Number(range[3]);
+      if (start > end || end >= total || total <= 0 || total > size ||
+          start % (8 * 1024 * 1024) !== 0) {
+        return json({ error: "Upload chunk is out of bounds." }, 400);
+      }
+      const partNumber = Math.floor(start / (8 * 1024 * 1024)) + 1;
+      if (!request.body) return json({ error: "Upload body is required." }, 400);
+      const length = end - start + 1;
+      if (Number(request.headers.get("content-length")) !== length) {
+        return json({ error: "Chunk size mismatch." }, 400);
+      }
+      const upload = env.MEDIA_BUCKET.resumeMultipartUpload(key, uploadId);
+      const part = await upload.uploadPart(partNumber, request.body);
+      // R2 returns a real ETag per part; keep it in a private sidecar because
+      // the GCS-shaped client ack carries a Range, not an ETag. A retry of the
+      // same part replaces its entry rather than duplicating it.
+      const stateKey = fanWorksSessionStateKey(uploadId);
+      const state = await env.MEDIA_BUCKET.get(stateKey);
+      let parts: Array<{ partNumber: number; etag: string }> = [];
+      if (state) {
+        try {
+          const stored: unknown = await state.json();
+          if (!Array.isArray(stored)) throw new Error("invalid session state");
+          parts = stored.filter((entry): entry is { partNumber: number; etag: string } =>
+            !!entry && typeof entry === "object" &&
+            Number.isInteger((entry as { partNumber?: unknown }).partNumber) &&
+            typeof (entry as { etag?: unknown }).etag === "string");
+        } catch {
+          await upload.abort();
+          return json({ error: "Upload session state is corrupt." }, 409);
+        }
+      } else if (partNumber !== 1) {
+        await upload.abort();
+        return json({ error: "Upload session state is unavailable." }, 409);
+      }
+      parts = parts.filter((entry) => entry.partNumber !== partNumber);
+      parts.push({ partNumber, etag: part.etag });
+      parts.sort((a, b) => a.partNumber - b.partNumber);
+      if (end === total - 1) {
+        await upload.complete(parts);
+        await env.MEDIA_BUCKET.delete(stateKey);
+        return json({ key }, 201);
+      }
+      await env.MEDIA_BUCKET.put(stateKey, JSON.stringify(parts), {
+        httpMetadata: { contentType: "application/json", cacheControl: "private, no-store" },
+      });
+      return new Response(null, {
+        status: 308,
+        headers: { ...CORS, range: `bytes=0-${end}` },
+      });
+    }
+
+    // Short-lived inline read URL for the Fan Works reader.
+    if (url.pathname.startsWith("/fanworks/read/") &&
+        (request.method === "GET" || request.method === "HEAD")) {
+      let key: string;
+      try {
+        key = decodeURIComponent(url.pathname.slice("/fanworks/read/".length));
+      } catch {
+        return json({ error: "Invalid object key." }, 400);
+      }
+      const expires = Number(url.searchParams.get("expires"));
+      const disposition = url.searchParams.get("disposition") === "attachment" ? "attachment" : "inline";
+      const signature = url.searchParams.get("signature") ?? "";
+      const now = Math.floor(Date.now() / 1000);
+      if (!isFanWorksKey(key) || !Number.isSafeInteger(expires) || expires < now || expires > now + 200) {
+        return json({ error: "Invalid or expired read authorization." }, 403);
+      }
+      const expected = await hmac(env, [key, "read", expires, disposition].join("\n"));
+      if (signature !== expected) {
+        return json({ error: "Invalid read signature." }, 403);
+      }
+      const object = await env.MEDIA_BUCKET.get(key);
+      if (!object) return json({ error: "Not found." }, 404);
+      const headers = new Headers(CORS);
+      object.writeHttpMetadata(headers);
+      headers.set("content-length", String(object.size));
+      headers.set("cache-control", "private, no-store");
+      headers.set("x-content-type-options", "nosniff");
+      headers.set("content-disposition", `${disposition}; filename="fanwork"`);
+      return new Response(request.method === "HEAD" ? null : object.body, { headers });
     }
 
     // Resolve a published R2-backed Edit to a short-lived byte-range URL.

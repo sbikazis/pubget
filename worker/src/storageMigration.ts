@@ -104,8 +104,13 @@ function validPath(path: string): boolean {
 function isSupportedMediaPath(path: string): boolean {
   const uid = "[A-Za-z0-9_-]{1,128}";
   const file = "[A-Za-z0-9_-]{1,80}\\.(?:jpg|jpeg|png|webp|gif|mp4|webm|mov|mp3|aac|ogg|m4a)";
+  // Fan Works objects live at the same path shape the R2 bridge serves. They
+  // must be inventoried and copied before the signer flips to R2, otherwise
+  // already-published works would lose their media on the deploy.
+  const fanWork = "[A-Za-z0-9]{1,128}_[A-Za-z0-9_-]{1,80}\\.(?:jpg|jpeg|png|webp|gif|pdf)";
   return new RegExp("^(?:(?:images|reels|audio)/" + uid + "/" + file +
-    "|(?:groups|privateChats)/[A-Za-z0-9_:-]{1,320}/" + uid + "/" + file + ")$").test(path);
+    "|(?:groups|privateChats)/[A-Za-z0-9_:-]{1,320}/" + uid + "/" + file +
+    "|fan_works/" + uid + "/[A-Za-z0-9_-]{1,128}/" + fanWork + ")$").test(path);
 }
 function metadataMap(input?: Record<string,string>): Record<string,string> {
   const out: Record<string,string> = {};
@@ -117,7 +122,8 @@ function metadataMap(input?: Record<string,string>): Record<string,string> {
 function r2CustomMetadata(path:string,input:Record<string,string>|undefined,generation:string,bucket:string):Record<string,string>{
  const source=metadataMap(input),parts=path.split("/");
  const inferred=parts.length===3&&["images","reels","audio"].includes(parts[0])?parts[1]:
-  parts.length===4&&["groups","privateChats"].includes(parts[0])?parts[2]:"";
+  parts.length===4&&["groups","privateChats"].includes(parts[0])?parts[2]:
+  parts.length===4&&parts[0]==="fan_works"?parts[1]:"";
  const scoped=parts.length===4&&["groups","privateChats"].includes(parts[0]);
  const result:Record<string,string>={
   ...(source.uploadedBy?{uploadedBy:source.uploadedBy}:inferred?{uploadedBy:inferred}:{}),
