@@ -349,6 +349,7 @@ async function commit(
     if (/ABORTED|FAILED_PRECONDITION|ALREADY_EXISTS/i.test(body)) {
       throw new Error("TRANSACTION_CONFLICT");
     }
+    throw new Error(`Firestore transaction commit failed (${result.status}): ${body}`);
   }
   if (!result.ok) throw new Error(`Firestore transaction commit failed (${result.status}).`);
 }
