@@ -13,11 +13,6 @@ import 'media_storage_provider.dart';
 import 'media_url_cache.dart';
 import 'r2_media_storage_provider.dart';
 
-/// Shared cache for signed URLs resolved through the media Worker. Image
-/// widgets reuse it across rebuilds, and invalidate a reference when a URL
-/// fails to decode so the next attempt fetches a fresh signature.
-final MediaUrlCache mediaUrlCache = MediaUrlCache();
-
 bool isRemoteMediaUrl(String reference) {
   final value = reference.trim();
   final uri = Uri.tryParse(value);
