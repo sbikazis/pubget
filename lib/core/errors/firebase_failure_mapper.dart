@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'failure.dart';
+import 'http_status_failure.dart';
 
 /// A locale-neutral sentence used when no domain-specific copy is supplied.
 const String _genericMessage = 'Something went wrong. Please try again.';
@@ -32,6 +33,27 @@ Failure mapFirebaseFailure(Object error, {String? message}) {
   // error that genuinely proves lost connectivity.
   if (error.runtimeType.toString() == 'SocketException') {
     return NetworkError(message ?? 'Check your connection and try again.');
+  }
+  if (error is HttpStatusFailure) {
+    final status = error.statusCode;
+    if (status == 401 || status == 403) {
+      return PermissionError(message ?? 'Please sign in again to continue.');
+    }
+    if (status == 429) {
+      return RateLimitedError(message ?? 'Too many requests. Please wait.');
+    }
+    if (status == 404) {
+      return NotFoundError(message ?? 'The requested resource was not found.');
+    }
+    if (status >= 500) {
+      // The Worker answered; this is never evidence of a lost connection.
+      return UnavailableError(
+        message ?? 'The service is temporarily unavailable. Please try again.',
+      );
+    }
+    if (status >= 400) {
+      return ValidationError(message ?? 'That request could not be completed.');
+    }
   }
   if (error is StateError) {
     return NotFoundError(message ?? 'The requested resource was not found.');

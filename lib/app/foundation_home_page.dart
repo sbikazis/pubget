@@ -57,9 +57,11 @@ class FoundationHomePage extends StatelessWidget {
                   label: 'Network',
                   value: network.isChecking
                       ? 'Checking…'
-                      : network.isOnline
-                      ? 'Online'
-                      : 'Offline',
+                      : switch (network.status) {
+                          NetworkStatus.online => 'Online',
+                          NetworkStatus.unknown => 'Unverified',
+                          NetworkStatus.offline => 'Offline',
+                        },
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 PubgetSecondaryButton(

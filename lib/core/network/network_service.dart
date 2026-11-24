@@ -60,6 +60,12 @@ class NetworkService extends ChangeNotifier {
   bool get isOnline => _resolved && _status == NetworkStatus.online;
   bool get isOffline => _resolved && _status == NetworkStatus.offline;
 
+  /// A failed reachability probe while the radio is up is `unknown`, not an
+  /// outage. Features that only need permission to try the real request must
+  /// use this instead of [isOnline], otherwise a blocked probe endpoint makes
+  /// a connected device look offline.
+  bool get isLikelyOnline => !isOffline;
+
   /// Whether a feature may attempt its request.
   ///
   /// An unresolved or unverifiable link is *never* a reason to block the user:
