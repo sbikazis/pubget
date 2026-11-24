@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - fix/media-group-image-r2-reference
+      - fix/production-followups
     paths:
       - "worker/**"
       - ".github/workflows/deploy-cloudflare-r2-worker.yml"

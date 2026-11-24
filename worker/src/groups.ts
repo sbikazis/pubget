@@ -576,6 +576,7 @@ export async function handleGroupsRequest(
     return await createGroup(uid, input, base, serviceToken);
   } catch (error) {
     console.error("Group creation failed", error);
-    return response({ error: "Group creation failed. Please try again." }, 503);
+    const detail = error instanceof Error ? error.message : String(error);
+    return response({ error: `Group creation failed: ${detail}` }, 503);
   }
 }
