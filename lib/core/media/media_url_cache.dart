@@ -18,6 +18,9 @@ final class ResolvedMediaUrl {
       expiresAt.isAfter(now.add(safetyMargin));
 }
 
+/// Process-wide cache shared by R2 and legacy media resolvers.
+final MediaUrlCache mediaUrlCache = MediaUrlCache();
+
 final class MediaUrlCache {
   MediaUrlCache({
     this.safetyMargin = const Duration(seconds: 30),
@@ -34,15 +37,17 @@ final class MediaUrlCache {
 
   /// Returns a cached URL only when it is still fresh; stale entries are
   /// removed so a failed refresh cannot silently serve an expired signature.
-  String? read(String key) {
+  ResolvedMediaUrl? readEntry(String key) {
     final entry = _entries[key];
     if (entry == null) return null;
     if (!entry.isUsableAt(_clock(), safetyMargin)) {
       _entries.remove(key);
       return null;
     }
-    return entry.url;
+    return entry;
   }
+
+  String? read(String key) => readEntry(key)?.url;
 
   void write(String key, ResolvedMediaUrl value) {
     _entries.remove(key);
