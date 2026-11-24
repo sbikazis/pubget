@@ -3,10 +3,10 @@ import 'dart:io';
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
+import '../../../core/media/legacy_media_resolver.dart';
 import '../../../core/media/media_storage_provider.dart';
 import 'r2_kirari_source_uploader.dart';
 
@@ -556,13 +556,13 @@ abstract interface class KirariRepository {
 class FirebaseKirariRepository implements KirariRepository {
   FirebaseKirariRepository({
     FirebaseFunctions? functions,
-    FirebaseStorage? storage,
+    LegacyMediaResolver? legacyResolver,
     ImagePicker? picker,
     http.Client? httpClient,
     String? workerUrl,
   }) : _functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
-       _storage = storage ?? FirebaseStorage.instance,
+       _legacyResolver = legacyResolver ?? legacyMediaResolver,
        _picker = picker ?? ImagePicker(),
        _httpClient = httpClient ?? http.Client(),
        _workerUrl = (workerUrl ?? resolveMediaBackendConfig().workerUrl)
@@ -570,8 +570,9 @@ class FirebaseKirariRepository implements KirariRepository {
 
   final FirebaseFunctions _functions;
 
-  /// Kept only for legacy Firebase Storage objects published before R2.
-  final FirebaseStorage _storage;
+  /// Legacy objects published before R2 are resolved by an authorized server
+  /// bridge; this app never talks to the Firebase Storage SDK.
+  final LegacyMediaResolver _legacyResolver;
   final ImagePicker _picker;
   final http.Client _httpClient;
   final String _workerUrl;
@@ -580,8 +581,6 @@ class FirebaseKirariRepository implements KirariRepository {
     uidProvider: () => FirebaseAuth.instance.currentUser?.uid ?? '',
     getIdToken: _getIdToken,
   );
-  final Map<String, Future<String>> _downloadUrlCache =
-      <String, Future<String>>{};
   final Map<String, _SignedUrl> _resolvedUrlCache = <String, _SignedUrl>{};
 
   Future<String> _getIdToken() async {
@@ -639,22 +638,13 @@ class FirebaseKirariRepository implements KirariRepository {
     String? mediaBackend,
   }) async {
     if (mediaBackend == 'r2') return _resolveKirariUrl(storagePath);
-    final cached = _downloadUrlCache.remove(storagePath);
-    if (cached != null) {
-      _downloadUrlCache[storagePath] = cached;
-      return cached;
+    // The resolver owns an expiry-aware cache, so do not keep another
+    // indefinite future cache here — that would serve stale signed URLs.
+    final resolved = await _legacyResolver.resolve(storagePath);
+    if (resolved == null) {
+      throw StateError('Legacy Kirari media is not available.');
     }
-    final pending = _storage.ref(storagePath).getDownloadURL();
-    _downloadUrlCache[storagePath] = pending;
-    while (_downloadUrlCache.length > 128) {
-      _downloadUrlCache.remove(_downloadUrlCache.keys.first);
-    }
-    try {
-      return await pending;
-    } catch (_) {
-      _downloadUrlCache.remove(storagePath);
-      rethrow;
-    }
+    return resolved.url;
   }
 
   Future<Map<dynamic, dynamic>> _call(

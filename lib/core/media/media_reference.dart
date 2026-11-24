@@ -1,21 +1,17 @@
 /// Normalizes media references stored by Pubget. New bare object keys are
-/// Cloudflare R2 keys and are resolved through the authenticated media Worker.
-/// Existing full HTTPS URLs remain directly fetchable.
+/// Cloudflare R2 keys resolved through the authenticated media Worker. Legacy
+/// Firebase objects go through a short-lived server-side bridge; other full
+/// HTTPS URLs remain directly fetchable.
 library;
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
 import '../errors/failure.dart';
 
+import 'legacy_media_resolver.dart';
 import 'media_storage_provider.dart';
 import 'media_url_cache.dart';
 import 'r2_media_storage_provider.dart';
-
-/// Shared cache for signed URLs resolved through the media Worker. Image
-/// widgets reuse it across rebuilds, and invalidate a reference when a URL
-/// fails to decode so the next attempt fetches a fresh signature.
-final MediaUrlCache mediaUrlCache = MediaUrlCache();
 
 bool isRemoteMediaUrl(String reference) {
   final value = reference.trim();
@@ -118,34 +114,46 @@ void invalidateMediaUrl(String reference, {MediaUrlCache? cache}) =>
     (cache ?? mediaUrlCache).invalidate(reference.trim());
 
 /// Resolves R2 first for current keys and legacy Firebase download URLs.
-/// A 404 means the source has not been verified in R2 yet, so the original
-/// Firebase object remains the fallback. Authorization/network errors fail
-/// closed rather than bypassing the Worker with a Firebase URL.
+/// A 404 means the source has not been verified in R2 yet, so the authorized
+/// legacy bridge is tried. Authorization/network errors fail closed rather
+/// than bypassing the Worker with an unsignable Firebase URL.
 Future<String?> resolveMediaDownloadUrl(
   String reference, {
   MediaUrlCache? cache,
+  LegacyMediaResolver? legacyResolver,
 }) async {
   final value = reference.trim();
   if (value.isEmpty || isOpaqueMediaReference(value)) return null;
   final activeCache = cache ?? mediaUrlCache;
+  final resolver = legacyResolver ?? legacyMediaResolver;
 
   if (isRemoteMediaUrl(value)) {
     final legacyKey = firebaseStorageObjectPath(value);
-    if (legacyKey == null || !isR2MediaKey(legacyKey)) return value;
+    // Unrelated HTTPS links are still fetched directly.
+    if (legacyKey == null) return value;
     final cached = activeCache.read(legacyKey);
     if (cached != null) return cached;
+    if (!isR2MediaKey(legacyKey)) {
+      // Legacy paths outside today's R2 grammar (for example
+      // `users/{uid}/avatar.jpg`) go straight to the authorized bridge;
+      // reusing their permanent `token=` URL would defeat the migration.
+      final legacy = await resolver.resolve(legacyKey);
+      if (legacy == null) return null;
+      activeCache.write(legacyKey, legacy);
+      return legacy.url;
+    }
     try {
       final resolved = await _resolveR2Key(legacyKey);
       activeCache.write(legacyKey, resolved);
       return resolved.url;
     } on NotFoundError {
-      // Use the Firebase SDK fallback so Storage Rules still authorize the
-      // caller; do not silently fall back to a long-lived bearer URL token.
-      try {
-        return await FirebaseStorage.instance.ref(legacyKey).getDownloadURL();
-      } on Object {
-        return null;
-      }
+      // The R2 copy is not verified yet. Ask the server to authorize the
+      // legacy object and mint a short-lived URL; never reuse the permanent
+      // `token=` that arrived in the stored link.
+      final legacy = await resolver.resolve(legacyKey);
+      if (legacy == null) return null;
+      activeCache.write(legacyKey, legacy);
+      return legacy.url;
     } on Object {
       return null;
     }
@@ -159,26 +167,23 @@ Future<String?> resolveMediaDownloadUrl(
       activeCache.write(value, resolved);
       return resolved.url;
     } on NotFoundError {
-      // Keep the original Firebase object readable until its R2 copy verifies.
+      // A bare key may exist only in the legacy bucket until the backfill
+      // verifies. Route it through the same authorized bridge.
+      final legacy = await resolver.resolve(value);
+      if (legacy == null) return null;
+      activeCache.write(value, legacy);
+      return legacy.url;
     } on Object {
       return null;
     }
   }
 
-  // Legacy Firebase object paths outside the current R2 key grammar remain
-  // readable. Firebase Storage Rules enforce signed-in access on this path.
-  if (value.startsWith('/') ||
-      value.contains('..') ||
-      value.contains('\\') ||
-      value.contains('?') ||
-      value.length > 1024) {
-    return null;
-  }
-  try {
-    return await FirebaseStorage.instance.ref(value).getDownloadURL();
-  } on Object {
-    return null;
-  }
+  // Legacy Firebase object paths outside the current R2 key grammar stay
+  // readable only when the server authorizes them and mints a short-lived URL.
+  final legacy = await resolver.resolve(value);
+  if (legacy == null) return null;
+  activeCache.write(value, legacy);
+  return legacy.url;
 }
 
 /// Maps a picked video extension to a Worker-accepted MIME type.
