@@ -14,7 +14,7 @@ const DEFAULT_WORKER_URL = "https://pubget-media.pubget.workers.dev";
 /**
  * R2-backed replacement for the Firebase Storage Fan Works signer.
  *
- * The public contract is deliberately identical to `createFanWorksSigner`:
+ * The public contract is deliberately identical to the former GCS signer:
  * the domain still receives `{ sessionUri, path, mime, maxBytes, expiresAt }`
  * for documents, `{ url, path, mime, maxBytes, expiresAt }` for images, and
  * `{ url, expiresAt }` for reader links. The Flutter client therefore needs

@@ -56,6 +56,7 @@ const { createGamesDomain } = require("./src/gamesDomain");
 const { createAnimeCatalogDomain } = require("./src/animeCatalogDomain");
 const { createFanWorksDomain } = require("./src/fanWorksDomain");
 const { createR2FanWorksSigner } = require("./src/r2FanWorksSigner");
+const { createLegacyMediaResolver } = require("./src/legacyMediaBridge");
 const { createEconomyDomain } = require("./src/economyDomain");
 const { createAchievementsDomain } = require("./src/achievementsDomain");
 const { createAchievementEventProcessor } = require("./src/achievementEvents");
@@ -120,6 +121,18 @@ exports.updateSocialProfile = onCall(
     randomUUID,
     HttpsError,
     userNameRegistry: userNameCallables.registry,
+  }),
+);
+
+// Temporary bridge: signed-in clients resolve unmigrated Firebase Storage
+// objects here instead of holding the Firebase Storage SDK. Delete once the
+// GCS -> R2 backfill (including fan_works/) is verified in production.
+exports.resolveLegacyMedia = onCall(
+  { region: "us-central1" },
+  createLegacyMediaResolver({
+    db: lazyFirestore,
+    bucket: lazyStorageBucket,
+    HttpsError,
   }),
 );
 
