@@ -46,7 +46,7 @@ final class LegacyMediaResolver {
     final path = reference.trim();
     if (path.isEmpty || path.length > 1024 || path.contains('://')) return null;
 
-    final cached = _cache.read(path);
+    final cached = _cache.readEntry(path);
     if (cached != null) return cached;
 
     try {
