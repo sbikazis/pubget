@@ -30,7 +30,8 @@ final class LegacyMediaResolver {
   /// Creates Firebase clients only on first use, so importing this library in
   /// a unit test never requires an initialized Firebase app.
   Future<Map<dynamic, dynamic>> _invoke(Map<String, dynamic> data) async {
-    if (_call != null) return await _call!(data);
+    final injected = _call;
+    if (injected != null) return await injected(data);
     final client =
         _functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
     final result = await client
@@ -70,4 +71,4 @@ final class LegacyMediaResolver {
 
 /// Default resolver used by media and Kirari repositories. Tests inject their
 /// own instance through the repository constructors.
-late final LegacyMediaResolver legacyMediaResolver = LegacyMediaResolver();
+final LegacyMediaResolver legacyMediaResolver = LegacyMediaResolver();
