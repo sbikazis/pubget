@@ -6,6 +6,9 @@ abstract final class ChatFailureCodes {
   static const permission = 'chat_permission';
   static const notFound = 'chat_not_found';
   static const validation = 'chat_validation';
+  static const timeout = 'chat_timeout';
+  static const rateLimited = 'chat_rate_limited';
+  static const serviceUnavailable = 'chat_unavailable';
   static const unknown = 'chat_unknown';
 }
 
@@ -22,7 +25,11 @@ String chatFailureCode(Failure failure) {
   if (failure is PermissionError) return ChatFailureCodes.permission;
   if (failure is NotFoundError) return ChatFailureCodes.notFound;
   if (failure is ValidationError) return ChatFailureCodes.validation;
-  if (isTransientChatFailure(failure)) return ChatFailureCodes.network;
+  if (failure is NetworkError) return ChatFailureCodes.network;
+  if (failure is TimeoutError) return ChatFailureCodes.timeout;
+  if (failure is RateLimitedError) return ChatFailureCodes.rateLimited;
+  if (failure is UnavailableError) return ChatFailureCodes.serviceUnavailable;
+  if (failure is TransactionConflictError) return ChatFailureCodes.serviceUnavailable;
   return ChatFailureCodes.unknown;
 }
 

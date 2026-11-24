@@ -361,27 +361,34 @@ Failure _chatFailure(Object error) {
       'unauthenticated' ||
       'permission-denied' => const PermissionError(ChatFailureCodes.permission),
       'not-found' => const NotFoundError(ChatFailureCodes.notFound),
+      // A callable answered: this is a service outage, never proof that the
+      // device lost its connection. Showing "No internet" here was issue #200.
       'unavailable' ||
-      'deadline-exceeded' ||
-      'resource-exhausted' ||
       'internal' ||
       'aborted' ||
-      'data-loss' => const NetworkError(ChatFailureCodes.network),
+      'data-loss' => const UnavailableError(
+        ChatFailureCodes.serviceUnavailable,
+      ),
+      'deadline-exceeded' => const TimeoutError(ChatFailureCodes.timeout),
+      'resource-exhausted' => const RateLimitedError(ChatFailureCodes.rateLimited),
       'invalid-argument' ||
       'failed-precondition' ||
       'already-exists' => const ValidationError(ChatFailureCodes.validation),
-      _ => const UnknownError(ChatFailureCodes.unknown),
-
+      _ => const UnavailableError(ChatFailureCodes.serviceUnavailable),
     };
   }
   if (error is FirebaseException) {
     return switch (error.code) {
+      'network-request-failed' ||
+      'network-error' => const NetworkError(ChatFailureCodes.network),
       'unavailable' ||
-      'deadline-exceeded' ||
       'internal' ||
       'aborted' ||
-      'data-loss' => const NetworkError(ChatFailureCodes.network),
-      _ => const UnknownError(ChatFailureCodes.unknown),
+      'data-loss' => const UnavailableError(
+        ChatFailureCodes.serviceUnavailable,
+      ),
+      'deadline-exceeded' => const TimeoutError(ChatFailureCodes.timeout),
+      _ => const UnavailableError(ChatFailureCodes.serviceUnavailable),
     };
   }
   return const UnknownError(ChatFailureCodes.unknown);

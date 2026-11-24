@@ -304,6 +304,12 @@ function docUrl(base: string, ...segments: string[]): string {
   return `${base}/${segments.map(encodeURIComponent).join("/")}`;
 }
 
+/** Firestore REST writes require a resource name, never a full fetch URL. */
+export function documentName(url: string): string {
+  const prefix = "https://firestore.googleapis.com/v1/";
+  return url.startsWith(prefix) ? url.slice(prefix.length) : url;
+}
+
 async function readDocument(
   url: string,
   token: string,
@@ -360,7 +366,10 @@ function newDocumentId(): string {
 }
 
 function createWrite(url: string, fields: Record<string, FirestoreValue>): Write {
-  return { update: { name: url, fields }, currentDocument: { exists: false } };
+  return {
+    update: { name: documentName(url), fields },
+    currentDocument: { exists: false },
+  };
 }
 
 function roleDefinition(role: string): Record<string, unknown> {
@@ -577,7 +586,6 @@ export async function handleGroupsRequest(
     return await createGroup(uid, input, base, serviceToken);
   } catch (error) {
     console.error("Group creation failed", error);
-    const detail = error instanceof Error ? error.message : String(error);
-    return response({ error: `Group creation failed: ${detail}` }, 503);
+    return response({ error: "Group creation failed. Please try again." }, 503);
   }
 }

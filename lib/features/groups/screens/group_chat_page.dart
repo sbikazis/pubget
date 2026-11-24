@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../app/app_back_button.dart';
 import '../../../app/app_router.dart';
 import '../../../core/l10n/app_strings.dart';
+import '../../../core/errors/failure.dart';
 import '../../../core/links/pubget_links.dart';
 import '../../../core/loading/loading_state.dart';
 import '../../../core/theme/app_radius.dart';
@@ -204,6 +205,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   state: chat.state,
                   hasMore: chat.hasMore,
                   failureMessage: chat.failure?.message,
+                  failureIsNetwork: chat.failure is NetworkError,
                   replyId: chat.replyTarget?.id,
                   pinnedId: pinned?.id,
                   pinnedSender: pinned?.senderName,
@@ -218,7 +220,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 return Column(
                   children: <Widget>[
                     if (slice.state == LoadingState.offline ||
-                        (slice.failureMessage != null &&
+                        (slice.failureIsNetwork &&
+                            slice.failureMessage != null &&
                             chat.messages.isNotEmpty))
                       _OfflineBanner(message: slice.failureMessage),
                     Expanded(
@@ -1896,6 +1899,7 @@ class _ChatChromeSlice {
     required this.state,
     required this.hasMore,
     required this.failureMessage,
+    required this.failureIsNetwork,
     required this.replyId,
     required this.pinnedId,
     required this.pinnedSender,
@@ -1906,6 +1910,7 @@ class _ChatChromeSlice {
   final LoadingState state;
   final bool hasMore;
   final String? failureMessage;
+  final bool failureIsNetwork;
   final String? replyId;
 
   /// Newest live pinned message, surfaced as a banner above the composer.

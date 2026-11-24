@@ -1,10 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  documentName,
   normalizeUsername,
   validUsername,
   validateProfile,
   handleIdentityRequest,
 } from "./identity";
+
+describe("Firestore write resource names", () => {
+  it("strips the REST origin from document URLs before committing writes", () => {
+    const url = "https://firestore.googleapis.com/v1/projects/pubget-aaf27/databases/(default)/documents/users/alice";
+    expect(documentName(url)).toBe(
+      "projects/pubget-aaf27/databases/(default)/documents/users/alice",
+    );
+    expect(documentName("projects/pubget-aaf27/databases/(default)/documents/users/alice")).toBe(
+      "projects/pubget-aaf27/databases/(default)/documents/users/alice",
+    );
+  });
+});
 
 describe("identity username validation", () => {
   it("normalizes case and surrounding whitespace", () => {

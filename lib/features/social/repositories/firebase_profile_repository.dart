@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import '../../../core/media/media_repository_factory.dart';
 import '../../../core/media/media_url_uploader.dart';
+import '../../../core/media/media_validation.dart';
 
 import '../../../core/errors/failure.dart';
 import '../../../core/identity/identity_worker_client.dart';
@@ -108,7 +109,11 @@ final class FirebaseProfileRepository implements ProfileRepository {
       ownerUid: userId,
       bytes: bytes,
       claimedContentType: contentType,
-      fileName: 'avatar.jpg',
+      fileName: imageFileNameForUpload(
+        bytes: bytes,
+        contentType: contentType,
+        prefix: 'avatar',
+      ),
     );
     final key = uploaded.valueOrNull;
     if (key == null) return uploaded;
@@ -139,7 +144,11 @@ final class FirebaseProfileRepository implements ProfileRepository {
       ownerUid: userId,
       bytes: bytes,
       claimedContentType: contentType,
-      fileName: 'cover.jpg',
+      fileName: imageFileNameForUpload(
+        bytes: bytes,
+        contentType: contentType,
+        prefix: 'cover',
+      ),
     );
     final key = uploaded.valueOrNull;
     if (key == null) return uploaded;
