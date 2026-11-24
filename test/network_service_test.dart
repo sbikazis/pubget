@@ -85,6 +85,31 @@ void main() {
     expect(service.hasResolved, isFalse);
   });
 
+  test('a failed probe with a live link is unverified, not offline', () async {
+    final links = StreamController<bool>.broadcast();
+    final service = NetworkService(
+      probe: () async => false,
+      linkChanges: links.stream,
+      initialLinkState: () async => true,
+    );
+
+    service.start();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(service.status, NetworkStatus.unknown);
+    expect(service.isOffline, isFalse);
+    expect(service.isLikelyOnline, isTrue);
+    expect(service.canAttemptNetworkRequest, isTrue);
+
+    links.add(false);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(service.status, NetworkStatus.offline);
+    expect(service.isLikelyOnline, isFalse);
+
+    await links.close();
+    service.dispose();
+  });
+
   test('network service stays unresolved and does not claim offline at startup', () {
     final service = NetworkService(probe: () async => true);
 

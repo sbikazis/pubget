@@ -3,11 +3,12 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/errors/http_status_failure.dart';
 import '../../../core/media/media_storage_provider.dart';
 
 /// HTTP failure from a privileged Pubget Worker route. The status code is the
 /// only trustworthy signal: a 503 is a backend failure, not a lost connection.
-class GroupWorkerException implements Exception {
+class GroupWorkerException implements Exception, HttpStatusFailure {
   const GroupWorkerException(this.statusCode, this.message);
 
   final int statusCode;

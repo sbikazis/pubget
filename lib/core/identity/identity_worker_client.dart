@@ -3,9 +3,10 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
+import '../errors/http_status_failure.dart';
 import '../media/media_storage_provider.dart';
 
-class IdentityWorkerException implements Exception {
+class IdentityWorkerException implements Exception, HttpStatusFailure {
   const IdentityWorkerException(this.statusCode, this.message);
 
   final int statusCode;
