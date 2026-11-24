@@ -59,7 +59,9 @@ function harness(seed: Record<string, StoredDoc> = {}) {
       const writes = body.writes ?? [];
       commits.push(writes);
       const absolute = (name: string) =>
-        name.startsWith(BASE) ? name : `${BASE}/${name}`;
+        name.startsWith("https://")
+          ? name
+          : `https://firestore.googleapis.com/v1/${name}`;
       for (const write of writes) {
         if (write.update) {
           const key = absolute(write.update.name);
