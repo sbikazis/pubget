@@ -197,8 +197,7 @@ export function createCoreReadsHandler(dependencies: CoreReadsDependencies = {})
         );
       }
       console.error("Core read failed", error);
-      const detail = error instanceof Error ? error.message : String(error);
-      return json({ error: `Core read failed: ${detail}` }, 503);
+      return json({ error: "Core read failed." }, 503);
     }
   };
 }

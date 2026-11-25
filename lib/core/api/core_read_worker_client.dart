@@ -13,7 +13,9 @@ import '../media/media_storage_provider.dart';
 class CoreReadWorkerException implements Exception, HttpStatusFailure {
   const CoreReadWorkerException(this.statusCode, this.message);
 
+  @override
   final int statusCode;
+  @override
   final String message;
 
   @override
