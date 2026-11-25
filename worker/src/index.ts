@@ -9,6 +9,7 @@ import {
   createAchievementNotificationDelivery,
 } from "./achievementNotifications";
 import { handleGroupsRequest } from "./groups";
+import { handleCoreReadsRequest } from "./coreReads";
 
 export interface Env {
   MEDIA_BUCKET: R2Bucket;
@@ -499,6 +500,17 @@ export default {
           return json({ error: "Username reservation changed concurrently. Please retry." }, 409);
         }
         return json({ error: "Identity operation failed." }, 503);
+      }
+    }
+
+    // Read-only core callables moved off Firebase Functions because that
+    // project cannot be billed. The Worker reuses the exact domain modules.
+    if (url.pathname.startsWith("/core/")) {
+      try {
+        const coreResponse = await handleCoreReadsRequest(request, env);
+        if (coreResponse) return coreResponse;
+      } catch {
+        return json({ error: "Core read failed." }, 503);
       }
     }
 

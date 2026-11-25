@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
+import '../../../core/api/core_read_worker_client.dart';
 import '../../../core/errors/result.dart';
 import '../../groups/models/group_models.dart';
 import '../../events/models/event_models.dart';
@@ -14,13 +14,12 @@ import 'home_repository.dart';
 final class FirebaseHomeRepository implements HomeRepository {
   FirebaseHomeRepository({
     FirebaseFirestore? firestore,
-    FirebaseFunctions? functions,
+    CoreReadWorkerClient? workerClient,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+       _workerClient = workerClient ?? HttpCoreReadWorkerClient.forFirebase();
 
   final FirebaseFirestore _firestore;
-  final FirebaseFunctions _functions;
+  final CoreReadWorkerClient _workerClient;
 
   Query<Map<String, dynamic>> _groups() =>
       _firestore.collection('groups').where('isSearchable', isEqualTo: true);
@@ -206,14 +205,14 @@ final class FirebaseHomeRepository implements HomeRepository {
     int limit = 8,
   }) async {
     try {
-      final result = await _functions.httpsCallable('getDiscoveryFeed').call(
+      final data = await _workerClient.post(
+        '/core/discovery',
         <String, dynamic>{
           'section': ?section,
           'cursor': ?cursor,
           'limit': limit,
         },
       );
-      final data = Map<String, dynamic>.from(result.data as Map);
       return Success(DiscoveryFeed.fromMap(data));
     } on Object catch (error) {
       return FailureResult(discoveryFailureFrom(error));
