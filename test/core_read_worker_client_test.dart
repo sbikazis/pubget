@@ -5,7 +5,7 @@ import 'package:http/testing.dart';
 import 'package:pubget/core/api/core_read_worker_client.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/features/home/repositories/discovery_errors.dart';
-import 'package:test/test.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('HttpCoreReadWorkerClient', () {
