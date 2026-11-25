@@ -3,19 +3,22 @@ import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
+import '../../groups/repositories/group_worker_client.dart';
 import '../models/social_models.dart';
 import 'social_repository.dart';
 
 final class FirebaseSocialRepository implements SocialRepository {
   FirebaseSocialRepository({
     FirebaseFirestore? firestore,
+    // Retained for wiring compatibility; writes now use the free Worker path.
     FirebaseFunctions? functions,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+    GroupWorkerClient? workerClient,
+  }) : _firestoreOverride = firestore,
+       _workerClient = workerClient ?? HttpGroupWorkerClient.forFirebase();
 
-  final FirebaseFirestore _firestore;
-  final FirebaseFunctions _functions;
+  final FirebaseFirestore? _firestoreOverride;
+  FirebaseFirestore get _firestore => _firestoreOverride ?? FirebaseFirestore.instance;
+  final GroupWorkerClient _workerClient;
 
   @override
   Future<Result<SocialSnapshot>> getSnapshot(String userId) async {
@@ -89,7 +92,7 @@ final class FirebaseSocialRepository implements SocialRepository {
 
   Future<Result<void>> _call(String name, Map<String, dynamic> data) async {
     try {
-      await _functions.httpsCallable(name).call(data);
+      await _workerClient.post('/callables/$name', data);
       return const Success<void>(null);
     } on Object catch (error) {
       return FailureResult<void>(_mapFailure(error));
@@ -97,6 +100,16 @@ final class FirebaseSocialRepository implements SocialRepository {
   }
 
   static Failure _mapFailure(Object error) {
+    if (error is GroupWorkerException) {
+      return switch (error.statusCode) {
+        401 || 403 => PermissionError(error.message),
+        404 => NotFoundError(error.message),
+        429 => NetworkError(error.message),
+        400 || 409 => ValidationError(error.message),
+        >= 500 => UnavailableError(error.message),
+        _ => UnknownError(error.message),
+      };
+    }
     if (error is FirebaseFunctionsException) {
       return switch (error.code) {
         'unauthenticated' || 'permission-denied' => const PermissionError(

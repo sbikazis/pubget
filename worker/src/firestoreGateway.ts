@@ -28,6 +28,44 @@ export type GatewayOptions = {
   fetcher?: typeof fetch;
 };
 
+/** Firestore sentinel values used by the existing Admin-SDK domain modules. */
+export class FieldValueSentinel {
+  constructor(
+    readonly op: "serverTimestamp" | "delete" | "increment",
+    readonly operand?: number,
+  ) {}
+}
+
+export const FieldValue = {
+  serverTimestamp: () => new FieldValueSentinel("serverTimestamp"),
+  delete: () => new FieldValueSentinel("delete"),
+  increment: (operand: number) => new FieldValueSentinel("increment", operand),
+};
+
+type FieldTransform = {
+  fieldPath: string;
+  setToServerValue?: "REQUEST_TIME";
+  increment?: { operand: FirestoreValue };
+};
+
+type WriteOperation = {
+  update?: {
+    name: string;
+    fields: Record<string, FirestoreValue>;
+    updateMask?: { fieldPaths: string[] };
+    fieldTransforms?: FieldTransform[];
+  };
+  delete?: string;
+  currentDocument?: { exists?: boolean };
+};
+
+export class FirestoreWriteError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "FirestoreWriteError";
+  }
+}
+
 export class RestTimestamp {
   constructor(private readonly iso: string) {}
 
@@ -114,6 +152,110 @@ export function documentPathFromName(name: string): string {
   return path.split("/").map((segment) => decodeURIComponent(segment)).join("/");
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null &&
+    !Array.isArray(value) && !(value instanceof Date) &&
+    !(typeof (value as { toDate?: unknown }).toDate === "function") &&
+    !(value instanceof FieldValueSentinel);
+}
+
+function joinPath(prefix: string, segment: string): string {
+  return prefix ? `${prefix}.${segment}` : segment;
+}
+
+/** Field paths that an Admin-style `set`/`update` payload touches. */
+export function writeFieldPaths(value: unknown, prefix = ""): string[] {
+  if (!isPlainObject(value)) return [prefix];
+  const entries = Object.entries(value);
+  if (entries.length === 0) return [prefix];
+  return entries.flatMap(([key, item]) =>
+    writeFieldPaths(item, joinPath(prefix, key)),
+  );
+}
+
+/** Field paths already present in a Firestore document (for replace semantics). */
+function existingFieldPaths(
+  fields: Record<string, FirestoreValue> | undefined,
+  prefix = "",
+): string[] {
+  if (!fields) return [];
+  return Object.entries(fields).flatMap(([key, value]) => {
+    const path = joinPath(prefix, key);
+    const map = value.mapValue as { fields?: Record<string, FirestoreValue> } | undefined;
+    return map?.fields && Object.keys(map.fields).length > 0
+      ? existingFieldPaths(map.fields, path)
+      : [path];
+  });
+}
+
+function setAtPath(
+  fields: Record<string, FirestoreValue>,
+  segments: string[],
+  value: FirestoreValue,
+): void {
+  let cursor = fields;
+  for (const segment of segments.slice(0, -1)) {
+    const existing = cursor[segment];
+    const nested = (existing?.mapValue as { fields?: Record<string, FirestoreValue> } | undefined)
+      ?.fields ?? {};
+    const next: FirestoreValue = { mapValue: { fields: nested } };
+    cursor[segment] = next;
+    cursor = nested;
+  }
+  cursor[segments[segments.length - 1] ?? ""] = value;
+}
+
+type BuildWriteOptions = {
+  resourceName: string;
+  data?: Record<string, unknown>;
+  mask?: string[];
+  transforms?: FieldTransform[];
+  currentDocument?: { exists?: boolean };
+};
+
+function buildUpdateWrite({
+  resourceName,
+  data = {},
+  mask = [],
+  transforms = [],
+  currentDocument,
+}: BuildWriteOptions): WriteOperation {
+  const fields: Record<string, FirestoreValue> = {};
+  const paths = new Set(mask);
+  const fieldTransforms: FieldTransform[] = [...transforms];
+  for (const [key, value] of Object.entries(data)) {
+    if (value instanceof FieldValueSentinel) {
+      paths.add(key);
+      if (value.op === "serverTimestamp") {
+        fieldTransforms.push({ fieldPath: key, setToServerValue: "REQUEST_TIME" });
+      } else if (value.op === "increment") {
+        fieldTransforms.push({
+          fieldPath: key,
+          increment: { operand: encodeFirestoreValue(value.operand ?? 0) },
+        });
+      }
+      continue;
+    }
+    // Admin SDK interprets dots in update keys as nested field paths.
+    setAtPath(fields, key.split("."), encodeFirestoreValue(value));
+    for (const path of writeFieldPaths(value, key)) paths.add(path);
+  }
+  const update: WriteOperation["update"] = { name: resourceName, fields };
+  const fieldPaths = [...paths];
+  if (fieldPaths.length > 0) update.updateMask = { fieldPaths };
+  if (fieldTransforms.length > 0) update.fieldTransforms = fieldTransforms;
+  return { update, ...(currentDocument ? { currentDocument } : {}) };
+}
+
+function buildWriteFromData(
+  resourceName: string,
+  data: Record<string, unknown>,
+  options: { merge?: boolean; existingFields?: Record<string, FirestoreValue> } = {},
+): WriteOperation {
+  const paths = options.merge ? [] : existingFieldPaths(options.existingFields);
+  return buildUpdateWrite({ resourceName, data, mask: paths });
+}
+
 const FILTER_OPERATORS: Record<string, string> = {
   "==": "EQUAL",
   "!=": "NOT_EQUAL",
@@ -167,6 +309,48 @@ class DocumentReference {
   async get(): Promise<DocumentSnapshot> {
     return this.rest.getDocument(this.path);
   }
+
+  async set(
+    data: Record<string, unknown>,
+    options: { merge?: boolean } = {},
+  ): Promise<void> {
+    const existing = options.merge === true
+      ? undefined
+      : (await this.rest.getDocument(this.path)).data();
+    const write = buildWriteFromData(
+      this.rest.resourceName(this.path),
+      data,
+      { merge: options.merge === true, existingFields: encodeFields(existing) },
+    );
+    await this.rest.commit([write]);
+  }
+
+  async update(data: Record<string, unknown>): Promise<void> {
+    await this.rest.commit([buildUpdateWrite({
+      resourceName: this.rest.resourceName(this.path),
+      data,
+      currentDocument: { exists: true },
+    })]);
+  }
+
+  async create(data: Record<string, unknown>): Promise<void> {
+    await this.rest.commit([buildUpdateWrite({
+      resourceName: this.rest.resourceName(this.path),
+      data,
+      currentDocument: { exists: false },
+    })]);
+  }
+
+  async delete(): Promise<void> {
+    await this.rest.commit([{ delete: this.rest.resourceName(this.path) }]);
+  }
+}
+
+function encodeFields(data: Record<string, unknown> | undefined): Record<string, FirestoreValue> | undefined {
+  if (!data) return undefined;
+  return Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [key, encodeFirestoreValue(value)]),
+  );
 }
 
 class QueryBuilder {
@@ -285,7 +469,7 @@ class FirestoreRest {
   private readonly callFetch: typeof fetch;
 
   constructor(
-    projectId: string,
+    private readonly projectId: string,
     private readonly token: string,
     fetcher?: typeof fetch,
   ) {
@@ -307,14 +491,25 @@ class FirestoreRest {
     return path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
   }
 
-  async getDocument(path: string): Promise<DocumentSnapshot> {
-    const response = await this.callFetch(`${this.base}/${this.encodePath(path)}`, {
-      headers: this.headers(),
-    });
+  resourceName(path: string): string {
+    return `projects/${this.projectId}/databases/(default)/documents/${path}`;
+  }
+
+  async getDocument(path: string, transaction?: string): Promise<DocumentSnapshot> {
+    const transactionQuery = transaction
+      ? `?transaction=${encodeURIComponent(transaction)}`
+      : "";
+    const response = await this.callFetch(
+      `${this.base}/${this.encodePath(path)}${transactionQuery}`,
+      { headers: this.headers() },
+    );
     if (response.status === 404) {
       return new DocumentSnapshot(this, path.split("/").pop() ?? "", path, null);
     }
-    if (!response.ok) throw new Error(`Firestore read failed (${response.status}).`);
+    if (!response.ok) throw new FirestoreWriteError(
+      response.status,
+      `Firestore read failed (${response.status}).`,
+    );
     const document = await response.json() as FirestoreDocument;
     return new DocumentSnapshot(
       this,
@@ -340,12 +535,118 @@ class FirestoreRest {
     return await response.json() as Array<{ document?: FirestoreDocument }>;
   }
 
+  async beginTransaction(): Promise<string> {
+    const response = await this.callFetch(`${this.base}:beginTransaction`, {
+      method: "POST",
+      headers: { ...this.headers(), "content-type": "application/json" },
+      body: JSON.stringify({ options: { readWrite: {} } }),
+    });
+    if (!response.ok) throw new FirestoreWriteError(
+      response.status,
+      `Firestore transaction could not start (${response.status}).`,
+    );
+    const body = await response.json() as { transaction?: string };
+    if (!body.transaction) throw new Error("Firestore transaction id is missing.");
+    return body.transaction;
+  }
+
+  async commit(writes: WriteOperation[], transaction?: string): Promise<void> {
+    if (writes.length === 0) return;
+    const response = await this.callFetch(`${this.base}:commit`, {
+      method: "POST",
+      headers: { ...this.headers(), "content-type": "application/json" },
+      body: JSON.stringify({
+        writes,
+        ...(transaction ? { transaction } : {}),
+      }),
+    });
+    if (!response.ok) throw new FirestoreWriteError(
+      response.status,
+      `Firestore write failed (${response.status}).`,
+    );
+  }
+
+  async rollback(transaction: string): Promise<void> {
+    try {
+      await this.callFetch(`${this.base}:rollback`, {
+        method: "POST",
+        headers: { ...this.headers(), "content-type": "application/json" },
+        body: JSON.stringify({ transaction }),
+      });
+    } catch { /* best-effort cleanup; the transaction is already abandoned */ }
+  }
+
+  async runTransaction<T>(callback: (transaction: RestTransaction) => Promise<T>): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const id = await this.beginTransaction();
+      const writes: WriteOperation[] = [];
+      const transaction = new RestTransaction(this, id, writes);
+      try {
+        const result = await callback(transaction);
+        if (writes.length > 0) await this.commit(writes, id);
+        else await this.rollback(id);
+        return result;
+      } catch (error) {
+        lastError = error;
+        await this.rollback(id);
+        // A transaction can be aborted by concurrent writers. Retrying is
+        // safe because domain callbacks only queue writes and perform their
+        // external side effects after runTransaction resolves.
+        if (error instanceof FirestoreWriteError && error.status === 409) continue;
+        throw error;
+      }
+    }
+    throw lastError;
+  }
+
   collection(path: string): CollectionReference {
     return new CollectionReference(this, path);
   }
 
   collectionGroup(collectionId: string): CollectionGroupReference {
     return new CollectionGroupReference(this, collectionId);
+  }
+}
+
+/** Admin-SDK-shaped write surface exposed inside `db.runTransaction`. */
+export class RestTransaction {
+  constructor(
+    private readonly rest: FirestoreRest,
+    private readonly transactionId: string,
+    private readonly writes: WriteOperation[],
+  ) {}
+
+  get(ref: DocumentReference): Promise<DocumentSnapshot> {
+    return this.rest.getDocument(ref.path, this.transactionId);
+  }
+
+  set(ref: DocumentReference, data: Record<string, unknown>, options?: { merge?: boolean }): void {
+    this.writes.push(buildWriteFromData(
+      this.rest.resourceName(ref.path),
+      data,
+      { merge: options?.merge === true },
+    ));
+  }
+
+  update(ref: DocumentReference, data: Record<string, unknown>): void {
+    this.writes.push(buildUpdateWrite({
+      resourceName: this.rest.resourceName(ref.path),
+      data,
+      currentDocument: { exists: true },
+    }));
+  }
+
+  create(ref: DocumentReference, data: Record<string, unknown>): void {
+    this.writes.push(buildUpdateWrite({
+      resourceName: this.rest.resourceName(ref.path),
+      data,
+      currentDocument: { exists: false },
+    }));
+  }
+
+  delete(ref: DocumentReference): void {
+    this.writes.push({ delete: this.rest.resourceName(ref.path) });
   }
 }
 
