@@ -9,6 +9,7 @@ import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/media/media_url_uploader.dart';
 import '../../../core/media/media_repository_factory.dart';
+import '../../../core/media/media_validation.dart';
 import '../models/pubget_user.dart';
 import '../models/username_status.dart';
 import 'user_repository.dart';
@@ -98,7 +99,11 @@ final class FirebaseUserRepository implements UserRepository {
       ownerUid: userId,
       bytes: bytes,
       claimedContentType: contentType,
-      fileName: 'avatar.jpg',
+      fileName: imageFileNameForUpload(
+        bytes: bytes,
+        contentType: contentType,
+        prefix: 'avatar',
+      ),
     );
   }
 

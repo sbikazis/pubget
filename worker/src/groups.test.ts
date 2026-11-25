@@ -58,14 +58,16 @@ function harness(seed: Record<string, StoredDoc> = {}) {
       const body = JSON.parse(String(init?.body ?? "{}")) as { writes?: Write[] };
       const writes = body.writes ?? [];
       commits.push(writes);
+      const absolute = (name: string) =>
+        name.startsWith("https://")
+          ? name
+          : `https://firestore.googleapis.com/v1/${name}`;
       for (const write of writes) {
         if (write.update) {
-          docs.set(write.update.name, {
-            name: write.update.name,
-            fields: write.update.fields,
-          });
+          const key = absolute(write.update.name);
+          docs.set(key, { name: key, fields: write.update.fields });
         } else if (write.delete) {
-          docs.delete(write.delete);
+          docs.delete(absolute(write.delete));
         }
       }
       return jsonResponse({});
@@ -205,6 +207,9 @@ describe("groups/create worker route", () => {
 
     const writes = fake.commits[0];
     const paths = writes.map((write) => write.update?.name ?? write.delete ?? "");
+    // Firestore rejects absolute URLs in Write.name with INVALID_ARGUMENT.
+    expect(paths.every((path) => path.startsWith("projects/"))).toBe(true);
+    expect(paths.some((path) => path.startsWith("https://"))).toBe(false);
     expect(paths.some((path) => /\/groups\/[^/]+$/.test(path))).toBe(true);
     expect(paths.some((path) => path.endsWith("/members/founder-1"))).toBe(true);
     expect(paths.filter((path) => path.includes("/roles/")).length).toBe(7);

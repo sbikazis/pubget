@@ -76,6 +76,12 @@ function documentsBase(projectId: string): string {
   return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 }
 
+/** Firestore REST writes require a resource name, never a full fetch URL. */
+export function documentName(url: string): string {
+  const prefix = "https://firestore.googleapis.com/v1/";
+  return url.startsWith(prefix) ? url.slice(prefix.length) : url;
+}
+
 async function readDocument(url: string, token: string, transaction?: string): Promise<FirestoreDocument | null> {
   const target = transaction ? `${url}?transaction=${encodeURIComponent(transaction)}` : url;
   const result = await fetch(target, { headers: { Authorization: `Bearer ${token}` } });
@@ -223,7 +229,7 @@ export async function handleIdentityRequest(request: Request, env: IdentityEnv):
     if (!claim) {
       await commit(base, serviceToken, transaction, [{
         update: {
-          name: usernameDocument(base, normalized),
+          name: documentName(usernameDocument(base, normalized)),
           fields: { uid: value(uid), normalized: value(normalized), claimedAt: value(new Date().toISOString()) },
         },
         currentDocument: { exists: false },
@@ -255,7 +261,7 @@ export async function handleIdentityRequest(request: Request, env: IdentityEnv):
       const owner = decodeString(claim, "uid");
       if (owner && owner !== uid) return response({ error: "Username is already taken." }, 409);
       if (!claim) writes.push({
-        update: { name: usernameDocument(base, nextUsername), fields: {
+        update: { name: documentName(usernameDocument(base, nextUsername)), fields: {
           uid: value(uid), normalized: value(nextUsername), claimedAt: value(new Date().toISOString()),
         } },
         currentDocument: { exists: false },
@@ -297,7 +303,7 @@ export async function handleIdentityRequest(request: Request, env: IdentityEnv):
     }
     if (Object.keys(fields).length) {
       writes.push({
-        update: { name: userDocument(base, uid), fields },
+        update: { name: documentName(userDocument(base, uid)), fields },
         updateMask: { fieldPaths: Object.keys(fields) },
         currentDocument: { exists: true },
       });
@@ -305,7 +311,10 @@ export async function handleIdentityRequest(request: Request, env: IdentityEnv):
     if (currentUsername && currentUsername !== nextUsername) {
       const previousClaim = await readDocument(usernameDocument(base, currentUsername), serviceToken, transaction);
       if (decodeString(previousClaim, "uid") === uid) {
-        writes.push({ delete: usernameDocument(base, currentUsername), currentDocument: { exists: true } });
+        writes.push({
+          delete: documentName(usernameDocument(base, currentUsername)),
+          currentDocument: { exists: true },
+        });
       }
     }
     await commit(base, serviceToken, transaction, writes);

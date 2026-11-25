@@ -304,6 +304,12 @@ function docUrl(base: string, ...segments: string[]): string {
   return `${base}/${segments.map(encodeURIComponent).join("/")}`;
 }
 
+/** Firestore REST writes require a resource name, never a full fetch URL. */
+export function documentName(url: string): string {
+  const prefix = "https://firestore.googleapis.com/v1/";
+  return url.startsWith(prefix) ? url.slice(prefix.length) : url;
+}
+
 async function readDocument(
   url: string,
   token: string,
@@ -349,6 +355,7 @@ async function commit(
     if (/ABORTED|FAILED_PRECONDITION|ALREADY_EXISTS/i.test(body)) {
       throw new Error("TRANSACTION_CONFLICT");
     }
+    throw new Error(`Firestore transaction commit failed (${result.status}): ${body}`);
   }
   if (!result.ok) throw new Error(`Firestore transaction commit failed (${result.status}).`);
 }
@@ -359,7 +366,10 @@ function newDocumentId(): string {
 }
 
 function createWrite(url: string, fields: Record<string, FirestoreValue>): Write {
-  return { update: { name: url, fields }, currentDocument: { exists: false } };
+  return {
+    update: { name: documentName(url), fields },
+    currentDocument: { exists: false },
+  };
 }
 
 function roleDefinition(role: string): Record<string, unknown> {

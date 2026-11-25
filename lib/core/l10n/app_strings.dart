@@ -1365,6 +1365,18 @@ final class AppStrings {
       pick('Message was not sent.', 'لم تُرسل الرسالة.');
   String get messageWaitingConnection =>
       pick('Waiting for connection…', 'بانتظار الاتصال…');
+  String get messageServiceUnavailable => pick(
+    'Pubget services are unavailable right now. The message will retry.',
+    'خدمات Pubget غير متاحة الآن. ستتم إعادة المحاولة.',
+  );
+  String get messageSendingTimedOut => pick(
+    'The request timed out. The message will retry.',
+    'انتهت مهلة الطلب. ستتم إعادة المحاولة.',
+  );
+  String get messageRateLimited => pick(
+    'Too many messages. The message will retry shortly.',
+    'تم إرسال رسائل كثيرة. ستتم إعادة المحاولة قريباً.',
+  );
   String get messageRetryingAutomatically =>
       pick('Retrying automatically…', 'جارٍ إعادة المحاولة تلقائياً…');
   String get messageSendPermissionDenied => pick(
@@ -1388,6 +1400,12 @@ final class AppStrings {
     switch (code) {
       case 'chat_network':
         return messageWaitingConnection;
+      case 'chat_unavailable':
+        return messageServiceUnavailable;
+      case 'chat_timeout':
+        return messageSendingTimedOut;
+      case 'chat_rate_limited':
+        return messageRateLimited;
       case 'chat_permission':
         return messageSendPermissionDenied;
       case 'chat_not_found':

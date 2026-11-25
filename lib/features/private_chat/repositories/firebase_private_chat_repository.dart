@@ -296,17 +296,32 @@ Failure _chatFailure(Object error) {
       'permission-denied' => const PermissionError(ChatFailureCodes.permission),
       'not-found' => const NotFoundError(ChatFailureCodes.notFound),
       'unavailable' ||
-      'deadline-exceeded' ||
-      'resource-exhausted' => const NetworkError(ChatFailureCodes.network),
+      'internal' ||
+      'aborted' ||
+      'data-loss' => const UnavailableError(
+        ChatFailureCodes.serviceUnavailable,
+      ),
+      'deadline-exceeded' => const TimeoutError(ChatFailureCodes.timeout),
+      'resource-exhausted' => const RateLimitedError(ChatFailureCodes.rateLimited),
       'invalid-argument' ||
       'failed-precondition' ||
       'already-exists' => const ValidationError(ChatFailureCodes.validation),
-      _ => UnknownError(error.message ?? ChatFailureCodes.unknown),
+      _ => const UnavailableError(ChatFailureCodes.serviceUnavailable),
     };
   }
-  if (error is FirebaseException &&
-      (error.code == 'unavailable' || error.code == 'deadline-exceeded')) {
-    return const NetworkError(ChatFailureCodes.network);
+  if (error is FirebaseException) {
+    return switch (error.code) {
+      'network-request-failed' ||
+      'network-error' => const NetworkError(ChatFailureCodes.network),
+      'unavailable' ||
+      'internal' ||
+      'aborted' ||
+      'data-loss' => const UnavailableError(
+        ChatFailureCodes.serviceUnavailable,
+      ),
+      'deadline-exceeded' => const TimeoutError(ChatFailureCodes.timeout),
+      _ => const UnavailableError(ChatFailureCodes.serviceUnavailable),
+    };
   }
-  return UnknownError(error.toString());
+  return const UnknownError(ChatFailureCodes.unknown);
 }

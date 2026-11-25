@@ -189,6 +189,33 @@ MediaValidationResult validateMediaUpload({
   return MediaValidationResult.accepted(signature);
 }
 
+/// Builds an upload file name whose extension matches the actual bytes.
+///
+/// The in-app cropper always emits PNG bytes, but older call sites still pass
+/// a `.jpg` name. Naming PNG bytes `.jpg` makes the R2 validator reject them
+/// with "File extension jpg does not match the file contents". Sniffing the
+/// bytes here keeps the name honest; a claimed MIME type is only a fallback
+/// for callers that have not gone through the cropper yet.
+String imageFileNameForUpload({
+  required Uint8List bytes,
+  required String contentType,
+  required String prefix,
+}) {
+  final signature = sniffMediaSignature(bytes);
+  if (signature != null && signature.kind == MediaKind.image) {
+    return '$prefix.${signature.extension}';
+  }
+  final claimed = normalizeContentType(contentType);
+  final extension = switch (claimed) {
+    'image/jpeg' => 'jpg',
+    'image/png' => 'png',
+    'image/webp' => 'webp',
+    'image/gif' => 'gif',
+    _ => 'jpg',
+  };
+  return '$prefix.$extension';
+}
+
 String _formatMb(int bytes) {
   final mb = bytes / (1024 * 1024);
   return '${mb.toStringAsFixed(mb >= 10 ? 0 : 1)} MB';
