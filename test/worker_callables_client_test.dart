@@ -9,7 +9,7 @@ import 'package:pubget/features/private_chat/repositories/firebase_private_chat_
 import 'package:pubget/features/social/repositories/firebase_social_repository.dart';
 
 final class _FakeWorkerClient implements GroupWorkerClient {
-  const _FakeWorkerClient({this.response = const <String, dynamic>{}, this.error});
+  _FakeWorkerClient({this.response = const <String, dynamic>{}, this.error});
 
   final Map<String, dynamic> response;
   final Object? error;
@@ -62,7 +62,7 @@ void main() {
 
   test('a Worker 503 is a chat backend outage, never a lost connection', () async {
     final repository = FirebaseChatRepository(
-      workerClient: const _FakeWorkerClient(
+      workerClient: _FakeWorkerClient(
         error: GroupWorkerException(503, 'Callable request failed.'),
       ),
     );
