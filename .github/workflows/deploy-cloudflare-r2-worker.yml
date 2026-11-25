@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - fix/media-group-image-r2-reference
+      - feature/worker-core-reads
     paths:
       - "worker/**"
       - ".github/workflows/deploy-cloudflare-r2-worker.yml"
