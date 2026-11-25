@@ -282,12 +282,18 @@ class CollectionGroupReference extends QueryBuilder {
 
 class FirestoreRest {
   private readonly base: string;
+  private readonly callFetch: typeof fetch;
 
   constructor(
     projectId: string,
     private readonly token: string,
-    private readonly fetcher: typeof fetch,
+    fetcher?: typeof fetch,
   ) {
+    // Workers' global fetch rejects an incorrect `this`; never call a stored
+    // reference as a method of this gateway.
+    this.callFetch = fetcher
+      ? (input, init) => fetcher(input, init)
+      : (input, init) => globalThis.fetch(input, init);
     this.base =
       `https://firestore.googleapis.com/v1/projects/${projectId}` +
       `/databases/(default)/documents`;
@@ -302,7 +308,7 @@ class FirestoreRest {
   }
 
   async getDocument(path: string): Promise<DocumentSnapshot> {
-    const response = await this.fetcher(`${this.base}/${this.encodePath(path)}`, {
+    const response = await this.callFetch(`${this.base}/${this.encodePath(path)}`, {
       headers: this.headers(),
     });
     if (response.status === 404) {
@@ -325,7 +331,7 @@ class FirestoreRest {
     const target = parentPath
       ? `${this.base}/${this.encodePath(parentPath)}:runQuery`
       : `${this.base}:runQuery`;
-    const response = await this.fetcher(target, {
+    const response = await this.callFetch(target, {
       method: "POST",
       headers: { ...this.headers(), "content-type": "application/json" },
       body: JSON.stringify({ structuredQuery }),
@@ -355,9 +361,9 @@ export async function createFirestoreGateway(
           env.FIRESTORE_SERVICE_ACCOUNT_EMAIL,
           env.FIRESTORE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, "\n"),
           [DATASTORE_SCOPE],
-          options.fetcher ?? fetch,
+          options.fetcher,
         )
   );
   if (!token) throw new Error("Firestore service credentials are not configured.");
-  return new FirestoreRest(env.FIREBASE_PROJECT_ID, token, options.fetcher ?? fetch);
+  return new FirestoreRest(env.FIREBASE_PROJECT_ID, token, options.fetcher);
 }
