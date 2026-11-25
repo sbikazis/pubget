@@ -1,6 +1,8 @@
 import 'package:firebase_core/firebase_core.dart';
 
 import '../../../core/errors/failure.dart';
+import '../../../core/errors/firebase_failure_mapper.dart';
+import '../../../core/errors/http_status_failure.dart';
 import '../../../core/errors/result.dart';
 
 /// Honest mapping for Home/discovery failures.
@@ -11,6 +13,9 @@ import '../../../core/errors/result.dart';
 Failure discoveryFailureFrom(Object error) {
   if (error is FirebaseException) {
     return discoveryFailureFromCode(error.code);
+  }
+  if (error is HttpStatusFailure) {
+    return mapFirebaseFailure(error, message: 'Discovery could not load.');
   }
   return const UnknownError('Discovery could not load.');
 }

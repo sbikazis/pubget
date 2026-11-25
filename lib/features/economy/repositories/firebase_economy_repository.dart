@@ -1,6 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart' hide Result;
 import 'package:firebase_core/firebase_core.dart';
 
+import '../../../core/api/core_read_worker_client.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
@@ -9,26 +10,27 @@ import '../models/economy_models.dart';
 import 'economy_repository.dart';
 
 final class FirebaseEconomyRepository implements EconomyRepository {
-  FirebaseEconomyRepository({FirebaseFunctions? functions})
-    : _functions =
-          functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+  FirebaseEconomyRepository({
+    FirebaseFunctions? functions,
+    CoreReadWorkerClient? workerClient,
+  }) : _functions =
+          functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
+       _workerClient = workerClient ?? HttpCoreReadWorkerClient.forFirebase();
 
   final FirebaseFunctions _functions;
+  final CoreReadWorkerClient _workerClient;
 
   @override
   Future<Result<EconomySnapshot>> getEconomy() => _guard(() async {
-    final result = await _functions.httpsCallable('getEconomy').call();
-    return _snapshotFrom(result.data);
+    final data = await _workerClient.post('/core/economy');
+    return _snapshotFrom(data);
   });
 
   @override
   Future<Result<List<EconomyTransaction>>> getTransactions() =>
       _guard(() async {
-        final result = await _functions
-            .httpsCallable('getEconomyTransactions')
-            .call();
-        final raw = result.data;
-        final items = raw is Map && raw['items'] is List
+        final raw = await _workerClient.post('/core/economy/transactions');
+        final items = raw['items'] is List
             ? (raw['items'] as List)
             : const <Object?>[];
         return items

@@ -651,7 +651,6 @@ class PubgetApp extends StatelessWidget {
       ),
       FirebaseHomeRepository(
         firestore: FirebaseFirestore.instance,
-        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),
       FirebaseEditsRepository(
         firestore: FirebaseFirestore.instance,
@@ -682,7 +681,6 @@ class PubgetApp extends StatelessWidget {
       ),
       FirebaseAchievementRepository(
         firestore: FirebaseFirestore.instance,
-        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),
     );
   }

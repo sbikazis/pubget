@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: "20"
       - name: Test Worker authorization and media validation
-        run: npx --yes vitest@3.2.4 run worker/src/index.test.ts worker/src/index.routes.test.ts worker/src/index.kirari.test.ts worker/src/firebaseAuth.test.ts worker/src/identity.test.ts worker/src/storageMigration.test.ts worker/src/groups.test.ts worker/src/chatMediaObjects.test.ts worker/src/audioObjects.test.ts worker/src/fanWorksObjects.test.ts
+        run: npx --yes vitest@3.2.4 run worker/src/index.test.ts worker/src/index.routes.test.ts worker/src/index.kirari.test.ts worker/src/firebaseAuth.test.ts worker/src/identity.test.ts worker/src/storageMigration.test.ts worker/src/groups.test.ts worker/src/chatMediaObjects.test.ts worker/src/audioObjects.test.ts worker/src/fanWorksObjects.test.ts worker/src/firestoreGateway.test.ts worker/src/coreReads.test.ts
       - name: Deploy Worker to production
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

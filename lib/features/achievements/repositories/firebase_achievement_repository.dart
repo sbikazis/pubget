@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart' hide Result;
 
+import '../../../core/api/core_read_worker_client.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/firebase_failure_mapper.dart';
 import '../../../core/errors/result.dart';
@@ -14,24 +14,23 @@ import 'achievement_repository.dart';
 final class FirebaseAchievementRepository implements AchievementRepository {
   FirebaseAchievementRepository({
     FirebaseFirestore? firestore,
-    FirebaseFunctions? functions,
+    CoreReadWorkerClient? workerClient,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+       _workerClient = workerClient ?? HttpCoreReadWorkerClient.forFirebase();
 
   final FirebaseFirestore _firestore;
-  final FirebaseFunctions _functions;
+  final CoreReadWorkerClient _workerClient;
 
   @override
   Future<Result<List<AchievementItem>>> list({String? userId}) async {
     try {
-      final result = await runWithRetry(
-        () => _functions.httpsCallable('getAchievements').call(
+      final data = await runWithRetry(
+        () => _workerClient.post(
+          '/core/achievements',
           userId == null ? null : <String, dynamic>{'userId': userId},
         ),
         mapError: _fail,
       );
-      final data = Map<String, dynamic>.from(result.data as Map);
       final items = (data['items'] as List<Object?>? ?? const <Object?>[])
           .whereType<Map>()
           .map(_fromServerMap)
@@ -245,16 +244,5 @@ DateTime? _date(dynamic value) {
 }
 
 Failure _fail(Object error) {
-  if (error is FirebaseFunctionsException) {
-    return switch (error.code) {
-      'unauthenticated' || 'permission-denied' => PermissionError(
-        error.message ?? 'Achievements require a signed-in account.',
-      ),
-      'unavailable' || 'deadline-exceeded' => const NetworkError(
-        'Check your connection and try again.',
-      ),
-      _ => mapFirebaseFailure(error, message: 'Achievements could not load.'),
-    };
-  }
   return mapFirebaseFailure(error, message: 'Achievements could not load.');
 }
