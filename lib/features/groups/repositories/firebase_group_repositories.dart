@@ -297,13 +297,12 @@ final class FirebaseGroupRepository
 final class FirebaseGroupMembersRepository implements GroupMembersRepository {
   FirebaseGroupMembersRepository({
     FirebaseFirestore? firestore,
-    FirebaseFunctions? functions,
+    GroupWorkerClient? workerClient,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+       _workerClient = workerClient ?? HttpGroupWorkerClient.forFirebase();
 
   final FirebaseFirestore _firestore;
-  final FirebaseFunctions _functions;
+  final GroupWorkerClient _workerClient;
 
   @override
   Future<Result<List<GroupMember>>> getMembers(
