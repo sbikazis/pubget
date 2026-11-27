@@ -107,7 +107,7 @@ void main() {
 
   test('group administration actions route through the Worker callable bridge', () async {
     final worker = _FakeWorkerClient();
-    final repository = FirebaseGroupRepository(workerClient: worker);
+    final repository = FirebaseGroupMembersRepository(workerClient: worker);
 
     final result = await repository.kickMember(groupId: 'g-1', uid: 'u-1');
 
@@ -116,12 +116,22 @@ void main() {
     expect(worker.calls.single.payload['uid'], 'u-1');
   });
 
+  test('group membership actions route through the Worker callable bridge', () async {
+    final worker = _FakeWorkerClient();
+    final repository = FirebaseGroupRepository(workerClient: worker);
+
+    final result = await repository.leaveGroup('g-1');
+
+    expect(result, isA<Success<void>>());
+    expect(worker.calls.single.path, '/callables/leaveGroup');
+  });
+
   test('group invite and transfer tokens come from Worker responses', () async {
     final worker = _FakeWorkerClient(response: <String, dynamic>{
       'inviteId': 'i-1',
       'confirmationToken': 'token-1',
     });
-    final repository = FirebaseGroupRepository(workerClient: worker);
+    final repository = FirebaseGroupMembersRepository(workerClient: worker);
 
     final invite = await repository.createInvite(groupId: 'g-1', toUid: 'u-1');
     final transfer = await repository.prepareOwnershipTransfer(
