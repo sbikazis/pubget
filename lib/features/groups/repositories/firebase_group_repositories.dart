@@ -298,10 +298,13 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
   FirebaseGroupMembersRepository({
     FirebaseFirestore? firestore,
     GroupWorkerClient? workerClient,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance,
+  }) : _firestoreOverride = firestore,
        _workerClient = workerClient ?? HttpGroupWorkerClient.forFirebase();
 
-  final FirebaseFirestore _firestore;
+  // Lazy like FirebaseGroupRepository: injecting a Worker client in tests
+  // must not require a live Firebase app just to construct the repository.
+  final FirebaseFirestore? _firestoreOverride;
+  FirebaseFirestore get _firestore => _firestoreOverride ?? FirebaseFirestore.instance;
   final GroupWorkerClient _workerClient;
 
   @override
@@ -625,10 +628,11 @@ final class FirebaseRoleplayRepository implements RoleplayRepository {
   FirebaseRoleplayRepository({
     FirebaseFirestore? firestore,
     GroupWorkerClient? workerClient,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance,
+  }) : _firestoreOverride = firestore,
        _workerClient = workerClient ?? HttpGroupWorkerClient.forFirebase();
 
-  final FirebaseFirestore _firestore;
+  final FirebaseFirestore? _firestoreOverride;
+  FirebaseFirestore get _firestore => _firestoreOverride ?? FirebaseFirestore.instance;
   final GroupWorkerClient _workerClient;
 
   @override
