@@ -386,7 +386,7 @@ class QueryBuilder {
     return this;
   }
 
-  async get(): Promise<{ docs: DocumentSnapshot[] }> {
+  async get(transaction?: string): Promise<{ docs: DocumentSnapshot[] }> {
     const structuredQuery: Record<string, unknown> = {
       from: [
         this.source.allDescendants
@@ -415,6 +415,7 @@ class QueryBuilder {
     const rows = await this.rest.runQuery(
       structuredQuery,
       this.source.allDescendants ? undefined : this.parentPath,
+      transaction,
     );
     return {
       docs: rows
@@ -453,8 +454,12 @@ class CollectionReference extends QueryBuilder {
     );
   }
 
-  doc(id: string): DocumentReference {
-    return new DocumentReference(this.rest, `${this.collectionPath}/${id}`);
+  doc(id?: string): DocumentReference {
+    // Admin SDK's doc() without an argument generates a random document ID.
+    const documentId = id ?? (globalThis.crypto?.randomUUID
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`);
+    return new DocumentReference(this.rest, `${this.collectionPath}/${documentId}`);
   }
 }
 
@@ -522,6 +527,7 @@ class FirestoreRest {
   async runQuery(
     structuredQuery: Record<string, unknown>,
     parentPath?: string,
+    transaction?: string,
   ): Promise<Array<{ document?: FirestoreDocument }>> {
     const target = parentPath
       ? `${this.base}/${this.encodePath(parentPath)}:runQuery`
@@ -529,7 +535,9 @@ class FirestoreRest {
     const response = await this.callFetch(target, {
       method: "POST",
       headers: { ...this.headers(), "content-type": "application/json" },
-      body: JSON.stringify({ structuredQuery }),
+      // `transaction` is the RunQuery consistency selector; it must be in the
+      // body, not a query parameter, for reads inside an active transaction.
+      body: JSON.stringify({ structuredQuery, ...(transaction ? { transaction } : {}) }),
     });
     if (!response.ok) throw new Error(`Firestore query failed (${response.status}).`);
     return await response.json() as Array<{ document?: FirestoreDocument }>;
@@ -607,6 +615,57 @@ class FirestoreRest {
   collectionGroup(collectionId: string): CollectionGroupReference {
     return new CollectionGroupReference(this, collectionId);
   }
+
+  batch(): WriteBatch {
+    return new WriteBatch(this);
+  }
+}
+
+/** Admin-SDK-shaped `db.batch()` for domain helpers outside a transaction. */
+export class WriteBatch {
+  private readonly writes: WriteOperation[] = [];
+
+  constructor(private readonly rest: FirestoreRest) {}
+
+  set(
+    ref: DocumentReference,
+    data: Record<string, unknown>,
+    options: { merge?: boolean } = {},
+  ): this {
+    this.writes.push(buildWriteFromData(
+      this.rest.resourceName(ref.path),
+      data,
+      { merge: options.merge === true },
+    ));
+    return this;
+  }
+
+  update(ref: DocumentReference, data: Record<string, unknown>): this {
+    this.writes.push(buildUpdateWrite({
+      resourceName: this.rest.resourceName(ref.path),
+      data,
+      currentDocument: { exists: true },
+    }));
+    return this;
+  }
+
+  create(ref: DocumentReference, data: Record<string, unknown>): this {
+    this.writes.push(buildUpdateWrite({
+      resourceName: this.rest.resourceName(ref.path),
+      data,
+      currentDocument: { exists: false },
+    }));
+    return this;
+  }
+
+  delete(ref: DocumentReference): this {
+    this.writes.push({ delete: this.rest.resourceName(ref.path) });
+    return this;
+  }
+
+  async commit(): Promise<void> {
+    await this.rest.commit(this.writes);
+  }
 }
 
 /** Admin-SDK-shaped write surface exposed inside `db.runTransaction`. */
@@ -617,7 +676,10 @@ export class RestTransaction {
     private readonly writes: WriteOperation[],
   ) {}
 
-  get(ref: DocumentReference): Promise<DocumentSnapshot> {
+  get(ref: DocumentReference | QueryBuilder): Promise<any> {
+    // The Admin SDK also accepts queries inside a transaction; the group
+    // domain uses that to count all members before changing a role.
+    if (ref instanceof QueryBuilder) return ref.get(this.transactionId);
     return this.rest.getDocument(ref.path, this.transactionId);
   }
 

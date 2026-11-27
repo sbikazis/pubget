@@ -636,10 +636,7 @@ class PubgetApp extends StatelessWidget {
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
       ),
-      FirebaseRoleplayRepository(
-        firestore: FirebaseFirestore.instance,
-        functions: FirebaseFunctions.instanceFor(region: 'us-central1'),
-      ),
+      FirebaseRoleplayRepository(firestore: FirebaseFirestore.instance),
       FirebaseChatRepository(
         firestore: FirebaseFirestore.instance,
         functions: FirebaseFunctions.instanceFor(region: 'us-central1'),

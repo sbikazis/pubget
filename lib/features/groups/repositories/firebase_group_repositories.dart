@@ -259,7 +259,9 @@ final class FirebaseGroupRepository
 
   @override
   Future<Result<void>> disbandGroup(String groupId) => _guard(() async {
-    await _callVoid('disbandGroup', <String, dynamic>{
+    // Still on Functions: deleting the group's media prefix needs a dedicated
+    // Worker delete route, which is not part of the generic callable bridge.
+    await _functions.httpsCallable('disbandGroup').call(<String, dynamic>{
       'groupId': groupId,
       'mode': 'disband',
       'farewellMessage': '',
@@ -280,7 +282,7 @@ final class FirebaseGroupRepository
   });
 
   Future<void> _callVoid(String name, Map<String, dynamic> data) async {
-    await _functions.httpsCallable(name).call(data);
+    await _workerClient.post('/callables/$name', data);
   }
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
@@ -396,10 +398,11 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
     required String groupId,
     required String toUid,
   }) => _guard(() async {
-    final result = await _functions.httpsCallable('createGroupInvite').call(
+    final data = await _workerClient.post(
+      '/callables/createGroupInvite',
       <String, dynamic>{'groupId': groupId, 'toUid': toUid},
     );
-    return result.data['inviteId'] as String;
+    return data['inviteId'] as String;
   });
 
   @override
@@ -418,7 +421,7 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
   );
 
   Future<void> _call(String name, Map<String, dynamic> data) async {
-    await _functions.httpsCallable(name).call(data);
+    await _workerClient.post('/callables/$name', data);
   }
 
   @override
@@ -451,10 +454,11 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
     required String groupId,
     required String uid,
   }) => _guard(() async {
-    final result = await _functions
-        .httpsCallable('prepareOwnershipTransfer')
-        .call(<String, dynamic>{'groupId': groupId, 'uid': uid});
-    return result.data['confirmationToken'] as String;
+    final data = await _workerClient.post(
+      '/callables/prepareOwnershipTransfer',
+      <String, dynamic>{'groupId': groupId, 'uid': uid},
+    );
+    return data['confirmationToken'] as String;
   });
 
   @override
@@ -621,13 +625,12 @@ final class FirebaseGroupMembersRepository implements GroupMembersRepository {
 final class FirebaseRoleplayRepository implements RoleplayRepository {
   FirebaseRoleplayRepository({
     FirebaseFirestore? firestore,
-    FirebaseFunctions? functions,
+    GroupWorkerClient? workerClient,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+       _workerClient = workerClient ?? HttpGroupWorkerClient.forFirebase();
 
   final FirebaseFirestore _firestore;
-  final FirebaseFunctions _functions;
+  final GroupWorkerClient _workerClient;
 
   @override
   Future<Result<void>> reserveCharacter({
@@ -635,7 +638,7 @@ final class FirebaseRoleplayRepository implements RoleplayRepository {
     required String characterKey,
     required RoleplayCharacter character,
   }) => _guard(() async {
-    await _functions.httpsCallable('reserveRoleplayCharacter').call({
+    await _workerClient.post('/callables/reserveRoleplayCharacter', {
       'groupId': groupId,
       'characterKey': characterKey,
       'character': {'name': character.name, 'avatarUrl': character.avatarUrl},
@@ -647,7 +650,7 @@ final class FirebaseRoleplayRepository implements RoleplayRepository {
     required String groupId,
     required String characterKey,
   }) => _guard(() async {
-    await _functions.httpsCallable('releaseRoleplayCharacter').call({
+    await _workerClient.post('/callables/releaseRoleplayCharacter', {
       'groupId': groupId,
       'characterKey': characterKey,
     });

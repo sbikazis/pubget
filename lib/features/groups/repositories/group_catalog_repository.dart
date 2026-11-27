@@ -6,6 +6,7 @@ import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../../core/errors/retry.dart';
 import '../models/group_catalog_models.dart';
+import 'group_worker_client.dart';
 
 /// Master Spec 7.3 / 11: the anime a roleplay group is bound to, and the cast
 /// it can draw from, are read from the canonical server catalog. The client
@@ -129,11 +130,10 @@ final class GroupCharacterRequest {
 }
 
 final class FirebaseGroupCatalogRepository implements GroupCatalogRepository {
-  FirebaseGroupCatalogRepository({FirebaseFunctions? functions})
-    : _functions =
-          functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+  FirebaseGroupCatalogRepository({GroupWorkerClient? workerClient})
+    : _workerClient = workerClient ?? HttpGroupWorkerClient.forFirebase();
 
-  final FirebaseFunctions _functions;
+  final GroupWorkerClient _workerClient;
 
   @override
   Future<Result<GroupCatalogPage>> browseAnime(
@@ -170,8 +170,7 @@ final class FirebaseGroupCatalogRepository implements GroupCatalogRepository {
     String name,
     Map<String, dynamic> payload,
   ) async {
-    final result = await _functions.httpsCallable(name).call(payload);
-    final data = result.data;
+    final data = await _workerClient.post('/callables/$name', payload);
     if (data is! Map) {
       throw const FormatException('Unexpected catalog response.');
     }
@@ -190,6 +189,18 @@ final class FirebaseGroupCatalogRepository implements GroupCatalogRepository {
 /// Reports the catalog as unavailable, never as "no results": a picker that
 /// cannot tell the two apart shows an empty list and looks like a dead feature.
 Failure catalogFailure(Object error) {
+  if (error is GroupWorkerException) {
+    // A Worker status is never proof that the device lost its connection.
+    return switch (error.statusCode) {
+      400 => ValidationError(error.message),
+      401 || 403 => PermissionError(error.message),
+      404 => NotFoundError(error.message),
+      409 => TransactionConflictError(error.message),
+      429 => RateLimitedError(error.message),
+      >= 500 => const UnavailableError('The catalog could not be read.'),
+      _ => const UnavailableError('The catalog could not be read.'),
+    };
+  }
   if (error is FirebaseFunctionsException) {
     return switch (error.code) {
       'unauthenticated' || 'permission-denied' => PermissionError(

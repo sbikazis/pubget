@@ -6,6 +6,8 @@ import achievementsModule from "../../functions/src/achievementsDomain.js";
 import groupChatModule from "../../functions/src/groupChat.js";
 import privateChatModule from "../../functions/src/privateChat.js";
 import socialGraphModule from "../../functions/src/socialGraph.js";
+import groupsDomainModule from "../../functions/src/groupsDomain.js";
+import animeCatalogModule from "../../functions/src/animeCatalogDomain.js";
 
 // The callable bridge owns the HTTP mapping for domain errors, so expose the
 // error class its tests use to simulate domain failures.
@@ -16,6 +18,8 @@ const { createAchievementsDomain } = achievementsModule as any;
 const { createGroupChat } = groupChatModule as any;
 const { createPrivateChat } = privateChatModule as any;
 const { createSocialGraph } = socialGraphModule as any;
+const { createGroupsDomain } = groupsDomainModule as any;
+const { createAnimeCatalogDomain } = animeCatalogModule as any;
 
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
@@ -81,6 +85,33 @@ const SOCIAL_ROUTES: Record<string, string> = {
   unblockUser: "unblockUser",
 };
 
+// Group administration callables whose logic already lives in groupsDomain.
+// `disbandGroup` is intentionally absent: its Firebase Storage prefix delete
+// needs a dedicated Worker route rather than this generic domain bridge.
+const GROUP_ADMIN_ROUTES: Record<string, string> = {
+  joinGroup: "joinGroup",
+  requestToJoin: "requestToJoin",
+  leaveGroup: "leaveGroup",
+  updateGroupSettings: "updateGroupSettings",
+  promoteGroup: "promoteGroup",
+  createGroupInvite: "createInvite",
+  updateRolePermissions: "updateRolePermissions",
+  changeRole: "changeRole",
+  kickMember: "kickMember",
+  banMember: "banMember",
+  transferOwnership: "transferOwnership",
+  acceptJoinRequest: "acceptJoinRequest",
+  rejectJoinRequest: "rejectJoinRequest",
+  unbanMember: "unbanMember",
+  warnMember: "warnMember",
+  prepareOwnershipTransfer: "prepareOwnershipTransfer",
+  reserveRoleplayCharacter: "reserveRoleplayCharacter",
+  releaseRoleplayCharacter: "releaseRoleplayCharacter",
+  browseAnimeCatalog: "browseAnimeCatalog",
+  browseRoleplayCharacters: "browseRoleplayCharacters",
+  reservedGroupCharacters: "reservedCharacterKeys",
+};
+
 export const CALLABLE_PATH_PREFIX = "/callables/";
 export const CALLABLE_ROUTES: Record<string, string> = {
   ...Object.fromEntries(
@@ -91,6 +122,9 @@ export const CALLABLE_ROUTES: Record<string, string> = {
   ),
   ...Object.fromEntries(
     Object.entries(SOCIAL_ROUTES).map(([route, method]) => [route, `social.${method}`]),
+  ),
+  ...Object.fromEntries(
+    Object.entries(GROUP_ADMIN_ROUTES).map(([route, method]) => [route, `groups.${method}`]),
   ),
 };
 
@@ -166,7 +200,16 @@ function defaultDomains(db: unknown, env: CallableEnv): Record<string, CallableF
     HttpsError: CallableError,
     achievements,
   });
-  return { groupChat, privateChat, social };
+  const catalog = createAnimeCatalogDomain({ db });
+  const groups = createGroupsDomain({
+    db,
+    FieldValue,
+    HttpsError: CallableError,
+    randomUUID: () => crypto.randomUUID(),
+    achievements,
+    catalog,
+  });
+  return { groupChat, privateChat, social, groups };
 }
 
 /**

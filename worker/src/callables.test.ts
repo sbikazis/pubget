@@ -91,8 +91,17 @@ describe("authenticated callable bridge", () => {
       "markPrivateMessagesDelivered", "deletePrivateChat",
       "giveRespect", "sendFriendRequest", "cancelFriendRequest",
       "respondToFriendRequest", "removeFriend", "blockUser", "unblockUser",
+      "joinGroup", "requestToJoin", "leaveGroup", "updateGroupSettings",
+      "promoteGroup", "createGroupInvite", "updateRolePermissions",
+      "changeRole", "kickMember", "banMember", "transferOwnership",
+      "acceptJoinRequest", "rejectJoinRequest", "unbanMember", "warnMember",
+      "prepareOwnershipTransfer", "reserveRoleplayCharacter",
+      "releaseRoleplayCharacter", "browseAnimeCatalog",
+      "browseRoleplayCharacters", "reservedGroupCharacters",
     ]) {
       expect(CALLABLE_ROUTES[name]).toBeTruthy();
     }
+    // Disband needs Storage prefix deletion and stays on the legacy path.
+    expect(CALLABLE_ROUTES.disbandGroup).toBeUndefined();
   });
 });

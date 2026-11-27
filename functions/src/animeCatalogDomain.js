@@ -23,7 +23,8 @@
 // `id` is namespaced by provider so an ID from one provider can never be
 // silently resolved by another.
 
-const crypto = require("crypto");
+// `node:` specifier is understood by both Node and Cloudflare's nodejs_compat.
+const crypto = require("node:crypto");
 
 const JIKAN_BASE = "https://api.jikan.moe/v4";
 const ANILIST_ENDPOINT = "https://graphql.anilist.co";

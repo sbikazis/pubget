@@ -2,7 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pubget/core/errors/failure.dart';
 import 'package:pubget/core/errors/result.dart';
 import 'package:pubget/features/groups/models/chat_models.dart';
+import 'package:pubget/features/groups/models/group_catalog_models.dart';
 import 'package:pubget/features/groups/repositories/firebase_chat_repository.dart';
+import 'package:pubget/features/groups/repositories/firebase_group_repositories.dart';
+import 'package:pubget/features/groups/repositories/group_catalog_repository.dart';
 import 'package:pubget/features/groups/repositories/group_worker_client.dart';
 import 'package:pubget/features/groups/services/chat_send_reliability.dart';
 import 'package:pubget/features/private_chat/repositories/firebase_private_chat_repository.dart';
@@ -100,5 +103,63 @@ void main() {
 
     expect(worker.calls.single.path, '/callables/giveRespect');
     expect((result as FailureResult<void>).failure, isA<UnavailableError>());
+  });
+
+  test('group administration actions route through the Worker callable bridge', () async {
+    final worker = _FakeWorkerClient();
+    final repository = FirebaseGroupRepository(workerClient: worker);
+
+    final result = await repository.kickMember(groupId: 'g-1', uid: 'u-1');
+
+    expect(result, isA<Success<void>>());
+    expect(worker.calls.single.path, '/callables/kickMember');
+    expect(worker.calls.single.payload['uid'], 'u-1');
+  });
+
+  test('group invite and transfer tokens come from Worker responses', () async {
+    final worker = _FakeWorkerClient(response: <String, dynamic>{
+      'inviteId': 'i-1',
+      'confirmationToken': 'token-1',
+    });
+    final repository = FirebaseGroupRepository(workerClient: worker);
+
+    final invite = await repository.createInvite(groupId: 'g-1', toUid: 'u-1');
+    final transfer = await repository.prepareOwnershipTransfer(
+      groupId: 'g-1',
+      uid: 'u-1',
+    );
+
+    expect((invite as Success<String>).value, 'i-1');
+    expect((transfer as Success<String>).value, 'token-1');
+    expect(worker.calls.map((call) => call.path), [
+      '/callables/createGroupInvite',
+      '/callables/prepareOwnershipTransfer',
+    ]);
+  });
+
+  test('roleplay reservations and catalog browse use Worker routes', () async {
+    final worker = _FakeWorkerClient();
+    final roleplay = FirebaseRoleplayRepository(workerClient: worker);
+    final catalog = FirebaseGroupCatalogRepository(workerClient: worker);
+
+    await roleplay.releaseCharacter(groupId: 'g-1', characterKey: 'c-1');
+    await catalog.browseAnime(const GroupCatalogRequest());
+
+    expect(worker.calls.map((call) => call.path), [
+      '/callables/releaseRoleplayCharacter',
+      '/callables/browseAnimeCatalog',
+    ]);
+  });
+
+  test('catalog 503 is a backend outage, never a lost connection', () async {
+    final repository = FirebaseGroupCatalogRepository(
+      workerClient: _FakeWorkerClient(
+        error: const GroupWorkerException(503, 'Callable request failed.'),
+      ),
+    );
+
+    final result = await repository.browseAnime(const GroupCatalogRequest());
+
+    expect((result as FailureResult<GroupCatalogPage>).failure, isA<UnavailableError>());
   });
 }

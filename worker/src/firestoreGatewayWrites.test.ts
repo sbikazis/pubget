@@ -129,4 +129,56 @@ describe("Firestore REST gateway writes", () => {
     expect(h.commits).toHaveLength(1);
     expect(h.commits[0].writes[0].update?.fields.value).toEqual({ integerValue: "1" });
   });
+
+  test("batch commits auto-ID documents with relative write names", async () => {
+    const h = harness();
+    const db = await createFirestoreGateway(env, { token: "token", fetcher: h.fetcher });
+    const ref = db.collection("users").doc("u1").collection("notifications").doc();
+
+    expect(ref.id).toBeTruthy();
+    expect(ref.path.endsWith(`/notifications/${ref.id}`)).toBe(true);
+
+    const batch = db.batch();
+    batch.set(ref, { type: "rank_promoted", readAt: false });
+    batch.update(db.collection("groups").doc("g1"), { updatedAt: FieldValue.serverTimestamp() });
+    await batch.commit();
+
+    expect(h.commits).toHaveLength(1);
+    expect(h.commits[0].writes).toHaveLength(2);
+    expect(h.commits[0].writes[0].update?.name).toBe(
+      `projects/pubget-test/databases/(default)/documents/users/u1/notifications/${ref.id}`,
+    );
+    expect(h.commits[0].writes[1].update?.fieldTransforms).toEqual([
+      { fieldPath: "updatedAt", setToServerValue: "REQUEST_TIME" },
+    ]);
+  });
+
+  test("queries inside a transaction carry the transaction id in the request body", async () => {
+    const runQueries: Array<{ transaction?: string }> = [];
+    const fetcher: NonNullable<GatewayOptions["fetcher"]> = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith(":beginTransaction")) {
+        return new Response(JSON.stringify({ transaction: "tx-7" }), { status: 200 });
+      }
+      if (url.endsWith(":runQuery")) {
+        runQueries.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify([
+          { document: { name: `${BASE}/groups/g1/members/u1`, fields: {} } },
+        ]), { status: 200 });
+      }
+      if (url.endsWith(":commit")) return new Response("{}", { status: 200 });
+      if (url.endsWith(":rollback")) return new Response("{}", { status: 200 });
+      throw new Error(`Unexpected Firestore request: ${url}`);
+    };
+    const db = await createFirestoreGateway(env, { token: "token", fetcher });
+
+    await db.runTransaction(async (tx) => {
+      const members = await tx.get(db.collection("groups").doc("g1").collection("members"));
+      expect(members.docs.map((doc: { id: string }) => doc.id)).toEqual(["u1"]);
+      tx.update(db.collection("groups").doc("g1"), { memberCount: 1 });
+    });
+
+    expect(runQueries).toHaveLength(1);
+    expect(runQueries[0].transaction).toBe("tx-7");
+  });
 });
