@@ -10,6 +10,7 @@ import {
 } from "./achievementNotifications";
 import { handleGroupsRequest } from "./groups";
 import { handleCoreReadsRequest } from "./coreReads";
+import { handleCallablesRequest } from "./callables";
 
 export interface Env {
   MEDIA_BUCKET: R2Bucket;
@@ -511,6 +512,17 @@ export default {
         if (coreResponse) return coreResponse;
       } catch {
         return json({ error: "Core read failed." }, 503);
+      }
+    }
+
+    // Group chat, private chat and social writes moved off Firebase Functions
+    // because the project cannot be billed. Domain logic is reused verbatim.
+    if (url.pathname.startsWith("/callables/")) {
+      try {
+        const callableResponse = await handleCallablesRequest(request, env);
+        if (callableResponse) return callableResponse;
+      } catch {
+        return json({ error: "Callable request failed." }, 503);
       }
     }
 

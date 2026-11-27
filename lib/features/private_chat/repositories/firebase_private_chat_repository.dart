@@ -10,6 +10,7 @@ import '../../../core/media/r2_media_storage_provider.dart';
 import '../../../core/errors/failure.dart';
 import '../../../core/errors/result.dart';
 import '../../groups/models/chat_models.dart';
+import '../../groups/repositories/group_worker_client.dart';
 import '../../groups/services/chat_send_reliability.dart';
 import '../models/private_chat_models.dart';
 import 'private_chat_repository.dart';
@@ -17,15 +18,17 @@ import 'private_chat_repository.dart';
 final class FirebasePrivateChatRepository implements PrivateChatRepository {
   FirebasePrivateChatRepository({
     FirebaseFirestore? firestore,
+    // Retained for wiring compatibility; writes now use the free Worker path.
     FirebaseFunctions? functions,
+    GroupWorkerClient? workerClient,
     R2MediaStorageProvider? mediaStorage,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'),
+  }) : _firestoreOverride = firestore,
+       _workerClient = workerClient ?? HttpGroupWorkerClient.forFirebase(),
        _mediaStorage = mediaStorage;
 
-  final FirebaseFirestore _firestore;
-  final FirebaseFunctions _functions;
+  final FirebaseFirestore? _firestoreOverride;
+  FirebaseFirestore get _firestore => _firestoreOverride ?? FirebaseFirestore.instance;
+  final GroupWorkerClient _workerClient;
   R2MediaStorageProvider? _mediaStorage;
 
   R2MediaStorageProvider get _mediaStorageProvider =>
@@ -56,10 +59,11 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
 
   @override
   Future<Result<String>> startChat(String otherUserId) => _guard(() async {
-    final result = await _functions.httpsCallable('startPrivateChat').call(
+    final result = await _workerClient.post(
+      '/callables/startPrivateChat',
       <String, dynamic>{'otherUserId': otherUserId},
     );
-    return result.data['chatId'] as String;
+    return result['chatId'] as String;
   });
 
   @override
@@ -154,19 +158,20 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
     String? mediaId,
     String? replyToMessageId,
   }) => _guard(() async {
-    final result = await _functions
-        .httpsCallable('sendPrivateMessage')
-        .call(<String, dynamic>{
-          'chatId': chatId,
-          'messageId': messageId,
-          'type': type.name,
-          'text': ?text,
-          'mediaId': ?mediaId,
-          'replyToMessageId': ?replyToMessageId,
-        });
+    final result = await _workerClient.post(
+      '/callables/sendPrivateMessage',
+      <String, dynamic>{
+        'chatId': chatId,
+        'messageId': messageId,
+        'type': type.name,
+        'text': ?text,
+        'mediaId': ?mediaId,
+        'replyToMessageId': ?replyToMessageId,
+      },
+    );
     return ChatMessage.fromMap(
-      Map<String, dynamic>.from(result.data['message'] as Map),
-      id: result.data['messageId'] as String,
+      Map<String, dynamic>.from(result['message'] as Map),
+      id: result['messageId'] as String,
     );
   });
 
@@ -277,7 +282,7 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
   }
   Future<Result<void>> _call(String name, Map<String, dynamic> data) =>
       _guard(() async {
-        await _functions.httpsCallable(name).call(data);
+        await _workerClient.post('/callables/$name', data);
       });
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
@@ -290,6 +295,17 @@ final class FirebasePrivateChatRepository implements PrivateChatRepository {
 }
 
 Failure _chatFailure(Object error) {
+  if (error is GroupWorkerException) {
+    return switch (error.statusCode) {
+      401 || 403 => const PermissionError(ChatFailureCodes.permission),
+      404 => const NotFoundError(ChatFailureCodes.notFound),
+      409 => const TransactionConflictError(ChatFailureCodes.serviceUnavailable),
+      429 => const RateLimitedError(ChatFailureCodes.rateLimited),
+      >= 500 => const UnavailableError(ChatFailureCodes.serviceUnavailable),
+      >= 400 => const ValidationError(ChatFailureCodes.validation),
+      _ => const UnknownError(ChatFailureCodes.unknown),
+    };
+  }
   if (error is FirebaseFunctionsException) {
     return switch (error.code) {
       'unauthenticated' ||
