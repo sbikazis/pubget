@@ -7,6 +7,10 @@ import groupChatModule from "../../functions/src/groupChat.js";
 import privateChatModule from "../../functions/src/privateChat.js";
 import socialGraphModule from "../../functions/src/socialGraph.js";
 
+// The callable bridge owns the HTTP mapping for domain errors, so expose the
+// error class its tests use to simulate domain failures.
+export { CallableError };
+
 const { createEconomyDomain } = economyModule as any;
 const { createAchievementsDomain } = achievementsModule as any;
 const { createGroupChat } = groupChatModule as any;
