@@ -170,11 +170,8 @@ final class FirebaseGroupCatalogRepository implements GroupCatalogRepository {
     String name,
     Map<String, dynamic> payload,
   ) async {
-    final data = await _workerClient.post('/callables/$name', payload);
-    if (data is! Map) {
-      throw const FormatException('Unexpected catalog response.');
-    }
-    return Map<String, dynamic>.from(data);
+    // The Worker client already decodes and validates a JSON object body.
+    return _workerClient.post('/callables/$name', payload);
   }
 
   Future<Result<T>> _guard<T>(Future<T> Function() action) async {
